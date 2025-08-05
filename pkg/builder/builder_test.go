@@ -49,29 +49,45 @@ func (m *mockRepoService) ReplaceAllTopics(ctx context.Context, owner, repo stri
 	return topics, nil, m.replaceErr
 }
 
+func (m *mockRepoService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *github.Response, error) {
+	if m.createCalled {
+		return m.lastTopics, nil, nil
+	}
+	return nil, nil, errors.New("not called")
+}
+
 func TestCreateRepoSuccess(t *testing.T) {
 	svc := &mockRepoService{}
+	newRepo := Repository{
+		Org:         "org",
+		Name:        "name",
+		Description: "desc",
+		Private:     false,
+		Topics:      []string{"t1", "t2"},
+	}
+	templateRepo := Repository{
+		Org:         "template-org",
+		Name:        "template-name",
+		Description: "template-desc",
+		Private:     false,
+		Topics:      []string{"template-topic"},
+	}
 	opts := RepoCreationOptions{
-		Org:          "org",
-		Name:         "name",
-		Description:  "desc",
-		Private:      false,
-		Topics:       []string{"t1", "t2"},
-		TemplateName: "tmpl",
-		TemplateOrg:  "template-org",
+		NewRepo:      newRepo,
+		TemplateRepo: templateRepo,
 		Service:      svc,
 	}
-	newRepo, err := CreateRepo(context.Background(), opts)
+	newMockRepo, err := CreateRepo(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if newRepo == nil {
+	if newMockRepo == nil {
 		t.Fatal("expected non-nil repository")
 	}
 	if !svc.createCalled || !svc.replaceCalled {
 		t.Fatalf("expected service methods to be called")
 	}
-	if svc.lastTemplateOwner != opts.TemplateOrg || svc.lastTemplate != opts.TemplateName || svc.lastOwner != opts.Org || svc.lastName != opts.Name || svc.lastDesc != opts.Description || svc.lastPrivate != opts.Private {
+	if svc.lastTemplateOwner != opts.TemplateRepo.Org || svc.lastTemplate != opts.TemplateRepo.Name || svc.lastOwner != opts.NewRepo.Org || svc.lastName != opts.NewRepo.Name || svc.lastDesc != opts.NewRepo.Description || svc.lastPrivate != opts.NewRepo.Private {
 		t.Fatalf("parameters not passed correctly")
 	}
 	if len(svc.lastTopics) != 2 {
@@ -81,17 +97,30 @@ func TestCreateRepoSuccess(t *testing.T) {
 
 func TestCreateRepoCreateError(t *testing.T) {
 	svc := &mockRepoService{createErr: errors.New("boom")}
+	newRepo := Repository{
+		Org:         "org",
+		Name:        "name",
+		Description: "desc",
+		Private:     false,
+		Topics:      []string{"t1", "t2"},
+	}
+	templateRepo := Repository{
+		Org:         "template-org",
+		Name:        "template-name",
+		Description: "template-desc",
+		Private:     false,
+		Topics:      []string{"template-topic"},
+	}
 	opts := RepoCreationOptions{
-		Org:          "org",
-		TemplateName: "tmpl",
-		Name:         "name",
+		NewRepo:      newRepo,
+		TemplateRepo: templateRepo,
 		Service:      svc,
 	}
-	newRepo, err := CreateRepo(context.Background(), opts)
+	newMockRepo, err := CreateRepo(context.Background(), opts)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	if newRepo != nil {
+	if newMockRepo != nil {
 		t.Fatalf("expected nil repository on error")
 	}
 	if !errors.Is(err, svc.createErr) {

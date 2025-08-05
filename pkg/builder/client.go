@@ -10,4 +10,5 @@ import (
 type RepoService interface {
 	CreateFromTemplate(ctx context.Context, templateOwner, templateRepo string, req *github.TemplateRepoRequest) (*github.Repository, *github.Response, error)
 	ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *github.Response, error)
+	ListAllTopics(ctx context.Context, owner, repo string) ([]string, *github.Response, error)
 }

@@ -18,6 +18,10 @@ func (mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, top
 	return topics, nil, nil
 }
 
+func (mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *github.Response, error) {
+	return []string{}, nil, nil
+}
+
 func TestRequiredFlags(t *testing.T) {
 	c := rootcmd.NewRootCmd(mockService{})
 	c.SetArgs([]string{})
@@ -28,7 +32,7 @@ func TestRequiredFlags(t *testing.T) {
 
 func TestAllRequiredFlagsProvided(t *testing.T) {
 	c := rootcmd.NewRootCmd(mockService{})
-	c.SetArgs([]string{"--token", "t", "--org", "o", "--templateName", "temp", "--name", "n"})
+	c.SetArgs([]string{"--token", "t", "--org", "o", "--template-name", "temp", "--name", "n"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

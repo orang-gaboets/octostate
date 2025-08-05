@@ -42,14 +42,18 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 				TemplateOrg = org
 			}
 			opts := builder.RepoCreationOptions{
-				Org:          org,
-				Name:         name,
-				Private:      private,
-				Description:  desc,
-				Topics:       topicList,
-				TemplateName: TemplateName,
-				TemplateOrg:  TemplateOrg,
-				Service:      service,
+				NewRepo: builder.Repository{
+					Org:         org,
+					Name:        name,
+					Private:     private,
+					Description: desc,
+					Topics:      topicList,
+				},
+				TemplateRepo: builder.Repository{
+					Org:  TemplateOrg,
+					Name: TemplateName,
+				},
+				Service: service,
 			}
 			_, err := builder.CreateRepo(ctx, opts)
 			if err != nil {
@@ -61,7 +65,8 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 
 	cmd.Flags().StringVar(&token, "token", "", "GitHub access token")
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
-	cmd.Flags().StringVar(&TemplateName, "templateName", "", "Template repository name")
+	cmd.Flags().StringVar(&TemplateName, "template-name", "", "Template repository name")
+	cmd.Flags().StringVar(&TemplateOrg, "template-org", "", "Template repository organization name (defaults to --org if not set)")
 	cmd.Flags().StringVar(&name, "name", "", "New repository name")
 	cmd.Flags().StringVar(&desc, "desc", "", "Repository description")
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
