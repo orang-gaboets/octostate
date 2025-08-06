@@ -68,3 +68,81 @@ func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*github.Reposito
 	}
 	return newRepo, nil
 }
+
+func ListAllTopics(ctx context.Context, svc RepoService, repository Repository) ([]string, error) {
+	if svc == nil {
+		return nil, fmt.Errorf("repo service is nil")
+	}
+
+	log.Printf("Listing topics for repository %s/%s", repository.Org, repository.Name)
+	topics, _, err := svc.ListAllTopics(ctx, repository.Org, repository.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list topics: %w", err)
+	}
+	return topics, nil
+}
+
+func ReplaceAllTopics(ctx context.Context, svc RepoService, repository Repository, topics []string) ([]string, error) {
+	if svc == nil {
+		return nil, fmt.Errorf("repo service is nil")
+	}
+
+	if len(topics) == 0 {
+		return nil, fmt.Errorf("no topics to set")
+	}
+
+	cleaned := make([]string, 0, len(topics))
+	for _, t := range topics {
+		if v := strings.TrimSpace(t); v != "" {
+			cleaned = append(cleaned, v)
+		}
+	}
+
+	log.Printf("Setting topics for repository %s/%s: %v", repository.Org, repository.Name, cleaned)
+	topics, _, err := svc.ReplaceAllTopics(ctx, repository.Org, repository.Name, cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("replace topics: %w", err)
+	}
+	return topics, nil
+}
+
+func AddTopics(ctx context.Context, svc RepoService, repository Repository, topics []string) ([]string, error) {
+	if svc == nil {
+		return nil, fmt.Errorf("repo service is nil")
+	}
+
+	if len(repository.Topics) == 0 {
+		return nil, fmt.Errorf("no topics to add")
+	}
+
+	oldTopics, _, err := svc.ListAllTopics(ctx, repository.Org, repository.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list existing topics: %w", err)
+	}
+
+	log.Printf("Current topics for repository %s/%s: %v", repository.Org, repository.Name, oldTopics)
+
+	cleanedSet := make(map[string]struct{})
+	for _, t := range oldTopics {
+		if v := strings.TrimSpace(t); v != "" {
+			cleanedSet[v] = struct{}{}
+		}
+	}
+	for _, t := range topics {
+		if v := strings.TrimSpace(t); v != "" {
+			cleanedSet[v] = struct{}{}
+		}
+	}
+
+	cleaned := make([]string, 0, len(cleanedSet))
+	for topic := range cleanedSet {
+		cleaned = append(cleaned, topic)
+	}
+
+	log.Printf("Adding topics to repository %s/%s: %v", repository.Org, repository.Name, cleaned)
+	topics, _, err = svc.ReplaceAllTopics(ctx, repository.Org, repository.Name, cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add topics: %w", err)
+	}
+	return topics, nil
+}
