@@ -7,12 +7,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/repo-builder/pkg/builder"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
+	gitHubClient "github.com/orang-gaboets/repo-builder/pkg/github/client"
+	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 )
 
 // NewRootCmd returns the root cobra command. If svc is nil, a GitHub client will
 // be created from the provided token at runtime.
-func NewRootCmd(svc builder.RepoService) *cobra.Command {
+func NewRootCmd(svc repos.Service) *cobra.Command {
 	var (
 		token        string
 		org          string
@@ -31,7 +33,7 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 			ctx := context.Background()
 			service := svc
 			if service == nil {
-				client := builder.NewGitHubClient(ctx, token)
+				client := gitHubClient.New(ctx, token)
 				service = client.Repositories
 			}
 			topicList := []string{}
@@ -41,21 +43,21 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 			if templateOrg == "" {
 				templateOrg = org
 			}
-			opts := builder.RepoCreationOptions{
-				NewRepo: builder.Repository{
+			opts := repos.RepoCreationOptions{
+				NewRepo: github.Repository{
 					Org:         org,
 					Name:        name,
 					Private:     private,
 					Description: desc,
 					Topics:      topicList,
 				},
-				TemplateRepo: builder.Repository{
+				TemplateRepo: github.Repository{
 					Org:  templateOrg,
 					Name: templateName,
 				},
 				Service: service,
 			}
-			_, err := builder.CreateRepo(ctx, opts)
+			_, err := repos.CreateRepo(ctx, opts)
 			if err != nil {
 				return err
 			}

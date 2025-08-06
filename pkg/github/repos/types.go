@@ -1,4 +1,4 @@
-package builder
+package repos
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"github.com/google/go-github/v55/github"
 )
 
-// RepoService defines the subset of GitHub repository APIs used by CreateRepo.
-type RepoService interface {
+// Service defines the subset of GitHub repository APIs used by CreateRepo.
+type Service interface {
 	CreateFromTemplate(ctx context.Context, templateOwner, templateRepo string, req *github.TemplateRepoRequest) (*github.Repository, *github.Response, error)
 	ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *github.Response, error)
 	ListAllTopics(ctx context.Context, owner, repo string) ([]string, *github.Response, error)
