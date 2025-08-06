@@ -16,8 +16,8 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 	var (
 		token        string
 		org          string
-		TemplateName string
-		TemplateOrg  string
+		templateName string
+		templateOrg  string
 		name         string
 		desc         string
 		topics       string
@@ -38,8 +38,8 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 			if topics != "" {
 				topicList = strings.Split(topics, ",")
 			}
-			if TemplateOrg == "" {
-				TemplateOrg = org
+			if templateOrg == "" {
+				templateOrg = org
 			}
 			opts := builder.RepoCreationOptions{
 				NewRepo: builder.Repository{
@@ -50,8 +50,8 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 					Topics:      topicList,
 				},
 				TemplateRepo: builder.Repository{
-					Org:  TemplateOrg,
-					Name: TemplateName,
+					Org:  templateOrg,
+					Name: templateName,
 				},
 				Service: service,
 			}
@@ -65,8 +65,8 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 
 	cmd.Flags().StringVar(&token, "token", "", "GitHub access token")
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
-	cmd.Flags().StringVar(&TemplateName, "template-name", "", "Template repository name")
-	cmd.Flags().StringVar(&TemplateOrg, "template-org", "", "Template repository organization name (defaults to --org if not set)")
+	cmd.Flags().StringVar(&templateName, "template-name", "", "Template repository name")
+	cmd.Flags().StringVar(&templateOrg, "template-org", "", "Template repository organization name (defaults to --org if not set)")
 	cmd.Flags().StringVar(&name, "name", "", "New repository name")
 	cmd.Flags().StringVar(&desc, "desc", "", "Repository description")
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
@@ -74,8 +74,8 @@ func NewRootCmd(svc builder.RepoService) *cobra.Command {
 
 	cmd.MarkFlagRequired("token")
 	cmd.MarkFlagRequired("org")
-	cmd.MarkFlagRequired("template")
 	cmd.MarkFlagRequired("name")
+	cmd.MarkFlagRequired("template--name")
 
 	return cmd
 }

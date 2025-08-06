@@ -111,7 +111,7 @@ func AddTopics(ctx context.Context, svc RepoService, repository Repository, topi
 		return nil, fmt.Errorf("repo service is nil")
 	}
 
-	if len(repository.Topics) == 0 {
+	if len(topics) == 0 {
 		return nil, fmt.Errorf("no topics to add")
 	}
 
