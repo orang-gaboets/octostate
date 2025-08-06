@@ -74,10 +74,12 @@ func NewRootCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
 
-	cmd.MarkFlagRequired("token")
-	cmd.MarkFlagRequired("org")
-	cmd.MarkFlagRequired("name")
-	cmd.MarkFlagRequired("template--name")
+	requiredFlags := []string{"token", "org", "name", "template-name"}
+	for _, flag := range requiredFlags {
+		if err := cmd.MarkFlagRequired(flag); err != nil {
+			log.Fatalf("Failed to mark flag %s as required: %v", flag, err)
+		}
+	}
 
 	return cmd
 }

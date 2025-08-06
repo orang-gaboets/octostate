@@ -1,0 +1,8 @@
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+    exclude-functions:
+      - 'fmt\.Print.*'
+      - 'fmt\.Fprintf'
