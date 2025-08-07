@@ -6,29 +6,30 @@ import (
 	"log"
 	"strings"
 
-	"github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v55/github"
 
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
 )
 
 // CreateRepo creates a repository from a template and optionally sets topics.
-func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*github.Repository, error) {
+func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*gh.Repository, error) {
 	if opts.Service == nil {
-		return nil, fmt.Errorf("repository service is not provided")
+		return nil, github.ErrNilService
 	}
 
-	req := &github.TemplateRepoRequest{
-		Owner:       github.String(opts.NewRepo.Org),
-		Name:        github.String(opts.NewRepo.Name),
-		Description: github.String(opts.NewRepo.Description),
-		Private:     github.Bool(opts.NewRepo.Private),
+	req := &gh.TemplateRepoRequest{
+		Owner:       gh.String(opts.NewRepo.Org),
+		Name:        gh.String(opts.NewRepo.Name),
+		Description: gh.String(opts.NewRepo.Description),
+		Private:     gh.Bool(opts.NewRepo.Private),
 	}
 
 	log.Printf("Creating repository %s/%s from template %s/%s", opts.NewRepo.Org, opts.NewRepo.Name, opts.TemplateRepo.Org, opts.TemplateRepo.Name)
 
 	newRepo, _, err := opts.Service.CreateFromTemplate(ctx, opts.TemplateRepo.Org, opts.TemplateRepo.Name, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create repository from template: %w", err)
+		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository from template %s/%s", opts.TemplateRepo.Org, opts.TemplateRepo.Name))
 	}
 
 	newRepoURL := newRepo.GetHTMLURL()
@@ -43,7 +44,7 @@ func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*github.Reposito
 	}
 	templateTopics, err := topics.ListAllTopics(ctx, listTemplateTopicsOptions)
 	if err != nil {
-		return nil, err
+		return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", opts.TemplateRepo.Org, opts.TemplateRepo.Name))
 	}
 
 	cleanedSet := make(map[string]struct{})
@@ -71,7 +72,7 @@ func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*github.Reposito
 		}
 		newRepoTopics, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
 		if err != nil {
-			return nil, err
+			return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", opts.NewRepo.Org, opts.NewRepo.Name))
 		}
 		log.Printf("Topics successfully set for repository %s/%s: %s", opts.NewRepo.Org, opts.NewRepo.Name, strings.Join(newRepoTopics, ", "))
 	}

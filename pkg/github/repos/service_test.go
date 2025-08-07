@@ -3,6 +3,7 @@ package repos
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -59,10 +60,10 @@ func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string
 	m.templateOwner = owner
 	m.templateName = repo
 	if owner != templateRepo.Org || repo != templateRepo.Name {
-		return nil, nil, errors.New("invalid template repository")
+		return nil, nil, fmt.Errorf("invalid template repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
 	if req != nil && req.Owner != nil && req.Name != nil && *req.Owner == existingRepo.Org && *req.Name == existingRepo.Name {
-		return nil, nil, errors.New("repository already exists")
+		return nil, nil, fmt.Errorf("repository %s/%s already exists: %w", *req.Owner, *req.Name, github.ErrValidationFailed)
 	}
 	if req != nil {
 		if req.Name != nil {
@@ -91,7 +92,7 @@ func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, 
 	m.repoName = repo
 	m.repoTopics = topics
 	if owner != newRepo.Org || repo != newRepo.Name {
-		return nil, nil, errors.New("invalid repository for topic replacement")
+		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
 	if m.replaceErr != nil {
 		return nil, nil, m.replaceErr
@@ -111,7 +112,7 @@ func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]
 	} else if repo == newRepo.Name && owner == newRepo.Org {
 		return newRepo.Topics, nil, nil
 	}
-	return nil, nil, errors.New("repository not found")
+	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
 
 func TestCreateRepoSuccess(t *testing.T) {
@@ -206,7 +207,7 @@ func TestCreateRepoInvalidTemplate(t *testing.T) {
 	}
 	ctx := context.Background()
 	_, err := CreateRepo(ctx, opts)
-	if err == nil {
+	if !errors.Is(err, github.ErrNotFound) {
 		t.Fatal("expected error for invalid template repository, got nil")
 	}
 	if !mockSvc.createCalled {
@@ -226,7 +227,7 @@ func TestCreateRepoExistingRepo(t *testing.T) {
 	}
 	ctx := context.Background()
 	_, err := CreateRepo(ctx, opts)
-	if err == nil {
+	if !errors.Is(err, github.ErrValidationFailed) {
 		t.Fatal("expected error for existing repository, got nil")
 	}
 	if !mockSvc.createCalled {

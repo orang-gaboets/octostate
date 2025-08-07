@@ -2,6 +2,7 @@ package topics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -48,7 +49,7 @@ func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]
 	} else if owner == existingRepo.Org && repo == existingRepo.Name {
 		return existingRepo.Topics, nil, nil
 	}
-	return nil, nil, fmt.Errorf("repository not found: %s/%s", owner, repo)
+	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
 
 func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
@@ -61,7 +62,7 @@ func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, 
 	} else if owner == existingRepo.Org && repo == existingRepo.Name {
 		return topics, nil, nil
 	}
-	return nil, nil, fmt.Errorf("repository not found: %s/%s", owner, repo)
+	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
 
 func TestListAllTopicsSuccess(t *testing.T) {
@@ -102,11 +103,10 @@ func TestListAllTopicsSuccess(t *testing.T) {
 	}
 }
 
-func TestAllTopicsNotFound(t *testing.T) {
+func TestListAllTopicsNotFound(t *testing.T) {
 	ctx := context.Background()
 	service := &mockService{
 		listCalled: false,
-		listErr:    fmt.Errorf("repository not found"),
 	}
 
 	option := ListAllTopicsOptions{
@@ -115,8 +115,8 @@ func TestAllTopicsNotFound(t *testing.T) {
 	}
 
 	_, err := ListAllTopics(ctx, option)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
 
 	if !service.listCalled {
@@ -176,8 +176,8 @@ func TestReplaceAllTopicsEmpty(t *testing.T) {
 	}
 
 	_, err := ReplaceAllTopics(ctx, option)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
 	}
 
 	if service.replaceCalled {
@@ -198,8 +198,8 @@ func TestReplaceAllTopicsNotFound(t *testing.T) {
 	}
 
 	_, err := ReplaceAllTopics(ctx, option)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
 
 	if !service.replaceCalled {
@@ -331,8 +331,8 @@ func TestAddTopicsEmpty(t *testing.T) {
 	}
 
 	_, err := AddTopics(ctx, option)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
 	}
 
 	if service.listCalled {
@@ -357,8 +357,8 @@ func TestAddTopicsNotFound(t *testing.T) {
 	}
 
 	_, err := AddTopics(ctx, option)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
 
 	if !service.listCalled {
