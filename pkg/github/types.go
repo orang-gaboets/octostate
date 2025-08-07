@@ -1,6 +1,6 @@
 package github
 
-// Reposiory contains the repository details.
+// Repository contains the repository details.
 type Repository struct {
 	Org         string
 	Name        string

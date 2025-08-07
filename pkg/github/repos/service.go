@@ -69,11 +69,11 @@ func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*github.Reposito
 			Service: opts.Service,
 			Topics:  cleaned,
 		}
-		topics, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
+		newRepoTopics, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("Topics successfully set for repository %s/%s: %s", opts.NewRepo.Org, opts.NewRepo.Name, strings.Join(topics, ", "))
+		log.Printf("Topics successfully set for repository %s/%s: %s", opts.NewRepo.Org, opts.NewRepo.Name, strings.Join(newRepoTopics, ", "))
 	}
 	return newRepo, nil
 }

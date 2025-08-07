@@ -36,7 +36,7 @@ func NewRootCmd(svc repos.Service) *cobra.Command {
 				client := gitHubClient.New(ctx, token)
 				service = client.Repositories
 			}
-			topicList := []string{}
+			var topicList []string
 			if topics != "" {
 				topicList = strings.Split(topics, ",")
 			}

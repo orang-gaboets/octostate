@@ -56,6 +56,10 @@ func AddTopics(ctx context.Context, option AddTopicsOptions) ([]string, error) {
 		return nil, fmt.Errorf("repo service is nil")
 	}
 
+	if option.Repo.Org == "" || option.Repo.Name == "" {
+		return nil, fmt.Errorf("repository organization and name must be provided")
+	}
+
 	if len(option.Topics) == 0 {
 		return nil, fmt.Errorf("no topics to add")
 	}

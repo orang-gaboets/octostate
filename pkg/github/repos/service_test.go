@@ -5,12 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/google/go-github/v55/github"
-	ggithub "github.com/orang-gaboets/repo-builder/pkg/github"
+	gh "github.com/google/go-github/v55/github"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
 var (
-	templateRepo = ggithub.Repository{
+	templateRepo = github.Repository{
 		Org:         "template-org",
 		Name:        "template-name",
 		Description: "template-desc",
@@ -18,7 +18,7 @@ var (
 		Topics:      []string{"template-topic"},
 	}
 
-	newRepo = ggithub.Repository{
+	newRepo = github.Repository{
 		Org:         "org",
 		Name:        "name",
 		Description: "desc",
@@ -26,12 +26,12 @@ var (
 		Topics:      []string{"t1", "t2"},
 	}
 
-	invalidTemplateRepo = ggithub.Repository{
+	invalidTemplateRepo = github.Repository{
 		Org:  "invalid-org",
 		Name: "invalid-name",
 	}
 
-	existingRepo = ggithub.Repository{
+	existingRepo = github.Repository{
 		Org:         "existing-org",
 		Name:        "existing-name",
 		Description: "existing-desc",
@@ -54,7 +54,7 @@ type mockService struct {
 	templateOwner string
 }
 
-func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string, req *github.TemplateRepoRequest) (*github.Repository, *github.Response, error) {
+func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 	m.createCalled = true
 	m.templateOwner = owner
 	m.templateName = repo
@@ -82,10 +82,10 @@ func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string
 		return nil, nil, m.createErr
 	}
 
-	return &github.Repository{}, nil, nil
+	return &gh.Repository{}, nil, nil
 }
 
-func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *github.Response, error) {
+func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
 	m.replaceCalled = true
 	m.owner = owner
 	m.repoName = repo
@@ -99,7 +99,7 @@ func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, 
 	return topics, nil, nil
 }
 
-func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *github.Response, error) {
+func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
 	m.listCalled = true
 	m.owner = owner
 	m.repoName = repo
