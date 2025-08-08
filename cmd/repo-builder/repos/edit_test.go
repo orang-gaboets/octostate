@@ -1,10 +1,10 @@
-package cmd_test
+package repos_test
 
 import (
 	"context"
 	"testing"
 
-	rootcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/cmd"
+	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repos"
 
 	"github.com/google/go-github/v55/github"
 )
@@ -12,24 +12,24 @@ import (
 // mockRepoEditService implements repos.Service for testing.
 type mockRepoEditService struct{}
 
-func (mockRepoEditService) CreateFromTemplate(ctx context.Context, owner, repo string, req *github.TemplateRepoRequest) (*github.Repository, *github.Response, error) {
+func (mockRepoEditService) CreateFromTemplate(_ context.Context, _, _ string, _ *github.TemplateRepoRequest) (*github.Repository, *github.Response, error) {
 	return &github.Repository{}, nil, nil
 }
 
-func (mockRepoEditService) Edit(ctx context.Context, owner, repo string, repository *github.Repository) (*github.Repository, *github.Response, error) {
+func (mockRepoEditService) Edit(_ context.Context, _, _ string, _ *github.Repository) (*github.Repository, *github.Response, error) {
 	return &github.Repository{}, nil, nil
 }
 
-func (mockRepoEditService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *github.Response, error) {
+func (mockRepoEditService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *github.Response, error) {
 	return topics, nil, nil
 }
 
-func (mockRepoEditService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *github.Response, error) {
+func (mockRepoEditService) ListAllTopics(_ context.Context, _, _ string) ([]string, *github.Response, error) {
 	return []string{}, nil, nil
 }
 
 func TestEditRepoRequiredFlags(t *testing.T) {
-	c := rootcmd.EditRepo(mockRepoEditService{})
+	c := reposcmd.EditRepo(mockRepoEditService{})
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
@@ -37,7 +37,7 @@ func TestEditRepoRequiredFlags(t *testing.T) {
 }
 
 func TestEditRepoAllRequiredFlagsProvided(t *testing.T) {
-	c := rootcmd.EditRepo(mockRepoEditService{})
+	c := reposcmd.EditRepo(mockRepoEditService{})
 	c.SetArgs([]string{
 		"--token", "t",
 		"--org", "o",
@@ -49,7 +49,7 @@ func TestEditRepoAllRequiredFlagsProvided(t *testing.T) {
 }
 
 func TestEditRepoWithOptionalFlags(t *testing.T) {
-	c := rootcmd.EditRepo(mockRepoEditService{})
+	c := reposcmd.EditRepo(mockRepoEditService{})
 	c.SetArgs([]string{
 		"--token", "t",
 		"--org", "o",
@@ -65,7 +65,7 @@ func TestEditRepoWithOptionalFlags(t *testing.T) {
 }
 
 func TestEditRepoWithInvalidFlags(t *testing.T) {
-	c := rootcmd.EditRepo(mockRepoEditService{})
+	c := reposcmd.EditRepo(mockRepoEditService{})
 	c.SetArgs([]string{
 		"--token", "t",
 		"--org", "o",

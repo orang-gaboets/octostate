@@ -74,7 +74,7 @@ type mockService struct {
 	editOptions   EditOptions
 }
 
-func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 	m.createCalled = true
 	m.templateOwner = owner
 	m.templateName = repo
@@ -105,7 +105,7 @@ func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string
 	return &gh.Repository{}, nil, nil
 }
 
-func (m *mockService) Edit(ctx context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+func (m *mockService) Edit(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 	m.editCalled = true
 	m.editOptions = EditOptions{
 		Service: m,
@@ -139,7 +139,7 @@ func (m *mockService) Edit(ctx context.Context, owner, repo string, repository *
 	}, nil, nil
 }
 
-func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
+func (m *mockService) ReplaceAllTopics(_ context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
 	m.replaceCalled = true
 	m.owner = owner
 	m.repoName = repo
@@ -153,7 +153,7 @@ func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, 
 	return topics, nil, nil
 }
 
-func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
+func (m *mockService) ListAllTopics(_ context.Context, owner, repo string) ([]string, *gh.Response, error) {
 	m.listCalled = true
 	m.owner = owner
 	m.repoName = repo

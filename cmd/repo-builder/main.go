@@ -1,7 +1,10 @@
 package main
 
-import "github.com/orang-gaboets/repo-builder/cmd/repo-builder/cmd"
+import "log"
 
 func main() {
-	cmd.Execute()
+	// Execute the root command
+	if err := Execute(); err != nil {
+		log.Fatal(err)
+	}
 }

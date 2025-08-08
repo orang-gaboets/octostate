@@ -40,7 +40,7 @@ type mockService struct {
 	repoTopics    []string
 }
 
-func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
+func (m *mockService) ListAllTopics(_ context.Context, owner, repo string) ([]string, *gh.Response, error) {
 	m.listCalled = true
 	m.repoOrg = owner
 	m.repoName = repo
@@ -52,7 +52,7 @@ func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
 
-func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
+func (m *mockService) ReplaceAllTopics(_ context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
 	m.replaceCalled = true
 	m.repoOrg = owner
 	m.repoName = repo

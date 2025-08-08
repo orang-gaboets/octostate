@@ -53,17 +53,17 @@ go install github.com/yourorg/repo-builder/cmd/repo-builder@latest
 
 Option 1 (installed packaged):
 ```bash
-repo-builder create-repo-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
+repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
 ```
 
 Option 2 (using build):
 ```bash
-./repo-builder create-repo-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
+./repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
 ```
 
 Option 3 (using `go run`):
 ```bash
-go run ./cmd/repo-builder create-repo-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
+go run ./cmd/repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
 ```
 
 #### Flags
@@ -82,17 +82,17 @@ go run ./cmd/repo-builder create-repo-template --token <token> --org <org> --tem
 
 Option 1 (installed packaged):
 ```bash
-repo-builder edit-repo --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
+repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
 ```
 
 Option 2 (using build):
 ```bash
-./repo-builder edit-repo --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
+./repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
 ```
 
 Option 3 (using `go run`):
 ```bash
-go run ./cmd/repo-builder edit-repo --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
+go run ./cmd/repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
 ```
 
 #### Flags

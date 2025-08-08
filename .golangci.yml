@@ -6,3 +6,9 @@ linters-settings:
     exclude-functions:
       - 'fmt\.Print.*'
       - 'fmt\.Fprintf'
+
+linters:
+  enable:
+    - staticcheck
+    - revive
+    - gocyclo

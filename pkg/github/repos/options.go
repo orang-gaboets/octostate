@@ -4,6 +4,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
+// CreateFromTemplateOptions defines the options for creating a repository from a template.
 type CreateFromTemplateOptions struct {
 	NewRepo            github.Repository
 	TemplateRepo       github.Repository
@@ -11,6 +12,7 @@ type CreateFromTemplateOptions struct {
 	Service            Service
 }
 
+// EditOptions defines the options for editing a repository.
 type EditOptions struct {
 	Service      Service
 	Repository   github.Repository

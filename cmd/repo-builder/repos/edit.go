@@ -1,15 +1,13 @@
-package cmd
+package repos
 
 import (
-	"context"
-	"log"
-
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	gitHubClient "github.com/orang-gaboets/repo-builder/pkg/github/client"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/spf13/cobra"
 )
 
+// EditRepo creates a new command to edit an existing GitHub repository.
 func EditRepo(svc repos.Service) *cobra.Command {
 	var (
 		token           string
@@ -24,12 +22,12 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:     "edit-repo",
+		Use:     "edit",
 		Short:   "Edit an existing GitHub repository",
 		Long:    "Edit an existing GitHub repository by updating its description, homepage, privacy settings, template status, archived status, and forking permissions.",
-		Example: `repo-builder edit-repo --token <token> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
+		Example: `repo-builder repo edit --token <token> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
 			service := svc
 			if service == nil {
 				client := gitHubClient.New(ctx, token)
@@ -82,7 +80,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 
 	for _, flag := range requiredFlags {
 		if err := cmd.MarkFlagRequired(flag); err != nil {
-			log.Fatalf("Failed to mark flag %s as required: %v", flag, err)
+			cobra.CheckErr(cmd.MarkFlagRequired(flag))
 		}
 	}
 

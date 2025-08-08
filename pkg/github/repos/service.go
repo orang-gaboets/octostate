@@ -12,7 +12,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
 )
 
-// CreateRepo creates a repository from a template and optionally sets topics.
+// CreateFromTemplate creates a repository from a template and optionally sets topics.
 func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*gh.Repository, error) {
 	if opts.Service == nil {
 		return nil, github.ErrNilService
@@ -80,7 +80,7 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 	return newRepo, nil
 }
 
-// EditOptions defines the options for editing a repository.
+// Edit updates the properties of an existing repository.
 func Edit(ctx context.Context, opts EditOptions) (*gh.Repository, error) {
 	if opts.Service == nil {
 		return nil, github.ErrNilService

@@ -50,8 +50,11 @@ func WrapError(err error, message string) error {
 	}
 	var body []byte
 	if resp.Response != nil && resp.Response.Body != nil {
-		if b, readErr := io.ReadAll(resp.Response.Body); readErr == nil {
-			body = b
+		defer resp.Response.Body.Close()
+
+		var readErr error
+		if body, readErr = io.ReadAll(resp.Response.Body); readErr != nil {
+			return fmt.Errorf("%s: read response body: %w", message, readErr)
 		}
 	}
 	status := 0
@@ -67,11 +70,11 @@ func WrapError(err error, message string) error {
 	}
 	switch apiErr.StatusCode {
 	case http.StatusUnauthorized:
-		return fmt.Errorf("%s: %w: %w", message, ErrUnauthorized, apiErr)
+		return fmt.Errorf("%s: %w", message, errors.Join(ErrUnauthorized, apiErr))
 	case http.StatusNotFound:
-		return fmt.Errorf("%s: %w: %w", message, ErrNotFound, apiErr)
+		return fmt.Errorf("%s: %w", message, errors.Join(ErrNotFound, apiErr))
 	case http.StatusUnprocessableEntity:
-		return fmt.Errorf("%s: %w: %w", message, ErrValidationFailed, apiErr)
+		return fmt.Errorf("%s: %w", message, errors.Join(ErrValidationFailed, apiErr))
 	default:
 		return apiErr
 	}
