@@ -37,15 +37,33 @@ var (
 		Name:        "existing-name",
 		Description: "existing-desc",
 	}
+
+	completeEditOptions = EditOptions{
+		Repository:   existingRepo,
+		Description:  gh.String("new description"),
+		Homepage:     gh.String("https://example.com"),
+		Private:      gh.Bool(true),
+		IsTemplate:   gh.Bool(false),
+		Archived:     gh.Bool(false),
+		AllowForking: gh.Bool(true),
+	}
+
+	partialEditOptions = EditOptions{
+		Repository:  existingRepo,
+		Description: gh.String("partial description"),
+		IsTemplate:  gh.Bool(true),
+	}
 )
 
 type mockService struct {
 	createCalled  bool
 	listCalled    bool
 	replaceCalled bool
+	editCalled    bool
 	listErr       error
 	createErr     error
 	replaceErr    error
+	editErr       error
 	owner         string
 	repoName      string
 	repoDesc      string
@@ -53,12 +71,16 @@ type mockService struct {
 	repoPrivate   bool
 	templateName  string
 	templateOwner string
+	editOptions   EditOptions
 }
 
 func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 	m.createCalled = true
 	m.templateOwner = owner
 	m.templateName = repo
+	if m.createErr != nil {
+		return nil, nil, m.createErr
+	}
 	if owner != templateRepo.Org || repo != templateRepo.Name {
 		return nil, nil, fmt.Errorf("invalid template repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
@@ -79,11 +101,42 @@ func (m *mockService) CreateFromTemplate(ctx context.Context, owner, repo string
 			m.owner = *req.Owner
 		}
 	}
-	if m.createErr != nil {
-		return nil, nil, m.createErr
-	}
 
 	return &gh.Repository{}, nil, nil
+}
+
+func (m *mockService) Edit(ctx context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	m.editCalled = true
+	m.editOptions = EditOptions{
+		Service: m,
+		Repository: github.Repository{
+			Org:  owner,
+			Name: repo,
+		},
+		Description:  repository.Description,
+		Homepage:     repository.Homepage,
+		Private:      repository.Private,
+		IsTemplate:   repository.IsTemplate,
+		Archived:     repository.Archived,
+		AllowForking: repository.AllowForking,
+	}
+	if m.editErr != nil {
+		return nil, nil, m.editErr
+	}
+	if owner != existingRepo.Org || repo != existingRepo.Name {
+		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
+	}
+	return &gh.Repository{
+		Owner:        &gh.User{Login: &owner},
+		Name:         &repo,
+		Description:  repository.Description,
+		Homepage:     repository.Homepage,
+		Private:      repository.Private,
+		IsTemplate:   repository.IsTemplate,
+		Archived:     repository.Archived,
+		AllowForking: repository.AllowForking,
+		Topics:       repository.Topics,
+	}, nil, nil
 }
 
 func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
@@ -91,11 +144,11 @@ func (m *mockService) ReplaceAllTopics(ctx context.Context, owner, repo string, 
 	m.owner = owner
 	m.repoName = repo
 	m.repoTopics = topics
-	if owner != newRepo.Org || repo != newRepo.Name {
-		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
-	}
 	if m.replaceErr != nil {
 		return nil, nil, m.replaceErr
+	}
+	if owner != newRepo.Org || repo != newRepo.Name {
+		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
 	return topics, nil, nil
 }
@@ -115,7 +168,7 @@ func (m *mockService) ListAllTopics(ctx context.Context, owner, repo string) ([]
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
 
-func TestCreateRepoSuccess(t *testing.T) {
+func TestCreateFromTemplateSuccess(t *testing.T) {
 	mockSvc := &mockService{
 		createCalled:  false,
 		replaceCalled: false,
@@ -125,7 +178,7 @@ func TestCreateRepoSuccess(t *testing.T) {
 		listErr:       nil,
 	}
 
-	opts := RepoCreationOptions{
+	opts := CreateFromTemplateOptions{
 		Service:      mockSvc,
 		NewRepo:      newRepo,
 		TemplateRepo: templateRepo,
@@ -144,7 +197,7 @@ func TestCreateRepoSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	repo, err := CreateRepo(ctx, opts)
+	repo, err := CreateFromTemplate(ctx, opts)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -195,18 +248,18 @@ func TestCreateRepoSuccess(t *testing.T) {
 	}
 }
 
-func TestCreateRepoInvalidTemplate(t *testing.T) {
+func TestCreateFromTemplateInvalidTemplate(t *testing.T) {
 	mockSvc := &mockService{
 		createCalled: false,
 		createErr:    nil,
 	}
-	opts := RepoCreationOptions{
+	opts := CreateFromTemplateOptions{
 		Service:      mockSvc,
 		NewRepo:      newRepo,
 		TemplateRepo: invalidTemplateRepo,
 	}
 	ctx := context.Background()
-	_, err := CreateRepo(ctx, opts)
+	_, err := CreateFromTemplate(ctx, opts)
 	if !errors.Is(err, github.ErrNotFound) {
 		t.Fatal("expected error for invalid template repository, got nil")
 	}
@@ -215,18 +268,18 @@ func TestCreateRepoInvalidTemplate(t *testing.T) {
 	}
 }
 
-func TestCreateRepoExistingRepo(t *testing.T) {
+func TestCreateFromTemplateExistingRepo(t *testing.T) {
 	mockSvc := &mockService{
 		createCalled: false,
 		createErr:    nil,
 	}
-	opts := RepoCreationOptions{
+	opts := CreateFromTemplateOptions{
 		Service:      mockSvc,
 		NewRepo:      existingRepo,
 		TemplateRepo: templateRepo,
 	}
 	ctx := context.Background()
-	_, err := CreateRepo(ctx, opts)
+	_, err := CreateFromTemplate(ctx, opts)
 	if !errors.Is(err, github.ErrValidationFailed) {
 		t.Fatal("expected error for existing repository, got nil")
 	}
@@ -235,18 +288,18 @@ func TestCreateRepoExistingRepo(t *testing.T) {
 	}
 }
 
-func TestCreateRepoErr(t *testing.T) {
+func TestCreateFromTemplateErr(t *testing.T) {
 	mockSvc := &mockService{
 		createCalled: false,
 		createErr:    errors.New("create error"),
 	}
-	opts := RepoCreationOptions{
+	opts := CreateFromTemplateOptions{
 		Service:      mockSvc,
 		NewRepo:      newRepo,
 		TemplateRepo: templateRepo,
 	}
 	ctx := context.Background()
-	_, err := CreateRepo(ctx, opts)
+	_, err := CreateFromTemplate(ctx, opts)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -255,5 +308,116 @@ func TestCreateRepoErr(t *testing.T) {
 	}
 	if !errors.Is(err, mockSvc.createErr) {
 		t.Errorf("expected error %v, got %v", mockSvc.createErr, err)
+	}
+}
+
+func TestEditAllFieldsSuccess(t *testing.T) {
+	mockSvc := &mockService{
+		editCalled: false,
+		editErr:    nil,
+	}
+
+	opts := completeEditOptions
+	opts.Service = mockSvc
+
+	ctx := context.Background()
+	repo, err := Edit(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.editCalled {
+		t.Error("Edit was not called")
+	}
+	if repo == nil {
+		t.Fatal("expected a repository, got nil")
+	}
+	if repo.GetDescription() != *opts.Description {
+		t.Errorf("expected description %s, got %s", *opts.Description, repo.GetDescription())
+	}
+	if repo.GetHomepage() != *opts.Homepage {
+		t.Errorf("expected homepage %s, got %s", *opts.Homepage, repo.GetHomepage())
+	}
+	if repo.GetPrivate() != *opts.Private {
+		t.Errorf("expected private %v, got %v", *opts.Private, repo.GetPrivate())
+	}
+	if repo.GetIsTemplate() != *opts.IsTemplate {
+		t.Errorf("expected is_template %v, got %v", *opts.IsTemplate, repo.GetIsTemplate())
+	}
+	if repo.GetArchived() != *opts.Archived {
+		t.Errorf("expected archived %v, got %v", *opts.Archived, repo.GetArchived())
+	}
+	if repo.GetAllowForking() != *opts.AllowForking {
+		t.Errorf("expected allow_forking %v, got %v", *opts.AllowForking, repo.GetAllowForking())
+	}
+}
+
+func TestEditPartialFieldsSuccess(t *testing.T) {
+	mockSvc := &mockService{
+		editCalled: false,
+		editErr:    nil,
+	}
+
+	opts := partialEditOptions
+	opts.Service = mockSvc
+
+	ctx := context.Background()
+	repo, err := Edit(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.editCalled {
+		t.Error("Edit was not called")
+	}
+	if repo == nil {
+		t.Fatal("expected a repository, got nil")
+	}
+	if repo.GetDescription() != *opts.Description {
+		t.Errorf("expected description %s, got %s", *opts.Description, repo.GetDescription())
+	}
+	if repo.GetIsTemplate() != *opts.IsTemplate {
+		t.Errorf("expected is_template %v, got %v", *opts.IsTemplate, repo.GetIsTemplate())
+	}
+}
+
+func TestEditInvalidRepo(t *testing.T) {
+	mockSvc := &mockService{
+		editCalled: false,
+		editErr:    nil,
+	}
+
+	opts := EditOptions{
+		Service:    mockSvc,
+		Repository: invalidTemplateRepo,
+	}
+
+	ctx := context.Background()
+	_, err := Edit(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatal("expected error for invalid repository, got nil")
+	}
+	if !mockSvc.editCalled {
+		t.Error("Edit was not called")
+	}
+}
+
+func TestEditErr(t *testing.T) {
+	mockSvc := &mockService{
+		editCalled: false,
+		editErr:    errors.New("edit error"),
+	}
+
+	opts := completeEditOptions
+	opts.Service = mockSvc
+
+	ctx := context.Background()
+	_, err := Edit(ctx, opts)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !mockSvc.editCalled {
+		t.Error("Edit was not called")
+	}
+	if !errors.Is(err, mockSvc.editErr) {
+		t.Errorf("expected error %v, got %v", mockSvc.editErr, err)
 	}
 }

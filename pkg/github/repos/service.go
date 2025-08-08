@@ -13,16 +13,17 @@ import (
 )
 
 // CreateRepo creates a repository from a template and optionally sets topics.
-func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*gh.Repository, error) {
+func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*gh.Repository, error) {
 	if opts.Service == nil {
 		return nil, github.ErrNilService
 	}
 
 	req := &gh.TemplateRepoRequest{
-		Owner:       gh.String(opts.NewRepo.Org),
-		Name:        gh.String(opts.NewRepo.Name),
-		Description: gh.String(opts.NewRepo.Description),
-		Private:     gh.Bool(opts.NewRepo.Private),
+		Owner:              gh.String(opts.NewRepo.Org),
+		Name:               gh.String(opts.NewRepo.Name),
+		Description:        gh.String(opts.NewRepo.Description),
+		Private:            gh.Bool(opts.NewRepo.Private),
+		IncludeAllBranches: gh.Bool(opts.IncludeAllBranches),
 	}
 
 	log.Printf("Creating repository %s/%s from template %s/%s", opts.NewRepo.Org, opts.NewRepo.Name, opts.TemplateRepo.Org, opts.TemplateRepo.Name)
@@ -77,4 +78,35 @@ func CreateRepo(ctx context.Context, opts RepoCreationOptions) (*gh.Repository, 
 		log.Printf("Topics successfully set for repository %s/%s: %s", opts.NewRepo.Org, opts.NewRepo.Name, strings.Join(newRepoTopics, ", "))
 	}
 	return newRepo, nil
+}
+
+// EditOptions defines the options for editing a repository.
+func Edit(ctx context.Context, opts EditOptions) (*gh.Repository, error) {
+	if opts.Service == nil {
+		return nil, github.ErrNilService
+	}
+
+	repo := &gh.Repository{
+		Description:  opts.Description,
+		Homepage:     opts.Homepage,
+		Private:      opts.Private,
+		IsTemplate:   opts.IsTemplate,
+		Archived:     opts.Archived,
+		AllowForking: opts.AllowForking,
+	}
+
+	log.Printf("Editing repository %s/%s with options: %+v", opts.Repository.Org, opts.Repository.Name, repo)
+
+	updatedRepo, _, err := opts.Service.Edit(ctx, opts.Repository.Org, opts.Repository.Name, repo)
+	if err != nil {
+		return nil, github.WrapError(err, fmt.Sprintf("failed to edit repository %s/%s", opts.Repository.Org, opts.Repository.Name))
+	}
+
+	updatedRepoURL := updatedRepo.GetHTMLURL()
+	if updatedRepoURL == "" {
+		updatedRepoURL = "https://github.com/" + opts.Repository.Org + "/" + opts.Repository.Name
+	}
+
+	log.Printf("Repository successfully edited: %s", updatedRepoURL)
+	return updatedRepo, nil
 }
