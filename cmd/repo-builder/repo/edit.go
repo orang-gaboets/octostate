@@ -1,4 +1,4 @@
-package repos
+package repo
 
 import (
 	"github.com/orang-gaboets/repo-builder/pkg/github"

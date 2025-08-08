@@ -1,10 +1,10 @@
-package repos_test
+package repo_test
 
 import (
 	"context"
 	"testing"
 
-	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repos"
+	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
 
 	"github.com/google/go-github/v55/github"
 )
@@ -28,7 +28,7 @@ func (mockRepoEditService) ListAllTopics(_ context.Context, _, _ string) ([]stri
 	return []string{}, nil, nil
 }
 
-func TestEditRepoRequiredFlags(t *testing.T) {
+func TestEditRepoNoRequiredFlags(t *testing.T) {
 	c := reposcmd.EditRepo(mockRepoEditService{})
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/repos"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/topic"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +14,8 @@ func newRootCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		repos.NewRepoCmd(nil),
+		repo.NewRepoCmd(nil),
+		topic.NewTopicCmd(nil),
 	)
 
 	return cmd

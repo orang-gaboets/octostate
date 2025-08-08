@@ -1,11 +1,11 @@
-package repos_test
+package repo_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/google/go-github/v55/github"
-	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repos"
+	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
 )
 
 // mockRepoCreateService implements repos.Service for testing.
@@ -27,7 +27,7 @@ func (mockRepoCreateService) ListAllTopics(_ context.Context, _, _ string) ([]st
 	return []string{}, nil, nil
 }
 
-func TestCreateRepoFromTemplateRequiredFlags(t *testing.T) {
+func TestCreateRepoFromTemplateNoRequiredFlags(t *testing.T) {
 	c := reposcmd.CreateNewRepoFromTemplateCmd(mockRepoCreateService{})
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {

@@ -23,6 +23,7 @@ func ListAllTopics(ctx context.Context, option ListAllTopicsOptions) ([]string, 
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to list topics for repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
+	log.Printf("Topics of repository %s/%s: %v", option.Repo.Org, option.Repo.Name, topics)
 	return topics, nil
 }
 
@@ -52,6 +53,7 @@ func ReplaceAllTopics(ctx context.Context, option ReplaceAllTopicsOptions) ([]st
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to replace topics for repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
+	log.Printf("Repository %s/%s topics have been successfully updated to %v", option.Repo.Org, option.Repo.Name, topics)
 	return topics, nil
 }
 
@@ -98,5 +100,6 @@ func AddTopics(ctx context.Context, option AddTopicsOptions) ([]string, error) {
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to add topics to repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
+	log.Printf("Topics for repository %s/%s have been successfully updated to %v", option.Repo.Org, option.Repo.Name, topics)
 	return topics, nil
 }
