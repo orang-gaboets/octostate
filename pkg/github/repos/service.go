@@ -32,8 +32,10 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository from template %s/%s", opts.TemplateRepo.Org, opts.TemplateRepo.Name))
 	}
-
-	newRepoURL := newRepo.GetHTMLURL()
+	var newRepoURL string
+	if newRepo != nil {
+		newRepoURL = newRepo.GetHTMLURL()
+	}
 	if newRepoURL == "" {
 		newRepoURL = "https://github.com/" + opts.NewRepo.Org + "/" + opts.NewRepo.Name
 	}
@@ -71,13 +73,29 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 			Service: opts.Service,
 			Topics:  cleaned,
 		}
-		newRepoTopics, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
+		_, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
 		if err != nil {
 			return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", opts.NewRepo.Org, opts.NewRepo.Name))
 		}
-		log.Printf("Topics successfully set for repository %s/%s: %s", opts.NewRepo.Org, opts.NewRepo.Name, strings.Join(newRepoTopics, ", "))
 	}
 	return newRepo, nil
+}
+
+// Delete removes a repository from GitHub.
+func Delete(ctx context.Context, opts DeleteOptions) error {
+	if opts.Service == nil {
+		return github.ErrNilService
+	}
+
+	log.Printf("Deleting repository %s/%s", opts.Repository.Org, opts.Repository.Name)
+
+	_, err := opts.Service.Delete(ctx, opts.Repository.Org, opts.Repository.Name)
+	if err != nil {
+		return github.WrapError(err, fmt.Sprintf("failed to delete repository %s/%s", opts.Repository.Org, opts.Repository.Name))
+	}
+
+	log.Printf("Repository %s/%s successfully deleted", opts.Repository.Org, opts.Repository.Name)
+	return nil
 }
 
 // Edit updates the properties of an existing repository.
@@ -101,8 +119,10 @@ func Edit(ctx context.Context, opts EditOptions) (*gh.Repository, error) {
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to edit repository %s/%s", opts.Repository.Org, opts.Repository.Name))
 	}
-
-	updatedRepoURL := updatedRepo.GetHTMLURL()
+	var updatedRepoURL string
+	if updatedRepo != nil {
+		updatedRepoURL = updatedRepo.GetHTMLURL()
+	}
 	if updatedRepoURL == "" {
 		updatedRepoURL = "https://github.com/" + opts.Repository.Org + "/" + opts.Repository.Name
 	}

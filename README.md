@@ -49,7 +49,9 @@ go install github.com/yourorg/repo-builder/cmd/repo-builder@latest
 
 ## Usage
 
-### Create a New Repository Based on a Template
+### Repo
+
+#### Create a New Repository Based on a Template
 
 Option 1 (installed packaged):
 ```bash
@@ -66,7 +68,7 @@ Option 3 (using `go run`):
 go run ./cmd/repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
 ```
 
-#### Flags
+##### Flags
 
 - `--token` (required): GitHub personal access token
 - `--org` (required): GitHub organisation name
@@ -78,7 +80,29 @@ go run ./cmd/repo-builder repo create-from-template --token <token> --org <org> 
 - `--private` (optional): Create a private repository (default is public)
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
 
-### Edit Repository Settings
+#### Delete a Repository
+
+Option 1 (installed packaged):
+```bash
+repo-builder repo delete --token <token> --org <org> --name <repo-name>
+```
+
+Option 2 (using build):
+```bash
+./repo-builder repo delete --token <token> --org <org> --name <repo-name>
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder repo delete --token <token> --org <org> --name <repo-name>
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--name` (required): Repository name
+
+#### Edit Repository Settings
 
 Option 1 (installed packaged):
 ```bash
@@ -95,7 +119,7 @@ Option 3 (using `go run`):
 go run ./cmd/repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
 ```
 
-#### Flags
+##### Flags
 - `--token` (required): GitHub personal access token
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
@@ -106,7 +130,75 @@ go run ./cmd/repo-builder repo edit --token <token> --org <org> --name <repo-nam
 - `--archived` (optional): Archive/unarchive the repository
 - `--allow-forking` (optional): Allow/disallow private forking of the repository
 
+### Topic
 
+#### Add Topics to a Repository
+
+Option 1 (installed packaged):
+```bash
+repo-builder topic add --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+```
+
+Option 2 (using build):
+```bash
+./repo-builder topic add --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder topic add --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--name` (required): Repository name
+- `--topics` (required): Comma-separated list of topics to add
+
+#### List All Topics of a Repository
+
+Option 1 (installed packaged):
+```bash
+repo-builder topic list --token <token> --org <org> --name <repo-name>
+```
+
+Option 2 (using build):
+```bash
+./repo-builder topic list --token <token> --org <org> --name <repo-name>
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder topic list --token <token> --org <org> --name <repo-name>
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--name` (required): Repository name
+
+#### Replace All Topics of a Repository
+
+Option 1 (installed packaged):
+```bash
+repo-builder topic replace --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+```
+
+Option 2 (using build):
+```bash
+./repo-builder topic replace --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder topic replace --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--name` (required): Repository name
+- `--topics` (required): Comma-separated list of topics to set
 
 ## License
 

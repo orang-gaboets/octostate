@@ -12,6 +12,8 @@ type Service interface {
 
 	// CreateFromTemplate creates a new repository from a template repository.
 	CreateFromTemplate(ctx context.Context, templateOwner, templateRepo string, req *github.TemplateRepoRequest) (*github.Repository, *github.Response, error)
+	// Delete deletes a repository.
+	Delete(ctx context.Context, owner, repo string) (*github.Response, error)
 	// Edit updates a repository's settings.
 	Edit(ctx context.Context, owner, repo string, repository *github.Repository) (*github.Repository, *github.Response, error)
 

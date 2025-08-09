@@ -23,7 +23,7 @@ func ListAllTopics(ctx context.Context, option ListAllTopicsOptions) ([]string, 
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to list topics for repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
-	log.Printf("Topics of repository %s/%s: %v", option.Repo.Org, option.Repo.Name, topics)
+	log.Printf("Topics of repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(topics, ", "))
 	return topics, nil
 }
 
@@ -48,12 +48,12 @@ func ReplaceAllTopics(ctx context.Context, option ReplaceAllTopicsOptions) ([]st
 		}
 	}
 
-	log.Printf("Setting topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, cleaned)
+	log.Printf("Setting topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(cleaned, ", "))
 	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Repo.Org, option.Repo.Name, cleaned)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to replace topics for repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
-	log.Printf("Repository %s/%s topics have been successfully updated to %v", option.Repo.Org, option.Repo.Name, topics)
+	log.Printf("Repository %s/%s topics have been successfully updated to %v", option.Repo.Org, option.Repo.Name, strings.Join(topics, ", "))
 	return topics, nil
 }
 
@@ -76,7 +76,7 @@ func AddTopics(ctx context.Context, option AddTopicsOptions) ([]string, error) {
 		return nil, github.WrapError(err, "failed to list existing topics")
 	}
 
-	log.Printf("Current topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, oldTopics)
+	log.Printf("Current topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(oldTopics, ", "))
 
 	cleanedSet := make(map[string]struct{})
 	for _, t := range oldTopics {
@@ -95,11 +95,11 @@ func AddTopics(ctx context.Context, option AddTopicsOptions) ([]string, error) {
 		cleaned = append(cleaned, topic)
 	}
 
-	log.Printf("Adding topics to repository %s/%s: %v", option.Repo.Org, option.Repo.Name, cleaned)
+	log.Printf("Adding topics to repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(cleaned, ", "))
 	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Repo.Org, option.Repo.Name, cleaned)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to add topics to repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
-	log.Printf("Topics for repository %s/%s have been successfully updated to %v", option.Repo.Org, option.Repo.Name, topics)
+	log.Printf("Topics for repository %s/%s have been successfully updated to %v", option.Repo.Org, option.Repo.Name, strings.Join(topics, ", "))
 	return topics, nil
 }

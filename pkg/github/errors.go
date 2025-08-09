@@ -27,8 +27,12 @@ func (e *APIError) Error() string {
 func (e *APIError) Unwrap() error { return e.err }
 
 var (
+	// ErrTemporaryRedirect is returned when a temporary redirect occurs.
+	ErrTemporaryRedirect = errors.New("temporary redirect")
 	// ErrUnauthorized is returned when the request is unauthorized.
 	ErrUnauthorized = errors.New("unauthorized")
+	// ErrForbidden is returned when the request is forbidden.
+	ErrForbidden = errors.New("forbidden")
 	// ErrNotFound is returned when the resource cannot be found.
 	ErrNotFound = errors.New("not found")
 	// ErrValidationFailed is returned when validation fails.
@@ -50,11 +54,20 @@ func WrapError(err error, message string) error {
 	}
 	var body []byte
 	if resp.Response != nil && resp.Response.Body != nil {
-		defer resp.Response.Body.Close()
+		readBody, readErr := io.ReadAll(resp.Response.Body)
+		closeErr := resp.Response.Body.Close()
+		body = readBody
 
-		var readErr error
-		if body, readErr = io.ReadAll(resp.Response.Body); readErr != nil {
+		switch {
+		case readErr != nil && closeErr != nil:
+			return errors.Join(
+				fmt.Errorf("%s: read response body: %w", message, readErr),
+				fmt.Errorf("%s: close response body: %w", message, closeErr),
+			)
+		case readErr != nil:
 			return fmt.Errorf("%s: read response body: %w", message, readErr)
+		case closeErr != nil:
+			return fmt.Errorf("%s: close response body: %w", message, closeErr)
 		}
 	}
 	status := 0
@@ -69,8 +82,12 @@ func WrapError(err error, message string) error {
 		err:              resp,
 	}
 	switch apiErr.StatusCode {
+	case http.StatusTemporaryRedirect:
+		return fmt.Errorf("%s: %w", message, errors.Join(ErrTemporaryRedirect, apiErr))
 	case http.StatusUnauthorized:
 		return fmt.Errorf("%s: %w", message, errors.Join(ErrUnauthorized, apiErr))
+	case http.StatusForbidden:
+		return fmt.Errorf("%s: %w", message, errors.Join(ErrForbidden, apiErr))
 	case http.StatusNotFound:
 		return fmt.Errorf("%s: %w", message, errors.Join(ErrNotFound, apiErr))
 	case http.StatusUnprocessableEntity:

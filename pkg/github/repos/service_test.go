@@ -57,13 +57,15 @@ var (
 
 type mockService struct {
 	createCalled  bool
+	deleteCalled  bool
+	editCalled    bool
 	listCalled    bool
 	replaceCalled bool
-	editCalled    bool
-	listErr       error
 	createErr     error
-	replaceErr    error
+	deleteErr     error
 	editErr       error
+	listErr       error
+	replaceErr    error
 	owner         string
 	repoName      string
 	repoDesc      string
@@ -103,6 +105,19 @@ func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, 
 	}
 
 	return &gh.Repository{}, nil, nil
+}
+
+func (m *mockService) Delete(_ context.Context, owner, repo string) (*gh.Response, error) {
+	m.deleteCalled = true
+	m.owner = owner
+	m.repoName = repo
+	if m.deleteErr != nil {
+		return nil, m.deleteErr
+	}
+	if owner != existingRepo.Org || repo != existingRepo.Name {
+		return nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
+	}
+	return nil, nil
 }
 
 func (m *mockService) Edit(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
@@ -167,6 +182,8 @@ func (m *mockService) ListAllTopics(_ context.Context, owner, repo string) ([]st
 	}
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
+
+// Test CreateFromTemplate functionality
 
 func TestCreateFromTemplateSuccess(t *testing.T) {
 	mockSvc := &mockService{
@@ -261,7 +278,7 @@ func TestCreateFromTemplateInvalidTemplate(t *testing.T) {
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
 	if !errors.Is(err, github.ErrNotFound) {
-		t.Fatal("expected error for invalid template repository, got nil")
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
 	if !mockSvc.createCalled {
 		t.Error("CreateFromTemplate was not called")
@@ -281,7 +298,7 @@ func TestCreateFromTemplateExistingRepo(t *testing.T) {
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
 	if !errors.Is(err, github.ErrValidationFailed) {
-		t.Fatal("expected error for existing repository, got nil")
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
 	}
 	if !mockSvc.createCalled {
 		t.Error("CreateFromTemplate was not called")
@@ -310,6 +327,82 @@ func TestCreateFromTemplateErr(t *testing.T) {
 		t.Errorf("expected error %v, got %v", mockSvc.createErr, err)
 	}
 }
+
+// Test Delete functionality
+
+func TestDeleteSuccess(t *testing.T) {
+	mockSvc := &mockService{
+		deleteCalled: false,
+		deleteErr:    nil,
+	}
+
+	opts := DeleteOptions{
+		Service:    mockSvc,
+		Repository: existingRepo,
+	}
+
+	ctx := context.Background()
+	err := Delete(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.deleteCalled {
+		t.Error("Delete was not called")
+	}
+	if mockSvc.owner != existingRepo.Org {
+		t.Errorf("expected owner %s, got %s", existingRepo.Org, mockSvc.owner)
+	}
+	if mockSvc.repoName != existingRepo.Name {
+		t.Errorf("expected repo name %s, got %s", existingRepo.Name, mockSvc.repoName)
+	}
+}
+
+func TestDeleteInvalidRepo(t *testing.T) {
+	mockSvc := &mockService{
+		deleteCalled: false,
+		deleteErr:    nil,
+	}
+
+	opts := DeleteOptions{
+		Service:    mockSvc,
+		Repository: invalidTemplateRepo,
+	}
+
+	ctx := context.Background()
+	err := Delete(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.deleteCalled {
+		t.Error("Delete was not called")
+	}
+}
+
+func TestDeleteErr(t *testing.T) {
+	mockSvc := &mockService{
+		deleteCalled: false,
+		deleteErr:    errors.New("delete error"),
+	}
+
+	opts := DeleteOptions{
+		Service:    mockSvc,
+		Repository: existingRepo,
+	}
+
+	ctx := context.Background()
+	err := Delete(ctx, opts)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !mockSvc.deleteCalled {
+		t.Error("Delete was not called")
+	}
+	if !errors.Is(err, mockSvc.deleteErr) {
+		t.Errorf("expected error %v, got %v", mockSvc.deleteErr, err)
+	}
+}
+
+// Test Edit functionality
 
 func TestEditAllFieldsSuccess(t *testing.T) {
 	mockSvc := &mockService{
@@ -393,7 +486,7 @@ func TestEditInvalidRepo(t *testing.T) {
 	ctx := context.Background()
 	_, err := Edit(ctx, opts)
 	if !errors.Is(err, github.ErrNotFound) {
-		t.Fatal("expected error for invalid repository, got nil")
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
 	if !mockSvc.editCalled {
 		t.Error("Edit was not called")

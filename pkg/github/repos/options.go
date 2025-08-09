@@ -12,6 +12,12 @@ type CreateFromTemplateOptions struct {
 	Service            Service
 }
 
+// DeleteOptions defines the options for deleting a repository.
+type DeleteOptions struct {
+	Service    Service
+	Repository github.Repository
+}
+
 // EditOptions defines the options for editing a repository.
 type EditOptions struct {
 	Service      Service

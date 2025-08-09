@@ -59,10 +59,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 			}
 
 			_, err := repos.Edit(ctx, opts)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		},
 	}
 
@@ -80,7 +77,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 
 	for _, flag := range requiredFlags {
 		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(cmd.MarkFlagRequired(flag))
+			cobra.CheckErr(err)
 		}
 	}
 

@@ -28,7 +28,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 		Use:     "create-from-template",
 		Short:   "Create GitHub repositories from a template",
 		Long:    "Create a new GitHub repository from a template repository, optionally specifying organization, name, description, topics, and privacy settings.",
-		Example: `repo-builder repo create-from-template" --token <token> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
+		Example: `repo-builder repo create-from-template --token <token> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			service := svc
@@ -59,10 +59,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 				Service:            service,
 			}
 			_, err := repos.CreateFromTemplate(ctx, opts)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		},
 	}
 
@@ -79,7 +76,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	requiredFlags := []string{"token", "org", "name", "template-name"}
 	for _, flag := range requiredFlags {
 		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(cmd.MarkFlagRequired(flag))
+			cobra.CheckErr(err)
 		}
 	}
 

@@ -16,6 +16,10 @@ func (mockRepoEditService) CreateFromTemplate(_ context.Context, _, _ string, _ 
 	return &github.Repository{}, nil, nil
 }
 
+func (mockRepoEditService) Delete(_ context.Context, _, _ string) (*github.Response, error) {
+	return nil, nil
+}
+
 func (mockRepoEditService) Edit(_ context.Context, _, _ string, _ *github.Repository) (*github.Repository, *github.Response, error) {
 	return &github.Repository{}, nil, nil
 }

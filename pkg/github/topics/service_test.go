@@ -65,6 +65,8 @@ func (m *mockService) ReplaceAllTopics(_ context.Context, owner, repo string, to
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
 }
 
+// Test ListAllTopics functionality
+
 func TestListAllTopicsSuccess(t *testing.T) {
 	ctx := context.Background()
 	service := &mockService{
@@ -163,6 +165,8 @@ func TestReplaceAllTopicsSuccess(t *testing.T) {
 	}
 }
 
+// Test ReplaceAllTopics functionality
+
 func TestReplaceAllTopicsEmpty(t *testing.T) {
 	ctx := context.Background()
 	service := &mockService{
@@ -206,6 +210,8 @@ func TestReplaceAllTopicsNotFound(t *testing.T) {
 		t.Fatal("expected ReplaceAllTopics to be called")
 	}
 }
+
+// Test AddTopics functionality
 
 func TestAddTopicsSuccess(t *testing.T) {
 	ctx := context.Background()

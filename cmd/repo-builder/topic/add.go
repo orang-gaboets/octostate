@@ -42,10 +42,7 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 				Service: service,
 			}
 			_, err := topics.AddTopics(ctx, opts)
-			if err != nil {
-				return err
-			}
-			return nil
+			return err
 		},
 	}
 
@@ -57,7 +54,7 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 	requiredFlags := []string{"token", "org", "name", "topics"}
 	for _, flag := range requiredFlags {
 		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(cmd.MarkFlagRequired(flag))
+			cobra.CheckErr(err)
 		}
 	}
 
