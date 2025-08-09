@@ -200,6 +200,83 @@ go run ./cmd/repo-builder topic replace --token <token> --org <org> --name <repo
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to set
 
+### Team
+
+#### Create a New Team
+
+Option 1 (installed packaged):
+```bash
+repo-builder team create --token <token> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
+```
+
+Option 2 (using build):
+```bash
+./repo-builder team create --token <token> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder team create --token <token> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--name` (required): Team name
+- `--desc` (optional): Team description
+- `--secret` (optional): Create a secret team (default is false)
+- `--parent` (optional): Parent team slug (if creating a child team)
+
+#### Delete a Team
+
+Option 1 (installed packaged):
+```bash
+repo-builder team delete --token <token> --org <org> --slug <team-name>
+```
+
+Option 2 (using build):
+```bash
+./repo-builder team delete --token <token> --org <org> --slug <team-name>
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder team delete --token <token> --org <org> --slug <team-name>
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
+
+#### Get Team by Slug
+
+Option 1 (installed packaged):
+```bash
+repo-builder team get --token <token> --org <org> --slug <team-name>
+```
+
+Option 2 (using build):
+```bash
+./repo-builder team get --token <token> --org <org> --slug <team-name>
+```
+
+Option 3 (using `go run`):
+```bash
+go run ./cmd/repo-builder team get --token <token> --org <org> --slug <team-name>
+```
+
+##### Flags
+- `--token` (required): GitHub personal access token
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
+
+## Testing
+To run tests, use the following command:
+
+```bash
+go test ./... -cover -coverprofile=coverage.out -tags=unit 
+```
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

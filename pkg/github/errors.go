@@ -27,6 +27,8 @@ func (e *APIError) Error() string {
 func (e *APIError) Unwrap() error { return e.err }
 
 var (
+	// ErrNoContent is returned when no content is found.
+	ErrNoContent = errors.New("no content found")
 	// ErrTemporaryRedirect is returned when a temporary redirect occurs.
 	ErrTemporaryRedirect = errors.New("temporary redirect")
 	// ErrUnauthorized is returned when the request is unauthorized.
@@ -82,6 +84,8 @@ func WrapError(err error, message string) error {
 		err:              resp,
 	}
 	switch apiErr.StatusCode {
+	case http.StatusNoContent:
+		return fmt.Errorf("%s: %w", message, errors.Join(ErrNoContent, apiErr))
 	case http.StatusTemporaryRedirect:
 		return fmt.Errorf("%s: %w", message, errors.Join(ErrTemporaryRedirect, apiErr))
 	case http.StatusUnauthorized:
