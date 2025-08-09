@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 
 	gh "github.com/google/go-github/v55/github"
 
@@ -19,11 +18,11 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 	}
 
 	req := &gh.TemplateRepoRequest{
-		Owner:              gh.String(opts.NewRepo.Org),
-		Name:               gh.String(opts.NewRepo.Name),
-		Description:        gh.String(opts.NewRepo.Description),
-		Private:            gh.Bool(opts.NewRepo.Private),
-		IncludeAllBranches: gh.Bool(opts.IncludeAllBranches),
+		Owner:              &opts.NewRepo.Org,
+		Name:               &opts.NewRepo.Name,
+		Description:        &opts.NewRepo.Description,
+		Private:            &opts.NewRepo.Private,
+		IncludeAllBranches: &opts.IncludeAllBranches,
 	}
 
 	log.Printf("Creating repository %s/%s from template %s/%s", opts.NewRepo.Org, opts.NewRepo.Name, opts.TemplateRepo.Org, opts.TemplateRepo.Name)
@@ -50,28 +49,13 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 		return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", opts.TemplateRepo.Org, opts.TemplateRepo.Name))
 	}
 
-	cleanedSet := make(map[string]struct{})
-	for _, t := range templateTopics {
-		if v := strings.TrimSpace(t); v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
-	for _, t := range opts.NewRepo.Topics {
-		if v := strings.TrimSpace(t); v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
+	uniqueTopics := github.MergeUnique(opts.NewRepo.Topics, templateTopics)
 
-	cleaned := make([]string, 0, len(cleanedSet))
-	for topic := range cleanedSet {
-		cleaned = append(cleaned, topic)
-	}
-
-	if len(cleaned) > 0 {
+	if len(uniqueTopics) > 0 {
 		newRepoTopicsOptions := topics.ReplaceAllTopicsOptions{
 			Repo:    opts.NewRepo,
 			Service: opts.Service,
-			Topics:  cleaned,
+			Topics:  uniqueTopics,
 		}
 		_, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
 		if err != nil {

@@ -73,13 +73,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&newArchived, "archived", false, "Archive the repository")
 	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow private forking of the repository")
 
-	requiredFlags := []string{"token", "org", "name"}
-
-	for _, flag := range requiredFlags {
-		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(err)
-		}
-	}
+	github.MarkRequiredFlags(cmd, "token", "org", "name")
 
 	return cmd
 }

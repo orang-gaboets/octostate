@@ -73,12 +73,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
 	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", true, "Include all branches from the template repository")
 
-	requiredFlags := []string{"token", "org", "name", "template-name"}
-	for _, flag := range requiredFlags {
-		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(err)
-		}
-	}
+	github.MarkRequiredFlags(cmd, "token", "org", "name")
 
 	return cmd
 }

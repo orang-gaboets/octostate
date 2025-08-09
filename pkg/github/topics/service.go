@@ -41,15 +41,10 @@ func ReplaceAllTopics(ctx context.Context, option ReplaceAllTopicsOptions) ([]st
 		return nil, fmt.Errorf("no topics to set for repository %s/%s: %w", option.Repo.Org, option.Repo.Name, github.ErrMissingRequiredField)
 	}
 
-	cleaned := make([]string, 0, len(option.Topics))
-	for _, t := range option.Topics {
-		if v := strings.TrimSpace(t); v != "" {
-			cleaned = append(cleaned, v)
-		}
-	}
+	uniqueTopics := github.Unique(option.Topics)
 
-	log.Printf("Setting topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(cleaned, ", "))
-	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Repo.Org, option.Repo.Name, cleaned)
+	log.Printf("Setting topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(uniqueTopics, ", "))
+	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Repo.Org, option.Repo.Name, uniqueTopics)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to replace topics for repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}
@@ -78,25 +73,10 @@ func AddTopics(ctx context.Context, option AddTopicsOptions) ([]string, error) {
 
 	log.Printf("Current topics for repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(oldTopics, ", "))
 
-	cleanedSet := make(map[string]struct{})
-	for _, t := range oldTopics {
-		if v := strings.TrimSpace(t); v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
-	for _, t := range option.Topics {
-		if v := strings.TrimSpace(t); v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
+	uniqueTopics := github.MergeUnique(oldTopics, option.Topics)
 
-	cleaned := make([]string, 0, len(cleanedSet))
-	for topic := range cleanedSet {
-		cleaned = append(cleaned, topic)
-	}
-
-	log.Printf("Adding topics to repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(cleaned, ", "))
-	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Repo.Org, option.Repo.Name, cleaned)
+	log.Printf("Adding topics to repository %s/%s: %v", option.Repo.Org, option.Repo.Name, strings.Join(uniqueTopics, ", "))
+	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Repo.Org, option.Repo.Name, uniqueTopics)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to add topics to repository %s/%s", option.Repo.Org, option.Repo.Name))
 	}

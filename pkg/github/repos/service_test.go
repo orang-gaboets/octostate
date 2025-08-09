@@ -40,18 +40,18 @@ var (
 
 	completeEditOptions = EditOptions{
 		Repository:   existingRepo,
-		Description:  gh.String("new description"),
-		Homepage:     gh.String("https://example.com"),
-		Private:      gh.Bool(true),
-		IsTemplate:   gh.Bool(false),
-		Archived:     gh.Bool(false),
-		AllowForking: gh.Bool(true),
+		Description:  github.Ptr("new description"),
+		Homepage:     github.Ptr("https://example.com"),
+		Private:      github.Ptr(true),
+		IsTemplate:   github.Ptr(false),
+		Archived:     github.Ptr(false),
+		AllowForking: github.Ptr(true),
 	}
 
 	partialEditOptions = EditOptions{
 		Repository:  existingRepo,
-		Description: gh.String("partial description"),
-		IsTemplate:  gh.Bool(true),
+		Description: github.Ptr("partial description"),
+		IsTemplate:  github.Ptr(true),
 	}
 )
 
@@ -201,17 +201,7 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 		TemplateRepo: templateRepo,
 	}
 
-	combinedTopics := make(map[string]struct{})
-	for _, topic := range templateRepo.Topics {
-		combinedTopics[topic] = struct{}{}
-	}
-	for _, topic := range newRepo.Topics {
-		combinedTopics[topic] = struct{}{}
-	}
-	var uniqueTopics []string
-	for topic := range combinedTopics {
-		uniqueTopics = append(uniqueTopics, topic)
-	}
+	uniqueTopics := github.MergeUnique(newRepo.Topics, templateRepo.Topics)
 
 	ctx := context.Background()
 	repo, err := CreateFromTemplate(ctx, opts)

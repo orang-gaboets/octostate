@@ -23,7 +23,7 @@ func CreateTeam(ctx context.Context, opts CreateTeamOptions) (*github.Team, erro
 	var parentTeam *github.Team
 	if opts.Team.ParentTeam != nil {
 		if opts.Team.ParentTeam.Org != opts.Team.Org {
-			return nil, github.WrapError(github.ErrUnauthorized, "parent team must belong to the same organization as the new team")
+			return nil, fmt.Errorf("parent team must belong to the same organization as the new team: %w", github.ErrValidationFailed)
 		}
 		var err error
 		parentTeam, err = GetTeamBySlug(ctx, GetTeamBySlugOptions{
@@ -40,11 +40,11 @@ func CreateTeam(ctx context.Context, opts CreateTeamOptions) (*github.Team, erro
 
 	newTeam := gh.NewTeam{
 		Name:        opts.Team.Name,
-		Description: gh.String(opts.Team.Description),
-		Privacy:     gh.String(opts.Team.Privacy.String()),
+		Description: &opts.Team.Description,
+		Privacy:     github.Ptr(opts.Team.Privacy.String()),
 		ParentTeamID: func() *int64 {
 			if opts.Team.ParentTeam != nil {
-				return gh.Int64(opts.Team.ParentTeam.ID)
+				return &opts.Team.ParentTeam.ID
 			}
 			return nil
 		}(),

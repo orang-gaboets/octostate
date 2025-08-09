@@ -51,12 +51,7 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "GitHub repository name")
 	cmd.Flags().StringVar(&topicsStr, "topics", "", "Comma-separated list of topics to add to the repository")
 
-	requiredFlags := []string{"token", "org", "name", "topics"}
-	for _, flag := range requiredFlags {
-		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(err)
-		}
-	}
+	github.MarkRequiredFlags(cmd, "token", "org", "name", "topics")
 
 	return cmd
 }

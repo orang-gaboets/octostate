@@ -51,12 +51,7 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&name, "name", "", "GitHub repository name to delete")
 
-	requiredFlags := []string{"token", "org", "name"}
-	for _, flag := range requiredFlags {
-		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(err)
-		}
-	}
+	github.MarkRequiredFlags(cmd, "token", "org", "name")
 
 	return cmd
 }

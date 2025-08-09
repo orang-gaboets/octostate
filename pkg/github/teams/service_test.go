@@ -59,6 +59,14 @@ var (
 			Slug: "non-existing-parent-team",
 		},
 	}
+
+	newTeamWithParentOrgMismatch = github.Team{
+		Org:         "new-org",
+		Name:        "new-team-with-parent-org-mismatch",
+		Description: "A new team with parent from different org",
+		Privacy:     github.TeamPrivacyClosed,
+		ParentTeam:  &existingTeam,
+	}
 )
 
 type mockService struct {
@@ -97,7 +105,7 @@ func (m *mockService) CreateTeam(_ context.Context, org string, team gh.NewTeam)
 		m.teamParentID = team.ParentTeamID
 	}
 	return &gh.Team{
-		ID:          gh.Int64(newCreatedTeamID),
+		ID:          &newCreatedTeamID,
 		Name:        &team.Name,
 		Description: team.Description,
 		Privacy:     team.Privacy,
@@ -133,10 +141,10 @@ func (m *mockService) GetTeamBySlug(_ context.Context, org, slug string) (*gh.Te
 	m.teamDesc = existingTeam.Description
 	m.teamPrivacy = existingTeam.Privacy
 	return &gh.Team{
-		ID:          gh.Int64(existingTeam.ID),
+		ID:          &existingTeam.ID,
 		Name:        &existingTeam.Name,
 		Description: &existingTeam.Description,
-		Privacy:     gh.String(existingTeam.Privacy.String()),
+		Privacy:     github.Ptr(existingTeam.Privacy.String()),
 	}, nil, nil
 }
 
@@ -221,6 +229,30 @@ func TestCreateTeamWithParentSuccess(t *testing.T) {
 	}
 	if mockSvc.teamName != newTeamWithParent.Name {
 		t.Fatalf("expected team name to match, got: %s", mockSvc.teamName)
+	}
+}
+
+func TestCreateTeamWithParentOrgMismatch(t *testing.T) {
+	mockSvc := &mockService{
+		createCalled: false,
+		getCalled:    false,
+	}
+
+	opts := CreateTeamOptions{
+		Service: mockSvc,
+		Team:    newTeamWithParentOrgMismatch,
+	}
+
+	ctx := context.Background()
+	_, err := CreateTeam(ctx, opts)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug not to be called")
+	}
+	if mockSvc.createCalled {
+		t.Fatal("expected CreateTeam not to be called")
 	}
 }
 

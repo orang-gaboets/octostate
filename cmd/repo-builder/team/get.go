@@ -3,7 +3,8 @@ package team
 import (
 	"github.com/spf13/cobra"
 
-	gitHubClient "github.com/orang-gaboets/repo-builder/pkg/github/client"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
+	githubclient "github.com/orang-gaboets/repo-builder/pkg/github/client"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
 
@@ -25,7 +26,7 @@ func GetTeamBySlugCmd(svc teams.Service) *cobra.Command {
 			ctx := cmd.Context()
 			service := svc
 			if svc == nil {
-				client := gitHubClient.New(ctx, token)
+				client := githubclient.New(ctx, token)
 				service = client.Teams
 			}
 			opts := teams.GetTeamBySlugOptions{
@@ -42,12 +43,7 @@ func GetTeamBySlugCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
 
-	requiredFlags := []string{"token", "org", "slug"}
-	for _, flag := range requiredFlags {
-		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(err)
-		}
-	}
+	github.MarkRequiredFlags(cmd, "token", "org", "slug")
 
 	return cmd
 }

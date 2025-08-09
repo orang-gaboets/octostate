@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/pkg/github"
-	gitHubClient "github.com/orang-gaboets/repo-builder/pkg/github/client"
+	githubclient "github.com/orang-gaboets/repo-builder/pkg/github/client"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
 
@@ -29,7 +29,7 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 			ctx := cmd.Context()
 			service := svc
 			if svc == nil {
-				client := gitHubClient.New(ctx, token)
+				client := githubclient.New(ctx, token)
 				service = client.Teams
 			}
 
@@ -61,12 +61,7 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&secret, "secret", false, "Create a secret team (default: false)")
 	cmd.Flags().StringVar(&parent, "parent", "", "Parent team slug (optional)")
 
-	requiredFlags := []string{"token", "org", "name"}
-	for _, flag := range requiredFlags {
-		if err := cmd.MarkFlagRequired(flag); err != nil {
-			cobra.CheckErr(err)
-		}
-	}
+	github.MarkRequiredFlags(cmd, "token", "org", "name")
 
 	return cmd
 }
