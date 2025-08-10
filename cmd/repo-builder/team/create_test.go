@@ -1,49 +1,62 @@
 package team_test
 
 import (
-	"context"
+	"errors"
 	"testing"
 
-	"github.com/google/go-github/v55/github"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	teamcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/team"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
-// mockTeamCreateService implements teams.Service for testing.
-type mockTeamCreateService struct{}
-
-func (mockTeamCreateService) CreateTeam(_ context.Context, _ string, _ github.NewTeam) (*github.Team, *github.Response, error) {
-	return &github.Team{}, nil, nil
-}
-
-func (mockTeamCreateService) DeleteTeamBySlug(_ context.Context, _, _ string) (*github.Response, error) {
-	return nil, nil
-}
-
-func (mockTeamCreateService) GetTeamBySlug(_ context.Context, _, _ string) (*github.Team, *github.Response, error) {
-	return &github.Team{}, nil, nil
-}
-
-// TestCreateTeamNoRequiredFlags tests the CreateTeam command with no required flags.
 func TestCreateTeamNoRequiredFlags(t *testing.T) {
-	c := teamcmd.CreateTeamCmd(mockTeamCreateService{})
+	auth.PrepareClient(t)
+	c := teamcmd.CreateTeamCmd(nil)
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
 	}
 }
 
-// TestCreateTeamAllRequiredFlagsProvided tests the CreateTeam command with all required flags provided.
-func TestCreateTeamAllRequiredFlagsProvided(t *testing.T) {
-	c := teamcmd.CreateTeamCmd(mockTeamCreateService{})
+func TestCreateTeamAllRequiredFlagsTokenProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := teamcmd.CreateTeamCmd(nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-// TestCreateTeamWithInvalidFlags tests the CreateTeam command with invalid flags.
+func TestCreateTeamAllRequiredFlagsAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := teamcmd.CreateTeamCmd(nil)
+	c.SetArgs([]string{"--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--name", "n"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCreateTeamPartialAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := teamcmd.CreateTeamCmd(nil)
+	c.SetArgs([]string{"--app-id", "123", "--org", "o", "--name", "n"})
+	if err := c.Execute(); !errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrNoValidCredentials, err)
+	}
+}
+
+func TestCreateTeamBothAuthMethodsProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := teamcmd.CreateTeamCmd(nil)
+	c.SetArgs([]string{"--token", "t", "--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--name", "n"})
+	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
+	}
+}
+
 func TestCreateTeamWithInvalidFlags(t *testing.T) {
-	c := teamcmd.CreateTeamCmd(mockTeamCreateService{})
+	auth.PrepareClient(t)
+	c := teamcmd.CreateTeamCmd(nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag")

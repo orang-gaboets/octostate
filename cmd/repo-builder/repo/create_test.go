@@ -1,54 +1,62 @@
 package repo_test
 
 import (
-	"context"
+	"errors"
 	"testing"
 
-	"github.com/google/go-github/v55/github"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
-// mockRepoCreateService implements repos.Service for testing.
-type mockRepoCreateService struct{}
-
-func (mockRepoCreateService) CreateFromTemplate(_ context.Context, _, _ string, _ *github.TemplateRepoRequest) (*github.Repository, *github.Response, error) {
-	return &github.Repository{}, nil, nil
-}
-
-func (mockRepoCreateService) Delete(_ context.Context, _, _ string) (*github.Response, error) {
-	return nil, nil
-}
-
-func (mockRepoCreateService) Edit(_ context.Context, _, _ string, _ *github.Repository) (*github.Repository, *github.Response, error) {
-	return &github.Repository{}, nil, nil
-}
-
-func (mockRepoCreateService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *github.Response, error) {
-	return topics, nil, nil
-}
-
-func (mockRepoCreateService) ListAllTopics(_ context.Context, _, _ string) ([]string, *github.Response, error) {
-	return []string{}, nil, nil
-}
-
 func TestCreateRepoFromTemplateNoRequiredFlags(t *testing.T) {
-	c := reposcmd.CreateNewRepoFromTemplateCmd(mockRepoCreateService{})
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
 	}
 }
 
-func TestCreateRepoFromTemplateAllRequiredFlagsProvided(t *testing.T) {
-	c := reposcmd.CreateNewRepoFromTemplateCmd(mockRepoCreateService{})
+func TestCreateRepoFromTemplateAllRequiredFlagsTokenProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--template-name", "temp", "--name", "n"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
+func TestCreateRepoFromTemplateAllRequiredFlagsAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key", "--org", "o", "--template-name", "temp", "--name", "n"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCreateRepoFromTemplatePartialAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--app-id", "123", "--org", "o", "--template-name", "temp", "--name", "n"})
+	if err := c.Execute(); !errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrNoValidCredentials, err)
+	}
+}
+
+func TestCreateRepoFromTemplateBothAuthMethodsProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--token", "t", "--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key", "--org", "o", "--template-name", "temp", "--name", "n"})
+	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
+	}
+}
+
 func TestCreateRepoFromTemplateWithInvalidFlags(t *testing.T) {
-	c := reposcmd.CreateNewRepoFromTemplateCmd(mockRepoCreateService{})
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--template-name", "temp", "--name", "n", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag")

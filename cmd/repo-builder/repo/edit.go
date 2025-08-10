@@ -1,16 +1,20 @@
 package repo
 
 import (
-	"github.com/orang-gaboets/repo-builder/pkg/github"
-	gitHubClient "github.com/orang-gaboets/repo-builder/pkg/github/client"
-	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/spf13/cobra"
+
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
+	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 )
 
 // EditRepo creates a new command to edit an existing GitHub repository.
 func EditRepo(svc repos.Service) *cobra.Command {
 	var (
 		token           string
+		appID           int64
+		installationID  int64
+		appKeyPath      string
 		org             string
 		name            string
 		newDesc         string
@@ -22,16 +26,21 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:     "edit",
-		Short:   "Edit an existing GitHub repository",
-		Long:    "Edit an existing GitHub repository by updating its description, homepage, privacy settings, template status, archived status, and forking permissions.",
-		Example: `repo-builder repo edit --token <token> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true`,
+		Use:   "edit",
+		Short: "Edit an existing GitHub repository",
+		Long:  "Edit an existing GitHub repository by updating its description, homepage, privacy settings, template status, archived status, and forking permissions.",
+		Example: `
+			repo-builder repo edit --token <token> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true
+			repo-builder repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			service := svc
 			if service == nil {
-				client := gitHubClient.New(ctx, token)
-				service = client.Repositories
+				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
+				if err != nil {
+					return err
+				}
+				service = client.Repositories()
 			}
 			var opts repos.EditOptions
 			opts.Repository = github.Repository{
@@ -64,6 +73,9 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&token, "token", "", "GitHub access token")
+	cmd.Flags().Int64Var(&appID, "app-id", 0, "GitHub App ID for authentication")
+	cmd.Flags().Int64Var(&installationID, "installation-id", 0, "GitHub App installation ID for authentication")
+	cmd.Flags().StringVar(&appKeyPath, "app-key-path", "", "Path to the GitHub App private key file")
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&name, "name", "", "Name of the repository to edit")
 	cmd.Flags().StringVar(&newDesc, "desc", "", "New description for the repository")
@@ -73,7 +85,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&newArchived, "archived", false, "Archive the repository")
 	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow private forking of the repository")
 
-	github.MarkRequiredFlags(cmd, "token", "org", "name")
+	github.MarkRequiredFlags(cmd, "org", "name")
 
 	return cmd
 }

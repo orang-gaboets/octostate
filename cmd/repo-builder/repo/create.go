@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
-	gitHubClient "github.com/orang-gaboets/repo-builder/pkg/github/client"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 )
 
@@ -14,6 +14,9 @@ import (
 func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	var (
 		token              string
+		appID              int64
+		installationID     int64
+		appKeyPath         string
 		org                string
 		templateName       string
 		templateOrg        string
@@ -26,15 +29,21 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "create-from-template",
+		Aliases: []string{"cft", "new-from-template", "create", "new"},
 		Short:   "Create GitHub repositories from a template",
 		Long:    "Create a new GitHub repository from a template repository, optionally specifying organization, name, description, topics, and privacy settings.",
-		Example: `repo-builder repo create-from-template --token <token> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
+		Example: `
+			repo-builder repo create-from-template --token <token> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true
+			repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			service := svc
 			if service == nil {
-				client := gitHubClient.New(ctx, token)
-				service = client.Repositories
+				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
+				if err != nil {
+					return err
+				}
+				service = client.Repositories()
 			}
 			var topicList []string
 			if topics != "" {
@@ -64,6 +73,9 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&token, "token", "", "GitHub access token")
+	cmd.Flags().Int64Var(&appID, "app-id", 0, "GitHub App ID for authentication")
+	cmd.Flags().Int64Var(&installationID, "installation-id", 0, "GitHub App installation ID for authentication")
+	cmd.Flags().StringVar(&appKeyPath, "app-key-path", "", "Path to the GitHub App private key file")
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&templateName, "template-name", "", "Template repository name")
 	cmd.Flags().StringVar(&templateOrg, "template-org", "", "Template repository organization name (defaults to --org if not set)")
@@ -73,7 +85,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
 	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", true, "Include all branches from the template repository")
 
-	github.MarkRequiredFlags(cmd, "token", "org", "name")
+	github.MarkRequiredFlags(cmd, "org", "name")
 
 	return cmd
 }

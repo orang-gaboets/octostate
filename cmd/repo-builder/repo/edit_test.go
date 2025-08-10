@@ -1,47 +1,26 @@
 package repo_test
 
 import (
-	"context"
+	"errors"
 	"testing"
 
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
-
-	"github.com/google/go-github/v55/github"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
-// mockRepoEditService implements repos.Service for testing.
-type mockRepoEditService struct{}
-
-func (mockRepoEditService) CreateFromTemplate(_ context.Context, _, _ string, _ *github.TemplateRepoRequest) (*github.Repository, *github.Response, error) {
-	return &github.Repository{}, nil, nil
-}
-
-func (mockRepoEditService) Delete(_ context.Context, _, _ string) (*github.Response, error) {
-	return nil, nil
-}
-
-func (mockRepoEditService) Edit(_ context.Context, _, _ string, _ *github.Repository) (*github.Repository, *github.Response, error) {
-	return &github.Repository{}, nil, nil
-}
-
-func (mockRepoEditService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *github.Response, error) {
-	return topics, nil, nil
-}
-
-func (mockRepoEditService) ListAllTopics(_ context.Context, _, _ string) ([]string, *github.Response, error) {
-	return []string{}, nil, nil
-}
-
 func TestEditRepoNoRequiredFlags(t *testing.T) {
-	c := reposcmd.EditRepo(mockRepoEditService{})
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
 	}
 }
 
-func TestEditRepoAllRequiredFlagsProvided(t *testing.T) {
-	c := reposcmd.EditRepo(mockRepoEditService{})
+func TestEditRepoAllRequiredFlagsTokenProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
 	c.SetArgs([]string{
 		"--token", "t",
 		"--org", "o",
@@ -52,8 +31,53 @@ func TestEditRepoAllRequiredFlagsProvided(t *testing.T) {
 	}
 }
 
+func TestEditRepoAllRequiredFlagsAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
+	c.SetArgs([]string{
+		"--app-id", "123",
+		"--installation-id", "456",
+		"--app-key-path", "path/to/key.pem",
+		"--org", "o",
+		"--name", "n",
+	})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEditRepoPartialAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
+	c.SetArgs([]string{
+		"--app-id", "123",
+		"--org", "o",
+		"--name", "n",
+	})
+	if err := c.Execute(); !errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrNoValidCredentials, err)
+	}
+}
+
+func TestEditRepoBothAuthMethodsProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
+	c.SetArgs([]string{
+		"--token", "t",
+		"--app-id", "123",
+		"--installation-id", "456",
+		"--app-key-path", "path/to/key.pem",
+		"--org", "o",
+		"--name", "n",
+	})
+	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
+	}
+}
+
 func TestEditRepoWithOptionalFlags(t *testing.T) {
-	c := reposcmd.EditRepo(mockRepoEditService{})
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
 	c.SetArgs([]string{
 		"--token", "t",
 		"--org", "o",
@@ -69,7 +93,8 @@ func TestEditRepoWithOptionalFlags(t *testing.T) {
 }
 
 func TestEditRepoWithInvalidFlags(t *testing.T) {
-	c := reposcmd.EditRepo(mockRepoEditService{})
+	auth.PrepareClient(t)
+	c := reposcmd.EditRepo(nil)
 	c.SetArgs([]string{
 		"--token", "t",
 		"--org", "o",

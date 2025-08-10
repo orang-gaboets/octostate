@@ -42,35 +42,53 @@ go install github.com/yourorg/repo-builder/cmd/repo-builder@latest
     ```
 7. Build the project (optional)
     ```bash
-    go build -o repo-builder ./cmd/repo-builder
+    go build -o bin/repo-builder ./cmd/repo-builder
     ```
 
 
 
 ## Usage
 
+### How to run `repo-builder` commands:
+
+Option 1: If you have installed the package globally:
+```bash
+repo-builder <command> [flags]
+```
+
+Option 2: If you are using the built binary:
+```bash
+./bin/repo-builder <command> [flags]
+```
+
+Option 3: If you want to run it directly using `go run`:
+```bash
+go run ./cmd/repo-builder <command> [flags]
+```
+
+### Authentication
+
+All commands require GitHub authentication. You must supply exactly one of the following:
+
+- `--token` – personal access token (PAT).
+- `--app-id`, `--installation-id`, and `--app-key-path` – GitHub App ID, installation ID, and path to the App's private key.
+
+Providing both methods or neither results in an error.
+
 ### Repo
 
 #### Create a New Repository Based on a Template
 
-Option 1 (installed packaged):
 ```bash
-repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
-```
-
-Option 2 (using build):
-```bash
-./repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder repo create-from-template --token <token> --org <org> --template-org <template-org> --template-name <template-name> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
+repo-builder repo create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --template-org <template-org> --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
 ```
 
 ##### Flags
 
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--template-org` (required): Organisation that owns the template repository
 - `--template-name` (required): Name of the template repository
@@ -82,45 +100,29 @@ go run ./cmd/repo-builder repo create-from-template --token <token> --org <org> 
 
 #### Delete a Repository
 
-Option 1 (installed packaged):
 ```bash
-repo-builder repo delete --token <token> --org <org> --name <repo-name>
-```
-
-Option 2 (using build):
-```bash
-./repo-builder repo delete --token <token> --org <org> --name <repo-name>
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder repo delete --token <token> --org <org> --name <repo-name>
+repo-builder repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 
 #### Edit Repository Settings
 
-Option 1 (installed packaged):
 ```bash
-repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
-```
-
-Option 2 (using build):
-```bash
-./repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder repo edit --token <token> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
+repo-builder repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 - `--desc` (optional): Repository description
@@ -134,68 +136,44 @@ go run ./cmd/repo-builder repo edit --token <token> --org <org> --name <repo-nam
 
 #### Add Topics to a Repository
 
-Option 1 (installed packaged):
 ```bash
-repo-builder topic add --token <token> --org <org> --name <repo-name> --topics <t1,t2>
-```
-
-Option 2 (using build):
-```bash
-./repo-builder topic add --token <token> --org <org> --name <repo-name> --topics <t1,t2>
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder topic add --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+repo-builder topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2>
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to add
 
 #### List All Topics of a Repository
 
-Option 1 (installed packaged):
 ```bash
-repo-builder topic list --token <token> --org <org> --name <repo-name>
-```
-
-Option 2 (using build):
-```bash
-./repo-builder topic list --token <token> --org <org> --name <repo-name>
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder topic list --token <token> --org <org> --name <repo-name>
+repo-builder topic list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 
 #### Replace All Topics of a Repository
 
-Option 1 (installed packaged):
 ```bash
-repo-builder topic replace --token <token> --org <org> --name <repo-name> --topics <t1,t2>
-```
-
-Option 2 (using build):
-```bash
-./repo-builder topic replace --token <token> --org <org> --name <repo-name> --topics <t1,t2>
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder topic replace --token <token> --org <org> --name <repo-name> --topics <t1,t2>
+repo-builder topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2>
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to set
@@ -204,23 +182,15 @@ go run ./cmd/repo-builder topic replace --token <token> --org <org> --name <repo
 
 #### Create a New Team
 
-Option 1 (installed packaged):
 ```bash
-repo-builder team create --token <token> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
-```
-
-Option 2 (using build):
-```bash
-./repo-builder team create --token <token> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder team create --token <token> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
+repo-builder team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Team name
 - `--desc` (optional): Team description
@@ -229,45 +199,29 @@ go run ./cmd/repo-builder team create --token <token> --org <org> --name <team-n
 
 #### Delete a Team
 
-Option 1 (installed packaged):
 ```bash
-repo-builder team delete --token <token> --org <org> --slug <team-name>
-```
-
-Option 2 (using build):
-```bash
-./repo-builder team delete --token <token> --org <org> --slug <team-name>
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder team delete --token <token> --org <org> --slug <team-name>
+repo-builder team delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--slug` (required): Team slug (URL-friendly name)
 
 #### Get Team by Slug
 
-Option 1 (installed packaged):
 ```bash
-repo-builder team get --token <token> --org <org> --slug <team-name>
-```
-
-Option 2 (using build):
-```bash
-./repo-builder team get --token <token> --org <org> --slug <team-name>
-```
-
-Option 3 (using `go run`):
-```bash
-go run ./cmd/repo-builder team get --token <token> --org <org> --slug <team-name>
+repo-builder team get --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
 ```
 
 ##### Flags
-- `--token` (required): GitHub personal access token
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--slug` (required): Team slug (URL-friendly name)
 
@@ -275,7 +229,7 @@ go run ./cmd/repo-builder team get --token <token> --org <org> --slug <team-name
 To run tests, use the following command:
 
 ```bash
-go test ./... -cover -coverprofile=coverage.out -tags=unit 
+go test ./... -cover -coverprofile=coverage.out -tags=unit
 ```
 ## License
 

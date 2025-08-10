@@ -1,40 +1,64 @@
 package topic_test
 
 import (
-	"context"
+	"errors"
 	"testing"
 
-	"github.com/google/go-github/v55/github"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	topicscmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/topic"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
-// mockAddTopicsService implements topics.Service for testing.
-type mockAddTopicsService struct{}
-
-func (mockAddTopicsService) ListAllTopics(_ context.Context, _, _ string) ([]string, *github.Response, error) {
-	return []string{"topic1", "topic2"}, nil, nil
-}
-
-func (mockAddTopicsService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *github.Response, error) {
-	return topics, nil, nil
-}
-
-func (mockAddTopicsService) AddTopics(_ context.Context, _, _ string, topics []string) ([]string, *github.Response, error) {
-	return topics, nil, nil
-}
-
 func TestAddTopicsNoRequiredFlags(t *testing.T) {
-	c := topicscmd.AddTopicsCmd(mockAddTopicsService{})
+	auth.PrepareClient(t)
+	c := topicscmd.AddTopicsCmd(nil)
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
 	}
 }
 
-func TestAddTopicsAllRequiredFlagsProvided(t *testing.T) {
-	c := topicscmd.AddTopicsCmd(mockAddTopicsService{})
+func TestAddTopicsAllRequiredFlagsTokenProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := topicscmd.AddTopicsCmd(nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n", "--topics", "topic1,topic2"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAddTopicsAllRequiredFlagsAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--name", "n", "--topics", "topic1,topic2"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAddTopicsPartialAppProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--app-id", "123", "--org", "o", "--name", "n", "--topics", "topic1,topic2"})
+	if err := c.Execute(); !errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrNoValidCredentials, err)
+	}
+}
+
+func TestAddTopicsBothAuthMethodsProvided(t *testing.T) {
+	auth.PrepareClient(t)
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--token", "t", "--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--name", "n", "--topics", "topic1,topic2"})
+	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
+	}
+}
+
+func TestAddTopicsWithInvalidFlags(t *testing.T) {
+	auth.PrepareClient(t)
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n", "--topics", "topic1,topic2", "--invalid-flag"})
+	if err := c.Execute(); err == nil {
+		t.Fatalf("expected error for invalid flags")
 	}
 }

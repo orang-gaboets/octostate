@@ -32,10 +32,10 @@ Thumbs.db
 
 # Environment files
 .env
+env/
 
 # bin
 bin/
 
 # Build files
 build/
-repo-builder

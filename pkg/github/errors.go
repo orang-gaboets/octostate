@@ -27,6 +27,10 @@ func (e *APIError) Error() string {
 func (e *APIError) Unwrap() error { return e.err }
 
 var (
+	// ErrNoValidCredentials is returned when no valid credentials are provided.
+	ErrNoValidCredentials = errors.New("no valid credentials provided, either a personal access token or GitHub App credentials must be supplied")
+	// ErrConflictingCredentials is returned when both OAuth token and app credentials are provided.
+	ErrConflictingCredentials = errors.New("conflicting credentials: both OAuth token and app credentials provided")
 	// ErrNoContent is returned when no content is found.
 	ErrNoContent = errors.New("no content found")
 	// ErrTemporaryRedirect is returned when a temporary redirect occurs.

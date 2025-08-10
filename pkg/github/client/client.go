@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/go-github/v55/github"
+	"github.com/bradleyfalzon/ghinstallation/v2"
+	gh "github.com/google/go-github/v55/github"
 	"golang.org/x/oauth2"
 )
 
@@ -23,12 +24,25 @@ func WithTimeout(d time.Duration) Option {
 }
 
 // New creates a new GitHub client using the provided OAuth token.
-func New(ctx context.Context, token string, opts ...Option) *github.Client {
+func New(ctx context.Context, token string, opts ...Option) *gh.Client {
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
 	tc.Timeout = DefaultTimeout
 	for _, opt := range opts {
 		opt(tc)
 	}
-	return github.NewClient(tc)
+	return gh.NewClient(tc)
+}
+
+// NewApp creates a new GitHub client using the provided app ID, installation ID, and private key.
+func NewApp(appID, installationID int64, pem []byte, opts ...Option) (*gh.Client, error) {
+	tr, err := ghinstallation.New(http.DefaultTransport, appID, installationID, pem)
+	if err != nil {
+		return nil, err
+	}
+	tc := &http.Client{Transport: tr, Timeout: DefaultTimeout}
+	for _, opt := range opts {
+		opt(tc)
+	}
+	return gh.NewClient(tc), nil
 }
