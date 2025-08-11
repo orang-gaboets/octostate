@@ -155,7 +155,7 @@ func TeamFromGhTeam(ghTeam *gh.Team) *Team {
 	return &Team{
 		ID:                   ghTeam.GetID(),
 		Slug:                 ghTeam.GetSlug(),
-		Org:                  ghTeam.Organization.GetLogin(),
+		Org:                  ghTeam.GetOrganization().GetLogin(),
 		Name:                 ghTeam.GetName(),
 		Description:          ghTeam.GetDescription(),
 		Privacy:              TeamPrivacy(ghTeam.GetPrivacy()),

@@ -17,6 +17,10 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 		return nil, github.ErrNilService
 	}
 
+	if opts.NewRepo.Org == "" || opts.NewRepo.Name == "" || opts.TemplateRepo.Org == "" || opts.TemplateRepo.Name == "" {
+		return nil, github.ErrMissingRequiredField
+	}
+
 	req := &gh.TemplateRepoRequest{
 		Owner:              &opts.NewRepo.Org,
 		Name:               &opts.NewRepo.Name,

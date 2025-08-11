@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -86,22 +87,9 @@ func TestListAllTopicsSuccess(t *testing.T) {
 	if !service.listCalled {
 		t.Fatal("expected ListAllTopics to be called")
 	}
-
-	if len(topics) != len(existingRepo.Topics) {
-		t.Fatalf("expected %d topics, got %d", len(existingRepo.Topics), len(topics))
-	}
-
-	for _, topic := range topics {
-		found := false
-		for _, existingTopic := range existingRepo.Topics {
-			if topic == existingTopic {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("expected topic %s not found in existing topics", topic)
-		}
+	expected := github.Unique(existingRepo.Topics)
+	if !reflect.DeepEqual(topics, expected) {
+		t.Fatalf("expected topics %v, got %v", expected, topics)
 	}
 }
 
@@ -226,21 +214,6 @@ func TestAddTopicsSuccess(t *testing.T) {
 		Topics:  replacedTopics,
 	}
 
-	cleanedSet := make(map[string]struct{})
-	for _, t := range existingRepo.Topics {
-		if v := t; v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
-	for _, t := range replacedTopics {
-		if v := t; v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
-	cleaned := make([]string, 0, len(cleanedSet))
-	for topic := range cleanedSet {
-		cleaned = append(cleaned, topic)
-	}
 	topics, err := AddTopics(ctx, option)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -251,20 +224,10 @@ func TestAddTopicsSuccess(t *testing.T) {
 	if !service.replaceCalled {
 		t.Fatal("expected ReplaceAllTopics to be called")
 	}
-	if len(topics) != len(cleaned) {
-		t.Fatalf("expected %d topics, got %d", len(cleaned), len(topics))
-	}
-	for _, topic := range topics {
-		found := false
-		for _, t := range cleaned {
-			if topic == t {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("expected topic %s not found in cleaned topics", topic)
-		}
+
+	expected := github.MergeUnique(existingRepo.Topics, replacedTopics)
+	if !reflect.DeepEqual(topics, expected) {
+		t.Fatalf("expected topics %v, got %v", expected, topics)
 	}
 }
 
@@ -280,22 +243,6 @@ func TestAddTopicsDuplicate(t *testing.T) {
 		Topics:  addDuplicateTopics,
 	}
 
-	cleanedSet := make(map[string]struct{})
-	for _, t := range existingRepo.Topics {
-		if v := t; v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
-	for _, t := range addDuplicateTopics {
-		if v := t; v != "" {
-			cleanedSet[v] = struct{}{}
-		}
-	}
-	cleaned := make([]string, 0, len(cleanedSet))
-	for topic := range cleanedSet {
-		cleaned = append(cleaned, topic)
-	}
-
 	topics, err := AddTopics(ctx, option)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -306,20 +253,9 @@ func TestAddTopicsDuplicate(t *testing.T) {
 	if !service.replaceCalled {
 		t.Fatal("expected ReplaceAllTopics to be called")
 	}
-	if len(topics) != len(cleaned) {
-		t.Fatalf("expected %d topics, got %d", len(cleaned), len(topics))
-	}
-	for _, topic := range topics {
-		found := false
-		for _, t := range cleaned {
-			if topic == t {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("expected topic %s not found in cleaned topics", topic)
-		}
+	expected := github.MergeUnique(existingRepo.Topics, addDuplicateTopics)
+	if !reflect.DeepEqual(topics, expected) {
+		t.Fatalf("expected topics %v, got %v", expected, topics)
 	}
 }
 

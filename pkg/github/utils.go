@@ -9,29 +9,33 @@ func Ptr[T any](v T) *T {
 }
 
 func Unique[T comparable](slice []T) []T {
-	uniqueMap := make(map[T]struct{})
+	seen := make(map[T]struct{}, len(slice))
+	result := make([]T, 0, len(slice))
 	for _, item := range slice {
-		uniqueMap[item] = struct{}{}
-	}
-
-	result := make([]T, 0, len(uniqueMap))
-	for item := range uniqueMap {
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
 		result = append(result, item)
 	}
 	return result
 }
 
 func MergeUnique[T comparable](a, b []T) []T {
-	uniqueMap := make(map[T]struct{})
+	seen := make(map[T]struct{}, len(a)+len(b))
+	result := make([]T, 0, len(a)+len(b))
 	for _, item := range a {
-		uniqueMap[item] = struct{}{}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
 	}
 	for _, item := range b {
-		uniqueMap[item] = struct{}{}
-	}
-
-	result := make([]T, 0, len(uniqueMap))
-	for item := range uniqueMap {
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
 		result = append(result, item)
 	}
 	return result

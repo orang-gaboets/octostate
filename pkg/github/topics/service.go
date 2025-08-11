@@ -9,7 +9,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
-// ListAllTopicsOptions defines the options for listing all topics of a repository.
+// ListAllTopics lists all topics for a given repository.
 func ListAllTopics(ctx context.Context, option ListAllTopicsOptions) ([]string, error) {
 	if option.Service == nil {
 		return nil, github.ErrNilService
@@ -27,7 +27,7 @@ func ListAllTopics(ctx context.Context, option ListAllTopicsOptions) ([]string, 
 	return topics, nil
 }
 
-// ReplaceAllTopicsOptions defines the options for replacing all topics of a repository.
+// ReplaceAllTopics replaces all topics for a given repository with the provided topics.
 func ReplaceAllTopics(ctx context.Context, option ReplaceAllTopicsOptions) ([]string, error) {
 	if option.Service == nil {
 		return nil, github.ErrNilService
@@ -52,7 +52,7 @@ func ReplaceAllTopics(ctx context.Context, option ReplaceAllTopicsOptions) ([]st
 	return topics, nil
 }
 
-// AddTopicsOptions defines the options for adding topics to a repository.
+// AddTopics adds topics to a given repository, merging them with existing topics.
 func AddTopics(ctx context.Context, option AddTopicsOptions) ([]string, error) {
 	if option.Service == nil {
 		return nil, github.ErrNilService

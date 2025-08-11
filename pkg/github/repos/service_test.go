@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -238,20 +239,8 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 	if mockSvc.templateName != templateRepo.Name {
 		t.Errorf("expected template name %s, got %s", templateRepo.Name, mockSvc.templateName)
 	}
-	if len(mockSvc.repoTopics) != len(uniqueTopics) {
-		t.Errorf("expected %d topics, got %d", len(uniqueTopics), len(mockSvc.repoTopics))
-	}
-	for _, topic := range uniqueTopics {
-		found := false
-		for _, t := range mockSvc.repoTopics {
-			if t == topic {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected topic %s not found in topics", topic)
-		}
+	if !reflect.DeepEqual(mockSvc.repoTopics, uniqueTopics) {
+		t.Errorf("expected topics %v, got %v", uniqueTopics, mockSvc.repoTopics)
 	}
 }
 
@@ -315,6 +304,82 @@ func TestCreateFromTemplateErr(t *testing.T) {
 	}
 	if !errors.Is(err, mockSvc.createErr) {
 		t.Errorf("expected error %v, got %v", mockSvc.createErr, err)
+	}
+}
+
+func TestCreateFromTemplateMissingNewRepoOrg(t *testing.T) {
+	mockSvc := &mockService{}
+	invalidNewRepo := newRepo
+	invalidNewRepo.Org = ""
+	opts := CreateFromTemplateOptions{
+		Service:      mockSvc,
+		NewRepo:      invalidNewRepo,
+		TemplateRepo: templateRepo,
+	}
+	ctx := context.Background()
+	_, err := CreateFromTemplate(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.createCalled {
+		t.Error("CreateFromTemplate was called")
+	}
+}
+
+func TestCreateFromTemplateMissingNewRepoName(t *testing.T) {
+	mockSvc := &mockService{}
+	invalidNewRepo := newRepo
+	invalidNewRepo.Name = ""
+	opts := CreateFromTemplateOptions{
+		Service:      mockSvc,
+		NewRepo:      invalidNewRepo,
+		TemplateRepo: templateRepo,
+	}
+	ctx := context.Background()
+	_, err := CreateFromTemplate(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.createCalled {
+		t.Error("CreateFromTemplate was called")
+	}
+}
+
+func TestCreateFromTemplateMissingTemplateRepoOrg(t *testing.T) {
+	mockSvc := &mockService{}
+	invalidTemplateRepo := templateRepo
+	invalidTemplateRepo.Org = ""
+	opts := CreateFromTemplateOptions{
+		Service:      mockSvc,
+		NewRepo:      newRepo,
+		TemplateRepo: invalidTemplateRepo,
+	}
+	ctx := context.Background()
+	_, err := CreateFromTemplate(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.createCalled {
+		t.Error("CreateFromTemplate was called")
+	}
+}
+
+func TestCreateFromTemplateMissingTemplateRepoName(t *testing.T) {
+	mockSvc := &mockService{}
+	invalidTemplateRepo := templateRepo
+	invalidTemplateRepo.Name = ""
+	opts := CreateFromTemplateOptions{
+		Service:      mockSvc,
+		NewRepo:      newRepo,
+		TemplateRepo: invalidTemplateRepo,
+	}
+	ctx := context.Background()
+	_, err := CreateFromTemplate(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.createCalled {
+		t.Error("CreateFromTemplate was called")
 	}
 }
 

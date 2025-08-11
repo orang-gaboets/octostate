@@ -72,10 +72,8 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&token, "token", "", "GitHub access token")
-	cmd.Flags().Int64Var(&appID, "app-id", 0, "GitHub App ID for authentication")
-	cmd.Flags().Int64Var(&installationID, "installation-id", 0, "GitHub App installation ID for authentication")
-	cmd.Flags().StringVar(&appKeyPath, "app-key-path", "", "Path to the GitHub App private key file")
+	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
+
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&templateName, "template-name", "", "Template repository name")
 	cmd.Flags().StringVar(&templateOrg, "template-org", "", "Template repository organization name (defaults to --org if not set)")

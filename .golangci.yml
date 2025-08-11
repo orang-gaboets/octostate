@@ -1,14 +1,18 @@
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
+version: 2
 
-    exclude-functions:
-      - 'fmt\.Print.*'
-      - 'fmt\.Fprintf'
+run:
+  timeout: 5m
 
 linters:
   enable:
     - staticcheck
     - revive
     - gocyclo
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - 'fmt\.Print.*'
+      - 'fmt\.Fprintf'

@@ -6,13 +6,9 @@ repos:
       - id: go-imports
       - id: go-mod-tidy
       - id: go-unit-tests
-      - id: golangci-lint
 
-  - repo: local
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.3.1
     hooks:
-      - id: go-vet
-        name: go vet
-        entry: go vet ./...
-        language: system
-        types: [go]
-        pass_filenames: false
+      - id: golangci-lint
+        args: [--timeout=5m]
