@@ -8,6 +8,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
+	"github.com/orang-gaboets/repo-builder/pkg/github/users"
 )
 
 // MockClient is a lightweight Client implementation for tests.
@@ -15,6 +16,7 @@ type MockClient struct {
 	OrganizationsService organizations.Service
 	TeamsService         teams.Service
 	ReposService         repos.Service
+	UsersService         users.Service
 }
 
 // Organizations returns the mock Organizations service.
@@ -30,6 +32,11 @@ func (m MockClient) Repositories() repos.Service {
 // Teams returns the mock Teams service.
 func (m MockClient) Teams() teams.Service {
 	return m.TeamsService
+}
+
+// Users returns the mock Users service.
+func (m MockClient) Users() users.Service {
+	return m.UsersService
 }
 
 // MockRepoService is a mock implementation of repos.Service for testing purposes.
@@ -81,9 +88,17 @@ func (MockTeamsService) GetTeamBySlug(_ context.Context, _, _ string) (*gh.Team,
 // MockOrganizationService is a mock implementation of organizations.Service for testing purposes.
 type MockOrganizationService struct{}
 
-// Get retrieves organization details by name.
+// Get mocks the retrieval organization details by name.
 func (MockOrganizationService) Get(_ context.Context, _ string) (*gh.Organization, *gh.Response, error) {
 	return &gh.Organization{}, nil, nil
+}
+
+// MockUserService is a mock implementation of users.Service for testing purposes.
+type MockUserService struct{}
+
+// Get mocks the retrieval of user details by username.
+func (MockUserService) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
+	return &gh.User{}, nil, nil
 }
 
 func mockNewPATClient(_ context.Context, _ string) Client {
@@ -91,6 +106,7 @@ func mockNewPATClient(_ context.Context, _ string) Client {
 		OrganizationsService: MockOrganizationService{},
 		ReposService:         MockRepoService{},
 		TeamsService:         MockTeamsService{},
+		UsersService:         MockUserService{},
 	}
 }
 
@@ -99,6 +115,7 @@ func mockNewAppClient(_, _ int64, _ string) (Client, error) {
 		OrganizationsService: MockOrganizationService{},
 		ReposService:         MockRepoService{},
 		TeamsService:         MockTeamsService{},
+		UsersService:         MockUserService{},
 	}, nil
 }
 

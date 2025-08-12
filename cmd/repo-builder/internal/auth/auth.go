@@ -10,6 +10,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
+	"github.com/orang-gaboets/repo-builder/pkg/github/users"
 )
 
 // Client defines the GitHub client contract used by commands.
@@ -17,6 +18,7 @@ type Client interface {
 	Organizations() organizations.Service
 	Repositories() repos.Service
 	Teams() teams.Service
+	Users() users.Service
 }
 
 type githubClientWrapper struct {
@@ -26,6 +28,7 @@ type githubClientWrapper struct {
 func (g githubClientWrapper) Organizations() organizations.Service { return g.Client.Organizations }
 func (g githubClientWrapper) Repositories() repos.Service          { return g.Client.Repositories }
 func (g githubClientWrapper) Teams() teams.Service                 { return g.Client.Teams }
+func (g githubClientWrapper) Users() users.Service                 { return g.Client.Users }
 
 var (
 	// originalNewPATClient is the original function to create a new GitHub client using a personal access token.

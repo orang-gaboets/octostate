@@ -16,7 +16,7 @@ func NewOrganizationCmd(svc organizations.Service) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		GetOrgByName(svc),
+		GetOrgByNameCmd(svc),
 	)
 
 	return cmd

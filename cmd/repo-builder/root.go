@@ -5,6 +5,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/team"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/topic"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/user"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,7 @@ func newRootCmd() *cobra.Command {
 		repo.NewRepoCmd(nil),
 		team.NewTeamCmd(nil),
 		topic.NewTopicCmd(nil),
+		user.NewUserCmd(nil),
 	)
 
 	return cmd

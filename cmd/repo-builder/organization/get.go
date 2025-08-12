@@ -10,8 +10,8 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 )
 
-// GetOrgByName creates a new command to get organization details by name.
-func GetOrgByName(svc organizations.Service) *cobra.Command {
+// GetOrgByNameCmd creates a new command to get organization details by name.
+func GetOrgByNameCmd(svc organizations.Service) *cobra.Command {
 	var (
 		token          string
 		appID          int64

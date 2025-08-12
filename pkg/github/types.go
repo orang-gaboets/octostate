@@ -194,3 +194,48 @@ func OrganizationFromGhOrg(ghOrg *gh.Organization) *Organization {
 		ReposURL: ghOrg.ReposURL,
 	}
 }
+
+// User represents a GitHub user.
+type User struct {
+	ID        *int64
+	Name      *string
+	Email     *string
+	URL       *string
+	CreatedAt *time.Time
+	UpdatedAt *time.Time
+}
+
+// String implements fmt.Stringer and pretty-prints JSON.
+func (u User) String() string {
+	b, err := json.MarshalIndent(u, "", "  ")
+	if err != nil {
+		return "User<marshal error>"
+	}
+	return string(b)
+}
+
+// UserFromGhUser converts a GitHub user from the go-github library to the internal User type.
+func UserFromGhUser(ghUser *gh.User) *User {
+	if ghUser == nil {
+		return nil
+	}
+
+	return &User{
+		ID:    ghUser.ID,
+		Name:  ghUser.Name,
+		Email: ghUser.Email,
+		URL:   ghUser.HTMLURL,
+		CreatedAt: func() *time.Time {
+			if ghUser.CreatedAt != nil {
+				return &ghUser.CreatedAt.Time
+			}
+			return nil
+		}(),
+		UpdatedAt: func() *time.Time {
+			if ghUser.UpdatedAt != nil {
+				return &ghUser.UpdatedAt.Time
+			}
+			return nil
+		}(),
+	}
+}
