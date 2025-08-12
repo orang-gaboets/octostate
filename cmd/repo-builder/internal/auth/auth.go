@@ -7,12 +7,14 @@ import (
 	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	githubclient "github.com/orang-gaboets/repo-builder/pkg/github/client"
+	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
 
 // Client defines the GitHub client contract used by commands.
 type Client interface {
+	Organizations() organizations.Service
 	Repositories() repos.Service
 	Teams() teams.Service
 }
@@ -21,8 +23,9 @@ type githubClientWrapper struct {
 	*gh.Client
 }
 
-func (g githubClientWrapper) Repositories() repos.Service { return g.Client.Repositories }
-func (g githubClientWrapper) Teams() teams.Service        { return g.Client.Teams }
+func (g githubClientWrapper) Organizations() organizations.Service { return g.Client.Organizations }
+func (g githubClientWrapper) Repositories() repos.Service          { return g.Client.Repositories }
+func (g githubClientWrapper) Teams() teams.Service                 { return g.Client.Teams }
 
 var (
 	// originalNewPATClient is the original function to create a new GitHub client using a personal access token.

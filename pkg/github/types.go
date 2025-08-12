@@ -1,7 +1,8 @@
 package github
 
 import (
-	"fmt"
+	"encoding/json"
+	"time"
 
 	gh "github.com/google/go-github/v55/github"
 )
@@ -13,6 +14,15 @@ type Repository struct {
 	Private     bool
 	Description string
 	Topics      []string
+}
+
+// String returns a string representation of the Repository.
+func (r *Repository) String() string {
+	b, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return "Repository<marshal error>"
+	}
+	return string(b)
 }
 
 // TeamPrivacy defines the privacy level of a GitHub team.
@@ -112,36 +122,11 @@ type Team struct {
 
 // String returns a string representation of the Team.
 func (t *Team) String() string {
-	if t == nil {
-		return "nil"
+	b, err := json.MarshalIndent(t, "", "  ")
+	if err != nil {
+		return "Team<marshal error>"
 	}
-	return fmt.Sprintf(
-		"Team{Id: %d, Slug: %q, Org: %q, Name: %q, Description: %q, Privacy: %q, NotificationSettings: %q, Repos: %d, ParentTeam: %s}",
-		t.ID,
-		t.Slug,
-		t.Org,
-		t.Name,
-		t.Description,
-		func() string {
-			if t.Privacy.IsValid() {
-				return t.Privacy.String()
-			}
-			return "invalid"
-		}(),
-		func() string {
-			if t.NotificationSettings != nil {
-				return t.NotificationSettings.String()
-			}
-			return "nil"
-		}(),
-		len(t.Repos),
-		func() string {
-			if t.ParentTeam != nil {
-				return t.ParentTeam.String()
-			}
-			return "nil"
-		}(),
-	)
+	return string(b)
 }
 
 // TeamFromGhTeam converts a GitHub team from the go-github library to the internal Team type.
@@ -162,5 +147,50 @@ func TeamFromGhTeam(ghTeam *gh.Team) *Team {
 		NotificationSettings: nil, // Notification settings are not included in the GitHub team object
 		Repos:                nil, // TODO: Left as nil for now, implementation for handling repositories can be added later
 		ParentTeam:           TeamFromGhTeam(parentTeam),
+	}
+}
+
+// Organization represents a GitHub organization.
+type Organization struct {
+	ID          *int64
+	Name        *string
+	Description *string
+	CreatedAt   *time.Time
+	UpdatedAt   *time.Time
+	ReposURL    *string
+}
+
+// String implements fmt.Stringer and pretty-prints JSON.
+func (o Organization) String() string {
+	b, err := json.MarshalIndent(o, "", "  ")
+	if err != nil {
+		return "Organization<marshal error>"
+	}
+	return string(b)
+}
+
+// OrganizationFromGhOrg converts a GitHub organization from the go-github library to the internal Organization type.
+func OrganizationFromGhOrg(ghOrg *gh.Organization) *Organization {
+	if ghOrg == nil {
+		return nil
+	}
+
+	return &Organization{
+		ID:          ghOrg.ID,
+		Name:        ghOrg.Name,
+		Description: ghOrg.Description,
+		CreatedAt: func() *time.Time {
+			if ghOrg.CreatedAt != nil {
+				return &ghOrg.CreatedAt.Time
+			}
+			return nil
+		}(),
+		UpdatedAt: func() *time.Time {
+			if ghOrg.UpdatedAt != nil {
+				return &ghOrg.UpdatedAt.Time
+			}
+			return nil
+		}(),
+		ReposURL: ghOrg.ReposURL,
 	}
 }

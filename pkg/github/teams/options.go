@@ -8,7 +8,7 @@ type CreateTeamOptions struct {
 	Service Service
 }
 
-// DeleteTeamOptions defines the options for deleting a team.
+// DeleteTeamBySlugOptions defines the options for deleting a team.
 type DeleteTeamBySlugOptions struct {
 	Org     string
 	Slug    string
