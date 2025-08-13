@@ -16,7 +16,8 @@ func NewUserCmd(svc users.Service) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		GetUserCmd(svc),
+		GetUserByIDCmd(svc),
+		GetUserByUsernameCmd(svc),
 	)
 
 	return cmd

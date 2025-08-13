@@ -101,6 +101,11 @@ func (MockUserService) Get(_ context.Context, _ string) (*gh.User, *gh.Response,
 	return &gh.User{}, nil, nil
 }
 
+// GetByID mocks the retrieval of user details by ID.
+func (MockUserService) GetByID(_ context.Context, _ int64) (*gh.User, *gh.Response, error) {
+	return &gh.User{}, nil, nil
+}
+
 func mockNewPATClient(_ context.Context, _ string) Client {
 	return MockClient{
 		OrganizationsService: MockOrganizationService{},

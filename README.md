@@ -75,6 +75,21 @@ All commands require GitHub authentication. You must supply exactly one of the f
 
 Providing both methods or neither results in an error.
 
+### Organizations
+
+#### Get Organization Details by Name
+
+```bash
+repo-builder org get-by-name --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+
 ### Repo
 
 #### Create a New Repository Based on a Template
@@ -224,6 +239,34 @@ repo-builder team get --app-id <app-id> --installation-id <installation-id> --ap
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--slug` (required): Team slug (URL-friendly name)
+
+### User
+
+#### Get User Details by ID
+
+```bash
+repo-builder user get-by-id --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --id <user-id>
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--id` (required): User ID
+
+#### Get User Details by Username
+
+```bash
+repo-builder user get-by-username --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --username <username>
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--username` (required): GitHub username
 
 ## Testing
 To run tests, use the following command:

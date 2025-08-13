@@ -10,8 +10,8 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github/users"
 )
 
-// GetUserCmd creates a command to retrieve a GitHub user by their username.
-func GetUserCmd(svc users.Service) *cobra.Command {
+// GetUserByUsernameCmd creates a command to retrieve a GitHub user by their username.
+func GetUserByUsernameCmd(svc users.Service) *cobra.Command {
 	var (
 		token          string
 		appID          int64
@@ -21,13 +21,13 @@ func GetUserCmd(svc users.Service) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:     "get",
-		Aliases: []string{"g", "find", "fetch"},
+		Use:     "get-by-username",
+		Aliases: []string{"gbu", "find-by-username", "fetch-by-username"},
 		Short:   "Get user details by username",
 		Long:    "Retrieve details of a GitHub user by their username.",
 		Example: `
-			repo-builder user get --token <token> --username <username>
-			repo-builder user get --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --username <username>`,
+			repo-builder user get-by-username --token <token> --username <username>
+			repo-builder user get-by-username --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --username <username>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			service := svc
@@ -38,12 +38,12 @@ func GetUserCmd(svc users.Service) *cobra.Command {
 				}
 				service = client.Users()
 			}
-			opts := users.GetUserOptions{
+			opts := users.GetUserByUsernameOptions{
 				Service:  service,
 				Username: strings.TrimSpace(username),
 			}
 
-			_, err := users.GetUser(ctx, opts)
+			_, err := users.GetUserByUsername(ctx, opts)
 			return err
 		},
 	}

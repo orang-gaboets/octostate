@@ -10,4 +10,6 @@ import (
 type Service interface {
 	// Get retrieves a GitHub user by their username.
 	Get(ctx context.Context, username string) (*gh.User, *gh.Response, error)
+	// GetByID retrieves a GitHub user by their ID.
+	GetByID(ctx context.Context, id int64) (*gh.User, *gh.Response, error)
 }
