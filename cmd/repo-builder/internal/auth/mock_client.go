@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
@@ -37,6 +38,19 @@ func (m MockClient) Teams() teams.Service {
 // Users returns the mock Users service.
 func (m MockClient) Users() users.Service {
 	return m.UsersService
+}
+
+// MockOrganizationService is a mock implementation of organizations.Service for testing purposes.
+type MockOrganizationService struct{}
+
+// CreateOrgInvitation mocks the creation of an organization invitation.
+func (MockOrganizationService) CreateOrgInvitation(_ context.Context, _ string, _ *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+	return &gh.Invitation{}, nil, nil
+}
+
+// Get mocks the retrieval organization details by name.
+func (MockOrganizationService) Get(_ context.Context, _ string) (*gh.Organization, *gh.Response, error) {
+	return &gh.Organization{}, nil, nil
 }
 
 // MockRepoService is a mock implementation of repos.Service for testing purposes.
@@ -85,20 +99,14 @@ func (MockTeamsService) GetTeamBySlug(_ context.Context, _, _ string) (*gh.Team,
 	return &gh.Team{}, nil, nil
 }
 
-// MockOrganizationService is a mock implementation of organizations.Service for testing purposes.
-type MockOrganizationService struct{}
-
-// Get mocks the retrieval organization details by name.
-func (MockOrganizationService) Get(_ context.Context, _ string) (*gh.Organization, *gh.Response, error) {
-	return &gh.Organization{}, nil, nil
-}
-
 // MockUserService is a mock implementation of users.Service for testing purposes.
 type MockUserService struct{}
 
 // Get mocks the retrieval of user details by username.
 func (MockUserService) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
-	return &gh.User{}, nil, nil
+	return &gh.User{
+		ID: github.Ptr(int64(12345)),
+	}, nil, nil
 }
 
 // GetByID mocks the retrieval of user details by ID.
