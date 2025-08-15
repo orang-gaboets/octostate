@@ -8,7 +8,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
 )
 
-// ListAllTopicsCmd lists a new command to list all topics of an existing GitHub repository.
+// ListAllTopicsCmd creates a command to list all topics of an existing GitHub repository.
 func ListAllTopicsCmd(svc topics.Service) *cobra.Command {
 	var (
 		token          string

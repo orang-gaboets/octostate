@@ -42,7 +42,7 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 			}
 			var topicsList []string
 			if topicsStr != "" {
-				topicsList = strings.Split(topicsStr, ",")
+				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
 			opts := topics.ReplaceAllTopicsOptions{
 				Repo: github.Repository{

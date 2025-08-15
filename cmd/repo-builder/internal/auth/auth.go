@@ -77,7 +77,7 @@ func ResetClients() {
 // or a GitHub App's credentials.
 func NewClient(ctx context.Context, token string, appID, installationID int64, appKeyPath string) (Client, error) {
 	tokenProvided := token != ""
-	appProvided := appID != 0 || installationID != 0 || appKeyPath != ""
+	appProvided := appID > 0 || installationID > 0 || appKeyPath != ""
 
 	switch {
 	case tokenProvided && appProvided:

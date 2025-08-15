@@ -47,17 +47,17 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 			}
 			var topicList []string
 			if topics != "" {
-				topicList = strings.Split(topics, ",")
+				topicList = strings.Split(strings.TrimSpace(topics), ",")
 			}
 			if templateOrg == "" {
 				templateOrg = org
 			}
 			opts := repos.CreateFromTemplateOptions{
 				NewRepo: github.Repository{
-					Org:         org,
-					Name:        name,
+					Org:         strings.TrimSpace(org),
+					Name:        strings.TrimSpace(name),
 					Private:     private,
-					Description: desc,
+					Description: strings.TrimSpace(desc),
 					Topics:      topicList,
 				},
 				TemplateRepo: github.Repository{

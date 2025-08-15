@@ -101,6 +101,6 @@ func WrapError(err error, message string) error {
 	case http.StatusUnprocessableEntity:
 		return fmt.Errorf("%s: %w", message, errors.Join(ErrValidationFailed, apiErr))
 	default:
-		return apiErr
+		return fmt.Errorf("%s: %w", message, apiErr)
 	}
 }

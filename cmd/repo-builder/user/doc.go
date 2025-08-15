@@ -1,4 +1,4 @@
-// Package user provides the user management functionalies and structures
+// Package user provides the user management functionalities and structures
 // for managing and interacting with users within the
 // repo-builder CLI application. This package includes commands
 // and utilities to facilitate user-related operations
