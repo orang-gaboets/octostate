@@ -25,6 +25,36 @@ func (r *Repository) String() string {
 	return string(b)
 }
 
+// RepositoryFromGhRepo converts a GitHub repository from the go-github library
+// to the internal Repository type.
+func RepositoryFromGhRepo(ghRepo *gh.Repository) *Repository {
+	if ghRepo == nil {
+		return nil
+	}
+
+	owner := ghRepo.GetOwner()
+
+	return &Repository{
+		Org:         owner.GetLogin(),
+		Name:        ghRepo.GetName(),
+		Private:     ghRepo.GetPrivate(),
+		Description: ghRepo.GetDescription(),
+		Topics:      ghRepo.Topics,
+	}
+}
+
+// RepositoriesFromGhRepos converts a slice of GitHub repositories to a slice
+// of internal Repository types.
+func RepositoriesFromGhRepos(ghRepos []*gh.Repository) []Repository {
+	repos := make([]Repository, 0, len(ghRepos))
+	for _, r := range ghRepos {
+		if repo := RepositoryFromGhRepo(r); repo != nil {
+			repos = append(repos, *repo)
+		}
+	}
+	return repos
+}
+
 // TeamPrivacy defines the privacy level of a GitHub team.
 type TeamPrivacy string
 
@@ -148,6 +178,30 @@ func TeamFromGhTeam(ghTeam *gh.Team) *Team {
 		Repos:                nil, // TODO: Left as nil for now, implementation for handling repositories can be added later
 		ParentTeam:           TeamFromGhTeam(parentTeam),
 	}
+}
+
+// TeamsFromGhTeams converts a slice of GitHub teams to a slice of internal
+// Team types.
+func TeamsFromGhTeams(ghTeams []*gh.Team) []*Team {
+	teams := make([]*Team, 0, len(ghTeams))
+	for _, t := range ghTeams {
+		if team := TeamFromGhTeam(t); team != nil {
+			teams = append(teams, team)
+		}
+	}
+	return teams
+}
+
+// UsersFromGhUsers converts a slice of GitHub users to a slice of internal
+// User types.
+func UsersFromGhUsers(ghUsers []*gh.User) []*User {
+	users := make([]*User, 0, len(ghUsers))
+	for _, u := range ghUsers {
+		if user := UserFromGhUser(u); user != nil {
+			users = append(users, user)
+		}
+	}
+	return users
 }
 
 // Organization represents a GitHub organization.
