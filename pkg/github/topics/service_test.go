@@ -75,7 +75,8 @@ func TestListAllTopicsSuccess(t *testing.T) {
 	}
 
 	option := ListAllTopicsOptions{
-		Repo:    existingRepo,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 		Service: service,
 	}
 
@@ -100,7 +101,8 @@ func TestListAllTopicsNotFound(t *testing.T) {
 	}
 
 	option := ListAllTopicsOptions{
-		Repo:    nonExistentRepo,
+		Repo:    nonExistentRepo.Name,
+		Owner:   nonExistentRepo.Org,
 		Service: service,
 	}
 
@@ -121,7 +123,8 @@ func TestReplaceAllTopicsSuccess(t *testing.T) {
 	}
 
 	option := ReplaceAllTopicsOptions{
-		Repo:    existingRepo,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 		Service: service,
 		Topics:  replacedTopics,
 	}
@@ -162,7 +165,8 @@ func TestReplaceAllTopicsEmpty(t *testing.T) {
 	}
 
 	option := ReplaceAllTopicsOptions{
-		Repo:    existingRepo,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 		Service: service,
 		Topics:  emptyTopics,
 	}
@@ -184,7 +188,8 @@ func TestReplaceAllTopicsNotFound(t *testing.T) {
 	}
 
 	option := ReplaceAllTopicsOptions{
-		Repo:    nonExistentRepo,
+		Repo:    nonExistentRepo.Name,
+		Owner:   nonExistentRepo.Org,
 		Service: service,
 		Topics:  replacedTopics,
 	}
@@ -209,7 +214,8 @@ func TestAddTopicsSuccess(t *testing.T) {
 	}
 
 	option := AddTopicsOptions{
-		Repo:    existingRepo,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 		Service: service,
 		Topics:  replacedTopics,
 	}
@@ -238,7 +244,8 @@ func TestAddTopicsDuplicate(t *testing.T) {
 		replaceCalled: false,
 	}
 	option := AddTopicsOptions{
-		Repo:    existingRepo,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 		Service: service,
 		Topics:  addDuplicateTopics,
 	}
@@ -267,7 +274,8 @@ func TestAddTopicsEmpty(t *testing.T) {
 	}
 
 	option := AddTopicsOptions{
-		Repo:    existingRepo,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 		Service: service,
 		Topics:  emptyTopics,
 	}
@@ -293,7 +301,8 @@ func TestAddTopicsNotFound(t *testing.T) {
 	}
 
 	option := AddTopicsOptions{
-		Repo:    nonExistentRepo,
+		Repo:    nonExistentRepo.Name,
+		Owner:   nonExistentRepo.Org,
 		Service: service,
 		Topics:  replacedTopics,
 	}

@@ -45,7 +45,8 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
 			opts := topics.AddTopicsOptions{
-				Repo:    github.Repository{Org: org, Name: name},
+				Repo:    name,
+				Owner:   org,
 				Topics:  topicsList,
 				Service: service,
 			}

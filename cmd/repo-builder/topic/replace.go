@@ -45,10 +45,8 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
 			opts := topics.ReplaceAllTopicsOptions{
-				Repo: github.Repository{
-					Org:  org,
-					Name: name,
-				},
+				Repo:    name,
+				Owner:   org,
 				Topics:  topicsList,
 				Service: service,
 			}

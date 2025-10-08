@@ -45,7 +45,8 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 	log.Printf("Repository successfully created at: %s", newRepoURL)
 
 	listTemplateTopicsOptions := topics.ListAllTopicsOptions{
-		Repo:    opts.TemplateRepo,
+		Owner:   opts.TemplateRepo.Org,
+		Repo:    opts.TemplateRepo.Name,
 		Service: opts.Service,
 	}
 	templateTopics, err := topics.ListAllTopics(ctx, listTemplateTopicsOptions)
@@ -57,7 +58,8 @@ func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*g
 
 	if len(uniqueTopics) > 0 {
 		newRepoTopicsOptions := topics.ReplaceAllTopicsOptions{
-			Repo:    opts.NewRepo,
+			Owner:   opts.NewRepo.Org,
+			Repo:    opts.NewRepo.Name,
 			Service: opts.Service,
 			Topics:  uniqueTopics,
 		}

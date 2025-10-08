@@ -38,10 +38,8 @@ func ListAllTopicsCmd(svc topics.Service) *cobra.Command {
 				service = client.Repositories()
 			}
 			opts := topics.ListAllTopicsOptions{
-				Repo: github.Repository{
-					Org:  org,
-					Name: name,
-				},
+				Repo:    name,
+				Owner:   org,
 				Service: service,
 			}
 			_, err := topics.ListAllTopics(ctx, opts)
