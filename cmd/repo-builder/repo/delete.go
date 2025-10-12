@@ -43,10 +43,8 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 			}
 
 			opts := repos.DeleteOptions{
-				Repository: github.Repository{
-					Org:  org,
-					Name: name,
-				},
+				Repo:    name,
+				Owner:   org,
 				Service: service,
 			}
 

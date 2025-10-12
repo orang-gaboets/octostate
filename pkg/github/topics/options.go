@@ -8,9 +8,9 @@ import (
 
 // ListAllTopicsOptions defines the options for listing all topics of a repository.
 type ListAllTopicsOptions struct {
+	Service Service
 	Repo    string
 	Owner   string
-	Service Service
 }
 
 // Validate checks if the ListAllTopicsOptions are valid.
@@ -26,10 +26,10 @@ func (opt ListAllTopicsOptions) Validate() error {
 
 // ReplaceAllTopicsOptions defines the options for replacing all topics of a repository.
 type ReplaceAllTopicsOptions struct {
+	Service Service
 	Repo    string
 	Owner   string
 	Topics  []string
-	Service Service
 }
 
 // Validate checks if the ReplaceAllTopicsOptions are valid.
@@ -48,10 +48,10 @@ func (opt ReplaceAllTopicsOptions) Validate() error {
 
 // AddTopicsOptions defines the options for adding topics to a repository.
 type AddTopicsOptions struct {
+	Service Service
 	Repo    string
 	Owner   string
 	Topics  []string
-	Service Service
 }
 
 // Validate checks if the AddTopicsOptions are valid.

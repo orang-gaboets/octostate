@@ -12,109 +12,105 @@ import (
 )
 
 // CreateFromTemplate creates a repository from a template and optionally sets topics.
-func CreateFromTemplate(ctx context.Context, opts CreateFromTemplateOptions) (*gh.Repository, error) {
-	if opts.Service == nil {
-		return nil, github.ErrNilService
-	}
-
-	if opts.NewRepo.Org == "" || opts.NewRepo.Name == "" || opts.TemplateRepo.Org == "" || opts.TemplateRepo.Name == "" {
-		return nil, github.ErrMissingRequiredField
+func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (*gh.Repository, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
 	}
 
 	req := &gh.TemplateRepoRequest{
-		Owner:              &opts.NewRepo.Org,
-		Name:               &opts.NewRepo.Name,
-		Description:        &opts.NewRepo.Description,
-		Private:            &opts.NewRepo.Private,
-		IncludeAllBranches: &opts.IncludeAllBranches,
+		Owner:              &option.Owner,
+		Name:               &option.Name,
+		Description:        option.Description,
+		Private:            option.Private,
+		IncludeAllBranches: &option.IncludeAllBranches,
 	}
 
-	log.Printf("Creating repository %s/%s from template %s/%s", opts.NewRepo.Org, opts.NewRepo.Name, opts.TemplateRepo.Org, opts.TemplateRepo.Name)
+	log.Printf("Creating repository %s/%s from template %s/%s", option.Owner, option.Name, option.TemplateOwner, option.TemplateRepo)
 
-	newRepo, _, err := opts.Service.CreateFromTemplate(ctx, opts.TemplateRepo.Org, opts.TemplateRepo.Name, req)
+	newRepo, _, err := option.Service.CreateFromTemplate(ctx, option.TemplateOwner, option.TemplateRepo, req)
 	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository from template %s/%s", opts.TemplateRepo.Org, opts.TemplateRepo.Name))
+		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository from template %s/%s", option.TemplateOwner, option.TemplateRepo))
 	}
 	var newRepoURL string
 	if newRepo != nil {
 		newRepoURL = newRepo.GetHTMLURL()
 	}
 	if newRepoURL == "" {
-		newRepoURL = "https://github.com/" + opts.NewRepo.Org + "/" + opts.NewRepo.Name
+		newRepoURL = "https://github.com/" + option.Owner + "/" + option.Name
 	}
 	log.Printf("Repository successfully created at: %s", newRepoURL)
 
 	listTemplateTopicsOptions := topics.ListAllTopicsOptions{
-		Owner:   opts.TemplateRepo.Org,
-		Repo:    opts.TemplateRepo.Name,
-		Service: opts.Service,
+		Owner:   option.TemplateOwner,
+		Repo:    option.TemplateRepo,
+		Service: option.Service,
 	}
 	templateTopics, err := topics.ListAllTopics(ctx, listTemplateTopicsOptions)
 	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", opts.TemplateRepo.Org, opts.TemplateRepo.Name))
+		return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", option.TemplateOwner, option.TemplateRepo))
 	}
 
-	uniqueTopics := github.MergeUnique(opts.NewRepo.Topics, templateTopics)
+	uniqueTopics := github.MergeUnique(option.Topics, templateTopics)
 
 	if len(uniqueTopics) > 0 {
 		newRepoTopicsOptions := topics.ReplaceAllTopicsOptions{
-			Owner:   opts.NewRepo.Org,
-			Repo:    opts.NewRepo.Name,
-			Service: opts.Service,
+			Owner:   option.Owner,
+			Repo:    option.Name,
+			Service: option.Service,
 			Topics:  uniqueTopics,
 		}
 		_, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
 		if err != nil {
-			return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", opts.NewRepo.Org, opts.NewRepo.Name))
+			return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", option.Owner, option.Name))
 		}
 	}
 	return newRepo, nil
 }
 
 // Delete removes a repository from GitHub.
-func Delete(ctx context.Context, opts DeleteOptions) error {
-	if opts.Service == nil {
-		return github.ErrNilService
+func Delete(ctx context.Context, option DeleteOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
 	}
 
-	log.Printf("Deleting repository %s/%s", opts.Repository.Org, opts.Repository.Name)
+	log.Printf("Deleting repository %s/%s", option.Owner, option.Repo)
 
-	_, err := opts.Service.Delete(ctx, opts.Repository.Org, opts.Repository.Name)
+	_, err := option.Service.Delete(ctx, option.Owner, option.Repo)
 	if err != nil {
-		return github.WrapError(err, fmt.Sprintf("failed to delete repository %s/%s", opts.Repository.Org, opts.Repository.Name))
+		return github.WrapError(err, fmt.Sprintf("failed to delete repository %s/%s", option.Owner, option.Repo))
 	}
 
-	log.Printf("Repository %s/%s successfully deleted", opts.Repository.Org, opts.Repository.Name)
+	log.Printf("Repository %s/%s successfully deleted", option.Owner, option.Repo)
 	return nil
 }
 
 // Edit updates the properties of an existing repository.
-func Edit(ctx context.Context, opts EditOptions) (*gh.Repository, error) {
-	if opts.Service == nil {
-		return nil, github.ErrNilService
+func Edit(ctx context.Context, option EditOptions) (*gh.Repository, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
 	}
 
 	repo := &gh.Repository{
-		Description:  opts.Description,
-		Homepage:     opts.Homepage,
-		Private:      opts.Private,
-		IsTemplate:   opts.IsTemplate,
-		Archived:     opts.Archived,
-		AllowForking: opts.AllowForking,
+		Description:  option.Description,
+		Homepage:     option.Homepage,
+		Private:      option.Private,
+		IsTemplate:   option.IsTemplate,
+		Archived:     option.Archived,
+		AllowForking: option.AllowForking,
 	}
 
-	log.Printf("Editing repository %s/%s with options: %+v", opts.Repository.Org, opts.Repository.Name, repo)
+	log.Printf("Editing repository %s/%s with options: %+v", option.Owner, option.Repo, repo)
 
-	updatedRepo, _, err := opts.Service.Edit(ctx, opts.Repository.Org, opts.Repository.Name, repo)
+	updatedRepo, _, err := option.Service.Edit(ctx, option.Owner, option.Repo, repo)
 	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to edit repository %s/%s", opts.Repository.Org, opts.Repository.Name))
+		return nil, github.WrapError(err, fmt.Sprintf("failed to edit repository %s/%s", option.Owner, option.Repo))
 	}
 	var updatedRepoURL string
 	if updatedRepo != nil {
 		updatedRepoURL = updatedRepo.GetHTMLURL()
 	}
 	if updatedRepoURL == "" {
-		updatedRepoURL = "https://github.com/" + opts.Repository.Org + "/" + opts.Repository.Name
+		updatedRepoURL = "https://github.com/" + option.Owner + "/" + option.Repo
 	}
 
 	log.Printf("Repository successfully edited: %s", updatedRepoURL)

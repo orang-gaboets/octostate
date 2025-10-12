@@ -53,17 +53,13 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 				templateOrg = org
 			}
 			opts := repos.CreateFromTemplateOptions{
-				NewRepo: github.Repository{
-					Org:         strings.TrimSpace(org),
-					Name:        strings.TrimSpace(name),
-					Private:     private,
-					Description: strings.TrimSpace(desc),
-					Topics:      topicList,
-				},
-				TemplateRepo: github.Repository{
-					Org:  templateOrg,
-					Name: templateName,
-				},
+				Name:               strings.TrimSpace(name),
+				Owner:              strings.TrimSpace(org),
+				TemplateRepo:       strings.TrimSpace(templateName),
+				TemplateOwner:      strings.TrimSpace(templateOrg),
+				Description:        &desc,
+				Private:            &private,
+				Topics:             topicList,
 				IncludeAllBranches: includeAllBranches,
 				Service:            service,
 			}

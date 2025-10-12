@@ -40,7 +40,8 @@ var (
 	}
 
 	completeEditOptions = EditOptions{
-		Repository:   existingRepo,
+		Repo:         existingRepo.Name,
+		Owner:        existingRepo.Org,
 		Description:  github.Ptr("new description"),
 		Homepage:     github.Ptr("https://example.com"),
 		Private:      github.Ptr(true),
@@ -50,7 +51,8 @@ var (
 	}
 
 	partialEditOptions = EditOptions{
-		Repository:  existingRepo,
+		Repo:        existingRepo.Name,
+		Owner:       existingRepo.Org,
 		Description: github.Ptr("partial description"),
 		IsTemplate:  github.Ptr(true),
 	}
@@ -124,11 +126,9 @@ func (m *mockService) Delete(_ context.Context, owner, repo string) (*gh.Respons
 func (m *mockService) Edit(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 	m.editCalled = true
 	m.editOptions = EditOptions{
-		Service: m,
-		Repository: github.Repository{
-			Org:  owner,
-			Name: repo,
-		},
+		Service:      m,
+		Owner:        owner,
+		Repo:         repo,
 		Description:  repository.Description,
 		Homepage:     repository.Homepage,
 		Private:      repository.Private,
@@ -197,9 +197,14 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 	}
 
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      newRepo,
-		TemplateRepo: templateRepo,
+		Service:       mockSvc,
+		Name:          newRepo.Name,
+		Owner:         newRepo.Org,
+		Description:   &newRepo.Description,
+		Private:       &newRepo.Private,
+		Topics:        newRepo.Topics,
+		TemplateRepo:  templateRepo.Name,
+		TemplateOwner: templateRepo.Org,
 	}
 
 	uniqueTopics := github.MergeUnique(newRepo.Topics, templateRepo.Topics)
@@ -250,9 +255,11 @@ func TestCreateFromTemplateInvalidTemplate(t *testing.T) {
 		createErr:    nil,
 	}
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      newRepo,
-		TemplateRepo: invalidTemplateRepo,
+		Service:       mockSvc,
+		Name:          newRepo.Name,
+		Owner:         newRepo.Org,
+		TemplateRepo:  invalidTemplateRepo.Name,
+		TemplateOwner: invalidTemplateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -270,9 +277,11 @@ func TestCreateFromTemplateExistingRepo(t *testing.T) {
 		createErr:    nil,
 	}
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      existingRepo,
-		TemplateRepo: templateRepo,
+		Service:       mockSvc,
+		Name:          existingRepo.Name,
+		Owner:         existingRepo.Org,
+		TemplateRepo:  templateRepo.Name,
+		TemplateOwner: templateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -290,9 +299,11 @@ func TestCreateFromTemplateErr(t *testing.T) {
 		createErr:    errors.New("create error"),
 	}
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      newRepo,
-		TemplateRepo: templateRepo,
+		Service:       mockSvc,
+		Name:          newRepo.Name,
+		Owner:         newRepo.Org,
+		TemplateRepo:  templateRepo.Name,
+		TemplateOwner: templateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -312,9 +323,11 @@ func TestCreateFromTemplateMissingNewRepoOrg(t *testing.T) {
 	invalidNewRepo := newRepo
 	invalidNewRepo.Org = ""
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      invalidNewRepo,
-		TemplateRepo: templateRepo,
+		Service:       mockSvc,
+		Name:          invalidNewRepo.Name,
+		Owner:         invalidNewRepo.Org,
+		TemplateRepo:  templateRepo.Name,
+		TemplateOwner: templateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -331,9 +344,11 @@ func TestCreateFromTemplateMissingNewRepoName(t *testing.T) {
 	invalidNewRepo := newRepo
 	invalidNewRepo.Name = ""
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      invalidNewRepo,
-		TemplateRepo: templateRepo,
+		Service:       mockSvc,
+		Name:          invalidNewRepo.Name,
+		Owner:         invalidNewRepo.Org,
+		TemplateRepo:  templateRepo.Name,
+		TemplateOwner: templateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -350,9 +365,11 @@ func TestCreateFromTemplateMissingTemplateRepoOrg(t *testing.T) {
 	invalidTemplateRepo := templateRepo
 	invalidTemplateRepo.Org = ""
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      newRepo,
-		TemplateRepo: invalidTemplateRepo,
+		Service:       mockSvc,
+		Name:          newRepo.Name,
+		Owner:         newRepo.Org,
+		TemplateRepo:  invalidTemplateRepo.Name,
+		TemplateOwner: invalidTemplateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -365,13 +382,17 @@ func TestCreateFromTemplateMissingTemplateRepoOrg(t *testing.T) {
 }
 
 func TestCreateFromTemplateMissingTemplateRepoName(t *testing.T) {
-	mockSvc := &mockService{}
+	mockSvc := &mockService{
+		createCalled: false,
+	}
 	invalidTemplateRepo := templateRepo
 	invalidTemplateRepo.Name = ""
 	opts := CreateFromTemplateOptions{
-		Service:      mockSvc,
-		NewRepo:      newRepo,
-		TemplateRepo: invalidTemplateRepo,
+		Service:       mockSvc,
+		Name:          newRepo.Name,
+		Owner:         newRepo.Org,
+		TemplateRepo:  invalidTemplateRepo.Name,
+		TemplateOwner: invalidTemplateRepo.Org,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -392,8 +413,9 @@ func TestDeleteSuccess(t *testing.T) {
 	}
 
 	opts := DeleteOptions{
-		Service:    mockSvc,
-		Repository: existingRepo,
+		Service: mockSvc,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 	}
 
 	ctx := context.Background()
@@ -419,8 +441,9 @@ func TestDeleteInvalidRepo(t *testing.T) {
 	}
 
 	opts := DeleteOptions{
-		Service:    mockSvc,
-		Repository: invalidTemplateRepo,
+		Service: mockSvc,
+		Repo:    invalidTemplateRepo.Name,
+		Owner:   invalidTemplateRepo.Org,
 	}
 
 	ctx := context.Background()
@@ -440,8 +463,9 @@ func TestDeleteErr(t *testing.T) {
 	}
 
 	opts := DeleteOptions{
-		Service:    mockSvc,
-		Repository: existingRepo,
+		Service: mockSvc,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Org,
 	}
 
 	ctx := context.Background()
@@ -534,8 +558,9 @@ func TestEditInvalidRepo(t *testing.T) {
 	}
 
 	opts := EditOptions{
-		Service:    mockSvc,
-		Repository: invalidTemplateRepo,
+		Service: mockSvc,
+		Repo:    invalidTemplateRepo.Name,
+		Owner:   invalidTemplateRepo.Org,
 	}
 
 	ctx := context.Background()

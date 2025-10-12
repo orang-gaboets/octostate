@@ -42,12 +42,11 @@ func EditRepo(svc repos.Service) *cobra.Command {
 				}
 				service = client.Repositories()
 			}
-			var opts repos.EditOptions
-			opts.Repository = github.Repository{
-				Org:  org,
-				Name: name,
+			var opts = repos.EditOptions{
+				Repo:    name,
+				Owner:   org,
+				Service: service,
 			}
-			opts.Service = service
 			if cmd.Flags().Changed("desc") {
 				opts.Description = &newDesc
 			}
