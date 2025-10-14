@@ -159,8 +159,12 @@ func TestCreateTeamNoParentSuccess(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeam,
+		Service:        mockSvc,
+		Name:           newTeam.Name,
+		Org:            newTeam.Org,
+		Description:    &newTeam.Description,
+		Privacy:        &newTeam.Privacy,
+		ParentTeamSlug: nil,
 	}
 
 	ctx := context.Background()
@@ -200,8 +204,12 @@ func TestCreateTeamWithParentSuccess(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeamWithParent,
+		Service:        mockSvc,
+		Name:           newTeamWithParent.Name,
+		Org:            newTeamWithParent.Org,
+		Description:    &newTeamWithParent.Description,
+		Privacy:        &newTeamWithParent.Privacy,
+		ParentTeamSlug: &newTeamWithParent.ParentTeam.Slug,
 	}
 
 	ctx := context.Background()
@@ -232,30 +240,6 @@ func TestCreateTeamWithParentSuccess(t *testing.T) {
 	}
 }
 
-func TestCreateTeamWithParentOrgMismatch(t *testing.T) {
-	mockSvc := &mockService{
-		createCalled: false,
-		getCalled:    false,
-	}
-
-	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeamWithParentOrgMismatch,
-	}
-
-	ctx := context.Background()
-	_, err := CreateTeam(ctx, opts)
-	if !errors.Is(err, github.ErrValidationFailed) {
-		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
-	}
-	if mockSvc.getCalled {
-		t.Fatal("expected GetTeamBySlug not to be called")
-	}
-	if mockSvc.createCalled {
-		t.Fatal("expected CreateTeam not to be called")
-	}
-}
-
 func TestCreateTeamWithParentNotFound(t *testing.T) {
 	mockSvc := &mockService{
 		createCalled: false,
@@ -265,8 +249,12 @@ func TestCreateTeamWithParentNotFound(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeamWithParentNotFound,
+		Service:        mockSvc,
+		Name:           newTeamWithParentNotFound.Name,
+		Org:            newTeamWithParentNotFound.Org,
+		Description:    &newTeamWithParentNotFound.Description,
+		Privacy:        &newTeamWithParentNotFound.Privacy,
+		ParentTeamSlug: &newTeamWithParentNotFound.ParentTeam.Slug,
 	}
 
 	ctx := context.Background()
@@ -289,8 +277,12 @@ func TestCreateTeamServiceNil(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: nil,
-		Team:    newTeam,
+		Service:        nil,
+		Name:           newTeam.Name,
+		Org:            newTeam.Org,
+		Description:    &newTeam.Description,
+		Privacy:        &newTeam.Privacy,
+		ParentTeamSlug: nil,
 	}
 
 	ctx := context.Background()
@@ -314,8 +306,12 @@ func TestCreateTeamServiceErrorWithNoGet(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeam,
+		Service:        mockSvc,
+		Name:           newTeam.Name,
+		Org:            newTeam.Org,
+		Description:    &newTeam.Description,
+		Privacy:        &newTeam.Privacy,
+		ParentTeamSlug: nil,
 	}
 
 	ctx := context.Background()
@@ -340,8 +336,12 @@ func TestCreateTeamServiceErrorWithGet(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeamWithParent,
+		Service:        mockSvc,
+		Name:           newTeamWithParent.Name,
+		Org:            newTeamWithParent.Org,
+		ParentTeamSlug: &newTeamWithParent.ParentTeam.Slug,
+		Description:    &newTeamWithParent.Description,
+		Privacy:        &newTeamWithParent.Privacy,
 	}
 
 	ctx := context.Background()
@@ -366,8 +366,12 @@ func TestCreateTeamGetServiceError(t *testing.T) {
 	}
 
 	opts := CreateTeamOptions{
-		Service: mockSvc,
-		Team:    newTeamWithParent,
+		Service:        mockSvc,
+		Name:           newTeamWithParent.Name,
+		Org:            newTeamWithParent.Org,
+		ParentTeamSlug: &newTeamWithParent.ParentTeam.Slug,
+		Description:    &newTeamWithParent.Description,
+		Privacy:        &newTeamWithParent.Privacy,
 	}
 
 	ctx := context.Background()

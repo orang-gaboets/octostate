@@ -11,49 +11,40 @@ import (
 )
 
 // CreateTeam creates a new team in the specified organization.
-func CreateTeam(ctx context.Context, opts CreateTeamOptions) (*github.Team, error) {
-	if opts.Service == nil {
+func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, error) {
+	if option.Service == nil {
 		return nil, github.ErrNilService
 	}
 
-	if len(opts.Team.Repos) > 0 {
-		return nil, fmt.Errorf("creating teams with repositories is not supported yet")
-	}
-
 	var parentTeam *github.Team
-	if opts.Team.ParentTeam != nil {
-		if opts.Team.ParentTeam.Org != opts.Team.Org {
-			return nil, fmt.Errorf("parent team must belong to the same organization as the new team: %w", github.ErrValidationFailed)
-		}
+	if option.ParentTeamSlug != nil {
 		var err error
 		parentTeam, err = GetTeamBySlug(ctx, GetTeamBySlugOptions{
-			Org:     opts.Team.ParentTeam.Org,
-			Slug:    opts.Team.ParentTeam.Slug,
-			Service: opts.Service,
+			Org:     option.Org,
+			Slug:    *option.ParentTeamSlug,
+			Service: option.Service,
 		})
 		if err != nil {
-			return nil, github.WrapError(err, fmt.Sprintf("failed to retrieve parent team %s/%s", opts.Team.ParentTeam.Org, opts.Team.ParentTeam.Slug))
+			return nil, github.WrapError(err, fmt.Sprintf("failed to retrieve parent team %s/%s", option.Org, *option.ParentTeamSlug))
 		}
 	}
 
-	opts.Team.ParentTeam = parentTeam
-
 	newTeam := gh.NewTeam{
-		Name:        opts.Team.Name,
-		Description: &opts.Team.Description,
-		Privacy:     github.Ptr(opts.Team.Privacy.String()),
+		Name:        option.Name,
+		Description: option.Description,
+		Privacy:     (*string)(option.Privacy),
 		ParentTeamID: func() *int64 {
-			if opts.Team.ParentTeam != nil {
-				return &opts.Team.ParentTeam.ID
+			if option.ParentTeamSlug != nil {
+				return &parentTeam.ID
 			}
 			return nil
 		}(),
 	}
 
-	log.Printf("Creating team %s/%s", opts.Team.Org, opts.Team.Name)
-	ghTeam, _, err := opts.Service.CreateTeam(ctx, opts.Team.Org, newTeam)
+	log.Printf("Creating team %s/%s", option.Org, option.Name)
+	ghTeam, _, err := option.Service.CreateTeam(ctx, option.Org, newTeam)
 	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to create team %s/%s", opts.Team.Org, opts.Team.Name))
+		return nil, github.WrapError(err, fmt.Sprintf("failed to create team %s/%s", option.Org, option.Name))
 	}
 	team := github.TeamFromGhTeam(ghTeam)
 	log.Printf("Successfully created team: %s", team)
@@ -61,33 +52,33 @@ func CreateTeam(ctx context.Context, opts CreateTeamOptions) (*github.Team, erro
 }
 
 // DeleteTeamBySlug deletes a team by its slug within an organization.
-func DeleteTeamBySlug(ctx context.Context, opts DeleteTeamBySlugOptions) error {
-	if opts.Service == nil {
+func DeleteTeamBySlug(ctx context.Context, option DeleteTeamBySlugOptions) error {
+	if option.Service == nil {
 		return github.ErrNilService
 	}
 
-	log.Printf("Deleting team %s/%s", opts.Org, opts.Slug)
+	log.Printf("Deleting team %s/%s", option.Org, option.Slug)
 
-	_, err := opts.Service.DeleteTeamBySlug(ctx, opts.Org, opts.Slug)
+	_, err := option.Service.DeleteTeamBySlug(ctx, option.Org, option.Slug)
 	if err != nil {
-		return github.WrapError(err, fmt.Sprintf("failed to delete team %s/%s", opts.Org, opts.Slug))
+		return github.WrapError(err, fmt.Sprintf("failed to delete team %s/%s", option.Org, option.Slug))
 	}
 
-	log.Printf("Successfully deleted team %s/%s", opts.Org, opts.Slug)
+	log.Printf("Successfully deleted team %s/%s", option.Org, option.Slug)
 	return nil
 }
 
 // GetTeamBySlug retrieves a team by its slug within an organization.
-func GetTeamBySlug(ctx context.Context, opts GetTeamBySlugOptions) (*github.Team, error) {
-	if opts.Service == nil {
+func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Team, error) {
+	if option.Service == nil {
 		return nil, github.ErrNilService
 	}
 
-	log.Printf("Retrieving team %s/%s", opts.Org, opts.Slug)
+	log.Printf("Retrieving team %s/%s", option.Org, option.Slug)
 
-	ghTeam, _, err := opts.Service.GetTeamBySlug(ctx, opts.Org, opts.Slug)
+	ghTeam, _, err := option.Service.GetTeamBySlug(ctx, option.Org, option.Slug)
 	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to get team %s/%s", opts.Org, opts.Slug))
+		return nil, github.WrapError(err, fmt.Sprintf("failed to get team %s/%s", option.Org, option.Slug))
 	}
 
 	team := github.TeamFromGhTeam(ghTeam)

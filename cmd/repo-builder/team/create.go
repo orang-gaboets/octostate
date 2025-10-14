@@ -41,20 +41,17 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 				service = client.Teams()
 			}
 
+			privacy := github.PrivacyFromBool(secret)
+
 			opts := teams.CreateTeamOptions{
-				Team: github.Team{
-					Org:         org,
-					Name:        name,
-					Description: desc,
-					Privacy:     github.PrivacyFromBool(secret),
-				},
-				Service: service,
+				Org:         org,
+				Name:        name,
+				Description: &desc,
+				Privacy:     &privacy,
+				Service:     service,
 			}
 			if cmd.Flags().Changed("parent") {
-				opts.Team.ParentTeam = &github.Team{
-					Org:  org,
-					Slug: parent,
-				}
+				opts.ParentTeamSlug = &parent
 			}
 
 			_, err := teams.CreateTeam(ctx, opts)
