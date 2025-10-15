@@ -10,50 +10,38 @@ import (
 )
 
 // Get retrieves an organization by its name.
-func Get(ctx context.Context, opts GetOptions) (*github.Organization, error) {
-	if opts.Service == nil {
-		return nil, github.ErrNilService
+func Get(ctx context.Context, option GetOptions) (*github.Organization, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
 	}
 
-	if opts.OrgName == "" {
-		return nil, github.ErrMissingRequiredField
-	}
-
-	log.Printf("Retrieving organization: %s", opts.OrgName)
-	ghOrg, _, err := opts.Service.Get(ctx, opts.OrgName)
+	log.Printf("Retrieving organization: %s", option.OrgName)
+	ghOrg, _, err := option.Service.Get(ctx, option.OrgName)
 	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to get organization %s", opts.OrgName))
+		return nil, github.WrapError(err, fmt.Sprintf("failed to get organization %s", option.OrgName))
 	}
 	if ghOrg == nil {
-		return nil, fmt.Errorf("organization %s not found", opts.OrgName)
+		return nil, fmt.Errorf("organization %s not found", option.OrgName)
 	}
 	org := github.OrganizationFromGhOrg(ghOrg)
-	log.Printf("Organization %s retrieved successfully: %s", opts.OrgName, *org)
+	log.Printf("Organization %s retrieved successfully: %s", option.OrgName, *org)
 	return org, nil
 }
 
 // InviteUser invites a user to an organization by their user ID.
-func InviteUser(ctx context.Context, opts InviteUserOptions) error {
-	if opts.Service == nil {
-		return github.ErrNilService
+func InviteUser(ctx context.Context, option InviteUserOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
 	}
 
-	if opts.OrgName == "" {
-		return github.ErrMissingRequiredField
-	}
-
-	if opts.UserID <= 0 {
-		return fmt.Errorf("invalid user ID: %d", opts.UserID)
-	}
-
-	log.Printf("Inviting user %d to organization: %s", opts.UserID, opts.OrgName)
+	log.Printf("Inviting user %d to organization: %s", option.UserID, option.OrgName)
 	createOrgInvitationOptoins := &gh.CreateOrgInvitationOptions{
-		InviteeID: &opts.UserID,
+		InviteeID: &option.UserID,
 	}
-	invitation, _, err := opts.Service.CreateOrgInvitation(ctx, opts.OrgName, createOrgInvitationOptoins)
+	invitation, _, err := option.Service.CreateOrgInvitation(ctx, option.OrgName, createOrgInvitationOptoins)
 	if err != nil {
-		return github.WrapError(err, fmt.Sprintf("failed to invite user %d to organization %s", opts.UserID, opts.OrgName))
+		return github.WrapError(err, fmt.Sprintf("failed to invite user %d to organization %s", option.UserID, option.OrgName))
 	}
-	log.Printf("User %d invited to organization %s successfully (invitation ID: %v)", opts.UserID, opts.OrgName, invitation.GetID())
+	log.Printf("User %d invited to organization %s successfully (invitation ID: %v)", option.UserID, option.OrgName, invitation.GetID())
 	return nil
 }

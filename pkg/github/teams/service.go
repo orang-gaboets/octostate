@@ -12,8 +12,8 @@ import (
 
 // CreateTeam creates a new team in the specified organization.
 func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, error) {
-	if option.Service == nil {
-		return nil, github.ErrNilService
+	if err := option.Validate(); err != nil {
+		return nil, err
 	}
 
 	var parentTeam *github.Team
@@ -53,10 +53,9 @@ func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, er
 
 // DeleteTeamBySlug deletes a team by its slug within an organization.
 func DeleteTeamBySlug(ctx context.Context, option DeleteTeamBySlugOptions) error {
-	if option.Service == nil {
-		return github.ErrNilService
+	if err := option.Validate(); err != nil {
+		return err
 	}
-
 	log.Printf("Deleting team %s/%s", option.Org, option.Slug)
 
 	_, err := option.Service.DeleteTeamBySlug(ctx, option.Org, option.Slug)
@@ -70,8 +69,8 @@ func DeleteTeamBySlug(ctx context.Context, option DeleteTeamBySlugOptions) error
 
 // GetTeamBySlug retrieves a team by its slug within an organization.
 func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Team, error) {
-	if option.Service == nil {
-		return nil, github.ErrNilService
+	if err := option.Validate(); err != nil {
+		return nil, err
 	}
 
 	log.Printf("Retrieving team %s/%s", option.Org, option.Slug)

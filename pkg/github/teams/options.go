@@ -12,6 +12,17 @@ type CreateTeamOptions struct {
 	ParentTeamSlug *string
 }
 
+// Validate checks if the CreateTeamOptions are valid.
+func (opt *CreateTeamOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Name == "" || opt.Org == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
 // DeleteTeamBySlugOptions defines the options for deleting a team.
 type DeleteTeamBySlugOptions struct {
 	Service Service
@@ -19,9 +30,31 @@ type DeleteTeamBySlugOptions struct {
 	Slug    string
 }
 
+// Validate checks if the DeleteTeamBySlugOptions are valid.
+func (opt *DeleteTeamBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
 // GetTeamBySlugOptions defines the options for retrieving a team by its slug.
 type GetTeamBySlugOptions struct {
 	Service Service
 	Org     string
 	Slug    string
+}
+
+// Validate checks if the GetTeamBySlugOptions are valid.
+func (opt *GetTeamBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
 }
