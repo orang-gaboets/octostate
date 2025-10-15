@@ -39,7 +39,7 @@ func (opt *InviteUserOptions) Validate() error {
 		return github.ErrMissingRequiredField
 	}
 	if opt.UserID <= 0 {
-		return fmt.Errorf("invalid user ID: %d", opt.UserID)
+		return fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
 	}
 	return nil
 }

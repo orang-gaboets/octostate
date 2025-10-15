@@ -10,12 +10,8 @@ import (
 
 // GetUserByID retrieves a GitHub user by their ID.
 func GetUserByID(ctx context.Context, opts GetUserByIDOptions) (*github.User, error) {
-	if opts.Service == nil {
-		return nil, github.ErrNilService
-	}
-
-	if opts.ID <= 0 {
-		return nil, fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
+	if err := opts.Validate(); err != nil {
+		return nil, err
 	}
 
 	log.Printf("Retrieving user with ID: %d", opts.ID)
@@ -30,12 +26,8 @@ func GetUserByID(ctx context.Context, opts GetUserByIDOptions) (*github.User, er
 
 // GetUserByUsername retrieves a GitHub user by their username.
 func GetUserByUsername(ctx context.Context, opts GetUserByUsernameOptions) (*github.User, error) {
-	if opts.Service == nil {
-		return nil, github.ErrNilService
-	}
-
-	if opts.Username == "" {
-		return nil, fmt.Errorf("username must be provided: %w", github.ErrMissingRequiredField)
+	if err := opts.Validate(); err != nil {
+		return nil, err
 	}
 
 	log.Printf("Retrieving user: %s", opts.Username)
