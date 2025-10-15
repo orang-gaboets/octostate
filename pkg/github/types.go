@@ -9,7 +9,7 @@ import (
 
 // Repository contains the repository details.
 type Repository struct {
-	Org         string
+	Owner       string
 	Name        string
 	Private     bool
 	Description string
@@ -35,7 +35,7 @@ func RepositoryFromGhRepo(ghRepo *gh.Repository) *Repository {
 	owner := ghRepo.GetOwner()
 
 	return &Repository{
-		Org:         owner.GetLogin(),
+		Owner:       owner.GetLogin(),
 		Name:        ghRepo.GetName(),
 		Private:     ghRepo.GetPrivate(),
 		Description: ghRepo.GetDescription(),

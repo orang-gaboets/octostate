@@ -68,7 +68,7 @@ func mustBeValidJSON(t *testing.T, s string) {
 
 func TestRepository_String_JSON(t *testing.T) {
 	r := &Repository{
-		Org:         orgLogin,
+		Owner:       orgLogin,
 		Name:        repoNameRocket,
 		Private:     true,
 		Description: repoDescWIP,
@@ -85,7 +85,7 @@ func TestRepository_String_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(s), &got); err != nil {
 		t.Fatalf("unmarshal back: %v", err)
 	}
-	if got.Org != orgLogin || got.Name != repoNameRocket || !got.Private ||
+	if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private ||
 		got.Description != repoDescWIP || len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
 		t.Fatalf("unexpected Repository JSON round-trip: %#v", got)
 	}
@@ -110,7 +110,7 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 		if got == nil {
 			t.Fatalf("got nil")
 		}
-		if got.Org != orgLogin || got.Name != repoNameRocket || !got.Private || got.Description != repoDescWIP {
+		if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private || got.Description != repoDescWIP {
 			t.Fatalf("unexpected mapped fields: %#v", got)
 		}
 		if len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
@@ -126,8 +126,8 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 			Owner:       nil,
 		}
 		got := RepositoryFromGhRepo(ghRepo)
-		if got.Org != "" {
-			t.Fatalf("expected empty Org, got %q", got.Org)
+		if got.Owner != "" {
+			t.Fatalf("expected empty Org, got %q", got.Owner)
 		}
 	})
 }

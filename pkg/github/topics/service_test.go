@@ -13,13 +13,13 @@ import (
 
 var (
 	existingRepo = github.Repository{
-		Org:    "existing-org",
+		Owner:  "existing-org",
 		Name:   "existing-name",
 		Topics: []string{"existing-topic"},
 	}
 	nonExistentRepo = github.Repository{
-		Org:  "non-existent-org",
-		Name: "non-existent-name",
+		Owner: "non-existent-org",
+		Name:  "non-existent-name",
 	}
 	replacedTopics     = []string{"new-topic-1", "new-topic-2"}
 	emptyTopics        = []string{}
@@ -47,7 +47,7 @@ func (m *mockService) ListAllTopics(_ context.Context, owner, repo string) ([]st
 	m.repoName = repo
 	if m.listErr != nil {
 		return nil, nil, m.listErr
-	} else if owner == existingRepo.Org && repo == existingRepo.Name {
+	} else if owner == existingRepo.Owner && repo == existingRepo.Name {
 		return existingRepo.Topics, nil, nil
 	}
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
@@ -60,7 +60,7 @@ func (m *mockService) ReplaceAllTopics(_ context.Context, owner, repo string, to
 	m.repoTopics = topics
 	if m.replaceErr != nil {
 		return nil, nil, m.replaceErr
-	} else if owner == existingRepo.Org && repo == existingRepo.Name {
+	} else if owner == existingRepo.Owner && repo == existingRepo.Name {
 		return topics, nil, nil
 	}
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
@@ -76,7 +76,7 @@ func TestListAllTopicsSuccess(t *testing.T) {
 
 	option := ListAllTopicsOptions{
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 		Service: service,
 	}
 
@@ -102,7 +102,7 @@ func TestListAllTopicsNotFound(t *testing.T) {
 
 	option := ListAllTopicsOptions{
 		Repo:    nonExistentRepo.Name,
-		Owner:   nonExistentRepo.Org,
+		Owner:   nonExistentRepo.Owner,
 		Service: service,
 	}
 
@@ -124,7 +124,7 @@ func TestReplaceAllTopicsSuccess(t *testing.T) {
 
 	option := ReplaceAllTopicsOptions{
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 		Service: service,
 		Topics:  replacedTopics,
 	}
@@ -166,7 +166,7 @@ func TestReplaceAllTopicsEmpty(t *testing.T) {
 
 	option := ReplaceAllTopicsOptions{
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 		Service: service,
 		Topics:  emptyTopics,
 	}
@@ -189,7 +189,7 @@ func TestReplaceAllTopicsNotFound(t *testing.T) {
 
 	option := ReplaceAllTopicsOptions{
 		Repo:    nonExistentRepo.Name,
-		Owner:   nonExistentRepo.Org,
+		Owner:   nonExistentRepo.Owner,
 		Service: service,
 		Topics:  replacedTopics,
 	}
@@ -215,7 +215,7 @@ func TestAddTopicsSuccess(t *testing.T) {
 
 	option := AddTopicsOptions{
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 		Service: service,
 		Topics:  replacedTopics,
 	}
@@ -245,7 +245,7 @@ func TestAddTopicsDuplicate(t *testing.T) {
 	}
 	option := AddTopicsOptions{
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 		Service: service,
 		Topics:  addDuplicateTopics,
 	}
@@ -275,7 +275,7 @@ func TestAddTopicsEmpty(t *testing.T) {
 
 	option := AddTopicsOptions{
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 		Service: service,
 		Topics:  emptyTopics,
 	}
@@ -302,7 +302,7 @@ func TestAddTopicsNotFound(t *testing.T) {
 
 	option := AddTopicsOptions{
 		Repo:    nonExistentRepo.Name,
-		Owner:   nonExistentRepo.Org,
+		Owner:   nonExistentRepo.Owner,
 		Service: service,
 		Topics:  replacedTopics,
 	}

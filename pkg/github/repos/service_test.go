@@ -13,7 +13,7 @@ import (
 
 var (
 	templateRepo = github.Repository{
-		Org:         "template-org",
+		Owner:       "template-org",
 		Name:        "template-name",
 		Description: "template-desc",
 		Private:     false,
@@ -21,7 +21,7 @@ var (
 	}
 
 	newRepo = github.Repository{
-		Org:         "org",
+		Owner:       "org",
 		Name:        "name",
 		Description: "desc",
 		Private:     false,
@@ -29,19 +29,19 @@ var (
 	}
 
 	invalidTemplateRepo = github.Repository{
-		Org:  "invalid-org",
-		Name: "invalid-name",
+		Owner: "invalid-org",
+		Name:  "invalid-name",
 	}
 
 	existingRepo = github.Repository{
-		Org:         "existing-org",
+		Owner:       "existing-org",
 		Name:        "existing-name",
 		Description: "existing-desc",
 	}
 
 	completeEditOptions = EditOptions{
 		Repo:         existingRepo.Name,
-		Owner:        existingRepo.Org,
+		Owner:        existingRepo.Owner,
 		Description:  github.Ptr("new description"),
 		Homepage:     github.Ptr("https://example.com"),
 		Private:      github.Ptr(true),
@@ -52,7 +52,7 @@ var (
 
 	partialEditOptions = EditOptions{
 		Repo:        existingRepo.Name,
-		Owner:       existingRepo.Org,
+		Owner:       existingRepo.Owner,
 		Description: github.Ptr("partial description"),
 		IsTemplate:  github.Ptr(true),
 	}
@@ -86,10 +86,10 @@ func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, 
 	if m.createErr != nil {
 		return nil, nil, m.createErr
 	}
-	if owner != templateRepo.Org || repo != templateRepo.Name {
+	if owner != templateRepo.Owner || repo != templateRepo.Name {
 		return nil, nil, fmt.Errorf("invalid template repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
-	if req != nil && req.Owner != nil && req.Name != nil && *req.Owner == existingRepo.Org && *req.Name == existingRepo.Name {
+	if req != nil && req.Owner != nil && req.Name != nil && *req.Owner == existingRepo.Owner && *req.Name == existingRepo.Name {
 		return nil, nil, fmt.Errorf("repository %s/%s already exists: %w", *req.Owner, *req.Name, github.ErrValidationFailed)
 	}
 	if req != nil {
@@ -117,7 +117,7 @@ func (m *mockService) Delete(_ context.Context, owner, repo string) (*gh.Respons
 	if m.deleteErr != nil {
 		return nil, m.deleteErr
 	}
-	if owner != existingRepo.Org || repo != existingRepo.Name {
+	if owner != existingRepo.Owner || repo != existingRepo.Name {
 		return nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
 	return nil, nil
@@ -139,7 +139,7 @@ func (m *mockService) Edit(_ context.Context, owner, repo string, repository *gh
 	if m.editErr != nil {
 		return nil, nil, m.editErr
 	}
-	if owner != existingRepo.Org || repo != existingRepo.Name {
+	if owner != existingRepo.Owner || repo != existingRepo.Name {
 		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
 	return &gh.Repository{
@@ -163,7 +163,7 @@ func (m *mockService) ReplaceAllTopics(_ context.Context, owner, repo string, to
 	if m.replaceErr != nil {
 		return nil, nil, m.replaceErr
 	}
-	if owner != newRepo.Org || repo != newRepo.Name {
+	if owner != newRepo.Owner || repo != newRepo.Name {
 		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
 	}
 	return topics, nil, nil
@@ -176,9 +176,9 @@ func (m *mockService) ListAllTopics(_ context.Context, owner, repo string) ([]st
 	if m.listErr != nil {
 		return nil, nil, m.listErr
 	}
-	if repo == templateRepo.Name && owner == templateRepo.Org {
+	if repo == templateRepo.Name && owner == templateRepo.Owner {
 		return templateRepo.Topics, nil, nil
-	} else if repo == newRepo.Name && owner == newRepo.Org {
+	} else if repo == newRepo.Name && owner == newRepo.Owner {
 		return newRepo.Topics, nil, nil
 	}
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
@@ -199,12 +199,12 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          newRepo.Name,
-		Owner:         newRepo.Org,
+		Owner:         newRepo.Owner,
 		Description:   &newRepo.Description,
 		Private:       &newRepo.Private,
 		Topics:        newRepo.Topics,
 		TemplateRepo:  templateRepo.Name,
-		TemplateOwner: templateRepo.Org,
+		TemplateOwner: templateRepo.Owner,
 	}
 
 	uniqueTopics := github.MergeUnique(newRepo.Topics, templateRepo.Topics)
@@ -235,11 +235,11 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 	if mockSvc.repoPrivate != newRepo.Private {
 		t.Errorf("expected repo private %v, got %v", newRepo.Private, mockSvc.repoPrivate)
 	}
-	if mockSvc.owner != newRepo.Org {
-		t.Errorf("expected repo owner %s, got %s", newRepo.Org, mockSvc.owner)
+	if mockSvc.owner != newRepo.Owner {
+		t.Errorf("expected repo owner %s, got %s", newRepo.Owner, mockSvc.owner)
 	}
-	if mockSvc.templateOwner != templateRepo.Org {
-		t.Errorf("expected template owner %s, got %s", templateRepo.Org, mockSvc.templateOwner)
+	if mockSvc.templateOwner != templateRepo.Owner {
+		t.Errorf("expected template owner %s, got %s", templateRepo.Owner, mockSvc.templateOwner)
 	}
 	if mockSvc.templateName != templateRepo.Name {
 		t.Errorf("expected template name %s, got %s", templateRepo.Name, mockSvc.templateName)
@@ -257,9 +257,9 @@ func TestCreateFromTemplateInvalidTemplate(t *testing.T) {
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          newRepo.Name,
-		Owner:         newRepo.Org,
+		Owner:         newRepo.Owner,
 		TemplateRepo:  invalidTemplateRepo.Name,
-		TemplateOwner: invalidTemplateRepo.Org,
+		TemplateOwner: invalidTemplateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -279,9 +279,9 @@ func TestCreateFromTemplateExistingRepo(t *testing.T) {
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          existingRepo.Name,
-		Owner:         existingRepo.Org,
+		Owner:         existingRepo.Owner,
 		TemplateRepo:  templateRepo.Name,
-		TemplateOwner: templateRepo.Org,
+		TemplateOwner: templateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -301,9 +301,9 @@ func TestCreateFromTemplateErr(t *testing.T) {
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          newRepo.Name,
-		Owner:         newRepo.Org,
+		Owner:         newRepo.Owner,
 		TemplateRepo:  templateRepo.Name,
-		TemplateOwner: templateRepo.Org,
+		TemplateOwner: templateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -321,13 +321,13 @@ func TestCreateFromTemplateErr(t *testing.T) {
 func TestCreateFromTemplateMissingNewRepoOrg(t *testing.T) {
 	mockSvc := &mockService{}
 	invalidNewRepo := newRepo
-	invalidNewRepo.Org = ""
+	invalidNewRepo.Owner = ""
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          invalidNewRepo.Name,
-		Owner:         invalidNewRepo.Org,
+		Owner:         invalidNewRepo.Owner,
 		TemplateRepo:  templateRepo.Name,
-		TemplateOwner: templateRepo.Org,
+		TemplateOwner: templateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -346,9 +346,9 @@ func TestCreateFromTemplateMissingNewRepoName(t *testing.T) {
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          invalidNewRepo.Name,
-		Owner:         invalidNewRepo.Org,
+		Owner:         invalidNewRepo.Owner,
 		TemplateRepo:  templateRepo.Name,
-		TemplateOwner: templateRepo.Org,
+		TemplateOwner: templateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -363,13 +363,13 @@ func TestCreateFromTemplateMissingNewRepoName(t *testing.T) {
 func TestCreateFromTemplateMissingTemplateRepoOrg(t *testing.T) {
 	mockSvc := &mockService{}
 	invalidTemplateRepo := templateRepo
-	invalidTemplateRepo.Org = ""
+	invalidTemplateRepo.Owner = ""
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          newRepo.Name,
-		Owner:         newRepo.Org,
+		Owner:         newRepo.Owner,
 		TemplateRepo:  invalidTemplateRepo.Name,
-		TemplateOwner: invalidTemplateRepo.Org,
+		TemplateOwner: invalidTemplateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -390,9 +390,9 @@ func TestCreateFromTemplateMissingTemplateRepoName(t *testing.T) {
 	opts := CreateFromTemplateOptions{
 		Service:       mockSvc,
 		Name:          newRepo.Name,
-		Owner:         newRepo.Org,
+		Owner:         newRepo.Owner,
 		TemplateRepo:  invalidTemplateRepo.Name,
-		TemplateOwner: invalidTemplateRepo.Org,
+		TemplateOwner: invalidTemplateRepo.Owner,
 	}
 	ctx := context.Background()
 	_, err := CreateFromTemplate(ctx, opts)
@@ -415,7 +415,7 @@ func TestDeleteSuccess(t *testing.T) {
 	opts := DeleteOptions{
 		Service: mockSvc,
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 	}
 
 	ctx := context.Background()
@@ -426,8 +426,8 @@ func TestDeleteSuccess(t *testing.T) {
 	if !mockSvc.deleteCalled {
 		t.Error("Delete was not called")
 	}
-	if mockSvc.owner != existingRepo.Org {
-		t.Errorf("expected owner %s, got %s", existingRepo.Org, mockSvc.owner)
+	if mockSvc.owner != existingRepo.Owner {
+		t.Errorf("expected owner %s, got %s", existingRepo.Owner, mockSvc.owner)
 	}
 	if mockSvc.repoName != existingRepo.Name {
 		t.Errorf("expected repo name %s, got %s", existingRepo.Name, mockSvc.repoName)
@@ -443,7 +443,7 @@ func TestDeleteInvalidRepo(t *testing.T) {
 	opts := DeleteOptions{
 		Service: mockSvc,
 		Repo:    invalidTemplateRepo.Name,
-		Owner:   invalidTemplateRepo.Org,
+		Owner:   invalidTemplateRepo.Owner,
 	}
 
 	ctx := context.Background()
@@ -465,7 +465,7 @@ func TestDeleteErr(t *testing.T) {
 	opts := DeleteOptions{
 		Service: mockSvc,
 		Repo:    existingRepo.Name,
-		Owner:   existingRepo.Org,
+		Owner:   existingRepo.Owner,
 	}
 
 	ctx := context.Background()
@@ -560,7 +560,7 @@ func TestEditInvalidRepo(t *testing.T) {
 	opts := EditOptions{
 		Service: mockSvc,
 		Repo:    invalidTemplateRepo.Name,
-		Owner:   invalidTemplateRepo.Org,
+		Owner:   invalidTemplateRepo.Owner,
 	}
 
 	ctx := context.Background()
