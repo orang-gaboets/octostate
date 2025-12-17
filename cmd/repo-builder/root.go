@@ -17,7 +17,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		organization.NewOrganizationCmd(nil, nil),
+		organization.NewOrganizationCmd(nil, nil, nil),
 		repo.NewRepoCmd(nil),
 		team.NewTeamCmd(nil),
 		topic.NewTopicCmd(nil),

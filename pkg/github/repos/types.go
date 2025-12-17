@@ -6,6 +6,39 @@ import (
 	gh "github.com/google/go-github/v55/github"
 )
 
+// RepoType represents the repository type filter for organization listings.
+type RepoType string
+
+const (
+	// RepoTypeAll indicates all repositories with no filter.
+	RepoTypeAll RepoType = "all"
+	// RepoTypePublic indicates public repositories.
+	RepoTypePublic RepoType = "public"
+	// RepoTypePrivate indicates private repositories.
+	RepoTypePrivate RepoType = "private"
+	// RepoTypeForks indicates forked repositories.
+	RepoTypeForks RepoType = "forks"
+	// RepoTypeSources indicates source repositories.
+	RepoTypeSources RepoType = "sources"
+	// RepoTypeMember indicates member repositories.
+	RepoTypeMember RepoType = "member"
+)
+
+// IsValid reports whether the repo type is one of the allowed values or empty.
+func (r RepoType) IsValid() bool {
+	switch r {
+	case "", RepoTypeAll, RepoTypePublic, RepoTypePrivate, RepoTypeForks, RepoTypeSources, RepoTypeMember:
+		return true
+	default:
+		return false
+	}
+}
+
+// String returns the string representation of the repo type.
+func (r RepoType) String() string {
+	return string(r)
+}
+
 // Service defines the subset of GitHub repository APIs used by CreateRepo.
 type Service interface {
 	// Repository-related functions
@@ -16,6 +49,8 @@ type Service interface {
 	Delete(ctx context.Context, owner, repo string) (*gh.Response, error)
 	// Edit updates a repository's settings.
 	Edit(ctx context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error)
+	// Get retrieves a repository.
+	ListByOrg(ctx context.Context, org string, opts *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error)
 
 	// Topics-related functions
 

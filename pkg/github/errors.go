@@ -47,6 +47,8 @@ var (
 	ErrNilService = errors.New("service is nil")
 	// ErrMissingRequiredField is returned when a required field is missing.
 	ErrMissingRequiredField = errors.New("missing required field")
+	// ErrInvalidFieldValue is returned when a field has an invalid value.
+	ErrInvalidFieldValue = errors.New("invalid field value")
 )
 
 // WrapError converts a go-github ErrorResponse into an APIError with additional context.

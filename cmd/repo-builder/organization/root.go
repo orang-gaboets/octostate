@@ -4,11 +4,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
+	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 	"github.com/orang-gaboets/repo-builder/pkg/github/users"
 )
 
 // NewOrganizationCmd creates a new "organization" command group for managing organizations on GitHub.
-func NewOrganizationCmd(orgSvc organizations.Service, usersSvc users.Service) *cobra.Command {
+func NewOrganizationCmd(orgSvc organizations.Service, reposSvc repos.Service, usersSvc users.Service) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "organization",
 		Aliases: []string{"organizations", "organisation", "organisations", "org", "orgs"},
@@ -19,6 +20,7 @@ func NewOrganizationCmd(orgSvc organizations.Service, usersSvc users.Service) *c
 	cmd.AddCommand(
 		GetOrgByNameCmd(orgSvc),
 		InviteCmd(orgSvc, usersSvc),
+		ListOrgReposCmd(reposSvc),
 	)
 
 	return cmd

@@ -56,27 +56,57 @@ var (
 		Description: github.Ptr("partial description"),
 		IsTemplate:  github.Ptr(true),
 	}
+
+	orgRepositories = [][]*gh.Repository{
+		{
+			{
+				Name: github.Ptr("repo-one"),
+				Owner: &gh.User{
+					Login: github.Ptr(existingRepo.Owner),
+				},
+			},
+			{
+				Name: github.Ptr("repo-two"),
+				Owner: &gh.User{
+					Login: github.Ptr(existingRepo.Owner),
+				},
+			},
+		},
+		{
+			{
+				Name: github.Ptr("repo-three"),
+				Owner: &gh.User{
+					Login: github.Ptr(existingRepo.Owner),
+				},
+			},
+		},
+	}
 )
 
 type mockService struct {
-	createCalled  bool
-	deleteCalled  bool
-	editCalled    bool
-	listCalled    bool
-	replaceCalled bool
-	createErr     error
-	deleteErr     error
-	editErr       error
-	listErr       error
-	replaceErr    error
-	owner         string
-	repoName      string
-	repoDesc      string
-	repoTopics    []string
-	repoPrivate   bool
-	templateName  string
-	templateOwner string
-	editOptions   EditOptions
+	createCalled    bool
+	deleteCalled    bool
+	editCalled      bool
+	listCalled      bool
+	replaceCalled   bool
+	listByOrgCalled bool
+	createErr       error
+	deleteErr       error
+	editErr         error
+	listErr         error
+	replaceErr      error
+	listByOrgErr    error
+	owner           string
+	repoName        string
+	repoDesc        string
+	repoTopics      []string
+	repoPrivate     bool
+	templateName    string
+	templateOwner   string
+	editOptions     EditOptions
+	listByOrgType   string
+	lastPage        int
+	orgRepos        [][]*gh.Repository
 }
 
 func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
@@ -182,6 +212,36 @@ func (m *mockService) ListAllTopics(_ context.Context, owner, repo string) ([]st
 		return newRepo.Topics, nil, nil
 	}
 	return nil, nil, fmt.Errorf("repository %s/%s not found: %w", owner, repo, github.ErrNotFound)
+}
+
+func (m *mockService) ListByOrg(_ context.Context, org string, opts *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+	m.listByOrgCalled = true
+	m.owner = org
+	if opts != nil {
+		m.listByOrgType = opts.Type
+	}
+	if m.listByOrgErr != nil {
+		return nil, nil, m.listByOrgErr
+	}
+	if org != existingRepo.Owner {
+		return nil, nil, github.ErrNotFound
+	}
+
+	page := 1
+	if opts != nil && opts.Page > 0 {
+		page = opts.Page
+	}
+	m.lastPage = page
+
+	if page-1 < len(m.orgRepos) {
+		nextPage := 0
+		if page < len(m.orgRepos) {
+			nextPage = page + 1
+		}
+		return m.orgRepos[page-1], &gh.Response{NextPage: nextPage}, nil
+	}
+
+	return []*gh.Repository{}, &gh.Response{NextPage: 0}, nil
 }
 
 // Test CreateFromTemplate functionality
@@ -592,5 +652,105 @@ func TestEditErr(t *testing.T) {
 	}
 	if !errors.Is(err, mockSvc.editErr) {
 		t.Errorf("expected error %v, got %v", mockSvc.editErr, err)
+	}
+}
+
+func TestListOrgReposSuccess(t *testing.T) {
+	mockSvc := &mockService{
+		orgRepos: orgRepositories,
+	}
+
+	opts := ListOrgReposOptions{
+		Service: mockSvc,
+		Org:     existingRepo.Owner,
+		Type:    "all",
+	}
+
+	ctx := context.Background()
+	repos, err := ListOrgRepos(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listByOrgCalled {
+		t.Fatal("expected ListByOrg to be called, but it was not")
+	}
+	if len(repos) != 3 {
+		t.Fatalf("expected 3 repositories, got %d", len(repos))
+	}
+	if mockSvc.listByOrgType != string(opts.Type) {
+		t.Fatalf("expected repo type %s, got %s", opts.Type, mockSvc.listByOrgType)
+	}
+	if mockSvc.lastPage != 2 {
+		t.Fatalf("expected to paginate to page 2, got page %d", mockSvc.lastPage)
+	}
+}
+
+func TestListOrgReposMissingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListOrgReposOptions{
+		Service: mockSvc,
+		Org:     "",
+	}
+
+	ctx := context.Background()
+	_, err := ListOrgRepos(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listByOrgCalled {
+		t.Fatal("expected ListByOrg to not be called, but it was")
+	}
+}
+
+func TestListOrgReposNilService(t *testing.T) {
+	opts := ListOrgReposOptions{
+		Service: nil,
+		Org:     existingRepo.Owner,
+	}
+
+	ctx := context.Background()
+	_, err := ListOrgRepos(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+}
+
+func TestListOrgReposInvalidType(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListOrgReposOptions{
+		Service: mockSvc,
+		Org:     existingRepo.Owner,
+		Type:    "unsupported",
+	}
+
+	ctx := context.Background()
+	_, err := ListOrgRepos(ctx, opts)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.listByOrgCalled {
+		t.Fatal("expected ListByOrg to not be called, but it was")
+	}
+}
+
+func TestListOrgReposServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		listByOrgErr: errors.New("service error"),
+	}
+
+	opts := ListOrgReposOptions{
+		Service: mockSvc,
+		Org:     existingRepo.Owner,
+	}
+
+	ctx := context.Background()
+	_, err := ListOrgRepos(ctx, opts)
+	if !errors.Is(err, mockSvc.listByOrgErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.listByOrgErr, err)
+	}
+	if !mockSvc.listByOrgCalled {
+		t.Fatal("expected ListByOrg to be called, but it was not")
 	}
 }

@@ -1,6 +1,8 @@
 package repos
 
 import (
+	"fmt"
+
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
 
@@ -68,4 +70,28 @@ func (opt *EditOptions) Validate() error {
 		return github.ErrNilService
 	}
 	return nil
+}
+
+// ListOrgReposOptions defines the options for listing repositories in an organization.
+type ListOrgReposOptions struct {
+	Service Service
+	Org     string
+	Type    RepoType
+}
+
+// Validate checks if the ListOrgReposOptions are valid.
+func (opt *ListOrgReposOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" {
+		return github.ErrMissingRequiredField
+	}
+
+	switch opt.Type {
+	case "", "all", "public", "private", "forks", "sources", "member":
+		return nil
+	default:
+		return fmt.Errorf("invalid repository type %q: %w", opt.Type, github.ErrValidationFailed)
+	}
 }

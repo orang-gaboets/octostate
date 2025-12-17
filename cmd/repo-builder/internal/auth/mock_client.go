@@ -71,6 +71,11 @@ func (MockRepoService) Edit(_ context.Context, _, _ string, _ *gh.Repository) (*
 	return &gh.Repository{}, nil, nil
 }
 
+// ListByOrg mocks the listing of repositories for an organization.
+func (MockRepoService) ListByOrg(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+	return []*gh.Repository{}, nil, nil
+}
+
 // ReplaceAllTopics mocks the replacement of all topics for a repository.
 func (MockRepoService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
 	return topics, nil, nil

@@ -116,3 +116,39 @@ func Edit(ctx context.Context, option EditOptions) (*gh.Repository, error) {
 	log.Printf("Repository successfully edited: %s", updatedRepoURL)
 	return updatedRepo, nil
 }
+
+// ListOrgRepos retrieves all repositories within the specified organization.
+func ListOrgRepos(ctx context.Context, option ListOrgReposOptions) ([]*github.Repository, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	listOptions := &gh.RepositoryListByOrgOptions{
+		Type: string(option.Type),
+		ListOptions: gh.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	var allRepos []*github.Repository
+	for {
+		ghRepos, resp, err := option.Service.ListByOrg(ctx, option.Org, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list repositories for organization %s", option.Org))
+		}
+
+		for _, repo := range github.RepositoriesFromGhRepos(ghRepos) {
+			allRepos = append(allRepos, &repo)
+		}
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	log.Printf("Retrieved %d repositories for organization %s", len(allRepos), option.Org)
+	log.Printf("Repositories: %+v", allRepos)
+	return allRepos, nil
+}
