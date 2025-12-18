@@ -32,13 +32,16 @@ var (
 type mockService struct {
 	createOrgInvCalled bool
 	getCalled          bool
+	listMembersCalled  bool
 	createOrgInvErr    error
 	getErr             error
+	listMembersErr     error
 	orgName            string
 	orgID              int64
 	orgDescription     string
 	orgReposURL        string
 	invitedUserID      int64
+	membersRole        string
 }
 
 // CreateOrgInvitation is a mock implementation of the CreateOrgInvitation method.
@@ -83,6 +86,27 @@ func (m *mockService) Get(_ context.Context, orgName string) (*gh.Organization, 
 	m.orgReposURL = *existingOrg.ReposURL
 
 	return &gh.Organization{}, nil, nil
+}
+
+// ListMembers returns mock members of an organization.
+func (m *mockService) ListMembers(_ context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+	m.listMembersCalled = true
+	m.orgName = org
+	m.membersRole = opts.Role
+
+	if m.listMembersErr != nil {
+		return nil, nil, m.listMembersErr
+	}
+
+	if org != *existingOrg.Name {
+		return nil, nil, github.ErrNotFound
+	}
+
+	users := []*gh.User{
+		{Login: existingUser.Name, Name: existingUser.Name, ID: existingUser.ID},
+	}
+
+	return users, &gh.Response{NextPage: 0}, nil
 }
 
 // Test InviteUser functionality
@@ -362,5 +386,115 @@ func TestGetWithServiceError(t *testing.T) {
 	}
 	if org != nil {
 		t.Fatal("expected organization to be nil, but it was not")
+	}
+}
+
+// Test ListMembers functionality
+
+func TestListMembersSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListMembersOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+		Role:    MemberRoleAll,
+	}
+
+	ctx := context.Background()
+	members, err := ListMembers(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listMembersCalled {
+		t.Fatal("expected ListMembers to be called, but it was not")
+	}
+	if mockSvc.membersRole != string(MemberRoleAll) {
+		t.Fatalf("expected role %s, got %s", MemberRoleAll, mockSvc.membersRole)
+	}
+	if len(members) != 1 {
+		t.Fatalf("expected 1 member, got %d", len(members))
+	}
+	if *members[0].Name != *existingUser.Name {
+		t.Fatalf("expected member name %s, got %s", *existingUser.Name, *members[0].Name)
+	}
+}
+
+func TestListMembersNonExistingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListMembersOptions{
+		Service: mockSvc,
+		OrgName: *nonExistingOrg.Name,
+		Role:    MemberRoleAll,
+	}
+
+	ctx := context.Background()
+	members, err := ListMembers(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.listMembersCalled {
+		t.Fatal("expected ListMembers to be called, but it was not")
+	}
+	if members != nil {
+		t.Fatalf("expected no members, got %v", members)
+	}
+}
+
+func TestListMembersNilService(t *testing.T) {
+	opts := ListMembersOptions{
+		Service: nil,
+		OrgName: *existingOrg.Name,
+		Role:    MemberRoleAll,
+	}
+
+	ctx := context.Background()
+	members, err := ListMembers(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+	if members != nil {
+		t.Fatalf("expected members to be nil, got %v", members)
+	}
+}
+
+func TestListMembersMissingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListMembersOptions{
+		Service: mockSvc,
+		OrgName: "",
+		Role:    MemberRoleAll,
+	}
+
+	ctx := context.Background()
+	_, err := ListMembers(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listMembersCalled {
+		t.Fatal("expected ListMembers to not be called, but it was")
+	}
+}
+
+func TestListMembersInvalidRole(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListMembersOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+		Role:    MemberRole("invalid"),
+	}
+
+	ctx := context.Background()
+	_, err := ListMembers(ctx, opts)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected validation error, got %v", err)
+	}
+	if mockSvc.listMembersCalled {
+		t.Fatal("expected ListMembers to not be called, but it was")
 	}
 }

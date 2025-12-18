@@ -43,3 +43,46 @@ func (opt *InviteUserOptions) Validate() error {
 	}
 	return nil
 }
+
+// MemberRole specifies the membership role to filter by when listing organization members.
+type MemberRole string
+
+const (
+	// MemberRoleAll includes all members regardless of role.
+	MemberRoleAll MemberRole = "all"
+	// MemberRoleAdmin includes only organization owners.
+	MemberRoleAdmin MemberRole = "admin"
+	// MemberRoleMember includes only non-owner members.
+	MemberRoleMember MemberRole = "member"
+)
+
+// IsValid checks if the MemberRole value is valid.
+func (mr MemberRole) IsValid() bool {
+	switch mr {
+	case MemberRoleAll, MemberRoleAdmin, MemberRoleMember:
+		return true
+	default:
+		return false
+	}
+}
+
+// ListMembersOptions defines the options for listing organization members.
+type ListMembersOptions struct {
+	Service Service
+	OrgName string
+	Role    MemberRole
+}
+
+// Validate checks if the ListMembersOptions are valid.
+func (opt *ListMembersOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.OrgName == "" {
+		return github.ErrMissingRequiredField
+	}
+	if !opt.Role.IsValid() {
+		return fmt.Errorf("invalid member role %q: %w", opt.Role, github.ErrValidationFailed)
+	}
+	return nil
+}

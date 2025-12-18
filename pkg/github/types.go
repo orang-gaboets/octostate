@@ -233,19 +233,9 @@ func OrganizationFromGhOrg(ghOrg *gh.Organization) *Organization {
 		ID:          ghOrg.ID,
 		Name:        ghOrg.Name,
 		Description: ghOrg.Description,
-		CreatedAt: func() *time.Time {
-			if ghOrg.CreatedAt != nil {
-				return &ghOrg.CreatedAt.Time
-			}
-			return nil
-		}(),
-		UpdatedAt: func() *time.Time {
-			if ghOrg.UpdatedAt != nil {
-				return &ghOrg.UpdatedAt.Time
-			}
-			return nil
-		}(),
-		ReposURL: ghOrg.ReposURL,
+		CreatedAt:   TimestampToTime(ghOrg.CreatedAt),
+		UpdatedAt:   TimestampToTime(ghOrg.UpdatedAt),
+		ReposURL:    ghOrg.ReposURL,
 	}
 }
 
@@ -275,21 +265,11 @@ func UserFromGhUser(ghUser *gh.User) *User {
 	}
 
 	return &User{
-		ID:    ghUser.ID,
-		Name:  ghUser.Name,
-		Email: ghUser.Email,
-		URL:   ghUser.HTMLURL,
-		CreatedAt: func() *time.Time {
-			if ghUser.CreatedAt != nil {
-				return &ghUser.CreatedAt.Time
-			}
-			return nil
-		}(),
-		UpdatedAt: func() *time.Time {
-			if ghUser.UpdatedAt != nil {
-				return &ghUser.UpdatedAt.Time
-			}
-			return nil
-		}(),
+		ID:        ghUser.ID,
+		Name:      ghUser.Name,
+		Email:     ghUser.Email,
+		URL:       ghUser.HTMLURL,
+		CreatedAt: TimestampToTime(ghUser.CreatedAt),
+		UpdatedAt: TimestampToTime(ghUser.UpdatedAt),
 	}
 }

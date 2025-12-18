@@ -15,4 +15,7 @@ type Service interface {
 
 	// Get gets an organization by its name.
 	Get(ctx context.Context, org string) (*gh.Organization, *gh.Response, error)
+
+	// ListMembers returns the members of an organization.
+	ListMembers(ctx context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
 }

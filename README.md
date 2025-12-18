@@ -90,6 +90,34 @@ repo-builder org get-by-name --app-id <app-id> --installation-id <installation-i
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 
+#### List Organization Repositories
+
+```bash
+repo-builder org list-repos --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--type <all|public|private|forks|sources|member>]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--type` (optional): Type of repositories to list (default is "all")
+
+#### List Organization Members
+
+```bash
+repo-builder org list-members --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--role <all|admin|member>]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--role` (optional): Role of members to list (default is "all")
+
 ### Repo
 
 #### Create a New Repository Based on a Template

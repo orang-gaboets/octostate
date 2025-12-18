@@ -53,6 +53,11 @@ func (MockOrganizationService) Get(_ context.Context, _ string) (*gh.Organizatio
 	return &gh.Organization{}, nil, nil
 }
 
+// ListMembers mocks the listing of organization members.
+func (MockOrganizationService) ListMembers(_ context.Context, _ string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+	return []*gh.User{}, nil, nil
+}
+
 // MockRepoService is a mock implementation of repos.Service for testing purposes.
 type MockRepoService struct{}
 

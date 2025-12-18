@@ -45,3 +45,37 @@ func InviteUser(ctx context.Context, option InviteUserOptions) error {
 	log.Printf("User %d invited to organization %s successfully (invitation ID: %v)", option.UserID, option.OrgName, invitation.GetID())
 	return nil
 }
+
+// ListMembers retrieves all members of a GitHub organization.
+func ListMembers(ctx context.Context, option ListMembersOptions) ([]*github.User, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	listOptions := &gh.ListMembersOptions{
+		Role: string(option.Role),
+		ListOptions: gh.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	var members []*github.User
+	for {
+		ghMembers, resp, err := option.Service.ListMembers(ctx, option.OrgName, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list members for organization %s", option.OrgName))
+		}
+
+		members = append(members, github.UsersFromGhUsers(ghMembers)...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	log.Printf("Retrieved %d members for organization %s", len(members), option.OrgName)
+	log.Printf("Members: %+v", members)
+	return members, nil
+}

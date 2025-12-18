@@ -1,6 +1,9 @@
 package github
 
 import (
+	"time"
+
+	gh "github.com/google/go-github/v55/github"
 	"github.com/spf13/cobra"
 )
 
@@ -73,4 +76,13 @@ func MarkRequiredFlags(cmd *cobra.Command, names ...string) {
 			cobra.CheckErr(err)
 		}
 	}
+}
+
+// TimestampToTime converts a GitHub Timestamp to a standard Go Time.
+func TimestampToTime(ts *gh.Timestamp) *time.Time {
+	if ts == nil {
+		return nil
+	}
+	t := ts.Time
+	return &t
 }
