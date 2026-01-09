@@ -58,3 +58,20 @@ func (opt *GetTeamBySlugOptions) Validate() error {
 	}
 	return nil
 }
+
+// ListTeamsOptions defines the options for listing teams in an organization.
+type ListTeamsOptions struct {
+	Service Service
+	Org     string
+}
+
+// Validate checks if the ListTeamsOptions are valid.
+func (opt *ListTeamsOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}

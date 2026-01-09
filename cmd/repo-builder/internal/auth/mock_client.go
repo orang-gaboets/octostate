@@ -109,6 +109,11 @@ func (MockTeamsService) GetTeamBySlug(_ context.Context, _, _ string) (*gh.Team,
 	return &gh.Team{}, nil, nil
 }
 
+// ListTeams mocks the listing of teams in an organization.
+func (MockTeamsService) ListTeams(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+	return []*gh.Team{}, nil, nil
+}
+
 // MockUserService is a mock implementation of users.Service for testing purposes.
 type MockUserService struct{}
 

@@ -22,6 +22,7 @@ func NewOrganizationCmd(orgSvc organizations.Service, reposSvc repos.Service, us
 		InviteCmd(orgSvc, usersSvc),
 		ListOrgMembersCmd(orgSvc),
 		ListOrgReposCmd(reposSvc),
+		ListOrgTeamsCmd(nil),
 	)
 
 	return cmd

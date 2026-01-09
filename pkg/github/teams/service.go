@@ -84,3 +84,36 @@ func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Te
 	log.Printf("Successfully retrieved team: %s", team)
 	return team, nil
 }
+
+// ListTeams retrieves all teams in a GitHub organization.
+func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	log.Printf("Listing teams for organization %s", option.Org)
+
+	listOptions := &gh.ListOptions{
+		PerPage: 100,
+	}
+
+	var allTeams []*github.Team
+	for {
+		ghTeams, resp, err := option.Service.ListTeams(ctx, option.Org, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list teams for organization %s", option.Org))
+		}
+
+		allTeams = append(allTeams, github.TeamsFromGhTeams(ghTeams)...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	log.Printf("Retrieved %d teams for organization %s", len(allTeams), option.Org)
+	log.Printf("Teams: %+v", allTeams)
+	return allTeams, nil
+}

@@ -73,9 +73,11 @@ type mockService struct {
 	createCalled bool
 	deleteCalled bool
 	getCalled    bool
+	listCalled   bool
 	createErr    error
 	deleteErr    error
 	getErr       error
+	listErr      error
 	teamOrg      string
 	teamName     string
 	teamSlug     string
@@ -146,6 +148,26 @@ func (m *mockService) GetTeamBySlug(_ context.Context, org, slug string) (*gh.Te
 		Description: &existingTeam.Description,
 		Privacy:     github.Ptr(existingTeam.Privacy.String()),
 	}, nil, nil
+}
+
+// ListTeams implements teams.Service for testing.
+func (m *mockService) ListTeams(_ context.Context, org string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+	m.listCalled = true
+	if m.listErr != nil {
+		return nil, nil, m.listErr
+	}
+	if org != existingTeam.Org {
+		return nil, nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	m.teamOrg = org
+	return []*gh.Team{
+		{
+			ID:          &existingTeam.ID,
+			Name:        &existingTeam.Name,
+			Description: &existingTeam.Description,
+			Privacy:     github.Ptr(existingTeam.Privacy.String()),
+		},
+	}, &gh.Response{NextPage: 0}, nil
 }
 
 // Test CreateTeam functionality
@@ -583,5 +605,112 @@ func TestGetTeamBySlugServiceError(t *testing.T) {
 	}
 	if !mockSvc.getCalled {
 		t.Fatal("expected GetTeamBySlug to be called")
+	}
+}
+
+// Test ListTeams functionality
+
+func TestListTeamsSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamsOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+	}
+
+	ctx := context.Background()
+	teams, err := ListTeams(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listCalled {
+		t.Fatal("expected ListTeams to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org {
+		t.Fatalf("expected org %s, got %s", existingTeam.Org, mockSvc.teamOrg)
+	}
+	if len(teams) != 1 {
+		t.Fatalf("expected 1 team, got %d", len(teams))
+	}
+	if teams[0].Name != existingTeam.Name {
+		t.Fatalf("expected team name %s, got %s", existingTeam.Name, teams[0].Name)
+	}
+}
+
+func TestListTeamsNonExistingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamsOptions{
+		Service: mockSvc,
+		Org:     nonExistingTeam.Org,
+	}
+
+	ctx := context.Background()
+	teams, err := ListTeams(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.listCalled {
+		t.Fatal("expected ListTeams to be called")
+	}
+	if teams != nil {
+		t.Fatalf("expected no teams, got %v", teams)
+	}
+}
+
+func TestListTeamsNilService(t *testing.T) {
+	opts := ListTeamsOptions{
+		Service: nil,
+		Org:     existingTeam.Org,
+	}
+
+	ctx := context.Background()
+	teams, err := ListTeams(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+	if teams != nil {
+		t.Fatalf("expected teams to be nil, got %v", teams)
+	}
+}
+
+func TestListTeamsMissingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamsOptions{
+		Service: mockSvc,
+		Org:     "",
+	}
+
+	ctx := context.Background()
+	_, err := ListTeams(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listCalled {
+		t.Fatal("expected ListTeams not to be called")
+	}
+}
+
+func TestListTeamsServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		listErr: errors.New("service error"),
+	}
+
+	opts := ListTeamsOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+	}
+
+	ctx := context.Background()
+	teams, err := ListTeams(ctx, opts)
+	if !errors.Is(err, mockSvc.listErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.listErr, err)
+	}
+	if !mockSvc.listCalled {
+		t.Fatal("expected ListTeams to be called")
+	}
+	if teams != nil {
+		t.Fatalf("expected teams to be nil, got %v", teams)
 	}
 }
