@@ -1,6 +1,25 @@
 # repo-builder
 
-`repo-builder` is a command-line tool for creating new GitHub repositories from a template repository. It is intended for bootstrapping projects within an organisation.
+`repo-builder` is a GitHub organization operations CLI. It provides commands to manage and query common GitHub resources such as:
+
+- repositories (create from template, edit, delete)
+- topics (add, replace, list)
+- teams (create, get, delete)
+- organization utilities (list repos/members/teams, get org by name)
+- users (lookup by ID / username)
+
+This repository is the **engine** (CLI + reusable automation building blocks).  
+**Planned next:** a separate **control repo** will hold configuration + approvals (GitOps), and call into this engine via GitHub Actions.
+
+## Status / Roadmap
+
+- **v0 (current):** API-primitive commands (direct GitHub operations) ✅
+- **v1 (planned):** GitOps commands + audit:
+  - `repo-builder config validate`
+  - `repo-builder plan`
+  - `repo-builder apply`
+  - `repo-builder audit pull`
+  - `repo-builder audit diff`
 
 ## Installation
 
@@ -318,3 +337,35 @@ go test ./... -cover -coverprofile=coverage.out -tags=unit
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## GitOps (Planned)
+
+This repository is the **engine** (CLI + reusable automation building blocks).  
+The GitOps workflow will live in a separate **control repository** per organization (e.g. `<org>-control`), which will:
+
+- store the **desired state** in `config/`
+- require **PR review/approval** for changes
+- apply changes to GitHub using this engine (via GitHub Actions + GitHub App auth)
+- continuously snapshot reality into `state/` and report drift
+
+### Control repo layout (proposed)
+
+```text
+config/
+  repos.yaml        # desired repositories (template, settings, topics, etc.)
+  teams.yaml        # desired teams, members, repo permissions
+  policies.yaml     # org-wide defaults / rules (optional)
+state/
+  actual/           # generated snapshots from GitHub (never hand-edit)
+  diff/             # drift reports (optional)
+  events/           # append-only change log (optional)
+```
+
+### Planned GitOps commands (engine)
+
+These commands will be implemented in this repo and invoked from the control repo workflows:
+- `repo-builder config validate` — validate config schema + invariants
+- `repo-builder plan` — show what changes would be made
+- `repo-builder apply` — reconcile GitHub to match config/ (idempotent)
+- `repo-builder audit pull` — snapshot GitHub into state/actual/
+- `repo-builder audit diff` — detect drift / policy violations (optionally fail CI)
