@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 )
@@ -43,8 +44,11 @@ func GetOrgByNameCmd(svc organizations.Service) *cobra.Command {
 				OrgName: strings.TrimSpace(org),
 			}
 
-			_, err := organizations.Get(ctx, opts)
-			return err
+			orgInfo, err := organizations.Get(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, orgInfo)
 		},
 	}
 

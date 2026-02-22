@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 )
@@ -50,8 +51,11 @@ func ListOrgReposCmd(svc repos.Service) *cobra.Command {
 				Type:    repos.RepoType(strings.TrimSpace(repoType)),
 			}
 
-			_, err := repos.ListOrgRepos(ctx, opts)
-			return err
+			repositories, err := repos.ListOrgRepos(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, repositories)
 		},
 	}
 

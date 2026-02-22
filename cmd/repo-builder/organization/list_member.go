@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 )
@@ -50,8 +51,11 @@ func ListOrgMembersCmd(svc organizations.Service) *cobra.Command {
 				Role:    organizations.MemberRole(strings.TrimSpace(role)),
 			}
 
-			_, err := organizations.ListMembers(ctx, opts)
-			return err
+			members, err := organizations.ListMembers(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, members)
 		},
 	}
 

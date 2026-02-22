@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
@@ -42,8 +43,11 @@ func GetTeamBySlugCmd(svc teams.Service) *cobra.Command {
 				Slug:    slug,
 				Service: service,
 			}
-			_, err := teams.GetTeamBySlug(ctx, opts)
-			return err
+			teamInfo, err := teams.GetTeamBySlug(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, teamInfo)
 		},
 	}
 

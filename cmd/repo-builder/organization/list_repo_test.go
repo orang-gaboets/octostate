@@ -1,7 +1,9 @@
 package organization_test
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
@@ -69,5 +71,23 @@ func TestListOrgReposCmdWithMissingOrg(t *testing.T) {
 	c.SetArgs([]string{"--token", "t"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing org flag")
+	}
+}
+
+func TestListOrgReposCmdWritesJSONToStdout(t *testing.T) {
+	auth.PrepareClient(t)
+	c := organizationcmd.ListOrgReposCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--token", "t", "--org", "o"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if got == "" {
+		t.Fatalf("expected stdout output, got empty string")
+	}
+	if !strings.HasPrefix(got, "[") {
+		t.Fatalf("expected JSON array output, got %q", got)
 	}
 }

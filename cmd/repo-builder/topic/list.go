@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
 )
@@ -42,8 +43,11 @@ func ListAllTopicsCmd(svc topics.Service) *cobra.Command {
 				Owner:   org,
 				Service: service,
 			}
-			_, err := topics.ListAllTopics(ctx, opts)
-			return err
+			allTopics, err := topics.ListAllTopics(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, allTopics)
 		},
 	}
 

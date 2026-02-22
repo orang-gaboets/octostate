@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/users"
 )
@@ -41,8 +42,11 @@ func GetUserByIDCmd(svc users.Service) *cobra.Command {
 				ID:      userID,
 			}
 
-			_, err := users.GetUserByID(ctx, opts)
-			return err
+			userInfo, err := users.GetUserByID(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, userInfo)
 		},
 	}
 

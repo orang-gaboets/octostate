@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
@@ -44,8 +45,11 @@ func ListOrgTeamsCmd(svc teams.Service) *cobra.Command {
 				Org:     strings.TrimSpace(org),
 			}
 
-			_, err := teams.ListTeams(ctx, opts)
-			return err
+			allTeams, err := teams.ListTeams(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, allTeams)
 		},
 	}
 

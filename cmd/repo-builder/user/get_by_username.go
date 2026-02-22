@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/users"
 )
@@ -43,8 +44,11 @@ func GetUserByUsernameCmd(svc users.Service) *cobra.Command {
 				Username: strings.TrimSpace(username),
 			}
 
-			_, err := users.GetUserByUsername(ctx, opts)
-			return err
+			userInfo, err := users.GetUserByUsername(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintJSON(cmd, userInfo)
 		},
 	}
 
