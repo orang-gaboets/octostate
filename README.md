@@ -45,7 +45,7 @@ go install github.com/yourorg/repo-builder/cmd/repo-builder@latest
         go version
         ```
     
-    Ensure that your Go version is at least 1.18 or higher.
+    Ensure that your Go version is 1.24 or higher.
 \
 4. Install dependencies
     ```bash
@@ -85,6 +85,38 @@ Option 3: If you want to run it directly using `go run`:
 go run ./cmd/repo-builder <command> [flags]
 ```
 
+This README uses canonical command names (for example `organization`,
+`create-from-template`, `delete-by-slug`, `get-by-slug`). Common aliases such as
+`org`, `repo create`, `team delete`, and `team get` also work.
+
+## Developer Commands
+
+Common local development commands:
+
+```bash
+# Build
+go build -o bin/repo-builder ./cmd/repo-builder
+
+# Run help / smoke check
+go run ./cmd/repo-builder --help
+
+# Format (check / write)
+gofmt -l .
+gofmt -w <files>
+
+# Static checks
+go vet ./...
+golangci-lint run --timeout=5m
+
+# Tests
+go test ./...
+go test ./... -cover -coverprofile=coverage.out
+
+# Pre-commit hooks
+pre-commit install
+pre-commit run --all-files
+```
+
 ### Authentication
 
 All commands require GitHub authentication. You must supply exactly one of the following:
@@ -99,7 +131,7 @@ Providing both methods or neither results in an error.
 #### Get Organization Details by Name
 
 ```bash
-repo-builder org get-by-name --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+repo-builder organization get-by-name --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
 ```
 
 ##### Flags
@@ -112,7 +144,7 @@ repo-builder org get-by-name --app-id <app-id> --installation-id <installation-i
 #### List Organization Repositories
 
 ```bash
-repo-builder org list-repos --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--type <all|public|private|forks|sources|member>]
+repo-builder organization list-repos --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--type <all|public|private|forks|sources|member>]
 ```
 
 ##### Flags
@@ -126,7 +158,7 @@ repo-builder org list-repos --app-id <app-id> --installation-id <installation-id
 #### List Organization Members
 
 ```bash
-repo-builder org list-members --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--role <all|admin|member>]
+repo-builder organization list-members --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--role <all|admin|member>]
 ```
 
 ##### Flags
@@ -140,7 +172,7 @@ repo-builder org list-members --app-id <app-id> --installation-id <installation-
 #### List Organization Teams
 
 ```bash
-repo-builder org list-teams --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+repo-builder organization list-teams --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
 ```
 
 ##### Flags
@@ -155,7 +187,7 @@ repo-builder org list-teams --app-id <app-id> --installation-id <installation-id
 #### Create a New Repository Based on a Template
 
 ```bash
-repo-builder repo create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --template-org <template-org> --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
+repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --template-org <template-org> --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
 ```
 
 ##### Flags
@@ -275,7 +307,7 @@ repo-builder team create --app-id <app-id> --installation-id <installation-id> -
 #### Delete a Team
 
 ```bash
-repo-builder team delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
+repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
 ```
 
 ##### Flags
@@ -289,7 +321,7 @@ repo-builder team delete --app-id <app-id> --installation-id <installation-id> -
 #### Get Team by Slug
 
 ```bash
-repo-builder team get --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
+repo-builder team get-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
 ```
 
 ##### Flags
@@ -329,10 +361,16 @@ repo-builder user get-by-username --app-id <app-id> --installation-id <installat
 - `--username` (required): GitHub username
 
 ## Testing
-To run tests, use the following command:
+To run the full test suite:
 
 ```bash
-go test ./... -cover -coverprofile=coverage.out -tags=unit
+go test ./...
+```
+
+To generate a coverage report:
+
+```bash
+go test ./... -cover -coverprofile=coverage.out
 ```
 ## License
 
