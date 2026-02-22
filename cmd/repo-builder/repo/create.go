@@ -77,9 +77,9 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&desc, "desc", "", "Repository description")
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
-	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", true, "Include all branches from the template repository")
+	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", false, "Include all branches from the template repository")
 
-	github.MarkRequiredFlags(cmd, "org", "name")
+	github.MarkRequiredFlags(cmd, "org", "template-name", "name")
 
 	return cmd
 }

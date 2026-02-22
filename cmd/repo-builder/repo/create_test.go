@@ -1,13 +1,49 @@
 package repo_test
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
+
+type captureCreateRepoFromTemplateService struct {
+	lastTemplateRepo string
+	lastTemplateOrg  string
+	lastRequest      *gh.TemplateRepoRequest
+}
+
+func (m *captureCreateRepoFromTemplateService) CreateFromTemplate(_ context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+	m.lastTemplateOrg = templateOwner
+	m.lastTemplateRepo = templateRepo
+	m.lastRequest = req
+	return &gh.Repository{}, nil, nil
+}
+
+func (*captureCreateRepoFromTemplateService) Delete(_ context.Context, _, _ string) (*gh.Response, error) {
+	return nil, nil
+}
+
+func (*captureCreateRepoFromTemplateService) Edit(_ context.Context, _, _ string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	return &gh.Repository{}, nil, nil
+}
+
+func (*captureCreateRepoFromTemplateService) ListByOrg(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+	return nil, nil, nil
+}
+
+func (*captureCreateRepoFromTemplateService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+	return topics, nil, nil
+}
+
+func (*captureCreateRepoFromTemplateService) ListAllTopics(_ context.Context, _, _ string) ([]string, *gh.Response, error) {
+	return nil, nil, nil
+}
 
 func TestCreateRepoFromTemplateNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
@@ -15,6 +51,19 @@ func TestCreateRepoFromTemplateNoRequiredFlags(t *testing.T) {
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
+	}
+}
+
+func TestCreateRepoFromTemplateMissingTemplateNameFlag(t *testing.T) {
+	auth.PrepareClient(t)
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n"})
+	err := c.Execute()
+	if err == nil {
+		t.Fatalf("expected error for missing template-name flag")
+	}
+	if !strings.Contains(err.Error(), "template-name") {
+		t.Fatalf("expected error mentioning template-name, got %v", err)
 	}
 }
 
@@ -60,5 +109,35 @@ func TestCreateRepoFromTemplateWithInvalidFlags(t *testing.T) {
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--template-name", "temp", "--name", "n", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag")
+	}
+}
+
+func TestCreateRepoFromTemplateIncludeAllBranchesDefaultsFalse(t *testing.T) {
+	svc := &captureCreateRepoFromTemplateService{}
+	c := reposcmd.CreateNewRepoFromTemplateCmd(svc)
+	c.SetArgs([]string{"--org", "o", "--template-name", "temp", "--name", "n"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.lastRequest == nil || svc.lastRequest.IncludeAllBranches == nil {
+		t.Fatalf("expected CreateFromTemplate request with IncludeAllBranches set")
+	}
+	if *svc.lastRequest.IncludeAllBranches {
+		t.Fatalf("expected IncludeAllBranches default false, got true")
+	}
+}
+
+func TestCreateRepoFromTemplateIncludeAllBranchesCanBeEnabled(t *testing.T) {
+	svc := &captureCreateRepoFromTemplateService{}
+	c := reposcmd.CreateNewRepoFromTemplateCmd(svc)
+	c.SetArgs([]string{"--org", "o", "--template-name", "temp", "--name", "n", "--include-all-branches=true"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.lastRequest == nil || svc.lastRequest.IncludeAllBranches == nil {
+		t.Fatalf("expected CreateFromTemplate request with IncludeAllBranches set")
+	}
+	if !*svc.lastRequest.IncludeAllBranches {
+		t.Fatalf("expected IncludeAllBranches true when explicitly set")
 	}
 }
