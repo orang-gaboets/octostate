@@ -3,7 +3,6 @@ package repos
 import (
 	"context"
 	"fmt"
-	"log"
 
 	gh "github.com/google/go-github/v55/github"
 
@@ -25,20 +24,10 @@ func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (
 		IncludeAllBranches: &option.IncludeAllBranches,
 	}
 
-	log.Printf("Creating repository %s/%s from template %s/%s", option.Owner, option.Name, option.TemplateOwner, option.TemplateRepo)
-
 	newRepo, _, err := option.Service.CreateFromTemplate(ctx, option.TemplateOwner, option.TemplateRepo, req)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository from template %s/%s", option.TemplateOwner, option.TemplateRepo))
 	}
-	var newRepoURL string
-	if newRepo != nil {
-		newRepoURL = newRepo.GetHTMLURL()
-	}
-	if newRepoURL == "" {
-		newRepoURL = "https://github.com/" + option.Owner + "/" + option.Name
-	}
-	log.Printf("Repository successfully created at: %s", newRepoURL)
 
 	listTemplateTopicsOptions := topics.ListAllTopicsOptions{
 		Owner:   option.TemplateOwner,
@@ -73,14 +62,10 @@ func Delete(ctx context.Context, option DeleteOptions) error {
 		return err
 	}
 
-	log.Printf("Deleting repository %s/%s", option.Owner, option.Repo)
-
 	_, err := option.Service.Delete(ctx, option.Owner, option.Repo)
 	if err != nil {
 		return github.WrapError(err, fmt.Sprintf("failed to delete repository %s/%s", option.Owner, option.Repo))
 	}
-
-	log.Printf("Repository %s/%s successfully deleted", option.Owner, option.Repo)
 	return nil
 }
 
@@ -99,21 +84,10 @@ func Edit(ctx context.Context, option EditOptions) (*gh.Repository, error) {
 		AllowForking: option.AllowForking,
 	}
 
-	log.Printf("Editing repository %s/%s with options: %+v", option.Owner, option.Repo, repo)
-
 	updatedRepo, _, err := option.Service.Edit(ctx, option.Owner, option.Repo, repo)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to edit repository %s/%s", option.Owner, option.Repo))
 	}
-	var updatedRepoURL string
-	if updatedRepo != nil {
-		updatedRepoURL = updatedRepo.GetHTMLURL()
-	}
-	if updatedRepoURL == "" {
-		updatedRepoURL = "https://github.com/" + option.Owner + "/" + option.Repo
-	}
-
-	log.Printf("Repository successfully edited: %s", updatedRepoURL)
 	return updatedRepo, nil
 }
 
@@ -148,7 +122,5 @@ func ListOrgRepos(ctx context.Context, option ListOrgReposOptions) ([]*github.Re
 		listOptions.Page = resp.NextPage
 	}
 
-	log.Printf("Retrieved %d repositories for organization %s", len(allRepos), option.Org)
-	log.Printf("Repositories: %+v", allRepos)
 	return allRepos, nil
 }

@@ -1,10 +1,7 @@
 package main
 
-import "log"
+import "github.com/spf13/cobra"
 
 func main() {
-	// Execute the root command
-	if err := Execute(); err != nil {
-		log.Fatal(err)
-	}
+	cobra.CheckErr(Execute())
 }

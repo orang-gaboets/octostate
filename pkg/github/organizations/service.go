@@ -3,7 +3,6 @@ package organizations
 import (
 	"context"
 	"fmt"
-	"log"
 
 	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
@@ -15,7 +14,6 @@ func Get(ctx context.Context, option GetOptions) (*github.Organization, error) {
 		return nil, err
 	}
 
-	log.Printf("Retrieving organization: %s", option.OrgName)
 	ghOrg, _, err := option.Service.Get(ctx, option.OrgName)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to get organization %s", option.OrgName))
@@ -24,7 +22,6 @@ func Get(ctx context.Context, option GetOptions) (*github.Organization, error) {
 		return nil, fmt.Errorf("organization %s not found", option.OrgName)
 	}
 	org := github.OrganizationFromGhOrg(ghOrg)
-	log.Printf("Organization %s retrieved successfully: %s", option.OrgName, *org)
 	return org, nil
 }
 
@@ -34,15 +31,13 @@ func InviteUser(ctx context.Context, option InviteUserOptions) error {
 		return err
 	}
 
-	log.Printf("Inviting user %d to organization: %s", option.UserID, option.OrgName)
 	createOrgInvitationOptoins := &gh.CreateOrgInvitationOptions{
 		InviteeID: &option.UserID,
 	}
-	invitation, _, err := option.Service.CreateOrgInvitation(ctx, option.OrgName, createOrgInvitationOptoins)
+	_, _, err := option.Service.CreateOrgInvitation(ctx, option.OrgName, createOrgInvitationOptoins)
 	if err != nil {
 		return github.WrapError(err, fmt.Sprintf("failed to invite user %d to organization %s", option.UserID, option.OrgName))
 	}
-	log.Printf("User %d invited to organization %s successfully (invitation ID: %v)", option.UserID, option.OrgName, invitation.GetID())
 	return nil
 }
 
@@ -75,7 +70,5 @@ func ListMembers(ctx context.Context, option ListMembersOptions) ([]*github.User
 		listOptions.Page = resp.NextPage
 	}
 
-	log.Printf("Retrieved %d members for organization %s", len(members), option.OrgName)
-	log.Printf("Members: %+v", members)
 	return members, nil
 }

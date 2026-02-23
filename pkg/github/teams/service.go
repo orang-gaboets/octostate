@@ -3,7 +3,6 @@ package teams
 import (
 	"context"
 	"fmt"
-	"log"
 
 	gh "github.com/google/go-github/v55/github"
 
@@ -41,13 +40,11 @@ func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, er
 		}(),
 	}
 
-	log.Printf("Creating team %s/%s", option.Org, option.Name)
 	ghTeam, _, err := option.Service.CreateTeam(ctx, option.Org, newTeam)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to create team %s/%s", option.Org, option.Name))
 	}
 	team := github.TeamFromGhTeam(ghTeam)
-	log.Printf("Successfully created team: %s", team)
 	return team, nil
 }
 
@@ -56,14 +53,10 @@ func DeleteTeamBySlug(ctx context.Context, option DeleteTeamBySlugOptions) error
 	if err := option.Validate(); err != nil {
 		return err
 	}
-	log.Printf("Deleting team %s/%s", option.Org, option.Slug)
-
 	_, err := option.Service.DeleteTeamBySlug(ctx, option.Org, option.Slug)
 	if err != nil {
 		return github.WrapError(err, fmt.Sprintf("failed to delete team %s/%s", option.Org, option.Slug))
 	}
-
-	log.Printf("Successfully deleted team %s/%s", option.Org, option.Slug)
 	return nil
 }
 
@@ -73,15 +66,12 @@ func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Te
 		return nil, err
 	}
 
-	log.Printf("Retrieving team %s/%s", option.Org, option.Slug)
-
 	ghTeam, _, err := option.Service.GetTeamBySlug(ctx, option.Org, option.Slug)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to get team %s/%s", option.Org, option.Slug))
 	}
 
 	team := github.TeamFromGhTeam(ghTeam)
-	log.Printf("Successfully retrieved team: %s", team)
 	return team, nil
 }
 
@@ -90,8 +80,6 @@ func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, er
 	if err := option.Validate(); err != nil {
 		return nil, err
 	}
-
-	log.Printf("Listing teams for organization %s", option.Org)
 
 	listOptions := &gh.ListOptions{
 		PerPage: 100,
@@ -113,7 +101,5 @@ func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, er
 		listOptions.Page = resp.NextPage
 	}
 
-	log.Printf("Retrieved %d teams for organization %s", len(allTeams), option.Org)
-	log.Printf("Teams: %+v", allTeams)
 	return allTeams, nil
 }
