@@ -7,6 +7,7 @@ import (
 	gh "github.com/google/go-github/v55/github"
 
 	"github.com/orang-gaboets/repo-builder/pkg/github"
+	ghlogging "github.com/orang-gaboets/repo-builder/pkg/github/logging"
 )
 
 // CreateTeam creates a new team in the specified organization.
@@ -17,6 +18,7 @@ func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, er
 
 	var parentTeam *github.Team
 	if option.ParentTeamSlug != nil {
+		ghlogging.Debugf(ctx, "resolve parent team %s/%s", option.Org, *option.ParentTeamSlug)
 		var err error
 		parentTeam, err = GetTeamBySlug(ctx, GetTeamBySlugOptions{
 			Org:     option.Org,
@@ -40,11 +42,13 @@ func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, er
 		}(),
 	}
 
+	ghlogging.Debugf(ctx, "create team %s/%s", option.Org, option.Name)
 	ghTeam, _, err := option.Service.CreateTeam(ctx, option.Org, newTeam)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to create team %s/%s", option.Org, option.Name))
 	}
 	team := github.TeamFromGhTeam(ghTeam)
+	ghlogging.Debugf(ctx, "created team %s/%s", option.Org, option.Name)
 	return team, nil
 }
 
@@ -53,10 +57,12 @@ func DeleteTeamBySlug(ctx context.Context, option DeleteTeamBySlugOptions) error
 	if err := option.Validate(); err != nil {
 		return err
 	}
+	ghlogging.Debugf(ctx, "delete team %s/%s", option.Org, option.Slug)
 	_, err := option.Service.DeleteTeamBySlug(ctx, option.Org, option.Slug)
 	if err != nil {
 		return github.WrapError(err, fmt.Sprintf("failed to delete team %s/%s", option.Org, option.Slug))
 	}
+	ghlogging.Debugf(ctx, "deleted team %s/%s", option.Org, option.Slug)
 	return nil
 }
 
@@ -66,12 +72,14 @@ func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Te
 		return nil, err
 	}
 
+	ghlogging.Debugf(ctx, "get team %s/%s", option.Org, option.Slug)
 	ghTeam, _, err := option.Service.GetTeamBySlug(ctx, option.Org, option.Slug)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to get team %s/%s", option.Org, option.Slug))
 	}
 
 	team := github.TeamFromGhTeam(ghTeam)
+	ghlogging.Debugf(ctx, "retrieved team %s/%s", option.Org, option.Slug)
 	return team, nil
 }
 
@@ -101,5 +109,6 @@ func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, er
 		listOptions.Page = resp.NextPage
 	}
 
+	ghlogging.Debugf(ctx, "listed %d teams for organization %s", len(allTeams), option.Org)
 	return allTeams, nil
 }

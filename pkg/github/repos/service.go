@@ -7,6 +7,7 @@ import (
 	gh "github.com/google/go-github/v55/github"
 
 	"github.com/orang-gaboets/repo-builder/pkg/github"
+	ghlogging "github.com/orang-gaboets/repo-builder/pkg/github/logging"
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
 )
 
@@ -24,10 +25,12 @@ func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (
 		IncludeAllBranches: &option.IncludeAllBranches,
 	}
 
+	ghlogging.Debugf(ctx, "create repository %s/%s from template %s/%s", option.Owner, option.Name, option.TemplateOwner, option.TemplateRepo)
 	newRepo, _, err := option.Service.CreateFromTemplate(ctx, option.TemplateOwner, option.TemplateRepo, req)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository from template %s/%s", option.TemplateOwner, option.TemplateRepo))
 	}
+	ghlogging.Debugf(ctx, "created repository %s/%s", option.Owner, option.Name)
 
 	listTemplateTopicsOptions := topics.ListAllTopicsOptions{
 		Owner:   option.TemplateOwner,
@@ -38,10 +41,12 @@ func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", option.TemplateOwner, option.TemplateRepo))
 	}
+	ghlogging.Debugf(ctx, "loaded %d template topics for %s/%s", len(templateTopics), option.TemplateOwner, option.TemplateRepo)
 
 	uniqueTopics := github.MergeUnique(option.Topics, templateTopics)
 
 	if len(uniqueTopics) > 0 {
+		ghlogging.Debugf(ctx, "setting %d merged topics on %s/%s", len(uniqueTopics), option.Owner, option.Name)
 		newRepoTopicsOptions := topics.ReplaceAllTopicsOptions{
 			Owner:   option.Owner,
 			Repo:    option.Name,
@@ -62,10 +67,12 @@ func Delete(ctx context.Context, option DeleteOptions) error {
 		return err
 	}
 
+	ghlogging.Debugf(ctx, "delete repository %s/%s", option.Owner, option.Repo)
 	_, err := option.Service.Delete(ctx, option.Owner, option.Repo)
 	if err != nil {
 		return github.WrapError(err, fmt.Sprintf("failed to delete repository %s/%s", option.Owner, option.Repo))
 	}
+	ghlogging.Debugf(ctx, "deleted repository %s/%s", option.Owner, option.Repo)
 	return nil
 }
 
@@ -84,10 +91,12 @@ func Edit(ctx context.Context, option EditOptions) (*gh.Repository, error) {
 		AllowForking: option.AllowForking,
 	}
 
+	ghlogging.Debugf(ctx, "edit repository %s/%s", option.Owner, option.Repo)
 	updatedRepo, _, err := option.Service.Edit(ctx, option.Owner, option.Repo, repo)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to edit repository %s/%s", option.Owner, option.Repo))
 	}
+	ghlogging.Debugf(ctx, "edited repository %s/%s", option.Owner, option.Repo)
 	return updatedRepo, nil
 }
 
@@ -122,5 +131,6 @@ func ListOrgRepos(ctx context.Context, option ListOrgReposOptions) ([]*github.Re
 		listOptions.Page = resp.NextPage
 	}
 
+	ghlogging.Debugf(ctx, "listed %d repositories for organization %s", len(allRepos), option.Org)
 	return allRepos, nil
 }

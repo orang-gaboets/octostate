@@ -6,6 +6,7 @@ import (
 
 	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
+	ghlogging "github.com/orang-gaboets/repo-builder/pkg/github/logging"
 )
 
 // Get retrieves an organization by its name.
@@ -14,6 +15,7 @@ func Get(ctx context.Context, option GetOptions) (*github.Organization, error) {
 		return nil, err
 	}
 
+	ghlogging.Debugf(ctx, "get organization %s", option.OrgName)
 	ghOrg, _, err := option.Service.Get(ctx, option.OrgName)
 	if err != nil {
 		return nil, github.WrapError(err, fmt.Sprintf("failed to get organization %s", option.OrgName))
@@ -22,6 +24,7 @@ func Get(ctx context.Context, option GetOptions) (*github.Organization, error) {
 		return nil, fmt.Errorf("organization %s not found", option.OrgName)
 	}
 	org := github.OrganizationFromGhOrg(ghOrg)
+	ghlogging.Debugf(ctx, "retrieved organization %s", option.OrgName)
 	return org, nil
 }
 
@@ -31,6 +34,7 @@ func InviteUser(ctx context.Context, option InviteUserOptions) error {
 		return err
 	}
 
+	ghlogging.Debugf(ctx, "invite user %d to organization %s", option.UserID, option.OrgName)
 	createOrgInvitationOptoins := &gh.CreateOrgInvitationOptions{
 		InviteeID: &option.UserID,
 	}
@@ -38,6 +42,7 @@ func InviteUser(ctx context.Context, option InviteUserOptions) error {
 	if err != nil {
 		return github.WrapError(err, fmt.Sprintf("failed to invite user %d to organization %s", option.UserID, option.OrgName))
 	}
+	ghlogging.Debugf(ctx, "invited user %d to organization %s", option.UserID, option.OrgName)
 	return nil
 }
 
@@ -70,5 +75,6 @@ func ListMembers(ctx context.Context, option ListMembersOptions) ([]*github.User
 		listOptions.Page = resp.NextPage
 	}
 
+	ghlogging.Debugf(ctx, "listed %d members for organization %s", len(members), option.OrgName)
 	return members, nil
 }

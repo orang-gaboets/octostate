@@ -89,6 +89,9 @@ This README uses canonical command names (for example `organization`,
 `create-from-template`, `delete-by-slug`, `get-by-slug`). Common aliases such as
 `org`, `repo create`, `team delete`, and `team get` also work.
 
+Use `--verbose` (or `-v`) to enable diagnostic logs on stderr while keeping
+command results on stdout.
+
 ## Developer Commands
 
 Common local development commands:
