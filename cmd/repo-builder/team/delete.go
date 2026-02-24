@@ -1,9 +1,12 @@
 package team
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
@@ -17,6 +20,8 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 		appKeyPath     string
 		org            string
 		slug           string
+		dryRun         bool
+		yes            bool
 	)
 
 	cmd := &cobra.Command{
@@ -25,9 +30,18 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 		Short:   "Delete a GitHub team by its slug",
 		Long:    "Delete a GitHub team by its slug within an organization.",
 		Example: `
-			repo-builder team delete-by-slug --token <token> --org <org> --slug <team-slug>
-			repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>`,
+			repo-builder team delete-by-slug --token <token> --org <org> --slug <team-slug> --yes
+			repo-builder team delete-by-slug --token <token> --org <org> --slug <team-slug> --dry-run
+			repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --yes`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := safety.RequireYesOrDryRun(yes, dryRun); err != nil {
+				return err
+			}
+			if dryRun {
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would delete team %s/%s\n", org, slug)
+				return err
+			}
+
 			ctx := cmd.Context()
 			service := svc
 			if service == nil {
@@ -51,6 +65,8 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
+	safety.AddDryRunFlag(cmd, &dryRun)
+	safety.AddYesFlag(cmd, &yes)
 
 	github.MarkRequiredFlags(cmd, "org", "slug")
 

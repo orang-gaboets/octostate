@@ -1,13 +1,28 @@
 package team_test
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	teamcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/team"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
+
+type captureDeleteTeamBySlugService struct {
+	auth.MockTeamsService
+	deleteCalled bool
+}
+
+func (s *captureDeleteTeamBySlugService) DeleteTeamBySlug(_ context.Context, _, _ string) (*gh.Response, error) {
+	s.deleteCalled = true
+	return nil, nil
+}
 
 func TestDeleteTeamNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
@@ -21,7 +36,7 @@ func TestDeleteTeamNoRequiredFlags(t *testing.T) {
 func TestDeleteTeamAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
-	c.SetArgs([]string{"--token", "t", "--org", "o", "--slug", "s"})
+	c.SetArgs([]string{"--token", "t", "--org", "o", "--slug", "s", "--yes"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,7 +45,7 @@ func TestDeleteTeamAllRequiredFlagsTokenProvided(t *testing.T) {
 func TestDeleteTeamAllRequiredFlagsAppProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
-	c.SetArgs([]string{"--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--slug", "s"})
+	c.SetArgs([]string{"--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--slug", "s", "--yes"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -39,7 +54,7 @@ func TestDeleteTeamAllRequiredFlagsAppProvided(t *testing.T) {
 func TestDeleteTeamPartialAppProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
-	c.SetArgs([]string{"--app-id", "123", "--org", "o", "--slug", "s"})
+	c.SetArgs([]string{"--app-id", "123", "--org", "o", "--slug", "s", "--yes"})
 	if err := c.Execute(); !errors.Is(err, github.ErrNoValidCredentials) {
 		t.Fatalf("expected error %v, got %v", github.ErrNoValidCredentials, err)
 	}
@@ -48,7 +63,7 @@ func TestDeleteTeamPartialAppProvided(t *testing.T) {
 func TestDeleteTeamBothAuthMethodsProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
-	c.SetArgs([]string{"--token", "t", "--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--slug", "s"})
+	c.SetArgs([]string{"--token", "t", "--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--slug", "s", "--yes"})
 	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
 		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
 	}
@@ -57,8 +72,35 @@ func TestDeleteTeamBothAuthMethodsProvided(t *testing.T) {
 func TestDeleteTeamWithInvalidFlags(t *testing.T) {
 	auth.PrepareClient(t)
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
-	c.SetArgs([]string{"--token", "t", "--org", "o", "--slug", "s", "--invalid-flag"})
+	c.SetArgs([]string{"--token", "t", "--org", "o", "--slug", "s", "--yes", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag")
+	}
+}
+
+func TestDeleteTeamRequiresYesUnlessDryRun(t *testing.T) {
+	auth.PrepareClient(t)
+	c := teamcmd.DeleteTeamBySlugCmd(nil)
+	c.SetArgs([]string{"--token", "t", "--org", "o", "--slug", "s"})
+	err := c.Execute()
+	if !errors.Is(err, safety.ErrConfirmationRequired) {
+		t.Fatalf("expected confirmation error, got %v", err)
+	}
+}
+
+func TestDeleteTeamDryRunSkipsDeleteService(t *testing.T) {
+	svc := &captureDeleteTeamBySlugService{}
+	c := teamcmd.DeleteTeamBySlugCmd(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--slug", "s", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.deleteCalled {
+		t.Fatalf("expected delete service not to be called in dry-run mode")
+	}
+	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would delete team o/s") {
+		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
