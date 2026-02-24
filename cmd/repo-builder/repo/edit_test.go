@@ -1,13 +1,27 @@
 package repo_test
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	reposcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
+
+type captureEditRepoService struct {
+	auth.MockRepoService
+	editCalled bool
+}
+
+func (s *captureEditRepoService) Edit(_ context.Context, _, _ string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	s.editCalled = true
+	return &gh.Repository{}, nil, nil
+}
 
 func TestEditRepoNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
@@ -103,5 +117,22 @@ func TestEditRepoWithInvalidFlags(t *testing.T) {
 	})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag value")
+	}
+}
+
+func TestEditRepoDryRunSkipsEditService(t *testing.T) {
+	svc := &captureEditRepoService{}
+	c := reposcmd.EditRepo(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--desc", "d", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.editCalled {
+		t.Fatalf("expected edit service not to be called in dry-run mode")
+	}
+	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would edit repository o/n") {
+		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

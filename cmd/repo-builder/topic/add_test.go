@@ -1,13 +1,33 @@
 package topic_test
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	topicscmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/topic"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
+
+type captureAddTopicsService struct {
+	auth.MockRepoService
+	listAllTopicsCalled    bool
+	replaceAllTopicsCalled bool
+}
+
+func (s *captureAddTopicsService) ListAllTopics(_ context.Context, _, _ string) ([]string, *gh.Response, error) {
+	s.listAllTopicsCalled = true
+	return []string{}, nil, nil
+}
+
+func (s *captureAddTopicsService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+	s.replaceAllTopicsCalled = true
+	return topics, nil, nil
+}
 
 func TestAddTopicsNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
@@ -60,5 +80,22 @@ func TestAddTopicsWithInvalidFlags(t *testing.T) {
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n", "--topics", "topic1,topic2", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flags")
+	}
+}
+
+func TestAddTopicsDryRunSkipsTopicServices(t *testing.T) {
+	svc := &captureAddTopicsService{}
+	c := topicscmd.AddTopicsCmd(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "a,b", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.listAllTopicsCalled || svc.replaceAllTopicsCalled {
+		t.Fatalf("expected topic services not to be called in dry-run mode")
+	}
+	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would add topics to repository o/n") {
+		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

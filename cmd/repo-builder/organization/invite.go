@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/github/users"
@@ -22,6 +23,7 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 		org            string
 		userID         int64
 		username       string
+		dryRun         bool
 	)
 
 	cmd := &cobra.Command{
@@ -31,10 +33,27 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 		Long:    "Invite a user to a GitHub organization by their user ID or username.",
 		Example: `
 			repo-builder organization invite --token <token> --org <org-name> --id <user-id>
+			repo-builder organization invite --org <org-name> --username <username> --dry-run
 			repo-builder organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --username <username>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			userIDProvided := cmd.Flags().Changed("id")
 			usernameProvided := cmd.Flags().Changed("username")
+
+			switch {
+			case !userIDProvided && !usernameProvided:
+				return fmt.Errorf("%w: either --id or --username must be provided to invite a user", github.ErrMissingRequiredField)
+			case userIDProvided && usernameProvided:
+				return fmt.Errorf("%w: cannot provide both --id and --username", github.ErrConflictingCredentials)
+			}
+
+			if dryRun {
+				if usernameProvided {
+					_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would invite user %q to organization %s (username lookup skipped)\n", strings.TrimSpace(username), strings.TrimSpace(org))
+					return err
+				}
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would invite user ID %d to organization %s\n", userID, strings.TrimSpace(org))
+				return err
+			}
 
 			var client auth.Client
 			if orgSvc == nil || (!userIDProvided && usernameProvided && userSvc == nil) {
@@ -46,10 +65,6 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 			}
 
 			switch {
-			case !userIDProvided && !usernameProvided:
-				return fmt.Errorf("%w: either --id or --username must be provided to invite a user", github.ErrMissingRequiredField)
-			case userIDProvided && usernameProvided:
-				return fmt.Errorf("%w: cannot provide both --id and --username", github.ErrConflictingCredentials)
 			case !userIDProvided && usernameProvided:
 				if userSvc == nil {
 					userSvc = client.Users()
@@ -89,6 +104,7 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 	cmd.Flags().StringVarP(&org, "org", "o", "", "Name of the organization to invite the user to")
 	cmd.Flags().Int64VarP(&userID, "id", "i", 0, "User ID to invite to the organization")
 	cmd.Flags().StringVarP(&username, "username", "u", "", "Username of the user to invite to the organization")
+	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org")
 

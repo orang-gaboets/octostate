@@ -1,6 +1,7 @@
 package repo_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -16,12 +17,14 @@ type captureCreateRepoFromTemplateService struct {
 	lastTemplateRepo string
 	lastTemplateOrg  string
 	lastRequest      *gh.TemplateRepoRequest
+	createCalled     bool
 }
 
 func (m *captureCreateRepoFromTemplateService) CreateFromTemplate(_ context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 	m.lastTemplateOrg = templateOwner
 	m.lastTemplateRepo = templateRepo
 	m.lastRequest = req
+	m.createCalled = true
 	return &gh.Repository{}, nil, nil
 }
 
@@ -139,5 +142,22 @@ func TestCreateRepoFromTemplateIncludeAllBranchesCanBeEnabled(t *testing.T) {
 	}
 	if !*svc.lastRequest.IncludeAllBranches {
 		t.Fatalf("expected IncludeAllBranches true when explicitly set")
+	}
+}
+
+func TestCreateRepoFromTemplateDryRunSkipsCreateService(t *testing.T) {
+	svc := &captureCreateRepoFromTemplateService{}
+	c := reposcmd.CreateNewRepoFromTemplateCmd(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--template-name", "temp", "--name", "n", "--topics", "a,b", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.createCalled {
+		t.Fatalf("expected create service not to be called in dry-run mode")
+	}
+	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would create repository o/n from template o/temp") {
+		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

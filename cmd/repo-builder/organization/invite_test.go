@@ -1,13 +1,37 @@
 package organization_test
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	organizationcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/organization"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
+
+type captureInviteOrganizationService struct {
+	auth.MockOrganizationService
+	inviteCalled bool
+}
+
+func (s *captureInviteOrganizationService) CreateOrgInvitation(_ context.Context, _ string, _ *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+	s.inviteCalled = true
+	return &gh.Invitation{}, nil, nil
+}
+
+type captureInviteUserLookupService struct {
+	auth.MockUserService
+	getCalled bool
+}
+
+func (s *captureInviteUserLookupService) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
+	s.getCalled = true
+	return &gh.User{}, nil, nil
+}
 
 func TestInviteCmdNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
@@ -87,5 +111,26 @@ func TestInviteCmdWithInvalidFlags(t *testing.T) {
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flags")
+	}
+}
+
+func TestInviteCmdDryRunSkipsUserLookupAndOrgInvite(t *testing.T) {
+	orgSvc := &captureInviteOrganizationService{}
+	userSvc := &captureInviteUserLookupService{}
+	c := organizationcmd.InviteCmd(orgSvc, userSvc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--username", "u", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if orgSvc.inviteCalled {
+		t.Fatalf("expected org invite service not to be called in dry-run mode")
+	}
+	if userSvc.getCalled {
+		t.Fatalf("expected user lookup service not to be called in dry-run mode")
+	}
+	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "username lookup skipped") {
+		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

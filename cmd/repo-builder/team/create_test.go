@@ -1,13 +1,27 @@
 package team_test
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	teamcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/team"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
+
+type captureCreateTeamService struct {
+	auth.MockTeamsService
+	createCalled bool
+}
+
+func (s *captureCreateTeamService) CreateTeam(_ context.Context, _ string, _ gh.NewTeam) (*gh.Team, *gh.Response, error) {
+	s.createCalled = true
+	return &gh.Team{}, nil, nil
+}
 
 func TestCreateTeamNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
@@ -60,5 +74,22 @@ func TestCreateTeamWithInvalidFlags(t *testing.T) {
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag")
+	}
+}
+
+func TestCreateTeamDryRunSkipsCreateService(t *testing.T) {
+	svc := &captureCreateTeamService{}
+	c := teamcmd.CreateTeamCmd(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.createCalled {
+		t.Fatalf("expected create team service not to be called in dry-run mode")
+	}
+	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would create team o/n") {
+		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

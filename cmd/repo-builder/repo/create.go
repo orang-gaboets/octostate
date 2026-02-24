@@ -1,11 +1,13 @@
 package repo
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
 )
@@ -25,6 +27,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 		topics             string
 		private            bool
 		includeAllBranches bool
+		dryRun             bool
 	)
 
 	cmd := &cobra.Command{
@@ -34,9 +37,31 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 		Long:    "Create a new GitHub repository from a template repository, optionally specifying organization, name, description, topics, and privacy settings.",
 		Example: `
 			repo-builder repo create-from-template --token <token> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true
+			repo-builder repo create-from-template --org <org> --template-name <template-name> --name <new-repo-name> --dry-run
 			repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			var topicList []string
+			if topics != "" {
+				topicList = strings.Split(strings.TrimSpace(topics), ",")
+			}
+			if templateOrg == "" {
+				templateOrg = org
+			}
+			if dryRun {
+				_, err := fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"Dry run: would create repository %s/%s from template %s/%s (private=%t include-all-branches=%t topics=%v)\n",
+					org,
+					name,
+					templateOrg,
+					templateName,
+					private,
+					includeAllBranches,
+					topicList,
+				)
+				return err
+			}
 			service := svc
 			if service == nil {
 				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
@@ -44,13 +69,6 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 					return err
 				}
 				service = client.Repositories()
-			}
-			var topicList []string
-			if topics != "" {
-				topicList = strings.Split(strings.TrimSpace(topics), ",")
-			}
-			if templateOrg == "" {
-				templateOrg = org
 			}
 			opts := repos.CreateFromTemplateOptions{
 				Name:               strings.TrimSpace(name),
@@ -78,6 +96,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
 	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", false, "Include all branches from the template repository")
+	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "template-name", "name")
 

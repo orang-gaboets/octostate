@@ -1,9 +1,12 @@
 package team
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
@@ -20,6 +23,7 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 		desc           string
 		secret         bool
 		parent         string
+		dryRun         bool
 	)
 
 	cmd := &cobra.Command{
@@ -29,9 +33,23 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 		Long:    "Create a new team in a GitHub organization.",
 		Example: `
 			repo-builder team create --token <token> --org <org> --name <team-name> --desc "Team description" --secret=false --parent <parent-team-slug>
+			repo-builder team create --org <org> --name <team-name> --dry-run
 			repo-builder team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> --desc "Team description" --secret=false --parent <parent-team-slug>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			privacy := github.PrivacyFromBool(secret)
+			if dryRun {
+				_, err := fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"Dry run: would create team %s/%s (privacy=%s parent=%s)\n",
+					org,
+					name,
+					privacy,
+					parent,
+				)
+				return err
+			}
+
 			service := svc
 			if service == nil {
 				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
@@ -40,8 +58,6 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 				}
 				service = client.Teams()
 			}
-
-			privacy := github.PrivacyFromBool(secret)
 
 			opts := teams.CreateTeamOptions{
 				Org:         org,
@@ -66,6 +82,7 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().StringVar(&desc, "desc", "", "Team description")
 	cmd.Flags().BoolVar(&secret, "secret", false, "Create a secret team (default: false)")
 	cmd.Flags().StringVar(&parent, "parent", "", "Parent team slug (optional)")
+	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "name")
 

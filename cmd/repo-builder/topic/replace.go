@@ -1,11 +1,13 @@
 package topic
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
 )
@@ -20,6 +22,7 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 		org            string
 		name           string
 		topicsStr      string
+		dryRun         bool
 	)
 
 	cmd := &cobra.Command{
@@ -29,9 +32,18 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 		Long:    "Replace all topics in a GitHub repository. This command replaces the existing topics associated with a specified GitHub repository with new ones.",
 		Example: `
 			repo-builder topic replace --token <token> --org <org> --name <name> --topics <topic1,topic2>
+			repo-builder topic replace --org <org> --name <name> --topics <topic1,topic2> --dry-run
 			repo-builder topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <name> --topics <topic1,topic2>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			var topicsList []string
+			if topicsStr != "" {
+				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
+			}
+			if dryRun {
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would replace topics for repository %s/%s (topics=%v)\n", org, name, topicsList)
+				return err
+			}
 			service := svc
 			if service == nil {
 				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
@@ -39,10 +51,6 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 					return err
 				}
 				service = client.Repositories()
-			}
-			var topicsList []string
-			if topicsStr != "" {
-				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
 			opts := topics.ReplaceAllTopicsOptions{
 				Repo:    name,
@@ -60,6 +68,7 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&name, "name", "", "GitHub repository name")
 	cmd.Flags().StringVar(&topicsStr, "topics", "", "Comma-separated list of topics to replace in the repository")
+	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "name", "topics")
 
