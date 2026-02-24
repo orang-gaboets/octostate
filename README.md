@@ -89,8 +89,10 @@ This README uses canonical command names (for example `organization`,
 `create-from-template`, `delete-by-slug`, `get-by-slug`). Common aliases such as
 `org`, `repo create`, `team delete`, and `team get` also work.
 
-Use `--verbose` (or `-v`) to enable diagnostic logs on stderr while keeping
-command results on stdout.
+Use `--verbose` (or `-v`) to enable diagnostic logs on stderr while keeping command results on stdout.
+
+Command results (JSON payloads or success messages) are written to stdout.
+Errors and diagnostics (including `--verbose` logs) are written to stderr.
 
 ## Developer Commands
 
@@ -128,6 +130,18 @@ All commands require GitHub authentication. You must supply exactly one of the f
 - `--app-id`, `--installation-id`, and `--app-key-path` – GitHub App ID, installation ID, and path to the App's private key.
 
 Providing both methods or neither results in an error.
+
+### Safety Flags
+
+Mutating commands support `--dry-run` to preview the requested action without
+calling GitHub mutation APIs. Dry-run previews are input-based and may not
+include remote-derived final state (for example topic merge results).
+
+Destructive delete commands require explicit confirmation with `--yes`:
+- `repo-builder repo delete`
+- `repo-builder team delete-by-slug`
+
+You can use `--dry-run` instead of `--yes` to preview a delete operation.
 
 ### Organizations
 
@@ -185,12 +199,28 @@ repo-builder organization list-teams --app-id <app-id> --installation-id <instal
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 
+#### Invite a User to an Organization
+
+```bash
+repo-builder organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--dry-run]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--id` (required unless `--username` is provided): GitHub user ID to invite
+- `--username` (required unless `--id` is provided): GitHub username to invite
+- `--dry-run` (optional): Preview the invitation request without creating it (username lookups are skipped in dry-run mode)
+
 ### Repo
 
 #### Create a New Repository Based on a Template
 
 ```bash
-repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --template-org <template-org> --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false]
+repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--dry-run]
 ```
 
 ##### Flags
@@ -200,18 +230,19 @@ repo-builder repo create-from-template --app-id <app-id> --installation-id <inst
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
-- `--template-org` (required): Organisation that owns the template repository
+- `--template-org` (optional): Organisation that owns the template repository (defaults to `--org`)
 - `--template-name` (required): Name of the template repository
 - `--name` (required): New repository name
 - `--desc` (optional): Repository description
 - `--topics` (optional): Comma-separated list of repository topics
 - `--private` (optional): Create a private repository (default is public)
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
+- `--dry-run` (optional): Preview repository creation without creating it
 
 #### Delete a Repository
 
 ```bash
-repo-builder repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
+repo-builder repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> (--yes | --dry-run)
 ```
 
 ##### Flags
@@ -221,11 +252,13 @@ repo-builder repo delete --app-id <app-id> --installation-id <installation-id> -
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
+- `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
+- `--dry-run` (optional): Preview repository deletion without deleting it
 
 #### Edit Repository Settings
 
 ```bash
-repo-builder repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false]
+repo-builder repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--dry-run]
 ```
 
 ##### Flags
@@ -241,13 +274,14 @@ repo-builder repo edit --app-id <app-id> --installation-id <installation-id> --a
 - `--is-template` (optional): Set or unset repository as a template
 - `--archived` (optional): Archive/unarchive the repository
 - `--allow-forking` (optional): Allow/disallow private forking of the repository
+- `--dry-run` (optional): Preview repository edits without updating the repository
 
 ### Topic
 
 #### Add Topics to a Repository
 
 ```bash
-repo-builder topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2>
+repo-builder topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
 ```
 
 ##### Flags
@@ -258,6 +292,7 @@ repo-builder topic add --app-id <app-id> --installation-id <installation-id> --a
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to add
+- `--dry-run` (optional): Preview topic additions without updating the repository
 
 #### List All Topics of a Repository
 
@@ -276,7 +311,7 @@ repo-builder topic list --app-id <app-id> --installation-id <installation-id> --
 #### Replace All Topics of a Repository
 
 ```bash
-repo-builder topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2>
+repo-builder topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
 ```
 
 ##### Flags
@@ -287,13 +322,14 @@ repo-builder topic replace --app-id <app-id> --installation-id <installation-id>
 - `--org` (required): GitHub organisation name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to set
+- `--dry-run` (optional): Preview topic replacement without updating the repository
 
 ### Team
 
 #### Create a New Team
 
 ```bash
-repo-builder team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>]
+repo-builder team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>] [--dry-run]
 ```
 
 ##### Flags
@@ -306,11 +342,12 @@ repo-builder team create --app-id <app-id> --installation-id <installation-id> -
 - `--desc` (optional): Team description
 - `--secret` (optional): Create a secret team (default is false)
 - `--parent` (optional): Parent team slug (if creating a child team)
+- `--dry-run` (optional): Preview team creation without creating the team
 
 #### Delete a Team
 
 ```bash
-repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
+repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name> (--yes | --dry-run)
 ```
 
 ##### Flags
@@ -320,6 +357,8 @@ repo-builder team delete-by-slug --app-id <app-id> --installation-id <installati
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--slug` (required): Team slug (URL-friendly name)
+- `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
+- `--dry-run` (optional): Preview team deletion without deleting the team
 
 #### Get Team by Slug
 
