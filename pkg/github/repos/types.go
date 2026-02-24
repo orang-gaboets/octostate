@@ -50,6 +50,8 @@ type Service interface {
 	// Edit updates a repository's settings.
 	Edit(ctx context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error)
 	// Get retrieves a repository.
+	Get(ctx context.Context, owner, repo string) (*gh.Repository, *gh.Response, error)
+	// ListByOrg lists repositories by organization.
 	ListByOrg(ctx context.Context, org string, opts *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error)
 
 	// Topics-related functions

@@ -48,6 +48,24 @@ func (opt *DeleteOptions) Validate() error {
 	return nil
 }
 
+// GetOptions defines the options for retrieving a repository.
+type GetOptions struct {
+	Service Service
+	Repo    string
+	Owner   string
+}
+
+// Validate checks if the GetOptions are valid.
+func (opt *GetOptions) Validate() error {
+	if opt.Repo == "" || opt.Owner == "" {
+		return github.ErrMissingRequiredField
+	}
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	return nil
+}
+
 // EditOptions defines the options for editing a repository.
 type EditOptions struct {
 	Service      Service

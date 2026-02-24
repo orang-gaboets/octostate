@@ -36,6 +36,10 @@ func (*captureCreateRepoFromTemplateService) Edit(_ context.Context, _, _ string
 	return &gh.Repository{}, nil, nil
 }
 
+func (*captureCreateRepoFromTemplateService) Get(_ context.Context, _, _ string) (*gh.Repository, *gh.Response, error) {
+	return &gh.Repository{}, nil, nil
+}
+
 func (*captureCreateRepoFromTemplateService) ListByOrg(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
 	return nil, nil, nil
 }

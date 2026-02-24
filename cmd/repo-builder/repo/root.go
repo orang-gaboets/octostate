@@ -19,6 +19,7 @@ func NewRepoCmd(svc repos.Service) *cobra.Command {
 		CreateNewRepoFromTemplateCmd(svc),
 		DeleteRepoCmd(svc),
 		EditRepo(svc),
+		GetRepoCmd(svc),
 	)
 
 	return cmd

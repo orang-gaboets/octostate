@@ -76,6 +76,11 @@ func (MockRepoService) Edit(_ context.Context, _, _ string, _ *gh.Repository) (*
 	return &gh.Repository{}, nil, nil
 }
 
+// Get mocks the retrieval of a repository.
+func (MockRepoService) Get(_ context.Context, _, _ string) (*gh.Repository, *gh.Response, error) {
+	return &gh.Repository{}, nil, nil
+}
+
 // ListByOrg mocks the listing of repositories for an organization.
 func (MockRepoService) ListByOrg(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
 	return []*gh.Repository{}, nil, nil

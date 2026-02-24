@@ -87,12 +87,14 @@ type mockService struct {
 	createCalled    bool
 	deleteCalled    bool
 	editCalled      bool
+	getCalled       bool
 	listCalled      bool
 	replaceCalled   bool
 	listByOrgCalled bool
 	createErr       error
 	deleteErr       error
 	editErr         error
+	getErr          error
 	listErr         error
 	replaceErr      error
 	listByOrgErr    error
@@ -182,6 +184,25 @@ func (m *mockService) Edit(_ context.Context, owner, repo string, repository *gh
 		Archived:     repository.Archived,
 		AllowForking: repository.AllowForking,
 		Topics:       repository.Topics,
+	}, nil, nil
+}
+
+func (m *mockService) Get(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+	m.getCalled = true
+	m.owner = owner
+	m.repoName = repo
+	if m.getErr != nil {
+		return nil, nil, m.getErr
+	}
+	if owner != existingRepo.Owner || repo != existingRepo.Name {
+		return nil, nil, fmt.Errorf("invalid repository %s/%s: %w", owner, repo, github.ErrNotFound)
+	}
+	return &gh.Repository{
+		Owner:       &gh.User{Login: &owner},
+		Name:        &repo,
+		Description: github.Ptr(existingRepo.Description),
+		Private:     github.Ptr(existingRepo.Private),
+		Topics:      existingRepo.Topics,
 	}, nil, nil
 }
 

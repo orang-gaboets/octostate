@@ -76,6 +76,22 @@ func Delete(ctx context.Context, option DeleteOptions) error {
 	return nil
 }
 
+// Get retrieves a repository from GitHub.
+func Get(ctx context.Context, option GetOptions) (*github.Repository, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	ghlogging.Debugf(ctx, "get repository %s/%s", option.Owner, option.Repo)
+	ghRepo, _, err := option.Service.Get(ctx, option.Owner, option.Repo)
+	if err != nil {
+		return nil, github.WrapError(err, fmt.Sprintf("failed to retrieve repository %s/%s", option.Owner, option.Repo))
+	}
+	repo := github.RepositoryFromGhRepo(ghRepo)
+	ghlogging.Debugf(ctx, "retrieved repository %s/%s", option.Owner, option.Repo)
+	return repo, nil
+}
+
 // Edit updates the properties of an existing repository.
 func Edit(ctx context.Context, option EditOptions) (*gh.Repository, error) {
 	if err := option.Validate(); err != nil {
