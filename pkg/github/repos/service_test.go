@@ -676,6 +676,117 @@ func TestEditErr(t *testing.T) {
 	}
 }
 
+func TestGetSuccess(t *testing.T) {
+	mockSvc := &mockService{
+		getCalled: false,
+		getErr:    nil,
+	}
+
+	opts := GetOptions{
+		Service: mockSvc,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Owner,
+	}
+
+	ctx := context.Background()
+	repo, err := Get(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.getCalled {
+		t.Error("Get was not called")
+	}
+	if repo == nil {
+		t.Fatal("expected a repository, got nil")
+	}
+	if repo.Owner != existingRepo.Owner {
+		t.Errorf("expected owner %s, got %s", existingRepo.Owner, repo.Owner)
+	}
+	if repo.Name != existingRepo.Name {
+		t.Errorf("expected repo name %s, got %s", existingRepo.Name, repo.Name)
+	}
+}
+
+func TestGetInvalidRepo(t *testing.T) {
+	mockSvc := &mockService{
+		getCalled: false,
+		getErr:    nil,
+	}
+
+	opts := GetOptions{
+		Service: mockSvc,
+		Repo:    invalidTemplateRepo.Name,
+		Owner:   invalidTemplateRepo.Owner,
+	}
+
+	ctx := context.Background()
+	_, err := Get(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.getCalled {
+		t.Error("Get was not called")
+	}
+}
+
+func TestGetErr(t *testing.T) {
+	mockSvc := &mockService{
+		getCalled: false,
+		getErr:    errors.New("get error"),
+	}
+
+	opts := GetOptions{
+		Service: mockSvc,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Owner,
+	}
+
+	ctx := context.Background()
+	_, err := Get(ctx, opts)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !mockSvc.getCalled {
+		t.Error("Get was not called")
+	}
+	if !errors.Is(err, mockSvc.getErr) {
+		t.Errorf("expected error %v, got %v", mockSvc.getErr, err)
+	}
+}
+
+func TestGetMissingRepo(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := GetOptions{
+		Service: mockSvc,
+		Repo:    "",
+		Owner:   existingRepo.Owner,
+	}
+
+	ctx := context.Background()
+	_, err := Get(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.getCalled {
+		t.Error("Get was called")
+	}
+}
+
+func TestGetNilService(t *testing.T) {
+	opts := GetOptions{
+		Service: nil,
+		Repo:    existingRepo.Name,
+		Owner:   existingRepo.Owner,
+	}
+
+	ctx := context.Background()
+	_, err := Get(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+}
+
 func TestListOrgReposSuccess(t *testing.T) {
 	mockSvc := &mockService{
 		orgRepos: orgRepositories,
