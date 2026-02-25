@@ -71,10 +71,12 @@ var (
 
 type mockService struct {
 	createCalled bool
+	editCalled   bool
 	deleteCalled bool
 	getCalled    bool
 	listCalled   bool
 	createErr    error
+	editErr      error
 	deleteErr    error
 	getErr       error
 	listErr      error
@@ -84,6 +86,7 @@ type mockService struct {
 	teamDesc     string
 	teamPrivacy  github.TeamPrivacy
 	teamParentID *int64
+	removeParent bool
 }
 
 // CreateTeam implements teams.Service for testing.
@@ -112,6 +115,34 @@ func (m *mockService) CreateTeam(_ context.Context, org string, team gh.NewTeam)
 		Description: team.Description,
 		Privacy:     team.Privacy,
 	}, nil, m.createErr
+}
+
+// EditTeamBySlug implements teams.Service for testing.
+func (m *mockService) EditTeamBySlug(_ context.Context, org, slug string, team gh.NewTeam, removeParent bool) (*gh.Team, *gh.Response, error) {
+	m.editCalled = true
+	m.removeParent = removeParent
+	m.teamOrg = org
+	m.teamSlug = slug
+	m.teamName = team.Name
+	if m.editErr != nil {
+		return nil, nil, m.editErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	if team.Description != nil {
+		m.teamDesc = *team.Description
+	}
+	if team.Privacy != nil {
+		m.teamPrivacy = github.TeamPrivacy(*team.Privacy)
+	}
+	m.teamParentID = team.ParentTeamID
+	return &gh.Team{
+		ID:          &existingTeam.ID,
+		Name:        github.Ptr(team.Name),
+		Description: team.Description,
+		Privacy:     team.Privacy,
+	}, nil, nil
 }
 
 // DeleteTeamBySlug implements teams.Service for testing.

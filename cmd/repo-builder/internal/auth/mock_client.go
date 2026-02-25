@@ -104,6 +104,15 @@ func (MockTeamsService) CreateTeam(_ context.Context, _ string, _ gh.NewTeam) (*
 	return &gh.Team{}, nil, nil
 }
 
+// EditTeamBySlug mocks the editing of a team by slug.
+func (MockTeamsService) EditTeamBySlug(_ context.Context, _, _ string, team gh.NewTeam, _ bool) (*gh.Team, *gh.Response, error) {
+	return &gh.Team{
+		Name:        github.Ptr(team.Name),
+		Description: team.Description,
+		Privacy:     team.Privacy,
+	}, nil, nil
+}
+
 // DeleteTeamBySlug mocks the deletion of a team by its slug.
 func (MockTeamsService) DeleteTeamBySlug(_ context.Context, _, _ string) (*gh.Response, error) {
 	return nil, nil

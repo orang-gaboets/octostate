@@ -17,6 +17,7 @@ func NewTeamCmd(svc teams.Service) *cobra.Command {
 
 	cmd.AddCommand(
 		CreateTeamCmd(svc),
+		EditTeamCmd(svc),
 		DeleteTeamBySlugCmd(svc),
 		GetTeamBySlugCmd(svc),
 	)

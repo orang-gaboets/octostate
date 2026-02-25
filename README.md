@@ -358,6 +358,26 @@ repo-builder team create --app-id <app-id> --installation-id <installation-id> -
 - `--parent` (optional): Parent team slug (if creating a child team)
 - `--dry-run` (optional): Preview team creation without creating the team
 
+#### Edit a Team
+
+```bash
+repo-builder team edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--name <new-team-name>] [--desc <description>] [--secret true|false] [--parent <parent-team-slug> | --clear-parent] [--dry-run]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
+- `--name` (optional): New team name
+- `--desc` (optional): New team description (pass an empty string to clear)
+- `--secret` (optional): Set privacy to secret (`true`) or visible (`false`) when provided
+- `--parent` (optional): Parent team slug to assign
+- `--clear-parent` (optional): Remove the parent team relationship
+- `--dry-run` (optional): Preview team edits without updating the team
+
 #### Delete a Team
 
 ```bash

@@ -52,6 +52,62 @@ func CreateTeam(ctx context.Context, option CreateTeamOptions) (*github.Team, er
 	return team, nil
 }
 
+// EditTeamBySlug updates a team by slug within an organization.
+func EditTeamBySlug(ctx context.Context, option EditTeamBySlugOptions) (*github.Team, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	var teamName string
+	if option.Name != nil {
+		teamName = *option.Name
+	} else {
+		ghlogging.Debugf(ctx, "resolve current team before editing %s/%s", option.Org, option.Slug)
+		currentTeam, err := GetTeamBySlug(ctx, GetTeamBySlugOptions{
+			Org:     option.Org,
+			Slug:    option.Slug,
+			Service: option.Service,
+		})
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to retrieve current team %s/%s before edit", option.Org, option.Slug))
+		}
+		if currentTeam == nil || currentTeam.Name == "" {
+			return nil, fmt.Errorf("failed to resolve current team name for %s/%s: %w", option.Org, option.Slug, github.ErrNotFound)
+		}
+		teamName = currentTeam.Name
+	}
+
+	var parentTeamID *int64
+	if option.ParentTeamSlug != nil {
+		ghlogging.Debugf(ctx, "resolve parent team %s/%s for edit of %s/%s", option.Org, *option.ParentTeamSlug, option.Org, option.Slug)
+		parentTeam, err := GetTeamBySlug(ctx, GetTeamBySlugOptions{
+			Org:     option.Org,
+			Slug:    *option.ParentTeamSlug,
+			Service: option.Service,
+		})
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to retrieve parent team %s/%s", option.Org, *option.ParentTeamSlug))
+		}
+		parentTeamID = &parentTeam.ID
+	}
+
+	editTeam := gh.NewTeam{
+		Name:         teamName,
+		Description:  option.Description,
+		Privacy:      (*string)(option.Privacy),
+		ParentTeamID: parentTeamID,
+	}
+
+	ghlogging.Debugf(ctx, "edit team %s/%s", option.Org, option.Slug)
+	ghTeam, _, err := option.Service.EditTeamBySlug(ctx, option.Org, option.Slug, editTeam, option.RemoveParent)
+	if err != nil {
+		return nil, github.WrapError(err, fmt.Sprintf("failed to edit team %s/%s", option.Org, option.Slug))
+	}
+	team := github.TeamFromGhTeam(ghTeam)
+	ghlogging.Debugf(ctx, "edited team %s/%s", option.Org, option.Slug)
+	return team, nil
+}
+
 // DeleteTeamBySlug deletes a team by its slug within an organization.
 func DeleteTeamBySlug(ctx context.Context, option DeleteTeamBySlugOptions) error {
 	if err := option.Validate(); err != nil {
