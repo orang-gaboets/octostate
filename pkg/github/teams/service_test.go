@@ -440,6 +440,270 @@ func TestCreateTeamGetServiceError(t *testing.T) {
 	}
 }
 
+// Test EditTeamBySlug functionality
+
+func TestEditTeamBySlugSuccessWithExplicitName(t *testing.T) {
+	mockSvc := &mockService{}
+	privacy := github.TeamPrivacySecret
+	newName := "updated-team-name"
+	newDesc := "updated team description"
+
+	opts := EditTeamBySlugOptions{
+		Service:     mockSvc,
+		Org:         existingTeam.Org,
+		Slug:        existingTeam.Slug,
+		Name:        &newName,
+		Description: &newDesc,
+		Privacy:     &privacy,
+	}
+
+	ctx := context.Background()
+	team, err := EditTeamBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug to be called")
+	}
+	if mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug not to be called when name is provided and no parent is set")
+	}
+	if team == nil {
+		t.Fatal("expected team to be returned")
+	}
+	if mockSvc.teamName != newName {
+		t.Fatalf("expected team name %q, got %q", newName, mockSvc.teamName)
+	}
+	if mockSvc.teamDesc != newDesc {
+		t.Fatalf("expected team description %q, got %q", newDesc, mockSvc.teamDesc)
+	}
+	if mockSvc.teamPrivacy != privacy {
+		t.Fatalf("expected team privacy %q, got %q", privacy, mockSvc.teamPrivacy)
+	}
+}
+
+func TestEditTeamBySlugResolvesCurrentNameWhenMissing(t *testing.T) {
+	mockSvc := &mockService{}
+	newDesc := "desc-only-change"
+
+	opts := EditTeamBySlugOptions{
+		Service:     mockSvc,
+		Org:         existingTeam.Org,
+		Slug:        existingTeam.Slug,
+		Description: &newDesc,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug to be called to resolve current team name")
+	}
+	if !mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug to be called")
+	}
+	if mockSvc.teamName != existingTeam.Name {
+		t.Fatalf("expected resolved team name %q, got %q", existingTeam.Name, mockSvc.teamName)
+	}
+}
+
+func TestEditTeamBySlugResolvesParentTeam(t *testing.T) {
+	mockSvc := &mockService{}
+	newName := "rename-with-parent"
+	parentSlug := existingTeam.Slug
+
+	opts := EditTeamBySlugOptions{
+		Service:        mockSvc,
+		Org:            existingTeam.Org,
+		Slug:           existingTeam.Slug,
+		Name:           &newName,
+		ParentTeamSlug: &parentSlug,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug to be called for parent resolution")
+	}
+	if !mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug to be called")
+	}
+	if mockSvc.teamParentID == nil || *mockSvc.teamParentID != existingTeam.ID {
+		t.Fatalf("expected parent team ID %d, got %v", existingTeam.ID, mockSvc.teamParentID)
+	}
+	if mockSvc.removeParent {
+		t.Fatal("expected removeParent to be false")
+	}
+}
+
+func TestEditTeamBySlugClearParent(t *testing.T) {
+	mockSvc := &mockService{}
+	newName := "rename-clear-parent"
+
+	opts := EditTeamBySlugOptions{
+		Service:      mockSvc,
+		Org:          existingTeam.Org,
+		Slug:         existingTeam.Slug,
+		Name:         &newName,
+		RemoveParent: true,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug to be called")
+	}
+	if mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug not to be called when name is provided and no parent is set")
+	}
+	if !mockSvc.removeParent {
+		t.Fatal("expected removeParent to be true")
+	}
+	if mockSvc.teamParentID != nil {
+		t.Fatalf("expected nil parent team ID when clearing parent, got %v", mockSvc.teamParentID)
+	}
+}
+
+func TestEditTeamBySlugNilService(t *testing.T) {
+	opts := EditTeamBySlugOptions{
+		Service: nil,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+}
+
+func TestEditTeamBySlugMissingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := EditTeamBySlugOptions{
+		Service: mockSvc,
+		Org:     "",
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.getCalled || mockSvc.editCalled {
+		t.Fatal("expected no service calls for invalid input")
+	}
+}
+
+func TestEditTeamBySlugParentAndRemoveParentConflict(t *testing.T) {
+	mockSvc := &mockService{}
+	parentSlug := existingTeam.Slug
+
+	opts := EditTeamBySlugOptions{
+		Service:        mockSvc,
+		Org:            existingTeam.Org,
+		Slug:           existingTeam.Slug,
+		ParentTeamSlug: &parentSlug,
+		RemoveParent:   true,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.getCalled || mockSvc.editCalled {
+		t.Fatal("expected no service calls for conflicting parent options")
+	}
+}
+
+func TestEditTeamBySlugCurrentTeamLookupError(t *testing.T) {
+	mockSvc := &mockService{
+		getErr: errors.New("get error"),
+	}
+	newDesc := "update"
+
+	opts := EditTeamBySlugOptions{
+		Service:     mockSvc,
+		Org:         existingTeam.Org,
+		Slug:        existingTeam.Slug,
+		Description: &newDesc,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.getErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.getErr, err)
+	}
+	if !mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug to be called")
+	}
+	if mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug not to be called when current team lookup fails")
+	}
+}
+
+func TestEditTeamBySlugParentLookupError(t *testing.T) {
+	mockSvc := &mockService{
+		getErr: errors.New("parent lookup error"),
+	}
+	newName := "update"
+	parentSlug := existingTeam.Slug
+
+	opts := EditTeamBySlugOptions{
+		Service:        mockSvc,
+		Org:            existingTeam.Org,
+		Slug:           existingTeam.Slug,
+		Name:           &newName,
+		ParentTeamSlug: &parentSlug,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.getErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.getErr, err)
+	}
+	if !mockSvc.getCalled {
+		t.Fatal("expected GetTeamBySlug to be called for parent lookup")
+	}
+	if mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug not to be called when parent lookup fails")
+	}
+}
+
+func TestEditTeamBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		editErr: errors.New("edit error"),
+	}
+	newName := "updated-name"
+
+	opts := EditTeamBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+		Name:    &newName,
+	}
+
+	ctx := context.Background()
+	_, err := EditTeamBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.editErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.editErr, err)
+	}
+	if !mockSvc.editCalled {
+		t.Fatal("expected EditTeamBySlug to be called")
+	}
+}
+
 // Test DeleteTeamBySlug functionality
 
 func TestDeleteTeamBySlugSuccess(t *testing.T) {
