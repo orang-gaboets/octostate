@@ -70,6 +70,7 @@ var (
 )
 
 type mockService struct {
+	addMemberCalled   bool
 	createCalled      bool
 	editCalled        bool
 	deleteCalled      bool
@@ -79,12 +80,15 @@ type mockService struct {
 	listMembersRole   string
 	listMembersCalls  int
 	listMembersPaged  bool
+	addMemberErr      error
 	createErr         error
 	editErr           error
 	deleteErr         error
 	getErr            error
 	listErr           error
 	listMembersErr    error
+	memberRole        string
+	memberUsername    string
 	teamOrg           string
 	teamName          string
 	teamSlug          string
@@ -151,10 +155,24 @@ func (m *mockService) EditTeamBySlug(_ context.Context, org, slug string, team g
 }
 
 // AddTeamMembershipBySlug implements teams.Service for testing.
-func (m *mockService) AddTeamMembershipBySlug(_ context.Context, _, _, _ string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+func (m *mockService) AddTeamMembershipBySlug(_ context.Context, org, slug, user string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+	m.addMemberCalled = true
+	m.teamOrg = org
+	m.teamSlug = slug
+	m.memberUsername = user
 	role := ""
 	if opts != nil {
 		role = opts.Role
+	}
+	m.memberRole = role
+	if m.addMemberErr != nil {
+		return nil, nil, m.addMemberErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	if user == "" {
+		return nil, nil, github.WrapError(github.ErrMissingRequiredField, "username missing")
 	}
 	if role == "" {
 		role = string(TeamMemberAddRoleMember)
@@ -959,6 +977,182 @@ func TestGetTeamBySlugServiceError(t *testing.T) {
 	}
 	if !mockSvc.getCalled {
 		t.Fatal("expected GetTeamBySlug to be called")
+	}
+}
+
+// Test AddTeamMemberBySlug functionality
+
+func TestAddTeamMemberBySlugSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+		Role:     TeamMemberAddRoleMember,
+	}
+
+	ctx := context.Background()
+	membership, err := AddTeamMemberBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.addMemberCalled {
+		t.Fatal("expected AddTeamMembershipBySlug to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org || mockSvc.teamSlug != existingTeam.Slug {
+		t.Fatalf("expected team target %s/%s, got %s/%s", existingTeam.Org, existingTeam.Slug, mockSvc.teamOrg, mockSvc.teamSlug)
+	}
+	if mockSvc.memberUsername != "member-user" {
+		t.Fatalf("expected username %q, got %q", "member-user", mockSvc.memberUsername)
+	}
+	if mockSvc.memberRole != string(TeamMemberAddRoleMember) {
+		t.Fatalf("expected role %q, got %q", TeamMemberAddRoleMember, mockSvc.memberRole)
+	}
+	if membership == nil || membership.Role == nil || *membership.Role != string(TeamMemberAddRoleMember) {
+		t.Fatalf("expected membership role %q, got %#v", TeamMemberAddRoleMember, membership)
+	}
+	if membership.State == nil || *membership.State != "active" {
+		t.Fatalf("expected active membership state, got %#v", membership)
+	}
+}
+
+func TestAddTeamMemberBySlugMaintainerRole(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "maintainer-user",
+		Role:     TeamMemberAddRoleMaintainer,
+	}
+
+	ctx := context.Background()
+	membership, err := AddTeamMemberBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.addMemberCalled {
+		t.Fatal("expected AddTeamMembershipBySlug to be called")
+	}
+	if mockSvc.memberRole != string(TeamMemberAddRoleMaintainer) {
+		t.Fatalf("expected role %q, got %q", TeamMemberAddRoleMaintainer, mockSvc.memberRole)
+	}
+	if membership == nil || membership.Role == nil || *membership.Role != string(TeamMemberAddRoleMaintainer) {
+		t.Fatalf("expected membership role %q, got %#v", TeamMemberAddRoleMaintainer, membership)
+	}
+}
+
+func TestAddTeamMemberBySlugNotFound(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      nonExistingTeam.Org,
+		Slug:     nonExistingTeam.Slug,
+		Username: "member-user",
+		Role:     TeamMemberAddRoleMember,
+	}
+
+	ctx := context.Background()
+	membership, err := AddTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.addMemberCalled {
+		t.Fatal("expected AddTeamMembershipBySlug to be called")
+	}
+	if membership != nil {
+		t.Fatalf("expected nil membership, got %#v", membership)
+	}
+}
+
+func TestAddTeamMemberBySlugNilService(t *testing.T) {
+	opts := AddTeamMemberBySlugOptions{
+		Service:  nil,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+		Role:     TeamMemberAddRoleMember,
+	}
+
+	ctx := context.Background()
+	membership, err := AddTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+	if membership != nil {
+		t.Fatalf("expected nil membership, got %#v", membership)
+	}
+}
+
+func TestAddTeamMemberBySlugMissingUsername(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "",
+		Role:     TeamMemberAddRoleMember,
+	}
+
+	ctx := context.Background()
+	_, err := AddTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.addMemberCalled {
+		t.Fatal("expected AddTeamMembershipBySlug not to be called")
+	}
+}
+
+func TestAddTeamMemberBySlugInvalidRole(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+		Role:     TeamMemberAddRole("invalid"),
+	}
+
+	ctx := context.Background()
+	_, err := AddTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.addMemberCalled {
+		t.Fatal("expected AddTeamMembershipBySlug not to be called")
+	}
+}
+
+func TestAddTeamMemberBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		addMemberErr: errors.New("service error"),
+	}
+
+	opts := AddTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+		Role:     TeamMemberAddRoleMember,
+	}
+
+	ctx := context.Background()
+	membership, err := AddTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.addMemberErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.addMemberErr, err)
+	}
+	if !mockSvc.addMemberCalled {
+		t.Fatal("expected AddTeamMembershipBySlug to be called")
+	}
+	if membership != nil {
+		t.Fatalf("expected nil membership, got %#v", membership)
 	}
 }
 
