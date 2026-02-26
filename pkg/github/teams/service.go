@@ -139,6 +139,27 @@ func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Te
 	return team, nil
 }
 
+// AddTeamMemberBySlug adds or updates a user's membership in a GitHub team.
+func AddTeamMemberBySlug(ctx context.Context, option AddTeamMemberBySlugOptions) (*github.TeamMembership, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	addOpts := &gh.TeamAddTeamMembershipOptions{
+		Role: string(option.Role),
+	}
+
+	ghlogging.Debugf(ctx, "add user %s to team %s/%s with role %s", option.Username, option.Org, option.Slug, option.Role)
+	ghMembership, _, err := option.Service.AddTeamMembershipBySlug(ctx, option.Org, option.Slug, option.Username, addOpts)
+	if err != nil {
+		return nil, github.WrapError(err, fmt.Sprintf("failed to add user %s to team %s/%s", option.Username, option.Org, option.Slug))
+	}
+
+	membership := github.TeamMembershipFromGhMembership(ghMembership)
+	ghlogging.Debugf(ctx, "added user %s to team %s/%s", option.Username, option.Org, option.Slug)
+	return membership, nil
+}
+
 // ListTeamMembersBySlug retrieves all members for a GitHub team by its slug.
 func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOptions) ([]*github.User, error) {
 	if err := option.Validate(); err != nil {

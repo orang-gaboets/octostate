@@ -192,6 +192,36 @@ func TeamsFromGhTeams(ghTeams []*gh.Team) []*Team {
 	return teams
 }
 
+// TeamMembership represents a user's membership state within a GitHub team.
+type TeamMembership struct {
+	URL   *string
+	State *string
+	Role  *string
+}
+
+// String implements fmt.Stringer and pretty-prints JSON.
+func (tm TeamMembership) String() string {
+	b, err := json.MarshalIndent(tm, "", "  ")
+	if err != nil {
+		return "TeamMembership<marshal error>"
+	}
+	return string(b)
+}
+
+// TeamMembershipFromGhMembership converts a go-github Membership into the
+// internal TeamMembership type.
+func TeamMembershipFromGhMembership(ghMembership *gh.Membership) *TeamMembership {
+	if ghMembership == nil {
+		return nil
+	}
+
+	return &TeamMembership{
+		URL:   ghMembership.URL,
+		State: ghMembership.State,
+		Role:  ghMembership.Role,
+	}
+}
+
 // UsersFromGhUsers converts a slice of GitHub users to a slice of internal
 // User types.
 func UsersFromGhUsers(ghUsers []*gh.User) []*User {

@@ -22,6 +22,9 @@ type Service interface {
 	// GetTeamBySlug retrieves a team by its slug within an organization.
 	GetTeamBySlug(ctx context.Context, org, slug string) (*gh.Team, *gh.Response, error)
 
+	// AddTeamMembershipBySlug adds or updates a user's membership in a team by slug.
+	AddTeamMembershipBySlug(ctx context.Context, org, slug, user string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error)
+
 	// ListTeamMembersBySlug lists members of a team within an organization.
 	ListTeamMembersBySlug(ctx context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error)
 

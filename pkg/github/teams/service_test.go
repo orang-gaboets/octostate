@@ -150,6 +150,21 @@ func (m *mockService) EditTeamBySlug(_ context.Context, org, slug string, team g
 	}, nil, nil
 }
 
+// AddTeamMembershipBySlug implements teams.Service for testing.
+func (m *mockService) AddTeamMembershipBySlug(_ context.Context, _, _, _ string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+	role := ""
+	if opts != nil {
+		role = opts.Role
+	}
+	if role == "" {
+		role = string(TeamMemberAddRoleMember)
+	}
+	return &gh.Membership{
+		State: github.Ptr("active"),
+		Role:  github.Ptr(role),
+	}, nil, nil
+}
+
 // DeleteTeamBySlug implements teams.Service for testing.
 func (m *mockService) DeleteTeamBySlug(_ context.Context, org, slug string) (*gh.Response, error) {
 	m.deleteCalled = true

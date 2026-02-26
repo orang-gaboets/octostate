@@ -95,6 +95,49 @@ func (opt *GetTeamBySlugOptions) Validate() error {
 	return nil
 }
 
+// TeamMemberAddRole specifies the role assigned when adding a team member.
+type TeamMemberAddRole string
+
+const (
+	// TeamMemberAddRoleMember assigns regular team membership.
+	TeamMemberAddRoleMember TeamMemberAddRole = "member"
+	// TeamMemberAddRoleMaintainer assigns team maintainer privileges.
+	TeamMemberAddRoleMaintainer TeamMemberAddRole = "maintainer"
+)
+
+// IsValid checks if the TeamMemberAddRole value is valid.
+func (r TeamMemberAddRole) IsValid() bool {
+	switch r {
+	case TeamMemberAddRoleMember, TeamMemberAddRoleMaintainer:
+		return true
+	default:
+		return false
+	}
+}
+
+// AddTeamMemberBySlugOptions defines the options for adding a user to a team by slug.
+type AddTeamMemberBySlugOptions struct {
+	Service  Service
+	Org      string
+	Slug     string
+	Username string
+	Role     TeamMemberAddRole
+}
+
+// Validate checks if the AddTeamMemberBySlugOptions are valid.
+func (opt *AddTeamMemberBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" || opt.Username == "" {
+		return github.ErrMissingRequiredField
+	}
+	if !opt.Role.IsValid() {
+		return fmt.Errorf("invalid team member add role %q: %w", opt.Role, github.ErrValidationFailed)
+	}
+	return nil
+}
+
 // TeamMemberRole specifies the membership role filter when listing team members.
 type TeamMemberRole string
 

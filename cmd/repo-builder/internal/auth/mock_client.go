@@ -123,6 +123,18 @@ func (MockTeamsService) GetTeamBySlug(_ context.Context, _, _ string) (*gh.Team,
 	return &gh.Team{}, nil, nil
 }
 
+// AddTeamMembershipBySlug mocks adding or updating a team membership by team slug.
+func (MockTeamsService) AddTeamMembershipBySlug(_ context.Context, _, _, _ string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+	role := "member"
+	if opts != nil && opts.Role != "" {
+		role = opts.Role
+	}
+	return &gh.Membership{
+		State: github.Ptr("active"),
+		Role:  github.Ptr(role),
+	}, nil, nil
+}
+
 // ListTeamMembersBySlug mocks listing members of a team by slug.
 func (MockTeamsService) ListTeamMembersBySlug(_ context.Context, _, _ string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
 	return []*gh.User{}, nil, nil

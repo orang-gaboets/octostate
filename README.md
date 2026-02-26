@@ -4,7 +4,7 @@
 
 - repositories (create from template, edit, delete)
 - topics (add, replace, list)
-- teams (create, edit, get, delete, members list)
+- teams (create, edit, get, delete, members list/add)
 - organization utilities (list repos/members/teams, get org by name)
 - users (lookup by ID / username)
 
@@ -422,6 +422,23 @@ repo-builder team members list --app-id <app-id> --installation-id <installation
 - `--org` (required): GitHub organisation name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--role` (optional): Team member role filter (`all`, `member`, or `maintainer`; default is `all`)
+
+#### Add Team Member
+
+```bash
+repo-builder team members add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--role <member|maintainer>] [--dry-run]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
+- `--username` (required): GitHub username to add/update in the team
+- `--role` (optional): Team membership role (`member` or `maintainer`; default is `member`)
+- `--dry-run` (optional): Preview the membership change without calling GitHub
 
 ### User
 
