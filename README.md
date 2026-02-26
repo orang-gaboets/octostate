@@ -4,7 +4,7 @@
 
 - repositories (create from template, edit, delete)
 - topics (add, replace, list)
-- teams (create, get, delete)
+- teams (create, edit, get, delete, members list)
 - organization utilities (list repos/members/teams, get org by name)
 - users (lookup by ID / username)
 
@@ -407,6 +407,21 @@ repo-builder team get-by-slug --app-id <app-id> --installation-id <installation-
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 - `--slug` (required): Team slug (URL-friendly name)
+
+#### List Team Members
+
+```bash
+repo-builder team members list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--role <all|member|maintainer>]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
+- `--role` (optional): Team member role filter (`all`, `member`, or `maintainer`; default is `all`)
 
 ### User
 

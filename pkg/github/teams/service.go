@@ -139,6 +139,39 @@ func GetTeamBySlug(ctx context.Context, option GetTeamBySlugOptions) (*github.Te
 	return team, nil
 }
 
+// ListTeamMembersBySlug retrieves all members for a GitHub team by its slug.
+func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOptions) ([]*github.User, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	listOptions := &gh.TeamListTeamMembersOptions{
+		Role: string(option.Role),
+		ListOptions: gh.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	var allMembers []*github.User
+	for {
+		ghMembers, resp, err := option.Service.ListTeamMembersBySlug(ctx, option.Org, option.Slug, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list members for team %s/%s", option.Org, option.Slug))
+		}
+
+		allMembers = append(allMembers, github.UsersFromGhUsers(ghMembers)...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	ghlogging.Debugf(ctx, "listed %d members for team %s/%s", len(allMembers), option.Org, option.Slug)
+	return allMembers, nil
+}
+
 // ListTeams retrieves all teams in a GitHub organization.
 func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, error) {
 	if err := option.Validate(); err != nil {

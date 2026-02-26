@@ -95,6 +95,50 @@ func (opt *GetTeamBySlugOptions) Validate() error {
 	return nil
 }
 
+// TeamMemberRole specifies the membership role filter when listing team members.
+type TeamMemberRole string
+
+const (
+	// TeamMemberRoleAll includes all team members.
+	TeamMemberRoleAll TeamMemberRole = "all"
+	// TeamMemberRoleMember includes only regular team members.
+	TeamMemberRoleMember TeamMemberRole = "member"
+	// TeamMemberRoleMaintainer includes only team maintainers.
+	TeamMemberRoleMaintainer TeamMemberRole = "maintainer"
+)
+
+// IsValid checks if the TeamMemberRole value is valid.
+func (tmr TeamMemberRole) IsValid() bool {
+	switch tmr {
+	case TeamMemberRoleAll, TeamMemberRoleMember, TeamMemberRoleMaintainer:
+		return true
+	default:
+		return false
+	}
+}
+
+// ListTeamMembersBySlugOptions defines the options for listing team members by team slug.
+type ListTeamMembersBySlugOptions struct {
+	Service Service
+	Org     string
+	Slug    string
+	Role    TeamMemberRole
+}
+
+// Validate checks if the ListTeamMembersBySlugOptions are valid.
+func (opt *ListTeamMembersBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" {
+		return github.ErrMissingRequiredField
+	}
+	if !opt.Role.IsValid() {
+		return fmt.Errorf("invalid team member role %q: %w", opt.Role, github.ErrValidationFailed)
+	}
+	return nil
+}
+
 // ListTeamsOptions defines the options for listing teams in an organization.
 type ListTeamsOptions struct {
 	Service Service

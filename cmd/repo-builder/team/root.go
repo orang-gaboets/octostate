@@ -3,6 +3,7 @@ package team
 import (
 	"github.com/spf13/cobra"
 
+	teammembers "github.com/orang-gaboets/repo-builder/cmd/repo-builder/team/members"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
 )
 
@@ -20,6 +21,7 @@ func NewTeamCmd(svc teams.Service) *cobra.Command {
 		EditTeamCmd(svc),
 		DeleteTeamBySlugCmd(svc),
 		GetTeamBySlugCmd(svc),
+		teammembers.NewCmd(svc),
 	)
 
 	return cmd

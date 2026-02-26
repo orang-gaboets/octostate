@@ -123,6 +123,11 @@ func (MockTeamsService) GetTeamBySlug(_ context.Context, _, _ string) (*gh.Team,
 	return &gh.Team{}, nil, nil
 }
 
+// ListTeamMembersBySlug mocks listing members of a team by slug.
+func (MockTeamsService) ListTeamMembersBySlug(_ context.Context, _, _ string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+	return []*gh.User{}, nil, nil
+}
+
 // ListTeams mocks the listing of teams in an organization.
 func (MockTeamsService) ListTeams(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
 	return []*gh.Team{}, nil, nil

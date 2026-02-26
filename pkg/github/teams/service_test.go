@@ -70,23 +70,25 @@ var (
 )
 
 type mockService struct {
-	createCalled bool
-	editCalled   bool
-	deleteCalled bool
-	getCalled    bool
-	listCalled   bool
-	createErr    error
-	editErr      error
-	deleteErr    error
-	getErr       error
-	listErr      error
-	teamOrg      string
-	teamName     string
-	teamSlug     string
-	teamDesc     string
-	teamPrivacy  github.TeamPrivacy
-	teamParentID *int64
-	removeParent bool
+	createCalled      bool
+	editCalled        bool
+	deleteCalled      bool
+	getCalled         bool
+	listCalled        bool
+	listMembersCalled bool
+	createErr         error
+	editErr           error
+	deleteErr         error
+	getErr            error
+	listErr           error
+	listMembersErr    error
+	teamOrg           string
+	teamName          string
+	teamSlug          string
+	teamDesc          string
+	teamPrivacy       github.TeamPrivacy
+	teamParentID      *int64
+	removeParent      bool
 }
 
 // CreateTeam implements teams.Service for testing.
@@ -199,6 +201,18 @@ func (m *mockService) ListTeams(_ context.Context, org string, _ *gh.ListOptions
 			Privacy:     github.Ptr(existingTeam.Privacy.String()),
 		},
 	}, &gh.Response{NextPage: 0}, nil
+}
+
+// ListTeamMembersBySlug implements teams.Service for testing.
+func (m *mockService) ListTeamMembersBySlug(_ context.Context, org, slug string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+	m.listMembersCalled = true
+	if m.listMembersErr != nil {
+		return nil, nil, m.listMembersErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	return []*gh.User{}, &gh.Response{NextPage: 0}, nil
 }
 
 // Test CreateTeam functionality
