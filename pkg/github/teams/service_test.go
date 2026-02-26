@@ -70,32 +70,34 @@ var (
 )
 
 type mockService struct {
-	addMemberCalled   bool
-	createCalled      bool
-	editCalled        bool
-	deleteCalled      bool
-	getCalled         bool
-	listCalled        bool
-	listMembersCalled bool
-	listMembersRole   string
-	listMembersCalls  int
-	listMembersPaged  bool
-	addMemberErr      error
-	createErr         error
-	editErr           error
-	deleteErr         error
-	getErr            error
-	listErr           error
-	listMembersErr    error
-	memberRole        string
-	memberUsername    string
-	teamOrg           string
-	teamName          string
-	teamSlug          string
-	teamDesc          string
-	teamPrivacy       github.TeamPrivacy
-	teamParentID      *int64
-	removeParent      bool
+	addMemberCalled    bool
+	removeMemberCalled bool
+	createCalled       bool
+	editCalled         bool
+	deleteCalled       bool
+	getCalled          bool
+	listCalled         bool
+	listMembersCalled  bool
+	listMembersRole    string
+	listMembersCalls   int
+	listMembersPaged   bool
+	addMemberErr       error
+	removeMemberErr    error
+	createErr          error
+	editErr            error
+	deleteErr          error
+	getErr             error
+	listErr            error
+	listMembersErr     error
+	memberRole         string
+	memberUsername     string
+	teamOrg            string
+	teamName           string
+	teamSlug           string
+	teamDesc           string
+	teamPrivacy        github.TeamPrivacy
+	teamParentID       *int64
+	removeParent       bool
 }
 
 // CreateTeam implements teams.Service for testing.
@@ -184,7 +186,20 @@ func (m *mockService) AddTeamMembershipBySlug(_ context.Context, org, slug, user
 }
 
 // RemoveTeamMembershipBySlug implements teams.Service for testing.
-func (m *mockService) RemoveTeamMembershipBySlug(_ context.Context, _, _, _ string) (*gh.Response, error) {
+func (m *mockService) RemoveTeamMembershipBySlug(_ context.Context, org, slug, user string) (*gh.Response, error) {
+	m.removeMemberCalled = true
+	m.teamOrg = org
+	m.teamSlug = slug
+	m.memberUsername = user
+	if m.removeMemberErr != nil {
+		return nil, m.removeMemberErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	if user == "" {
+		return nil, github.WrapError(github.ErrMissingRequiredField, "username missing")
+	}
 	return &gh.Response{}, nil
 }
 
@@ -1158,6 +1173,111 @@ func TestAddTeamMemberBySlugServiceError(t *testing.T) {
 	}
 	if membership != nil {
 		t.Fatalf("expected nil membership, got %#v", membership)
+	}
+}
+
+// Test RemoveTeamMemberBySlug functionality
+
+func TestRemoveTeamMemberBySlugSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := RemoveTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamMemberBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.removeMemberCalled {
+		t.Fatal("expected RemoveTeamMembershipBySlug to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org || mockSvc.teamSlug != existingTeam.Slug {
+		t.Fatalf("expected team target %s/%s, got %s/%s", existingTeam.Org, existingTeam.Slug, mockSvc.teamOrg, mockSvc.teamSlug)
+	}
+	if mockSvc.memberUsername != "member-user" {
+		t.Fatalf("expected username %q, got %q", "member-user", mockSvc.memberUsername)
+	}
+}
+
+func TestRemoveTeamMemberBySlugNotFound(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := RemoveTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      nonExistingTeam.Org,
+		Slug:     nonExistingTeam.Slug,
+		Username: "member-user",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.removeMemberCalled {
+		t.Fatal("expected RemoveTeamMembershipBySlug to be called")
+	}
+}
+
+func TestRemoveTeamMemberBySlugNilService(t *testing.T) {
+	opts := RemoveTeamMemberBySlugOptions{
+		Service:  nil,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+}
+
+func TestRemoveTeamMemberBySlugMissingUsername(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := RemoveTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.removeMemberCalled {
+		t.Fatal("expected RemoveTeamMembershipBySlug not to be called")
+	}
+}
+
+func TestRemoveTeamMemberBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		removeMemberErr: errors.New("service error"),
+	}
+
+	opts := RemoveTeamMemberBySlugOptions{
+		Service:  mockSvc,
+		Org:      existingTeam.Org,
+		Slug:     existingTeam.Slug,
+		Username: "member-user",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamMemberBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.removeMemberErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.removeMemberErr, err)
+	}
+	if !mockSvc.removeMemberCalled {
+		t.Fatal("expected RemoveTeamMembershipBySlug to be called")
 	}
 }
 
