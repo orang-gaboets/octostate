@@ -76,6 +76,9 @@ type mockService struct {
 	getCalled         bool
 	listCalled        bool
 	listMembersCalled bool
+	listMembersRole   string
+	listMembersCalls  int
+	listMembersPaged  bool
 	createErr         error
 	editErr           error
 	deleteErr         error
@@ -204,15 +207,42 @@ func (m *mockService) ListTeams(_ context.Context, org string, _ *gh.ListOptions
 }
 
 // ListTeamMembersBySlug implements teams.Service for testing.
-func (m *mockService) ListTeamMembersBySlug(_ context.Context, org, slug string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+func (m *mockService) ListTeamMembersBySlug(_ context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
 	m.listMembersCalled = true
+	m.listMembersCalls++
+	m.teamOrg = org
+	m.teamSlug = slug
+	if opts != nil {
+		m.listMembersRole = opts.Role
+	}
 	if m.listMembersErr != nil {
 		return nil, nil, m.listMembersErr
 	}
 	if org != existingTeam.Org || slug != existingTeam.Slug {
 		return nil, nil, github.WrapError(github.ErrNotFound, "team not found")
 	}
-	return []*gh.User{}, &gh.Response{NextPage: 0}, nil
+	if m.listMembersPaged {
+		if m.listMembersCalls == 1 {
+			return []*gh.User{
+				{
+					ID:   github.Ptr(int64(1001)),
+					Name: github.Ptr("member-page-1"),
+				},
+			}, &gh.Response{NextPage: 2}, nil
+		}
+		return []*gh.User{
+			{
+				ID:   github.Ptr(int64(1002)),
+				Name: github.Ptr("member-page-2"),
+			},
+		}, &gh.Response{NextPage: 0}, nil
+	}
+	return []*gh.User{
+		{
+			ID:   github.Ptr(int64(1000)),
+			Name: github.Ptr("member-1"),
+		},
+	}, &gh.Response{NextPage: 0}, nil
 }
 
 // Test CreateTeam functionality
@@ -914,6 +944,174 @@ func TestGetTeamBySlugServiceError(t *testing.T) {
 	}
 	if !mockSvc.getCalled {
 		t.Fatal("expected GetTeamBySlug to be called")
+	}
+}
+
+// Test ListTeamMembersBySlug functionality
+
+func TestListTeamMembersBySlugSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamMembersBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+		Role:    TeamMemberRoleAll,
+	}
+
+	ctx := context.Background()
+	members, err := ListTeamMembersBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listMembersCalled {
+		t.Fatal("expected ListTeamMembersBySlug to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org || mockSvc.teamSlug != existingTeam.Slug {
+		t.Fatalf("expected team target %s/%s, got %s/%s", existingTeam.Org, existingTeam.Slug, mockSvc.teamOrg, mockSvc.teamSlug)
+	}
+	if mockSvc.listMembersRole != string(TeamMemberRoleAll) {
+		t.Fatalf("expected role %q, got %q", TeamMemberRoleAll, mockSvc.listMembersRole)
+	}
+	if len(members) != 1 {
+		t.Fatalf("expected 1 member, got %d", len(members))
+	}
+	if members[0] == nil || members[0].Name == nil || *members[0].Name != "member-1" {
+		t.Fatalf("expected first member name %q, got %#v", "member-1", members[0])
+	}
+}
+
+func TestListTeamMembersBySlugPaginates(t *testing.T) {
+	mockSvc := &mockService{
+		listMembersPaged: true,
+	}
+
+	opts := ListTeamMembersBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+		Role:    TeamMemberRoleMaintainer,
+	}
+
+	ctx := context.Background()
+	members, err := ListTeamMembersBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if mockSvc.listMembersCalls != 2 {
+		t.Fatalf("expected 2 API calls for pagination, got %d", mockSvc.listMembersCalls)
+	}
+	if mockSvc.listMembersRole != string(TeamMemberRoleMaintainer) {
+		t.Fatalf("expected role %q, got %q", TeamMemberRoleMaintainer, mockSvc.listMembersRole)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 members, got %d", len(members))
+	}
+}
+
+func TestListTeamMembersBySlugNotFound(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamMembersBySlugOptions{
+		Service: mockSvc,
+		Org:     nonExistingTeam.Org,
+		Slug:    nonExistingTeam.Slug,
+		Role:    TeamMemberRoleAll,
+	}
+
+	ctx := context.Background()
+	members, err := ListTeamMembersBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.listMembersCalled {
+		t.Fatal("expected ListTeamMembersBySlug to be called")
+	}
+	if members != nil {
+		t.Fatalf("expected no members, got %v", members)
+	}
+}
+
+func TestListTeamMembersBySlugNilService(t *testing.T) {
+	opts := ListTeamMembersBySlugOptions{
+		Service: nil,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+		Role:    TeamMemberRoleAll,
+	}
+
+	ctx := context.Background()
+	members, err := ListTeamMembersBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+	if members != nil {
+		t.Fatalf("expected no members, got %v", members)
+	}
+}
+
+func TestListTeamMembersBySlugMissingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamMembersBySlugOptions{
+		Service: mockSvc,
+		Org:     "",
+		Slug:    existingTeam.Slug,
+		Role:    TeamMemberRoleAll,
+	}
+
+	ctx := context.Background()
+	_, err := ListTeamMembersBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listMembersCalled {
+		t.Fatal("expected ListTeamMembersBySlug not to be called")
+	}
+}
+
+func TestListTeamMembersBySlugInvalidRole(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamMembersBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+		Role:    TeamMemberRole("invalid"),
+	}
+
+	ctx := context.Background()
+	_, err := ListTeamMembersBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.listMembersCalled {
+		t.Fatal("expected ListTeamMembersBySlug not to be called")
+	}
+}
+
+func TestListTeamMembersBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		listMembersErr: errors.New("service error"),
+	}
+
+	opts := ListTeamMembersBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+		Role:    TeamMemberRoleMember,
+	}
+
+	ctx := context.Background()
+	members, err := ListTeamMembersBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.listMembersErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.listMembersErr, err)
+	}
+	if !mockSvc.listMembersCalled {
+		t.Fatal("expected ListTeamMembersBySlug to be called")
+	}
+	if members != nil {
+		t.Fatalf("expected no members, got %v", members)
 	}
 }
 
