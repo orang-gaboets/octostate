@@ -138,6 +138,25 @@ func (opt *AddTeamMemberBySlugOptions) Validate() error {
 	return nil
 }
 
+// RemoveTeamMemberBySlugOptions defines the options for removing a user from a team by slug.
+type RemoveTeamMemberBySlugOptions struct {
+	Service  Service
+	Org      string
+	Slug     string
+	Username string
+}
+
+// Validate checks if the RemoveTeamMemberBySlugOptions are valid.
+func (opt *RemoveTeamMemberBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" || opt.Username == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
 // TeamMemberRole specifies the membership role filter when listing team members.
 type TeamMemberRole string
 

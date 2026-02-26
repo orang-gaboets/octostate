@@ -135,6 +135,11 @@ func (MockTeamsService) AddTeamMembershipBySlug(_ context.Context, _, _, _ strin
 	}, nil, nil
 }
 
+// RemoveTeamMembershipBySlug mocks removing a team membership by team slug.
+func (MockTeamsService) RemoveTeamMembershipBySlug(_ context.Context, _, _, _ string) (*gh.Response, error) {
+	return &gh.Response{}, nil
+}
+
 // ListTeamMembersBySlug mocks listing members of a team by slug.
 func (MockTeamsService) ListTeamMembersBySlug(_ context.Context, _, _ string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
 	return []*gh.User{}, nil, nil

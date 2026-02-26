@@ -183,6 +183,11 @@ func (m *mockService) AddTeamMembershipBySlug(_ context.Context, org, slug, user
 	}, nil, nil
 }
 
+// RemoveTeamMembershipBySlug implements teams.Service for testing.
+func (m *mockService) RemoveTeamMembershipBySlug(_ context.Context, _, _, _ string) (*gh.Response, error) {
+	return &gh.Response{}, nil
+}
+
 // DeleteTeamBySlug implements teams.Service for testing.
 func (m *mockService) DeleteTeamBySlug(_ context.Context, org, slug string) (*gh.Response, error) {
 	m.deleteCalled = true

@@ -160,6 +160,21 @@ func AddTeamMemberBySlug(ctx context.Context, option AddTeamMemberBySlugOptions)
 	return membership, nil
 }
 
+// RemoveTeamMemberBySlug removes a user's membership from a GitHub team.
+func RemoveTeamMemberBySlug(ctx context.Context, option RemoveTeamMemberBySlugOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
+	}
+
+	ghlogging.Debugf(ctx, "remove user %s from team %s/%s", option.Username, option.Org, option.Slug)
+	_, err := option.Service.RemoveTeamMembershipBySlug(ctx, option.Org, option.Slug, option.Username)
+	if err != nil {
+		return github.WrapError(err, fmt.Sprintf("failed to remove user %s from team %s/%s", option.Username, option.Org, option.Slug))
+	}
+	ghlogging.Debugf(ctx, "removed user %s from team %s/%s", option.Username, option.Org, option.Slug)
+	return nil
+}
+
 // ListTeamMembersBySlug retrieves all members for a GitHub team by its slug.
 func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOptions) ([]*github.User, error) {
 	if err := option.Validate(); err != nil {
