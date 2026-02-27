@@ -71,6 +71,7 @@ var (
 
 type mockService struct {
 	addMemberCalled    bool
+	listRepoPermCalled bool
 	removeMemberCalled bool
 	createCalled       bool
 	editCalled         bool
@@ -81,7 +82,10 @@ type mockService struct {
 	listMembersRole    string
 	listMembersCalls   int
 	listMembersPaged   bool
+	listRepoPermCalls  int
+	listRepoPermPaged  bool
 	addMemberErr       error
+	listRepoPermErr    error
 	removeMemberErr    error
 	createErr          error
 	editErr            error
@@ -204,8 +208,61 @@ func (m *mockService) RemoveTeamMembershipBySlug(_ context.Context, org, slug, u
 }
 
 // ListTeamReposBySlug implements teams.Service for testing.
-func (m *mockService) ListTeamReposBySlug(_ context.Context, _, _ string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
-	return []*gh.Repository{}, &gh.Response{NextPage: 0}, nil
+func (m *mockService) ListTeamReposBySlug(_ context.Context, org, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+	m.listRepoPermCalled = true
+	m.listRepoPermCalls++
+	m.teamOrg = org
+	m.teamSlug = slug
+	if m.listRepoPermErr != nil {
+		return nil, nil, m.listRepoPermErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	if m.listRepoPermPaged {
+		if m.listRepoPermCalls == 1 {
+			return []*gh.Repository{
+				{
+					Name: github.Ptr("repo-page-1"),
+					Owner: &gh.User{
+						Login: github.Ptr(existingTeam.Org),
+					},
+					Permissions: map[string]bool{
+						"pull":  true,
+						"push":  false,
+						"admin": false,
+					},
+				},
+			}, &gh.Response{NextPage: 2}, nil
+		}
+		return []*gh.Repository{
+			{
+				Name: github.Ptr("repo-page-2"),
+				Owner: &gh.User{
+					Login: github.Ptr(existingTeam.Org),
+				},
+				Permissions: map[string]bool{
+					"pull":  true,
+					"push":  true,
+					"admin": false,
+				},
+			},
+		}, &gh.Response{NextPage: 0}, nil
+	}
+
+	return []*gh.Repository{
+		{
+			Name: github.Ptr("repo-1"),
+			Owner: &gh.User{
+				Login: github.Ptr(existingTeam.Org),
+			},
+			Permissions: map[string]bool{
+				"pull":  true,
+				"push":  false,
+				"admin": false,
+			},
+		},
+	}, &gh.Response{NextPage: 0}, nil
 }
 
 // DeleteTeamBySlug implements teams.Service for testing.
@@ -1283,6 +1340,167 @@ func TestRemoveTeamMemberBySlugServiceError(t *testing.T) {
 	}
 	if !mockSvc.removeMemberCalled {
 		t.Fatal("expected RemoveTeamMembershipBySlug to be called")
+	}
+}
+
+// Test ListTeamRepoPermissionsBySlug functionality
+
+func TestListTeamRepoPermissionsBySlugSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	repos, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listRepoPermCalled {
+		t.Fatal("expected ListTeamReposBySlug to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org || mockSvc.teamSlug != existingTeam.Slug {
+		t.Fatalf("expected team target %s/%s, got %s/%s", existingTeam.Org, existingTeam.Slug, mockSvc.teamOrg, mockSvc.teamSlug)
+	}
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repository permission, got %d", len(repos))
+	}
+	if repos[0] == nil || repos[0].Name != "repo-1" {
+		t.Fatalf("expected repository name %q, got %#v", "repo-1", repos[0])
+	}
+	if !repos[0].Permissions["pull"] {
+		t.Fatalf("expected pull permission to be true, got %#v", repos[0].Permissions)
+	}
+}
+
+func TestListTeamRepoPermissionsBySlugPaginates(t *testing.T) {
+	mockSvc := &mockService{
+		listRepoPermPaged: true,
+	}
+
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	repos, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if mockSvc.listRepoPermCalls != 2 {
+		t.Fatalf("expected 2 API calls for pagination, got %d", mockSvc.listRepoPermCalls)
+	}
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repository permissions, got %d", len(repos))
+	}
+	if repos[1] == nil || repos[1].Name != "repo-page-2" {
+		t.Fatalf("expected second repository name %q, got %#v", "repo-page-2", repos[1])
+	}
+}
+
+func TestListTeamRepoPermissionsBySlugNotFound(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: mockSvc,
+		Org:     nonExistingTeam.Org,
+		Slug:    nonExistingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	repos, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.listRepoPermCalled {
+		t.Fatal("expected ListTeamReposBySlug to be called")
+	}
+	if repos != nil {
+		t.Fatalf("expected no repositories, got %#v", repos)
+	}
+}
+
+func TestListTeamRepoPermissionsBySlugNilService(t *testing.T) {
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: nil,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	repos, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+	if repos != nil {
+		t.Fatalf("expected no repositories, got %#v", repos)
+	}
+}
+
+func TestListTeamRepoPermissionsBySlugMissingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: mockSvc,
+		Org:     "",
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	_, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listRepoPermCalled {
+		t.Fatal("expected ListTeamReposBySlug not to be called")
+	}
+}
+
+func TestListTeamRepoPermissionsBySlugMissingSlug(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    "",
+	}
+
+	ctx := context.Background()
+	_, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listRepoPermCalled {
+		t.Fatal("expected ListTeamReposBySlug not to be called")
+	}
+}
+
+func TestListTeamRepoPermissionsBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		listRepoPermErr: errors.New("service error"),
+	}
+
+	opts := ListTeamRepoPermissionsBySlugOptions{
+		Service: mockSvc,
+		Org:     existingTeam.Org,
+		Slug:    existingTeam.Slug,
+	}
+
+	ctx := context.Background()
+	repos, err := ListTeamRepoPermissionsBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.listRepoPermErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.listRepoPermErr, err)
+	}
+	if !mockSvc.listRepoPermCalled {
+		t.Fatal("expected ListTeamReposBySlug to be called")
+	}
+	if repos != nil {
+		t.Fatalf("expected no repositories, got %#v", repos)
 	}
 }
 
