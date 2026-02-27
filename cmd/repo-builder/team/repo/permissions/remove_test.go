@@ -105,7 +105,11 @@ func TestRemoveTeamRepoPermissionDryRunSkipsRemoveService(t *testing.T) {
 	if svc.removeCalled {
 		t.Fatalf("expected remove team repo permission service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would remove team o/s access to repository o/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would remove team o/s access to repository o/r") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
@@ -119,7 +123,11 @@ func TestRemoveTeamRepoPermissionWritesSuccessToStdout(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Removed team o/s access to repository o/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Removed team o/s access to repository o/r") {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }
@@ -142,7 +150,11 @@ func TestRemoveTeamRepoPermissionUsesProvidedServiceAndDefaultsRepoOrg(t *testin
 	if svc.repoOwner != "o" || svc.repoName != "r" {
 		t.Fatalf("expected default repo target o/r, got %q/%q", svc.repoOwner, svc.repoName)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Removed team o/s access to repository o/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Removed team o/s access to repository o/r") {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }
@@ -162,7 +174,11 @@ func TestRemoveTeamRepoPermissionUsesProvidedServiceAndExplicitRepoOrg(t *testin
 	if svc.repoOwner != "ro" || svc.repoName != "r" {
 		t.Fatalf("expected explicit repo target ro/r, got %q/%q", svc.repoOwner, svc.repoName)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Removed team o/s access to repository ro/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Removed team o/s access to repository ro/r") {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }

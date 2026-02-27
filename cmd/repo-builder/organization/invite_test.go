@@ -81,18 +81,36 @@ func TestInviteCmdBothAuthMethodsProvided(t *testing.T) {
 func TestInviteCmdWithUsername(t *testing.T) {
 	auth.PrepareClient(t)
 	c := organizationcmd.InviteCmd(nil, nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--username", "u"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, `"username": "u"`) {
+		t.Fatalf("expected username in output data, got: %q", got)
 	}
 }
 
 func TestInviteCmdWithUserID(t *testing.T) {
 	auth.PrepareClient(t)
 	c := organizationcmd.InviteCmd(nil, nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--id", "123"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, `"user_id": 123`) {
+		t.Fatalf("expected user id in output data, got: %q", got)
 	}
 }
 
@@ -130,7 +148,11 @@ func TestInviteCmdDryRunSkipsUserLookupAndOrgInvite(t *testing.T) {
 	if userSvc.getCalled {
 		t.Fatalf("expected user lookup service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "username lookup skipped") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "username lookup skipped") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

@@ -107,7 +107,11 @@ func TestEditTeamDryRunSkipsEditService(t *testing.T) {
 	if svc.editCalled {
 		t.Fatalf("expected edit team service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would edit team o/s") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would edit team o/s") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
@@ -122,10 +126,10 @@ func TestEditTeamWritesJSONToStdout(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := strings.TrimSpace(out.String())
-	if got == "" {
-		t.Fatalf("expected stdout output, got empty string")
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
 	}
-	if !strings.HasPrefix(got, "{") {
-		t.Fatalf("expected JSON object output, got %q", got)
+	if !strings.Contains(got, "Edited team o/s") {
+		t.Fatalf("unexpected success output: %q", got)
 	}
 }

@@ -118,7 +118,11 @@ func TestAddTeamRepoPermissionDryRunSkipsAddService(t *testing.T) {
 	if svc.addCalled {
 		t.Fatalf("expected add team repo permission service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would grant team o/s permission push on repository o/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would grant team o/s permission push on repository o/r") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
@@ -132,7 +136,11 @@ func TestAddTeamRepoPermissionWritesSuccessToStdout(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Granted team o/s permission maintain on repository o/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Granted team o/s permission maintain on repository o/r") {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }
@@ -158,7 +166,11 @@ func TestAddTeamRepoPermissionUsesProvidedServiceAndDefaultsRepoOrg(t *testing.T
 	if svc.permission != "triage" {
 		t.Fatalf("expected permission %q, got %q", "triage", svc.permission)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Granted team o/s permission triage on repository o/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Granted team o/s permission triage on repository o/r") {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }
@@ -181,7 +193,11 @@ func TestAddTeamRepoPermissionUsesProvidedServiceAndExplicitRepoOrg(t *testing.T
 	if svc.permission != "admin" {
 		t.Fatalf("expected permission %q, got %q", "admin", svc.permission)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Granted team o/s permission admin on repository ro/r") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Granted team o/s permission admin on repository ro/r") {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }

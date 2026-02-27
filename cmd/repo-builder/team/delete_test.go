@@ -36,9 +36,18 @@ func TestDeleteTeamNoRequiredFlags(t *testing.T) {
 func TestDeleteTeamAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--slug", "s", "--yes"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Deleted team o/s") {
+		t.Fatalf("unexpected success output: %q", got)
 	}
 }
 
@@ -100,7 +109,11 @@ func TestDeleteTeamDryRunSkipsDeleteService(t *testing.T) {
 	if svc.deleteCalled {
 		t.Fatalf("expected delete service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would delete team o/s") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would delete team o/s") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

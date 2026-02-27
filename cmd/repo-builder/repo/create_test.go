@@ -77,9 +77,18 @@ func TestCreateRepoFromTemplateMissingTemplateNameFlag(t *testing.T) {
 func TestCreateRepoFromTemplateAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--template-name", "temp", "--name", "n"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Created repository o/n from template o/temp") {
+		t.Fatalf("unexpected success output: %q", got)
 	}
 }
 
@@ -161,7 +170,11 @@ func TestCreateRepoFromTemplateDryRunSkipsCreateService(t *testing.T) {
 	if svc.createCalled {
 		t.Fatalf("expected create service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would create repository o/n from template o/temp") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would create repository o/n from template o/temp") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }

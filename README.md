@@ -91,7 +91,23 @@ This README uses canonical command names (for example `organization`,
 
 Use `--verbose` (or `-v`) to enable diagnostic logs on stderr while keeping command results on stdout.
 
-Command results (JSON payloads or success messages) are written to stdout.
+Command results are written to stdout as JSON:
+- Query/list/get commands return resource payloads (object/array JSON).
+- Mutating commands return an operation envelope with `status`, `message`, and `data` fields.
+
+Example mutating output:
+
+```json
+{
+  "status": "success",
+  "message": "Created repository acme/new-repo from template acme/template",
+  "data": {
+    "owner": "acme",
+    "name": "new-repo"
+  }
+}
+```
+
 Errors and diagnostics (including `--verbose` logs) are written to stderr.
 
 ## Developer Commands

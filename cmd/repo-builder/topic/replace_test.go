@@ -35,9 +35,18 @@ func TestReplaceAllTopicsNoRequiredFlags(t *testing.T) {
 func TestReplaceAllTopicsAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--name", "n", "--topics", "topic1,topic2"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Replaced topics for repository o/n") {
+		t.Fatalf("unexpected success output: %q", got)
 	}
 }
 
@@ -89,7 +98,11 @@ func TestReplaceAllTopicsDryRunSkipsTopicService(t *testing.T) {
 	if svc.replaceAllTopicsCalled {
 		t.Fatalf("expected replace topics service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, "Dry run: would replace topics for repository o/n") {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would replace topics for repository o/n") {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
