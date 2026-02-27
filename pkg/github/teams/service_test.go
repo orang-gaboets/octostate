@@ -70,43 +70,45 @@ var (
 )
 
 type mockService struct {
-	addMemberCalled    bool
-	addRepoPermCalled  bool
-	listRepoPermCalled bool
-	removeMemberCalled bool
-	createCalled       bool
-	editCalled         bool
-	deleteCalled       bool
-	getCalled          bool
-	listCalled         bool
-	listMembersCalled  bool
-	listMembersRole    string
-	listMembersCalls   int
-	listMembersPaged   bool
-	listRepoPermCalls  int
-	listRepoPermPaged  bool
-	addMemberErr       error
-	addRepoPermErr     error
-	listRepoPermErr    error
-	removeMemberErr    error
-	createErr          error
-	editErr            error
-	deleteErr          error
-	getErr             error
-	listErr            error
-	listMembersErr     error
-	memberRole         string
-	memberUsername     string
-	teamOrg            string
-	teamName           string
-	teamSlug           string
-	repoOwner          string
-	repoName           string
-	repoPermission     string
-	teamDesc           string
-	teamPrivacy        github.TeamPrivacy
-	teamParentID       *int64
-	removeParent       bool
+	addMemberCalled      bool
+	addRepoPermCalled    bool
+	removeRepoPermCalled bool
+	listRepoPermCalled   bool
+	removeMemberCalled   bool
+	createCalled         bool
+	editCalled           bool
+	deleteCalled         bool
+	getCalled            bool
+	listCalled           bool
+	listMembersCalled    bool
+	listMembersRole      string
+	listMembersCalls     int
+	listMembersPaged     bool
+	listRepoPermCalls    int
+	listRepoPermPaged    bool
+	addMemberErr         error
+	addRepoPermErr       error
+	removeRepoPermErr    error
+	listRepoPermErr      error
+	removeMemberErr      error
+	createErr            error
+	editErr              error
+	deleteErr            error
+	getErr               error
+	listErr              error
+	listMembersErr       error
+	memberRole           string
+	memberUsername       string
+	teamOrg              string
+	teamName             string
+	teamSlug             string
+	repoOwner            string
+	repoName             string
+	repoPermission       string
+	teamDesc             string
+	teamPrivacy          github.TeamPrivacy
+	teamParentID         *int64
+	removeParent         bool
 }
 
 // CreateTeam implements teams.Service for testing.
@@ -282,6 +284,25 @@ func (m *mockService) AddTeamRepoBySlug(_ context.Context, org, slug, owner, rep
 	}
 	if m.addRepoPermErr != nil {
 		return nil, m.addRepoPermErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	if owner == "" || repo == "" {
+		return nil, github.WrapError(github.ErrMissingRequiredField, "repository target missing")
+	}
+	return &gh.Response{}, nil
+}
+
+// RemoveTeamRepoBySlug implements teams.Service for testing.
+func (m *mockService) RemoveTeamRepoBySlug(_ context.Context, org, slug, owner, repo string) (*gh.Response, error) {
+	m.removeRepoPermCalled = true
+	m.teamOrg = org
+	m.teamSlug = slug
+	m.repoOwner = owner
+	m.repoName = repo
+	if m.removeRepoPermErr != nil {
+		return nil, m.removeRepoPermErr
 	}
 	if org != existingTeam.Org || slug != existingTeam.Slug {
 		return nil, github.WrapError(github.ErrNotFound, "team not found")

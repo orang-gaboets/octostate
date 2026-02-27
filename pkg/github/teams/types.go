@@ -34,6 +34,9 @@ type Service interface {
 	// AddTeamRepoBySlug adds or updates a team's permission on a repository.
 	AddTeamRepoBySlug(ctx context.Context, org, slug, owner, repo string, opts *gh.TeamAddTeamRepoOptions) (*gh.Response, error)
 
+	// RemoveTeamRepoBySlug removes a team's access to a repository.
+	RemoveTeamRepoBySlug(ctx context.Context, org, slug, owner, repo string) (*gh.Response, error)
+
 	// ListTeamMembersBySlug lists members of a team within an organization.
 	ListTeamMembersBySlug(ctx context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error)
 

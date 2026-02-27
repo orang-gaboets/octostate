@@ -150,6 +150,11 @@ func (MockTeamsService) AddTeamRepoBySlug(_ context.Context, _, _, _, _ string, 
 	return &gh.Response{}, nil
 }
 
+// RemoveTeamRepoBySlug mocks removing repository permissions from a team by slug.
+func (MockTeamsService) RemoveTeamRepoBySlug(_ context.Context, _, _, _, _ string) (*gh.Response, error) {
+	return &gh.Response{}, nil
+}
+
 // ListTeamMembersBySlug mocks listing members of a team by slug.
 func (MockTeamsService) ListTeamMembersBySlug(_ context.Context, _, _ string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
 	return []*gh.User{}, nil, nil

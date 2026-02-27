@@ -258,6 +258,50 @@ func AddTeamRepoPermissionBySlug(ctx context.Context, option AddTeamRepoPermissi
 	return nil
 }
 
+// RemoveTeamRepoPermissionBySlug removes a team's access to a repository.
+func RemoveTeamRepoPermissionBySlug(ctx context.Context, option RemoveTeamRepoPermissionBySlugOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
+	}
+
+	ghlogging.Debugf(
+		ctx,
+		"remove repository %s/%s from team %s/%s",
+		option.RepoOwner,
+		option.RepoName,
+		option.Org,
+		option.Slug,
+	)
+	_, err := option.Service.RemoveTeamRepoBySlug(
+		ctx,
+		option.Org,
+		option.Slug,
+		option.RepoOwner,
+		option.RepoName,
+	)
+	if err != nil {
+		return github.WrapError(
+			err,
+			fmt.Sprintf(
+				"failed to remove repository %s/%s from team %s/%s",
+				option.RepoOwner,
+				option.RepoName,
+				option.Org,
+				option.Slug,
+			),
+		)
+	}
+	ghlogging.Debugf(
+		ctx,
+		"removed repository %s/%s from team %s/%s",
+		option.RepoOwner,
+		option.RepoName,
+		option.Org,
+		option.Slug,
+	)
+	return nil
+}
+
 // ListTeamMembersBySlug retrieves all members for a GitHub team by its slug.
 func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOptions) ([]*github.User, error) {
 	if err := option.Validate(); err != nil {

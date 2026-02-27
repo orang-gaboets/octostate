@@ -4,7 +4,7 @@
 
 - repositories (create from template, edit, delete)
 - topics (add, replace, list)
-- teams (create, edit, get, delete, members list/add/remove, repo permissions list/add)
+- teams (create, edit, get, delete, members list/add/remove, repo permissions list/add/remove)
 - organization utilities (list repos/members/teams, get org by name)
 - users (lookup by ID / username)
 
@@ -487,6 +487,23 @@ repo-builder team repo permissions add --app-id <app-id> --installation-id <inst
 - `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
 - `--permission` (optional): Permission to grant (`pull`, `push`, `admin`, `maintain`, `triage`; default is `pull`)
 - `--dry-run` (optional): Preview the permission change without calling GitHub
+
+#### Remove Team Repository Permission
+
+```bash
+repo-builder team repo permissions remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--dry-run]
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
+- `--repo` (required): Repository name
+- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
+- `--dry-run` (optional): Preview the permission removal without calling GitHub
 
 ### User
 

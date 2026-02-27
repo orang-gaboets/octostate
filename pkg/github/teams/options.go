@@ -231,6 +231,27 @@ func (opt *AddTeamRepoPermissionBySlugOptions) Validate() error {
 	return nil
 }
 
+// RemoveTeamRepoPermissionBySlugOptions defines the options for removing
+// repository permissions from a team by slug.
+type RemoveTeamRepoPermissionBySlugOptions struct {
+	Service   Service
+	Org       string
+	Slug      string
+	RepoOwner string
+	RepoName  string
+}
+
+// Validate checks if the RemoveTeamRepoPermissionBySlugOptions are valid.
+func (opt *RemoveTeamRepoPermissionBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" || opt.RepoOwner == "" || opt.RepoName == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
 // TeamMemberRole specifies the membership role filter when listing team members.
 type TeamMemberRole string
 
