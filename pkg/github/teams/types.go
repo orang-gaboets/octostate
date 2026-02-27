@@ -31,6 +31,9 @@ type Service interface {
 	// ListTeamReposBySlug lists repositories accessible by a team, including permissions.
 	ListTeamReposBySlug(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]*gh.Repository, *gh.Response, error)
 
+	// AddTeamRepoBySlug adds or updates a team's permission on a repository.
+	AddTeamRepoBySlug(ctx context.Context, org, slug, owner, repo string, opts *gh.TeamAddTeamRepoOptions) (*gh.Response, error)
+
 	// ListTeamMembersBySlug lists members of a team within an organization.
 	ListTeamMembersBySlug(ctx context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error)
 

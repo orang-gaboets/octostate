@@ -176,6 +176,61 @@ func (opt *ListTeamRepoPermissionsBySlugOptions) Validate() error {
 	return nil
 }
 
+// TeamRepoPermission specifies the permission level a team gets on a repository.
+type TeamRepoPermission string
+
+const (
+	// TeamRepoPermissionPull allows read access only.
+	TeamRepoPermissionPull TeamRepoPermission = "pull"
+	// TeamRepoPermissionPush allows read/write access.
+	TeamRepoPermissionPush TeamRepoPermission = "push"
+	// TeamRepoPermissionAdmin allows administrative access.
+	TeamRepoPermissionAdmin TeamRepoPermission = "admin"
+	// TeamRepoPermissionMaintain allows maintain-level access.
+	TeamRepoPermissionMaintain TeamRepoPermission = "maintain"
+	// TeamRepoPermissionTriage allows triage-level access.
+	TeamRepoPermissionTriage TeamRepoPermission = "triage"
+)
+
+// IsValid checks if the TeamRepoPermission value is valid.
+func (p TeamRepoPermission) IsValid() bool {
+	switch p {
+	case TeamRepoPermissionPull,
+		TeamRepoPermissionPush,
+		TeamRepoPermissionAdmin,
+		TeamRepoPermissionMaintain,
+		TeamRepoPermissionTriage:
+		return true
+	default:
+		return false
+	}
+}
+
+// AddTeamRepoPermissionBySlugOptions defines the options for granting
+// repository permissions to a team by slug.
+type AddTeamRepoPermissionBySlugOptions struct {
+	Service    Service
+	Org        string
+	Slug       string
+	RepoOwner  string
+	RepoName   string
+	Permission TeamRepoPermission
+}
+
+// Validate checks if the AddTeamRepoPermissionBySlugOptions are valid.
+func (opt *AddTeamRepoPermissionBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" || opt.RepoOwner == "" || opt.RepoName == "" {
+		return github.ErrMissingRequiredField
+	}
+	if !opt.Permission.IsValid() {
+		return fmt.Errorf("invalid team repository permission %q: %w", opt.Permission, github.ErrValidationFailed)
+	}
+	return nil
+}
+
 // TeamMemberRole specifies the membership role filter when listing team members.
 type TeamMemberRole string
 

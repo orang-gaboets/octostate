@@ -206,6 +206,58 @@ func ListTeamRepoPermissionsBySlug(ctx context.Context, option ListTeamRepoPermi
 	return allRepos, nil
 }
 
+// AddTeamRepoPermissionBySlug grants or updates a team's permission on a repository.
+func AddTeamRepoPermissionBySlug(ctx context.Context, option AddTeamRepoPermissionBySlugOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
+	}
+
+	addOpts := &gh.TeamAddTeamRepoOptions{
+		Permission: string(option.Permission),
+	}
+
+	ghlogging.Debugf(
+		ctx,
+		"grant repository %s/%s to team %s/%s with permission %s",
+		option.RepoOwner,
+		option.RepoName,
+		option.Org,
+		option.Slug,
+		option.Permission,
+	)
+	_, err := option.Service.AddTeamRepoBySlug(
+		ctx,
+		option.Org,
+		option.Slug,
+		option.RepoOwner,
+		option.RepoName,
+		addOpts,
+	)
+	if err != nil {
+		return github.WrapError(
+			err,
+			fmt.Sprintf(
+				"failed to grant repository %s/%s to team %s/%s with permission %s",
+				option.RepoOwner,
+				option.RepoName,
+				option.Org,
+				option.Slug,
+				option.Permission,
+			),
+		)
+	}
+	ghlogging.Debugf(
+		ctx,
+		"granted repository %s/%s to team %s/%s with permission %s",
+		option.RepoOwner,
+		option.RepoName,
+		option.Org,
+		option.Slug,
+		option.Permission,
+	)
+	return nil
+}
+
 // ListTeamMembersBySlug retrieves all members for a GitHub team by its slug.
 func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOptions) ([]*github.User, error) {
 	if err := option.Validate(); err != nil {

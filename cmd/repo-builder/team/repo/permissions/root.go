@@ -16,6 +16,7 @@ func NewCmd(svc teams.Service) *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		AddCmd(svc),
 		ListCmd(svc),
 	)
 

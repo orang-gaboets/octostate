@@ -265,6 +265,11 @@ func (m *mockService) ListTeamReposBySlug(_ context.Context, org, slug string, _
 	}, &gh.Response{NextPage: 0}, nil
 }
 
+// AddTeamRepoBySlug implements teams.Service for testing.
+func (m *mockService) AddTeamRepoBySlug(_ context.Context, _, _, _, _ string, _ *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+	return &gh.Response{}, nil
+}
+
 // DeleteTeamBySlug implements teams.Service for testing.
 func (m *mockService) DeleteTeamBySlug(_ context.Context, org, slug string) (*gh.Response, error) {
 	m.deleteCalled = true
