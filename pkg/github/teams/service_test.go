@@ -1692,6 +1692,116 @@ func TestAddTeamRepoPermissionBySlugServiceError(t *testing.T) {
 	}
 }
 
+// Test RemoveTeamRepoPermissionBySlug functionality
+
+func TestRemoveTeamRepoPermissionBySlugSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := RemoveTeamRepoPermissionBySlugOptions{
+		Service:   mockSvc,
+		Org:       existingTeam.Org,
+		Slug:      existingTeam.Slug,
+		RepoOwner: existingTeam.Org,
+		RepoName:  "repo-1",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamRepoPermissionBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.removeRepoPermCalled {
+		t.Fatal("expected RemoveTeamRepoBySlug to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org || mockSvc.teamSlug != existingTeam.Slug {
+		t.Fatalf("expected team target %s/%s, got %s/%s", existingTeam.Org, existingTeam.Slug, mockSvc.teamOrg, mockSvc.teamSlug)
+	}
+	if mockSvc.repoOwner != existingTeam.Org || mockSvc.repoName != "repo-1" {
+		t.Fatalf("expected repository target %s/%s, got %s/%s", existingTeam.Org, "repo-1", mockSvc.repoOwner, mockSvc.repoName)
+	}
+}
+
+func TestRemoveTeamRepoPermissionBySlugNotFound(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := RemoveTeamRepoPermissionBySlugOptions{
+		Service:   mockSvc,
+		Org:       nonExistingTeam.Org,
+		Slug:      nonExistingTeam.Slug,
+		RepoOwner: nonExistingTeam.Org,
+		RepoName:  "repo-1",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.removeRepoPermCalled {
+		t.Fatal("expected RemoveTeamRepoBySlug to be called")
+	}
+}
+
+func TestRemoveTeamRepoPermissionBySlugNilService(t *testing.T) {
+	opts := RemoveTeamRepoPermissionBySlugOptions{
+		Service:   nil,
+		Org:       existingTeam.Org,
+		Slug:      existingTeam.Slug,
+		RepoOwner: existingTeam.Org,
+		RepoName:  "repo-1",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+}
+
+func TestRemoveTeamRepoPermissionBySlugMissingRepoName(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := RemoveTeamRepoPermissionBySlugOptions{
+		Service:   mockSvc,
+		Org:       existingTeam.Org,
+		Slug:      existingTeam.Slug,
+		RepoOwner: existingTeam.Org,
+		RepoName:  "",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.removeRepoPermCalled {
+		t.Fatal("expected RemoveTeamRepoBySlug not to be called")
+	}
+}
+
+func TestRemoveTeamRepoPermissionBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		removeRepoPermErr: errors.New("service error"),
+	}
+
+	opts := RemoveTeamRepoPermissionBySlugOptions{
+		Service:   mockSvc,
+		Org:       existingTeam.Org,
+		Slug:      existingTeam.Slug,
+		RepoOwner: existingTeam.Org,
+		RepoName:  "repo-1",
+	}
+
+	ctx := context.Background()
+	err := RemoveTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.removeRepoPermErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.removeRepoPermErr, err)
+	}
+	if !mockSvc.removeRepoPermCalled {
+		t.Fatal("expected RemoveTeamRepoBySlug to be called")
+	}
+}
+
 // Test ListTeamMembersBySlug functionality
 
 func TestListTeamMembersBySlugSuccess(t *testing.T) {
