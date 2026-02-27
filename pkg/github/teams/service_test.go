@@ -71,6 +71,7 @@ var (
 
 type mockService struct {
 	addMemberCalled    bool
+	addRepoPermCalled  bool
 	listRepoPermCalled bool
 	removeMemberCalled bool
 	createCalled       bool
@@ -85,6 +86,7 @@ type mockService struct {
 	listRepoPermCalls  int
 	listRepoPermPaged  bool
 	addMemberErr       error
+	addRepoPermErr     error
 	listRepoPermErr    error
 	removeMemberErr    error
 	createErr          error
@@ -98,6 +100,9 @@ type mockService struct {
 	teamOrg            string
 	teamName           string
 	teamSlug           string
+	repoOwner          string
+	repoName           string
+	repoPermission     string
 	teamDesc           string
 	teamPrivacy        github.TeamPrivacy
 	teamParentID       *int64
@@ -266,7 +271,24 @@ func (m *mockService) ListTeamReposBySlug(_ context.Context, org, slug string, _
 }
 
 // AddTeamRepoBySlug implements teams.Service for testing.
-func (m *mockService) AddTeamRepoBySlug(_ context.Context, _, _, _, _ string, _ *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+func (m *mockService) AddTeamRepoBySlug(_ context.Context, org, slug, owner, repo string, opts *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+	m.addRepoPermCalled = true
+	m.teamOrg = org
+	m.teamSlug = slug
+	m.repoOwner = owner
+	m.repoName = repo
+	if opts != nil {
+		m.repoPermission = opts.Permission
+	}
+	if m.addRepoPermErr != nil {
+		return nil, m.addRepoPermErr
+	}
+	if org != existingTeam.Org || slug != existingTeam.Slug {
+		return nil, github.WrapError(github.ErrNotFound, "team not found")
+	}
+	if owner == "" || repo == "" {
+		return nil, github.WrapError(github.ErrMissingRequiredField, "repository target missing")
+	}
 	return &gh.Response{}, nil
 }
 
@@ -1506,6 +1528,146 @@ func TestListTeamRepoPermissionsBySlugServiceError(t *testing.T) {
 	}
 	if repos != nil {
 		t.Fatalf("expected no repositories, got %#v", repos)
+	}
+}
+
+// Test AddTeamRepoPermissionBySlug functionality
+
+func TestAddTeamRepoPermissionBySlugSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamRepoPermissionBySlugOptions{
+		Service:    mockSvc,
+		Org:        existingTeam.Org,
+		Slug:       existingTeam.Slug,
+		RepoOwner:  existingTeam.Org,
+		RepoName:   "repo-1",
+		Permission: TeamRepoPermissionMaintain,
+	}
+
+	ctx := context.Background()
+	err := AddTeamRepoPermissionBySlug(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.addRepoPermCalled {
+		t.Fatal("expected AddTeamRepoBySlug to be called")
+	}
+	if mockSvc.teamOrg != existingTeam.Org || mockSvc.teamSlug != existingTeam.Slug {
+		t.Fatalf("expected team target %s/%s, got %s/%s", existingTeam.Org, existingTeam.Slug, mockSvc.teamOrg, mockSvc.teamSlug)
+	}
+	if mockSvc.repoOwner != existingTeam.Org || mockSvc.repoName != "repo-1" {
+		t.Fatalf("expected repository target %s/%s, got %s/%s", existingTeam.Org, "repo-1", mockSvc.repoOwner, mockSvc.repoName)
+	}
+	if mockSvc.repoPermission != string(TeamRepoPermissionMaintain) {
+		t.Fatalf("expected permission %q, got %q", TeamRepoPermissionMaintain, mockSvc.repoPermission)
+	}
+}
+
+func TestAddTeamRepoPermissionBySlugNotFound(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamRepoPermissionBySlugOptions{
+		Service:    mockSvc,
+		Org:        nonExistingTeam.Org,
+		Slug:       nonExistingTeam.Slug,
+		RepoOwner:  nonExistingTeam.Org,
+		RepoName:   "repo-1",
+		Permission: TeamRepoPermissionPush,
+	}
+
+	ctx := context.Background()
+	err := AddTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.addRepoPermCalled {
+		t.Fatal("expected AddTeamRepoBySlug to be called")
+	}
+}
+
+func TestAddTeamRepoPermissionBySlugNilService(t *testing.T) {
+	opts := AddTeamRepoPermissionBySlugOptions{
+		Service:    nil,
+		Org:        existingTeam.Org,
+		Slug:       existingTeam.Slug,
+		RepoOwner:  existingTeam.Org,
+		RepoName:   "repo-1",
+		Permission: TeamRepoPermissionPush,
+	}
+
+	ctx := context.Background()
+	err := AddTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+}
+
+func TestAddTeamRepoPermissionBySlugMissingRepoName(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamRepoPermissionBySlugOptions{
+		Service:    mockSvc,
+		Org:        existingTeam.Org,
+		Slug:       existingTeam.Slug,
+		RepoOwner:  existingTeam.Org,
+		RepoName:   "",
+		Permission: TeamRepoPermissionPush,
+	}
+
+	ctx := context.Background()
+	err := AddTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.addRepoPermCalled {
+		t.Fatal("expected AddTeamRepoBySlug not to be called")
+	}
+}
+
+func TestAddTeamRepoPermissionBySlugInvalidPermission(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := AddTeamRepoPermissionBySlugOptions{
+		Service:    mockSvc,
+		Org:        existingTeam.Org,
+		Slug:       existingTeam.Slug,
+		RepoOwner:  existingTeam.Org,
+		RepoName:   "repo-1",
+		Permission: TeamRepoPermission("invalid"),
+	}
+
+	ctx := context.Background()
+	err := AddTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.addRepoPermCalled {
+		t.Fatal("expected AddTeamRepoBySlug not to be called")
+	}
+}
+
+func TestAddTeamRepoPermissionBySlugServiceError(t *testing.T) {
+	mockSvc := &mockService{
+		addRepoPermErr: errors.New("service error"),
+	}
+
+	opts := AddTeamRepoPermissionBySlugOptions{
+		Service:    mockSvc,
+		Org:        existingTeam.Org,
+		Slug:       existingTeam.Slug,
+		RepoOwner:  existingTeam.Org,
+		RepoName:   "repo-1",
+		Permission: TeamRepoPermissionPush,
+	}
+
+	ctx := context.Background()
+	err := AddTeamRepoPermissionBySlug(ctx, opts)
+	if !errors.Is(err, mockSvc.addRepoPermErr) {
+		t.Fatalf("expected error %v, got %v", mockSvc.addRepoPermErr, err)
+	}
+	if !mockSvc.addRepoPermCalled {
+		t.Fatal("expected AddTeamRepoBySlug to be called")
 	}
 }
 
