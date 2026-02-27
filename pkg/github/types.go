@@ -55,6 +55,61 @@ func RepositoriesFromGhRepos(ghRepos []*gh.Repository) []Repository {
 	return repos
 }
 
+// TeamRepositoryPermission represents repository details and the permissions a
+// team has on that repository.
+type TeamRepositoryPermission struct {
+	Owner       string
+	Name        string
+	Private     bool
+	Description string
+	Topics      []string
+	Permissions map[string]bool
+}
+
+// String returns a string representation of the TeamRepositoryPermission.
+func (trp *TeamRepositoryPermission) String() string {
+	b, err := json.MarshalIndent(trp, "", "  ")
+	if err != nil {
+		return "TeamRepositoryPermission<marshal error>"
+	}
+	return string(b)
+}
+
+// TeamRepositoryPermissionFromGhRepo converts a GitHub repository from the
+// go-github library into a TeamRepositoryPermission.
+func TeamRepositoryPermissionFromGhRepo(ghRepo *gh.Repository) *TeamRepositoryPermission {
+	if ghRepo == nil {
+		return nil
+	}
+
+	owner := ghRepo.GetOwner()
+	permissions := make(map[string]bool, len(ghRepo.Permissions))
+	for key, value := range ghRepo.Permissions {
+		permissions[key] = value
+	}
+
+	return &TeamRepositoryPermission{
+		Owner:       owner.GetLogin(),
+		Name:        ghRepo.GetName(),
+		Private:     ghRepo.GetPrivate(),
+		Description: ghRepo.GetDescription(),
+		Topics:      ghRepo.Topics,
+		Permissions: permissions,
+	}
+}
+
+// TeamRepositoryPermissionsFromGhRepos converts a slice of GitHub repositories
+// to a slice of TeamRepositoryPermission pointers.
+func TeamRepositoryPermissionsFromGhRepos(ghRepos []*gh.Repository) []*TeamRepositoryPermission {
+	repos := make([]*TeamRepositoryPermission, 0, len(ghRepos))
+	for _, r := range ghRepos {
+		if repo := TeamRepositoryPermissionFromGhRepo(r); repo != nil {
+			repos = append(repos, repo)
+		}
+	}
+	return repos
+}
+
 // TeamPrivacy defines the privacy level of a GitHub team.
 type TeamPrivacy string
 

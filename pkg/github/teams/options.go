@@ -157,6 +157,25 @@ func (opt *RemoveTeamMemberBySlugOptions) Validate() error {
 	return nil
 }
 
+// ListTeamRepoPermissionsBySlugOptions defines the options for listing
+// repositories and permissions for a team by slug.
+type ListTeamRepoPermissionsBySlugOptions struct {
+	Service Service
+	Org     string
+	Slug    string
+}
+
+// Validate checks if the ListTeamRepoPermissionsBySlugOptions are valid.
+func (opt *ListTeamRepoPermissionsBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
 // TeamMemberRole specifies the membership role filter when listing team members.
 type TeamMemberRole string
 

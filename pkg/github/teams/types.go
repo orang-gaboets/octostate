@@ -28,6 +28,9 @@ type Service interface {
 	// RemoveTeamMembershipBySlug removes a user's membership from a team by slug.
 	RemoveTeamMembershipBySlug(ctx context.Context, org, slug, user string) (*gh.Response, error)
 
+	// ListTeamReposBySlug lists repositories accessible by a team, including permissions.
+	ListTeamReposBySlug(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]*gh.Repository, *gh.Response, error)
+
 	// ListTeamMembersBySlug lists members of a team within an organization.
 	ListTeamMembersBySlug(ctx context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error)
 

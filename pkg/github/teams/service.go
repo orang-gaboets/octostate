@@ -175,6 +175,37 @@ func RemoveTeamMemberBySlug(ctx context.Context, option RemoveTeamMemberBySlugOp
 	return nil
 }
 
+// ListTeamRepoPermissionsBySlug retrieves repositories accessible by a GitHub
+// team, including the team's permissions for each repository.
+func ListTeamRepoPermissionsBySlug(ctx context.Context, option ListTeamRepoPermissionsBySlugOptions) ([]*github.TeamRepositoryPermission, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	listOptions := &gh.ListOptions{
+		PerPage: 100,
+	}
+
+	var allRepos []*github.TeamRepositoryPermission
+	for {
+		ghRepos, resp, err := option.Service.ListTeamReposBySlug(ctx, option.Org, option.Slug, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list repository permissions for team %s/%s", option.Org, option.Slug))
+		}
+
+		allRepos = append(allRepos, github.TeamRepositoryPermissionsFromGhRepos(ghRepos)...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	ghlogging.Debugf(ctx, "listed %d repository permissions for team %s/%s", len(allRepos), option.Org, option.Slug)
+	return allRepos, nil
+}
+
 // ListTeamMembersBySlug retrieves all members for a GitHub team by its slug.
 func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOptions) ([]*github.User, error) {
 	if err := option.Validate(); err != nil {

@@ -4,7 +4,7 @@
 
 - repositories (create from template, edit, delete)
 - topics (add, replace, list)
-- teams (create, edit, get, delete, members list/add/remove)
+- teams (create, edit, get, delete, members list/add/remove, repo permissions list)
 - organization utilities (list repos/members/teams, get org by name)
 - users (lookup by ID / username)
 
@@ -455,6 +455,20 @@ repo-builder team members remove --app-id <app-id> --installation-id <installati
 - `--slug` (required): Team slug (URL-friendly name)
 - `--username` (required): GitHub username to remove from the team
 - `--dry-run` (optional): Preview the membership removal without calling GitHub
+
+#### List Team Repository Permissions
+
+```bash
+repo-builder team repo permissions list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+- `--slug` (required): Team slug (URL-friendly name)
 
 ### User
 
