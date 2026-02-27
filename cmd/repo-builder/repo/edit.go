@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
@@ -70,14 +71,20 @@ func EditRepo(svc repos.Service) *cobra.Command {
 				changedFields = append(changedFields, "allow-forking")
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would edit repository %s/%s (changed=%s)\n",
-					org,
-					name,
-					strings.Join(changedFields, ","),
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would edit repository %s/%s (changed=%s)",
+						org,
+						name,
+						strings.Join(changedFields, ","),
+					),
+					map[string]any{
+						"owner":          org,
+						"name":           name,
+						"changed_fields": changedFields,
+					},
 				)
-				return err
 			}
 
 			service := svc
@@ -90,8 +97,20 @@ func EditRepo(svc repos.Service) *cobra.Command {
 			}
 			opts.Service = service
 
-			_, err := repos.Edit(ctx, opts)
-			return err
+			updatedRepo, err := repos.Edit(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Edited repository %s/%s", org, name),
+				map[string]any{
+					"owner":          org,
+					"name":           name,
+					"changed_fields": changedFields,
+					"repository":     updatedRepo,
+				},
+			)
 		},
 	}
 

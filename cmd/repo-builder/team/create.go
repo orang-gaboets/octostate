@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
@@ -39,15 +40,22 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 			ctx := cmd.Context()
 			privacy := github.PrivacyFromBool(secret)
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would create team %s/%s (privacy=%s parent=%s)\n",
-					org,
-					name,
-					privacy,
-					parent,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would create team %s/%s (privacy=%s parent=%s)",
+						org,
+						name,
+						privacy,
+						parent,
+					),
+					map[string]any{
+						"organization": org,
+						"name":         name,
+						"privacy":      privacy,
+						"parent_slug":  parent,
+					},
 				)
-				return err
 			}
 
 			service := svc
@@ -70,8 +78,21 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 				opts.ParentTeamSlug = &parent
 			}
 
-			_, err := teams.CreateTeam(ctx, opts)
-			return err
+			createdTeam, err := teams.CreateTeam(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Created team %s/%s", org, name),
+				map[string]any{
+					"organization": org,
+					"name":         name,
+					"privacy":      privacy,
+					"parent_slug":  parent,
+					"team":         createdTeam,
+				},
+			)
 		},
 	}
 

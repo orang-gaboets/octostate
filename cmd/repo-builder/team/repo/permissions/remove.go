@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
@@ -51,15 +52,22 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 			}
 
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would remove team %s/%s access to repository %s/%s\n",
-					trimmedOrg,
-					trimmedSlug,
-					trimmedRepoOrg,
-					trimmedRepo,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would remove team %s/%s access to repository %s/%s",
+						trimmedOrg,
+						trimmedSlug,
+						trimmedRepoOrg,
+						trimmedRepo,
+					),
+					map[string]any{
+						"organization": trimmedOrg,
+						"slug":         trimmedSlug,
+						"repo_owner":   trimmedRepoOrg,
+						"repo_name":    trimmedRepo,
+					},
 				)
-				return err
 			}
 
 			service := svc
@@ -83,15 +91,22 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 				return err
 			}
 
-			_, err := fmt.Fprintf(
-				cmd.OutOrStdout(),
-				"Removed team %s/%s access to repository %s/%s\n",
-				trimmedOrg,
-				trimmedSlug,
-				trimmedRepoOrg,
-				trimmedRepo,
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf(
+					"Removed team %s/%s access to repository %s/%s",
+					trimmedOrg,
+					trimmedSlug,
+					trimmedRepoOrg,
+					trimmedRepo,
+				),
+				map[string]any{
+					"organization": trimmedOrg,
+					"slug":         trimmedSlug,
+					"repo_owner":   trimmedRepoOrg,
+					"repo_name":    trimmedRepo,
+				},
 			)
-			return err
 		},
 	}
 

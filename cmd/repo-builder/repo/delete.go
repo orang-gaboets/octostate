@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
@@ -38,8 +39,14 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 				return err
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would delete repository %s/%s\n", org, name)
-				return err
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf("Dry run: would delete repository %s/%s", org, name),
+					map[string]any{
+						"owner": org,
+						"name":  name,
+					},
+				)
 			}
 
 			ctx := cmd.Context()
@@ -58,8 +65,17 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 				Service: service,
 			}
 
-			err := repos.Delete(ctx, opts)
-			return err
+			if err := repos.Delete(ctx, opts); err != nil {
+				return err
+			}
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Deleted repository %s/%s", org, name),
+				map[string]any{
+					"owner": org,
+					"name":  name,
+				},
+			)
 		},
 	}
 

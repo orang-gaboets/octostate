@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
@@ -38,8 +39,14 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 				return err
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would delete team %s/%s\n", org, slug)
-				return err
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf("Dry run: would delete team %s/%s", org, slug),
+					map[string]any{
+						"organization": org,
+						"slug":         slug,
+					},
+				)
 			}
 
 			ctx := cmd.Context()
@@ -57,7 +64,17 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 				Slug:    slug,
 				Service: service,
 			}
-			return teams.DeleteTeamBySlug(ctx, opts)
+			if err := teams.DeleteTeamBySlug(ctx, opts); err != nil {
+				return err
+			}
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Deleted team %s/%s", org, slug),
+				map[string]any{
+					"organization": org,
+					"slug":         slug,
+				},
+			)
 		},
 	}
 

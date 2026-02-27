@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
@@ -56,16 +57,24 @@ func AddCmd(svc teams.Service) *cobra.Command {
 			}
 
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would grant team %s/%s permission %s on repository %s/%s\n",
-					trimmedOrg,
-					trimmedSlug,
-					trimmedPermission,
-					trimmedRepoOrg,
-					trimmedRepo,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would grant team %s/%s permission %s on repository %s/%s",
+						trimmedOrg,
+						trimmedSlug,
+						trimmedPermission,
+						trimmedRepoOrg,
+						trimmedRepo,
+					),
+					map[string]any{
+						"organization": trimmedOrg,
+						"slug":         trimmedSlug,
+						"repo_owner":   trimmedRepoOrg,
+						"repo_name":    trimmedRepo,
+						"permission":   trimmedPermission,
+					},
 				)
-				return err
 			}
 
 			service := svc
@@ -90,16 +99,24 @@ func AddCmd(svc teams.Service) *cobra.Command {
 				return err
 			}
 
-			_, err := fmt.Fprintf(
-				cmd.OutOrStdout(),
-				"Granted team %s/%s permission %s on repository %s/%s\n",
-				trimmedOrg,
-				trimmedSlug,
-				trimmedPermission,
-				trimmedRepoOrg,
-				trimmedRepo,
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf(
+					"Granted team %s/%s permission %s on repository %s/%s",
+					trimmedOrg,
+					trimmedSlug,
+					trimmedPermission,
+					trimmedRepoOrg,
+					trimmedRepo,
+				),
+				map[string]any{
+					"organization": trimmedOrg,
+					"slug":         trimmedSlug,
+					"repo_owner":   trimmedRepoOrg,
+					"repo_name":    trimmedRepo,
+					"permission":   trimmedPermission,
+				},
 			)
-			return err
 		},
 	}
 

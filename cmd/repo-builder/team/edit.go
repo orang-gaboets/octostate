@@ -90,28 +90,36 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 				return fmt.Errorf("parent team slug cannot be empty: %w", github.ErrMissingRequiredField)
 			}
 
+			changedFields := make([]string, 0, 5)
+			if nameChanged {
+				changedFields = append(changedFields, "name")
+			}
+			if descChanged {
+				changedFields = append(changedFields, "desc")
+			}
+			if secretChanged {
+				changedFields = append(changedFields, "secret")
+			}
+			if parentChanged {
+				changedFields = append(changedFields, "parent")
+			}
+			if clearParent {
+				changedFields = append(changedFields, "clear-parent")
+			}
+			if len(changedFields) == 0 {
+				changedFields = append(changedFields, "<none>")
+			}
+
 			if dryRun {
-				changedFields := make([]string, 0, 4)
-				if nameChanged {
-					changedFields = append(changedFields, "name")
-				}
-				if descChanged {
-					changedFields = append(changedFields, "desc")
-				}
-				if secretChanged {
-					changedFields = append(changedFields, "secret")
-				}
-				if parentChanged {
-					changedFields = append(changedFields, "parent")
-				}
-				if clearParent {
-					changedFields = append(changedFields, "clear-parent")
-				}
-				if len(changedFields) == 0 {
-					changedFields = append(changedFields, "<none>")
-				}
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would edit team %s/%s (changed=%s)\n", trimmedOrg, trimmedSlug, strings.Join(changedFields, ","))
-				return err
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf("Dry run: would edit team %s/%s (changed=%s)", trimmedOrg, trimmedSlug, strings.Join(changedFields, ",")),
+					map[string]any{
+						"organization":   trimmedOrg,
+						"slug":           trimmedSlug,
+						"changed_fields": changedFields,
+					},
+				)
 			}
 
 			service := svc
@@ -128,7 +136,16 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdoutput.PrintJSON(cmd, teamInfo)
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Edited team %s/%s", trimmedOrg, trimmedSlug),
+				map[string]any{
+					"organization":   trimmedOrg,
+					"slug":           trimmedSlug,
+					"changed_fields": changedFields,
+					"team":           teamInfo,
+				},
+			)
 		},
 	}
 

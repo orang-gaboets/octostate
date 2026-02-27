@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
@@ -41,26 +42,40 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 			repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			trimmedOrg := strings.TrimSpace(org)
+			trimmedTemplateName := strings.TrimSpace(templateName)
+			trimmedTemplateOrg := strings.TrimSpace(templateOrg)
+			trimmedName := strings.TrimSpace(name)
 			var topicList []string
 			if topics != "" {
 				topicList = strings.Split(strings.TrimSpace(topics), ",")
 			}
-			if templateOrg == "" {
-				templateOrg = org
+			if trimmedTemplateOrg == "" {
+				trimmedTemplateOrg = trimmedOrg
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would create repository %s/%s from template %s/%s (private=%t include-all-branches=%t topics=%v)\n",
-					org,
-					name,
-					templateOrg,
-					templateName,
-					private,
-					includeAllBranches,
-					topicList,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would create repository %s/%s from template %s/%s (private=%t include-all-branches=%t topics=%v)",
+						trimmedOrg,
+						trimmedName,
+						trimmedTemplateOrg,
+						trimmedTemplateName,
+						private,
+						includeAllBranches,
+						topicList,
+					),
+					map[string]any{
+						"owner":                trimmedOrg,
+						"name":                 trimmedName,
+						"template_owner":       trimmedTemplateOrg,
+						"template_repo":        trimmedTemplateName,
+						"private":              private,
+						"include_all_branches": includeAllBranches,
+						"topics":               topicList,
+					},
 				)
-				return err
 			}
 			service := svc
 			if service == nil {
@@ -71,18 +86,40 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 				service = client.Repositories()
 			}
 			opts := repos.CreateFromTemplateOptions{
-				Name:               strings.TrimSpace(name),
-				Owner:              strings.TrimSpace(org),
-				TemplateRepo:       strings.TrimSpace(templateName),
-				TemplateOwner:      strings.TrimSpace(templateOrg),
+				Name:               trimmedName,
+				Owner:              trimmedOrg,
+				TemplateRepo:       trimmedTemplateName,
+				TemplateOwner:      trimmedTemplateOrg,
 				Description:        &desc,
 				Private:            &private,
 				Topics:             topicList,
 				IncludeAllBranches: includeAllBranches,
 				Service:            service,
 			}
-			_, err := repos.CreateFromTemplate(ctx, opts)
-			return err
+			createdRepo, err := repos.CreateFromTemplate(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf(
+					"Created repository %s/%s from template %s/%s",
+					trimmedOrg,
+					trimmedName,
+					trimmedTemplateOrg,
+					trimmedTemplateName,
+				),
+				map[string]any{
+					"owner":                trimmedOrg,
+					"name":                 trimmedName,
+					"template_owner":       trimmedTemplateOrg,
+					"template_repo":        trimmedTemplateName,
+					"private":              private,
+					"include_all_branches": includeAllBranches,
+					"topics":               topicList,
+					"repository":           createdRepo,
+				},
+			)
 		},
 	}
 

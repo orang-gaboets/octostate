@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/safety"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
@@ -41,8 +42,15 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(cmd.OutOrStdout(), "Dry run: would replace topics for repository %s/%s (topics=%v)\n", org, name, topicsList)
-				return err
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf("Dry run: would replace topics for repository %s/%s (topics=%v)", org, name, topicsList),
+					map[string]any{
+						"owner":  org,
+						"name":   name,
+						"topics": topicsList,
+					},
+				)
 			}
 			service := svc
 			if service == nil {
@@ -58,8 +66,19 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 				Topics:  topicsList,
 				Service: service,
 			}
-			_, err := topics.ReplaceAllTopics(ctx, opts)
-			return err
+			replacedTopics, err := topics.ReplaceAllTopics(ctx, opts)
+			if err != nil {
+				return err
+			}
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Replaced topics for repository %s/%s", org, name),
+				map[string]any{
+					"owner":  org,
+					"name":   name,
+					"topics": replacedTopics,
+				},
+			)
 		},
 	}
 
