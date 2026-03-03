@@ -170,6 +170,17 @@ git push origin v0.1.0
 After `v0.1.0` exists, future releasable commits on `main` will cause
 `release-please` to open or update a release PR automatically.
 
+### Auto-merge
+
+This repository also uses
+`.github/workflows/automerge-release-please.yml` to enable auto-merge for
+`release-please` PRs created by the configured GitHub App.
+
+- The workflow only targets same-repository PRs into `main`.
+- The workflow only targets release branches created by `release-please`
+  (`release-please--branches--*`).
+- Human-authored PRs are intentionally ignored.
+
 ### Authentication
 
 All commands require GitHub authentication. You must supply exactly one of the following:
