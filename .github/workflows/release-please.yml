@@ -1,0 +1,45 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        env:
+          RELEASE_PLEASE_APP_ID: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          RELEASE_PLEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+        if: env.RELEASE_PLEASE_APP_ID != '' && env.RELEASE_PLEASE_APP_PRIVATE_KEY != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Run release-please with GitHub App token
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          release-type: go
+
+      - name: Run release-please with GITHUB_TOKEN fallback
+        if: ${{ steps.app-token.outputs.token == '' }}
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: go
