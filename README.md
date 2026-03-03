@@ -24,7 +24,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
 ## Installation
 
 ```
-go install github.com/yourorg/repo-builder/cmd/repo-builder@latest
+go install github.com/orang-gaboets/repo-builder/cmd/repo-builder@latest
 ```
 
 ## Development Setup
@@ -137,6 +137,38 @@ go test ./... -cover -coverprofile=coverage.out
 pre-commit install
 pre-commit run --all-files
 ```
+
+## Releases
+
+This repository uses [`release-please`](https://github.com/googleapis/release-please)
+and the
+[`release-please-action`](https://github.com/googleapis/release-please-action)
+to automate release PRs, changelog updates, Git tags, and GitHub Releases from
+Conventional Commits on `main`.
+
+Version updates for this project are performed by `release-please` using a
+GitHub App installation token rather than a user-owned personal access token.
+
+- Use Conventional Commit subjects on the commits that land on `main`.
+- If you use squash merge, put the Conventional Commit prefix in the PR title.
+- `fix:` produces a patch release, `feat:` produces a minor release, and
+  `!` or `BREAKING CHANGE:` produces a major release.
+- The workflow prefers a GitHub App installation token created with
+  [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token).
+  If the app credentials are not configured, it falls back to `GITHUB_TOKEN`.
+- In repository settings, enable "Allow GitHub Actions to create and approve
+  pull requests" so the workflow can open release PRs.
+
+Bootstrap the current CLI baseline as `v0.1.0` once before relying on automated
+version bumps:
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+After `v0.1.0` exists, future releasable commits on `main` will cause
+`release-please` to open or update a release PR automatically.
 
 ### Authentication
 
