@@ -17,7 +17,8 @@ jobs:
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !github.event.pull_request.draft &&
-      startsWith(github.event.pull_request.head.ref, 'release-please--branches--')
+      startsWith(github.event.pull_request.head.ref, 'release-please--branches--') &&
+      github.event.pull_request.user.type == 'Bot'
     runs-on: ubuntu-latest
     steps:
       - name: Generate GitHub App token
