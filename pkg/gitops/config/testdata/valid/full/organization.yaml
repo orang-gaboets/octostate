@@ -1,0 +1,35 @@
+organization: orang-gaboets
+invites:
+  - username: " octocat "
+    role: " direct_member "
+    team_slugs:
+      - " platform "
+repositories:
+  - owner: ""
+    name: " repo-builder "
+    template:
+      owner: " orang-gaboets "
+      name: " repo-template "
+      include_all_branches: false
+    visibility: " private "
+    description: " GitHub organization operations CLI "
+    homepage: " https://github.com/orang-gaboets/repo-builder "
+    topics:
+      - " go "
+      - " gitops "
+    allow_forking: false
+    archived: false
+    is_template: false
+teams:
+  - slug: " platform "
+    name: " Platform "
+    description: " Platform engineering "
+    privacy: " closed "
+    parent_slug: ""
+    members:
+      - username: " alice "
+        role: " maintainer "
+    repositories:
+      - owner: ""
+        name: " repo-builder "
+        permission: " push "
