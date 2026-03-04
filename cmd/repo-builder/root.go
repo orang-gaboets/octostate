@@ -1,6 +1,7 @@
 package main
 
 import (
+	configcmd "github.com/orang-gaboets/repo-builder/cmd/repo-builder/config"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/organization"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/repo"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/team"
@@ -25,6 +26,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable diagnostic logs on stderr")
 
 	cmd.AddCommand(
+		configcmd.NewConfigCmd(),
 		organization.NewOrganizationCmd(nil, nil, nil),
 		repo.NewRepoCmd(nil),
 		team.NewTeamCmd(nil),
