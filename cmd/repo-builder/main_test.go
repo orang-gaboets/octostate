@@ -58,6 +58,33 @@ func TestRunFallsBackToExitCodeOneForRegularErrors(t *testing.T) {
 	}
 }
 
+func TestRunWithCobraRequiredFlagErrorPrintsSingleLine(t *testing.T) {
+	restore := setMainTestHooks(
+		func() error {
+			cmd := newRootCmd()
+			cmd.SetArgs([]string{"config", "validate"})
+			return cmd.Execute()
+		},
+		func() io.Writer { return &bytes.Buffer{} },
+		func(int) { t.Fatal("exitFn should not be called by run") },
+	)
+	defer restore()
+
+	var stderr bytes.Buffer
+	stderrRestore := setMainStderr(&stderr)
+	defer stderrRestore()
+
+	code := run()
+	if code != 1 {
+		t.Fatalf("expected fallback exit code 1, got %d", code)
+	}
+
+	line := strings.TrimSpace(stderr.String())
+	if line != `Error: required flag(s) "config-dir" not set` {
+		t.Fatalf("unexpected stderr line: %q", line)
+	}
+}
+
 func setMainTestHooks(
 	execute func() error,
 	stderr func() io.Writer,
@@ -75,5 +102,13 @@ func setMainTestHooks(
 		executeFn = originalExecute
 		stderrFn = originalStderr
 		exitFn = originalExit
+	}
+}
+
+func setMainStderr(w io.Writer) func() {
+	originalStderr := stderrFn
+	stderrFn = func() io.Writer { return w }
+	return func() {
+		stderrFn = originalStderr
 	}
 }
