@@ -14,8 +14,8 @@ This repository is the **engine** (CLI + reusable automation building blocks).
 ## Status / Roadmap
 
 - **v0 (current):** API-primitive commands (direct GitHub operations) ✅
-- **v1 (planned):** GitOps commands + audit:
-  - `repo-builder config validate`
+- **v1 (in progress):** GitOps commands + audit:
+  - ✅ `repo-builder config validate`
   - `repo-builder plan`
   - `repo-builder apply`
   - `repo-builder audit pull`
@@ -201,6 +201,58 @@ Destructive delete commands require explicit confirmation with `--yes`:
 - `repo-builder team delete-by-slug`
 
 You can use `--dry-run` instead of `--yes` to preview a delete operation.
+
+### Config (GitOps)
+
+#### Validate desired-state configuration
+
+```bash
+repo-builder config validate --config-dir ./config
+```
+
+##### Flags
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Uses strict YAML decoding (unknown fields are rejected)
+- Runs semantic validation (duplicates, enum checks, references, parent cycles, invite identity rules)
+- Prints a JSON validation report to stdout
+- Does not call GitHub APIs (fully offline)
+
+Exit codes:
+- `0`: valid configuration
+- `2`: configuration loaded, but semantic validation failed
+- `1`: load/decode/runtime failure (for example missing file or malformed YAML)
+
+Example `organization.yaml`:
+
+```yaml
+organization: orang-gaboets
+invites:
+  - username: octocat
+    role: direct_member
+    team_slugs:
+      - platform
+
+repositories:
+  - name: repo-builder
+    visibility: private
+    template:
+      owner: orang-gaboets
+      name: repo-template
+
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    members:
+      - username: alice
+        role: maintainer
+    repositories:
+      - name: repo-builder
+        permission: push
+```
 
 ### Organizations
 
@@ -608,7 +660,7 @@ go test ./... -cover -coverprofile=coverage.out
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-## GitOps (Planned)
+## GitOps (In Progress)
 
 This repository is the **engine** (CLI + reusable automation building blocks).  
 The GitOps workflow will live in a separate **control repository** per organization (e.g. `<org>-control`), which will:
@@ -618,23 +670,23 @@ The GitOps workflow will live in a separate **control repository** per organizat
 - apply changes to GitHub using this engine (via GitHub Actions + GitHub App auth)
 - continuously snapshot reality into `state/` and report drift
 
-### Control repo layout (proposed)
+### Control repo layout (v1 target)
 
 ```text
 config/
-  repos.yaml        # desired repositories (template, settings, topics, etc.)
-  teams.yaml        # desired teams, members, repo permissions
-  policies.yaml     # org-wide defaults / rules (optional)
+  organization.yaml # desired organization state (invites, repositories, teams)
 state/
   actual/           # generated snapshots from GitHub (never hand-edit)
   diff/             # drift reports (optional)
   events/           # append-only change log (optional)
 ```
 
-### Planned GitOps commands (engine)
+### GitOps command status (engine)
 
-These commands will be implemented in this repo and invoked from the control repo workflows:
-- `repo-builder config validate` — validate config schema + invariants
+Implemented:
+- `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
+
+Planned:
 - `repo-builder plan` — show what changes would be made
 - `repo-builder apply` — reconcile GitHub to match config/ (idempotent)
 - `repo-builder audit pull` — snapshot GitHub into state/actual/
