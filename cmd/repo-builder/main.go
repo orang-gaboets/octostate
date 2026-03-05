@@ -28,8 +28,6 @@ func run() int {
 		return code
 	}
 
-	if _, writeErr := fmt.Fprintf(stderrFn(), "Error: %v\n", err); writeErr != nil {
-		return 1
-	}
+	_, _ = fmt.Fprintf(stderrFn(), "Error: %v\n", err)
 	return 1
 }

@@ -110,7 +110,7 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 		if owner == "" || name == "" {
 			continue
 		}
-		key := owner + "\x00" + name
+		key := strings.ToLower(owner) + "\x00" + strings.ToLower(name)
 		if firstIndex, ok := seen[key]; ok {
 			report.addError(pathPrefix, ValidationIssueCodeDuplicateRepository, "repository %s/%s duplicates repositories[%d]", owner, name, firstIndex)
 			continue
@@ -140,10 +140,11 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			report.addError(pathPrefix+".slug", ValidationIssueCodeSlugNameMismatch, "team slug %q does not match normalized team name %q", slug, normalizeTeamName(name))
 		}
 		if slug != "" {
-			if firstIndex, ok := teamIndex[slug]; ok {
+			slugKey := strings.ToLower(slug)
+			if firstIndex, ok := teamIndex[slugKey]; ok {
 				report.addError(pathPrefix+".slug", ValidationIssueCodeDuplicateTeamSlug, "team slug %q duplicates teams[%d]", slug, firstIndex)
 			} else {
-				teamIndex[slug] = i
+				teamIndex[slugKey] = i
 			}
 		}
 
@@ -160,11 +161,12 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			if username == "" {
 				continue
 			}
-			if firstIndex, ok := memberIndex[username]; ok {
+			usernameKey := strings.ToLower(username)
+			if firstIndex, ok := memberIndex[usernameKey]; ok {
 				report.addError(memberPath, ValidationIssueCodeDuplicateTeamMember, "team member %q duplicates teams[%d].members[%d]", username, i, firstIndex)
 				continue
 			}
-			memberIndex[username] = j
+			memberIndex[usernameKey] = j
 		}
 
 		repositoryIndex := make(map[string]int, len(team.Repositories))
@@ -188,7 +190,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			if owner == "" || name == "" {
 				continue
 			}
-			key := owner + "\x00" + name
+			key := strings.ToLower(owner) + "\x00" + strings.ToLower(name)
 			if firstIndex, ok := repositoryIndex[key]; ok {
 				report.addError(repoPath, ValidationIssueCodeDuplicateTeamRepository, "team repository %s/%s duplicates teams[%d].repositories[%d]", owner, name, i, firstIndex)
 				continue
@@ -202,7 +204,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 		if parentSlug == "" {
 			continue
 		}
-		if _, ok := teamIndex[parentSlug]; !ok {
+		if _, ok := teamIndex[strings.ToLower(parentSlug)]; !ok {
 			report.addError(fmt.Sprintf("teams[%d].parent_slug", i), ValidationIssueCodeUnknownTeamParentSlug, "parent team slug %q does not reference a declared team", parentSlug)
 		}
 	}
@@ -233,8 +235,10 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			report.addError(pathPrefix, ValidationIssueCodeInvalidInviteIdentity, "invite must declare exactly one of username, email, or user_id")
 		case identityCount > 1:
 			report.addError(pathPrefix, ValidationIssueCodeInvalidInviteIdentity, "invite must not declare more than one of username, email, or user_id")
-		case userID < 0:
-			report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must be greater than zero")
+		}
+
+		if userID < 0 {
+			report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must be greater than zero when provided")
 		}
 
 		if role := strings.TrimSpace(invite.Role); role != "" && !isAllowed(role, validInviteRoles) {
@@ -242,7 +246,7 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 		}
 
 		for j, teamSlug := range invite.TeamSlugs {
-			if _, ok := teamIndex[strings.TrimSpace(teamSlug)]; !ok {
+			if _, ok := teamIndex[strings.ToLower(strings.TrimSpace(teamSlug))]; !ok {
 				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeUnknownInviteTeamSlug, "invite references unknown team slug %q", strings.TrimSpace(teamSlug))
 			}
 		}
@@ -257,10 +261,10 @@ func validateTeamParentCycles(report *ValidationReport, teams []TeamSpec, teamIn
 		if slug == "" || parentSlug == "" {
 			continue
 		}
-		if _, ok := teamIndex[parentSlug]; !ok {
+		if _, ok := teamIndex[strings.ToLower(parentSlug)]; !ok {
 			continue
 		}
-		parentBySlug[slug] = parentSlug
+		parentBySlug[strings.ToLower(slug)] = strings.ToLower(parentSlug)
 	}
 
 	state := make(map[string]int, len(parentBySlug))
@@ -287,7 +291,7 @@ func validateTeamParentCycles(report *ValidationReport, teams []TeamSpec, teamIn
 		if slug == "" {
 			continue
 		}
-		if visit(slug) {
+		if visit(strings.ToLower(slug)) {
 			report.addError("teams", ValidationIssueCodeTeamParentCycle, "team parent cycle detected")
 			return
 		}

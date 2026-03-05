@@ -14,7 +14,7 @@ import (
 const organizationFileName = "organization.yaml"
 
 // LoadDir loads the canonical organization configuration file from configDir,
-// decodes them strictly, and applies basic normalization.
+// decodes it strictly, and applies basic normalization.
 func LoadDir(configDir string) (OrganizationConfig, error) {
 	configDir = strings.TrimSpace(configDir)
 	if configDir == "" {
@@ -27,13 +27,6 @@ func LoadDir(configDir string) (OrganizationConfig, error) {
 
 	info, err := os.Stat(configDir)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return OrganizationConfig{}, &LoadError{
-				Kind: LoadErrorInvalidDir,
-				Path: configDir,
-				Err:  err,
-			}
-		}
 		return OrganizationConfig{}, &LoadError{
 			Kind: LoadErrorInvalidDir,
 			Path: configDir,

@@ -42,6 +42,20 @@ func TestValidateDuplicateRepositories(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateRepository)
 }
 
+func TestValidateDuplicateRepositoriesCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories = append(cfg.Repositories, RepositorySpec{
+		Owner:      "ORANG-GABOETS",
+		Name:       "REPO-BUILDER",
+		Visibility: "private",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateRepository)
+}
+
 func TestValidateDuplicateTeamSlugs(t *testing.T) {
 	t.Parallel()
 
@@ -49,6 +63,19 @@ func TestValidateDuplicateTeamSlugs(t *testing.T) {
 	cfg.Teams = append(cfg.Teams, TeamSpec{
 		Slug: "platform",
 		Name: "Platform Clone",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateTeamSlug)
+}
+
+func TestValidateDuplicateTeamSlugsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Teams = append(cfg.Teams, TeamSpec{
+		Slug: "PLATFORM",
+		Name: "platform",
 	})
 
 	report := Validate(cfg)
@@ -78,6 +105,28 @@ func TestValidateInvalidInviteIdentityMultiple(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeInvalidInviteIdentity)
 }
 
+func TestValidateInvalidInviteIdentityMultipleAndNegativeUserIDReportsBoth(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: "octocat",
+		UserID:   -1,
+	}
+
+	report := Validate(cfg)
+
+	matches := 0
+	for _, issue := range report.Errors {
+		if issue.Code == ValidationIssueCodeInvalidInviteIdentity {
+			matches++
+		}
+	}
+	if matches < 2 {
+		t.Fatalf("expected at least two invalid_invite_identity issues, got %#v", report.Errors)
+	}
+}
+
 func TestValidateUnknownInviteTeamReference(t *testing.T) {
 	t.Parallel()
 
@@ -88,6 +137,16 @@ func TestValidateUnknownInviteTeamReference(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeUnknownInviteTeamSlug)
 }
 
+func TestValidateInviteTeamReferenceCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0].TeamSlugs = []string{"PLATFORM"}
+
+	report := Validate(cfg)
+	assertNotHasIssueCode(t, report, ValidationIssueCodeUnknownInviteTeamSlug)
+}
+
 func TestValidateUnknownTeamParentReference(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +155,20 @@ func TestValidateUnknownTeamParentReference(t *testing.T) {
 
 	report := Validate(cfg)
 	assertHasIssueCode(t, report, ValidationIssueCodeUnknownTeamParentSlug)
+}
+
+func TestValidateTeamParentReferenceCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Teams = append(cfg.Teams, TeamSpec{
+		Slug:       "security",
+		Name:       "Security",
+		ParentSlug: "PLATFORM",
+	})
+
+	report := Validate(cfg)
+	assertNotHasIssueCode(t, report, ValidationIssueCodeUnknownTeamParentSlug)
 }
 
 func TestValidateTeamParentCycle(t *testing.T) {
@@ -132,12 +205,39 @@ func TestValidateDuplicateTeamMembers(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateTeamMember)
 }
 
+func TestValidateDuplicateTeamMembersCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Teams[0].Members = append(cfg.Teams[0].Members, TeamMemberSpec{
+		Username: "ALICE",
+		Role:     "member",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateTeamMember)
+}
+
 func TestValidateDuplicateTeamRepositories(t *testing.T) {
 	t.Parallel()
 
 	cfg := validOrganizationConfig()
 	cfg.Teams[0].Repositories = append(cfg.Teams[0].Repositories, TeamRepositorySpec{
 		Name:       "repo-builder",
+		Permission: "pull",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateTeamRepository)
+}
+
+func TestValidateDuplicateTeamRepositoriesCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Teams[0].Repositories = append(cfg.Teams[0].Repositories, TeamRepositorySpec{
+		Owner:      "ORANG-GABOETS",
+		Name:       "REPO-BUILDER",
 		Permission: "pull",
 	})
 
@@ -216,4 +316,14 @@ func assertHasIssueCode(t *testing.T, report ValidationReport, want ValidationIs
 	}
 
 	t.Fatalf("expected issue code %q in %#v", want, report.Errors)
+}
+
+func assertNotHasIssueCode(t *testing.T, report ValidationReport, want ValidationIssueCode) {
+	t.Helper()
+
+	for _, issue := range report.Errors {
+		if issue.Code == want {
+			t.Fatalf("did not expect issue code %q in %#v", want, report.Errors)
+		}
+	}
 }
