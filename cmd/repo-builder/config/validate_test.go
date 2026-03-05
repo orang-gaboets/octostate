@@ -112,7 +112,7 @@ func TestValidateConfigCmdMissingOrganizationFileReturnsExitCode1(t *testing.T) 
 	if report.Summary.Errors != 1 || len(report.Errors) != 1 {
 		t.Fatalf("expected one load error issue, got %#v", report)
 	}
-	if report.Errors[0].Code != gitopsconfig.ValidationIssueCode("missing_file") {
+	if report.Errors[0].Code != gitopsconfig.ValidationIssueCode(gitopsconfig.LoadErrorMissingFile) {
 		t.Fatalf("expected missing_file issue code, got %q", report.Errors[0].Code)
 	}
 	if !strings.HasSuffix(report.Errors[0].Path, "organization.yaml") {

@@ -4,6 +4,9 @@ package config
 type ValidationIssueCode string
 
 const (
+	// ValidationIssueCodeLoadError indicates validation could not run because
+	// configuration loading failed.
+	ValidationIssueCodeLoadError ValidationIssueCode = "load_error"
 	// ValidationIssueCodeMissingRequiredField indicates a required field was empty.
 	ValidationIssueCodeMissingRequiredField ValidationIssueCode = "missing_required_field"
 	// ValidationIssueCodeDuplicateRepository indicates a repository identity was repeated.

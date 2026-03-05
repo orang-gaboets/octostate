@@ -62,7 +62,7 @@ func validateConfig(configDir string) (gitopsconfig.ValidationReport, error) {
 
 func reportForLoadError(err error) gitopsconfig.ValidationReport {
 	issue := gitopsconfig.ValidationIssue{
-		Code:    gitopsconfig.ValidationIssueCode("load_error"),
+		Code:    gitopsconfig.ValidationIssueCodeLoadError,
 		Message: err.Error(),
 	}
 

@@ -246,8 +246,13 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 		}
 
 		for j, teamSlug := range invite.TeamSlugs {
-			if _, ok := teamIndex[strings.ToLower(strings.TrimSpace(teamSlug))]; !ok {
-				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeUnknownInviteTeamSlug, "invite references unknown team slug %q", strings.TrimSpace(teamSlug))
+			trimmedTeamSlug := strings.TrimSpace(teamSlug)
+			if trimmedTeamSlug == "" {
+				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeMissingRequiredField, "invite team slug must not be empty")
+				continue
+			}
+			if _, ok := teamIndex[strings.ToLower(trimmedTeamSlug)]; !ok {
+				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeUnknownInviteTeamSlug, "invite references unknown team slug %q", trimmedTeamSlug)
 			}
 		}
 	}

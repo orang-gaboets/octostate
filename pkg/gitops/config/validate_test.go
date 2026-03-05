@@ -137,6 +137,17 @@ func TestValidateUnknownInviteTeamReference(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeUnknownInviteTeamSlug)
 }
 
+func TestValidateInviteEmptyTeamSlug(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0].TeamSlugs = []string{"  "}
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "invites[0].team_slugs[0]", ValidationIssueCodeMissingRequiredField)
+	assertNotHasIssueCode(t, report, ValidationIssueCodeUnknownInviteTeamSlug)
+}
+
 func TestValidateInviteTeamReferenceCaseInsensitive(t *testing.T) {
 	t.Parallel()
 
@@ -326,4 +337,16 @@ func assertNotHasIssueCode(t *testing.T, report ValidationReport, want Validatio
 			t.Fatalf("did not expect issue code %q in %#v", want, report.Errors)
 		}
 	}
+}
+
+func assertHasIssueAtPathAndCode(t *testing.T, report ValidationReport, wantPath string, wantCode ValidationIssueCode) {
+	t.Helper()
+
+	for _, issue := range report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+
+	t.Fatalf("expected issue path=%q code=%q in %#v", wantPath, wantCode, report.Errors)
 }
