@@ -19,6 +19,7 @@ func newRootCmd() *cobra.Command {
 		Short:         "Repo Builder CLI",
 		Long:          "A CLI tool to manage repositories on GitHub",
 		SilenceErrors: true,
+		SilenceUsage:  true,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			cmd.SetContext(ghlogging.WithVerbose(cmd.Context(), verbose, cmd.ErrOrStderr()))
 		},
