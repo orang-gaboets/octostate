@@ -136,8 +136,11 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 		if privacy := strings.TrimSpace(team.Privacy); privacy != "" && !isAllowed(privacy, validTeamPrivacy) {
 			report.addError(pathPrefix+".privacy", ValidationIssueCodeInvalidEnum, "team privacy %q is not supported", privacy)
 		}
-		if slug != "" && name != "" && slug != normalizeTeamName(name) {
-			report.addError(pathPrefix+".slug", ValidationIssueCodeSlugNameMismatch, "team slug %q does not match normalized team name %q", slug, normalizeTeamName(name))
+		if slug != "" && name != "" {
+			normalizedName := normalizeTeamName(name)
+			if slug != normalizedName {
+				report.addError(pathPrefix+".slug", ValidationIssueCodeSlugNameMismatch, "team slug %q does not match normalized team name %q", slug, normalizedName)
+			}
 		}
 		if slug != "" {
 			slugKey := strings.ToLower(slug)
