@@ -1,16 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"os"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/exitcode"
-	"github.com/spf13/cobra"
 )
 
 var (
-	executeFn  = Execute
-	checkErrFn = cobra.CheckErr
-	exitFn     = os.Exit
+	executeFn = Execute
+	stderrFn  = func() io.Writer { return os.Stderr }
+	exitFn    = os.Exit
 )
 
 func main() {
@@ -27,6 +28,9 @@ func run() int {
 		return code
 	}
 
-	checkErrFn(err)
+	written, writeErr := fmt.Fprintf(stderrFn(), "Error: %v\n", err)
+	if writeErr != nil || written == 0 {
+		return 1
+	}
 	return 1
 }

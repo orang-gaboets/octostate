@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/exitcode"
@@ -10,7 +13,7 @@ import (
 func TestRunReturnsZeroWhenExecuteSucceeds(t *testing.T) {
 	restore := setMainTestHooks(
 		func() error { return nil },
-		func(any) { t.Fatal("checkErrFn should not be called for successful execution") },
+		func() io.Writer { t.Fatal("stderrFn should not be called for successful execution"); return nil },
 		func(int) { t.Fatal("exitFn should not be called by run") },
 	)
 	defer restore()
@@ -24,7 +27,7 @@ func TestRunReturnsZeroWhenExecuteSucceeds(t *testing.T) {
 func TestRunReturnsTypedExitCode(t *testing.T) {
 	restore := setMainTestHooks(
 		func() error { return exitcode.New(2, errors.New("invalid config")) },
-		func(any) { t.Fatal("checkErrFn should not be called for typed exit errors") },
+		func() io.Writer { t.Fatal("stderrFn should not be called for typed exit errors"); return nil },
 		func(int) { t.Fatal("exitFn should not be called by run") },
 	)
 	defer restore()
@@ -35,51 +38,42 @@ func TestRunReturnsTypedExitCode(t *testing.T) {
 	}
 }
 
-func TestRunFallsBackToCheckErrForRegularErrors(t *testing.T) {
+func TestRunFallsBackToExitCodeOneForRegularErrors(t *testing.T) {
 	sentinel := errors.New("boom")
 
-	called := false
+	var stderr bytes.Buffer
 	restore := setMainTestHooks(
 		func() error { return sentinel },
-		func(msg any) {
-			called = true
-			err, ok := msg.(error)
-			if !ok {
-				t.Fatalf("expected checkErrFn to receive error, got %T", msg)
-			}
-			if !errors.Is(err, sentinel) {
-				t.Fatalf("expected checkErrFn to receive sentinel error, got %v", err)
-			}
-		},
+		func() io.Writer { return &stderr },
 		func(int) { t.Fatal("exitFn should not be called by run") },
 	)
 	defer restore()
 
 	code := run()
-	if !called {
-		t.Fatalf("expected checkErrFn to be called for regular errors")
-	}
 	if code != 1 {
 		t.Fatalf("expected fallback exit code 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "Error: boom") {
+		t.Fatalf("expected stderr to contain error line, got %q", stderr.String())
 	}
 }
 
 func setMainTestHooks(
 	execute func() error,
-	checkErr func(any),
+	stderr func() io.Writer,
 	exit func(int),
 ) func() {
 	originalExecute := executeFn
-	originalCheckErr := checkErrFn
+	originalStderr := stderrFn
 	originalExit := exitFn
 
 	executeFn = execute
-	checkErrFn = checkErr
+	stderrFn = stderr
 	exitFn = exit
 
 	return func() {
 		executeFn = originalExecute
-		checkErrFn = originalCheckErr
+		stderrFn = originalStderr
 		exitFn = originalExit
 	}
 }

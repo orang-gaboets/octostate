@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const defaultErrorCode = 1
+
 // Error represents a process exit request with a specific status code.
 type Error struct {
 	Code int
@@ -34,7 +36,7 @@ func (e *Error) Unwrap() error {
 // wrapped error.
 func New(code int, err error) error {
 	return &Error{
-		Code: code,
+		Code: normalize(code),
 		Err:  err,
 	}
 }
@@ -45,5 +47,12 @@ func Code(err error) (int, bool) {
 	if !errors.As(err, &exitErr) || exitErr == nil {
 		return 0, false
 	}
-	return exitErr.Code, true
+	return normalize(exitErr.Code), true
+}
+
+func normalize(code int) int {
+	if code <= 0 {
+		return defaultErrorCode
+	}
+	return code
 }

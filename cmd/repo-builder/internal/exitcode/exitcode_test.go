@@ -45,3 +45,33 @@ func TestCodeWithNonTypedError(t *testing.T) {
 		t.Fatalf("expected zero code for non-typed error, got %d", got)
 	}
 }
+
+func TestCodeWithZeroTypedCodeDefaultsToOne(t *testing.T) {
+	t.Parallel()
+
+	err := New(0, errors.New("invalid"))
+	got, ok := Code(err)
+	if !ok {
+		t.Fatalf("expected typed exit error")
+	}
+	if got != 1 {
+		t.Fatalf("expected exit code 1, got %d", got)
+	}
+}
+
+func TestCodeWithManualNegativeTypedCodeDefaultsToOne(t *testing.T) {
+	t.Parallel()
+
+	err := &Error{
+		Code: -9,
+		Err:  errors.New("invalid"),
+	}
+
+	got, ok := Code(err)
+	if !ok {
+		t.Fatalf("expected typed exit error")
+	}
+	if got != 1 {
+		t.Fatalf("expected exit code 1, got %d", got)
+	}
+}
