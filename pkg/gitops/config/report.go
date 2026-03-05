@@ -14,6 +14,8 @@ const (
 	ValidationIssueCodeInvalidInviteIdentity ValidationIssueCode = "invalid_invite_identity"
 	// ValidationIssueCodeUnknownInviteTeamSlug indicates an invite referenced an unknown team slug.
 	ValidationIssueCodeUnknownInviteTeamSlug ValidationIssueCode = "unknown_invite_team_slug"
+	// ValidationIssueCodeUnknownTeamParentSlug indicates a team parent_slug reference could not be resolved.
+	ValidationIssueCodeUnknownTeamParentSlug ValidationIssueCode = "unknown_team_parent_slug"
 	// ValidationIssueCodeTeamParentCycle indicates the team parent graph contains a cycle.
 	ValidationIssueCodeTeamParentCycle ValidationIssueCode = "team_parent_cycle"
 	// ValidationIssueCodeDuplicateTeamMember indicates a team member was repeated in one team.

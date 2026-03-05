@@ -104,6 +104,11 @@ func TestLoadDir(t *testing.T) {
 			fixture: "invalid/unknown-field",
 			wantErr: "field unsupported not found",
 		},
+		{
+			name:    "multiple yaml documents rejected",
+			fixture: "invalid/multiple-documents",
+			wantErr: "multiple YAML documents are not allowed",
+		},
 	}
 
 	for _, tt := range tests {

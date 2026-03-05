@@ -88,6 +88,16 @@ func TestValidateUnknownInviteTeamReference(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeUnknownInviteTeamSlug)
 }
 
+func TestValidateUnknownTeamParentReference(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Teams[0].ParentSlug = "missing-parent"
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeUnknownTeamParentSlug)
+}
+
 func TestValidateTeamParentCycle(t *testing.T) {
 	t.Parallel()
 

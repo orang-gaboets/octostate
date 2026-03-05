@@ -90,7 +90,9 @@ func decodeYAMLFile(path string, out any) error {
 		decodeErr = err
 	} else {
 		var extra yaml.Node
-		if err := decoder.Decode(&extra); err != nil && !errors.Is(err, io.EOF) {
+		if err := decoder.Decode(&extra); err == nil {
+			decodeErr = fmt.Errorf("multiple YAML documents are not allowed")
+		} else if !errors.Is(err, io.EOF) {
 			decodeErr = err
 		}
 	}

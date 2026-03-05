@@ -203,7 +203,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			continue
 		}
 		if _, ok := teamIndex[parentSlug]; !ok {
-			report.addError(fmt.Sprintf("teams[%d].parent_slug", i), ValidationIssueCodeMissingRequiredField, "parent team slug %q does not reference a declared team", parentSlug)
+			report.addError(fmt.Sprintf("teams[%d].parent_slug", i), ValidationIssueCodeUnknownTeamParentSlug, "parent team slug %q does not reference a declared team", parentSlug)
 		}
 	}
 
