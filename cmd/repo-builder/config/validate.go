@@ -24,7 +24,8 @@ func ValidateConfigCmd() *cobra.Command {
 		Short: "Validate GitOps desired-state configuration",
 		Long: "Validate a local GitOps configuration directory by loading " +
 			"organization.yaml with strict schema checks and semantic rules.",
-		SilenceUsage: true,
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		Example: `
 			repo-builder config validate --config-dir ./config
 			repo-builder config validate --config-dir /path/to/control-repo/config`,

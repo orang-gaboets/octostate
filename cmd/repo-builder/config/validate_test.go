@@ -81,6 +81,9 @@ teams: []
 	if report.Summary.Errors == 0 || len(report.Errors) == 0 {
 		t.Fatalf("expected validation errors in report, got %#v", report)
 	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 }
 
 func TestValidateConfigCmdMissingOrganizationFileReturnsExitCode1(t *testing.T) {
@@ -117,6 +120,9 @@ func TestValidateConfigCmdMissingOrganizationFileReturnsExitCode1(t *testing.T) 
 	}
 	if !strings.HasSuffix(report.Errors[0].Path, "organization.yaml") {
 		t.Fatalf("expected path to include organization.yaml, got %q", report.Errors[0].Path)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
 }
 
