@@ -1,0 +1,5 @@
+organization: orang-gaboets
+invites:
+  - username: octocat
+    role: direct_member
+    team_slugs: [

@@ -59,14 +59,6 @@ var (
 			Slug: "non-existing-parent-team",
 		},
 	}
-
-	newTeamWithParentOrgMismatch = github.Team{
-		Org:         "new-org",
-		Name:        "new-team-with-parent-org-mismatch",
-		Description: "A new team with parent from different org",
-		Privacy:     github.TeamPrivacyClosed,
-		ParentTeam:  &existingTeam,
-	}
 )
 
 type mockService struct {
