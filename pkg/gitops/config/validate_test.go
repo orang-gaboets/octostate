@@ -97,8 +97,8 @@ func TestValidateInvalidInviteIdentityMultiple(t *testing.T) {
 
 	cfg := validOrganizationConfig()
 	cfg.Invites[0] = InviteSpec{
-		Username: "octocat",
-		Email:    "octocat@example.com",
+		Username: optionalString("octocat"),
+		Email:    optionalString("octocat@example.com"),
 	}
 
 	report := Validate(cfg)
@@ -110,8 +110,8 @@ func TestValidateInvalidInviteIdentityMultipleAndNegativeUserIDReportsBoth(t *te
 
 	cfg := validOrganizationConfig()
 	cfg.Invites[0] = InviteSpec{
-		Username: "octocat",
-		UserID:   -1,
+		Username: optionalString("octocat"),
+		UserID:   optionalInt64(-1),
 	}
 
 	report := Validate(cfg)
@@ -125,6 +125,177 @@ func TestValidateInvalidInviteIdentityMultipleAndNegativeUserIDReportsBoth(t *te
 	if matches < 2 {
 		t.Fatalf("expected at least two invalid_invite_identity issues, got %#v", report.Errors)
 	}
+}
+
+func TestValidateInvalidInviteIdentityMultipleAndZeroUserIDReportsBoth(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: optionalString("octocat"),
+		UserID:   optionalInt64(0),
+	}
+
+	report := Validate(cfg)
+
+	matches := 0
+	for _, issue := range report.Errors {
+		if issue.Code == ValidationIssueCodeInvalidInviteIdentity {
+			matches++
+		}
+	}
+	if matches < 2 {
+		t.Fatalf("expected at least two invalid_invite_identity issues, got %#v", report.Errors)
+	}
+}
+
+func TestValidateInvalidInviteIdentityMultipleAndInvalidEmailReportsBoth(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: optionalString("octocat"),
+		Email:    optionalString("not-an-email"),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0]", ValidationIssueCodeInvalidInviteIdentity)
+	assertHasIssueAtPathAndCode(t, report, "invites[0].email", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteIdentityZeroUserIDOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		UserID: optionalInt64(0),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].user_id", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteEmailOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Email: optionalString("not-an-email"),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].email", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteUsernameOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: optionalString("-octocat"),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].username", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteUsernameWhitespaceOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: optionalString("   "),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].username", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteUsernameNullOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: nullOptionalString(),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].username", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteEmailNullOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Email: nullOptionalString(),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].email", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteEmailWhitespaceOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Email: optionalString("   "),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].email", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteUserIDNullOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		UserID: nullOptionalInt64(),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0].user_id", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteIdentityMultipleAndWhitespaceUsernameReportsBoth(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: optionalString("   "),
+		Email:    optionalString("octocat@example.com"),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0]", ValidationIssueCodeInvalidInviteIdentity)
+	assertHasIssueAtPathAndCode(t, report, "invites[0].username", ValidationIssueCodeInvalidInviteIdentity)
+}
+
+func TestValidateInvalidInviteIdentityMultipleAndNullUserIDReportsBoth(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0] = InviteSpec{
+		Username: optionalString("octocat"),
+		UserID:   nullOptionalInt64(),
+	}
+
+	report := Validate(cfg)
+
+	assertHasIssueAtPathAndCode(t, report, "invites[0]", ValidationIssueCodeInvalidInviteIdentity)
+	assertHasIssueAtPathAndCode(t, report, "invites[0].user_id", ValidationIssueCodeInvalidInviteIdentity)
 }
 
 func TestValidateUnknownInviteTeamReference(t *testing.T) {
@@ -287,7 +458,7 @@ func validOrganizationConfig() OrganizationConfig {
 	return OrganizationConfig{
 		Organization: "orang-gaboets",
 		Invites: []InviteSpec{{
-			Username:  "octocat",
+			Username:  optionalString("octocat"),
 			Role:      "direct_member",
 			TeamSlugs: []string{"platform"},
 		}},
@@ -349,4 +520,32 @@ func assertHasIssueAtPathAndCode(t *testing.T, report ValidationReport, wantPath
 	}
 
 	t.Fatalf("expected issue path=%q code=%q in %#v", wantPath, wantCode, report.Errors)
+}
+
+func optionalString(v string) OptionalString {
+	return OptionalString{
+		Present: true,
+		Value:   v,
+	}
+}
+
+func nullOptionalString() OptionalString {
+	return OptionalString{
+		Present: true,
+		Null:    true,
+	}
+}
+
+func optionalInt64(v int64) OptionalInt64 {
+	return OptionalInt64{
+		Present: true,
+		Value:   v,
+	}
+}
+
+func nullOptionalInt64() OptionalInt64 {
+	return OptionalInt64{
+		Present: true,
+		Null:    true,
+	}
 }

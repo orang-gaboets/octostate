@@ -120,6 +120,120 @@ func TestValidateConfigCmdMissingOrganizationFileReturnsExitCode1(t *testing.T) 
 	}
 }
 
+func TestValidateConfigCmdZeroInviteUserIDReturnsExitCode2(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+invites:
+  - user_id: 0
+repositories: []
+teams: []
+`)
+
+	cmd := configcmd.ValidateConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", configDir})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	code, ok := exitcode.Code(err)
+	if !ok || code != 2 {
+		t.Fatalf("expected typed exit code 2, got ok=%v code=%d err=%v", ok, code, err)
+	}
+
+	report := decodeReport(t, out.Bytes())
+	if report.Valid {
+		t.Fatalf("expected invalid report, got %#v", report)
+	}
+	if report.Summary.Errors == 0 || len(report.Errors) == 0 {
+		t.Fatalf("expected validation errors in report, got %#v", report)
+	}
+}
+
+func TestValidateConfigCmdInvalidInviteEmailReturnsExitCode2(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+invites:
+  - email: invalid-email
+repositories: []
+teams: []
+`)
+
+	cmd := configcmd.ValidateConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", configDir})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	code, ok := exitcode.Code(err)
+	if !ok || code != 2 {
+		t.Fatalf("expected typed exit code 2, got ok=%v code=%d err=%v", ok, code, err)
+	}
+
+	report := decodeReport(t, out.Bytes())
+	if report.Valid {
+		t.Fatalf("expected invalid report, got %#v", report)
+	}
+	if report.Summary.Errors == 0 || len(report.Errors) == 0 {
+		t.Fatalf("expected validation errors in report, got %#v", report)
+	}
+}
+
+func TestValidateConfigCmdNullInviteUserIDReturnsExitCode2(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+invites:
+  - user_id: null
+repositories: []
+teams: []
+`)
+
+	cmd := configcmd.ValidateConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", configDir})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	code, ok := exitcode.Code(err)
+	if !ok || code != 2 {
+		t.Fatalf("expected typed exit code 2, got ok=%v code=%d err=%v", ok, code, err)
+	}
+
+	report := decodeReport(t, out.Bytes())
+	if report.Valid {
+		t.Fatalf("expected invalid report, got %#v", report)
+	}
+	if report.Summary.Errors == 0 || len(report.Errors) == 0 {
+		t.Fatalf("expected validation errors in report, got %#v", report)
+	}
+}
+
 func writeOrganizationYAML(t *testing.T, configDir, contents string) {
 	t.Helper()
 

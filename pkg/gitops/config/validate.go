@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/mail"
 	"strings"
 	"unicode"
 )
@@ -218,18 +219,21 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex map[string]int) {
 	for i, invite := range invites {
 		pathPrefix := fmt.Sprintf("invites[%d]", i)
-		username := strings.TrimSpace(invite.Username)
-		email := strings.TrimSpace(invite.Email)
-		userID := invite.UserID
+		usernameDeclared := invite.Username.Present
+		emailDeclared := invite.Email.Present
+		userIDDeclared := invite.UserID.Present
+		username := invite.Username.Value
+		email := invite.Email.Value
+		userID := invite.UserID.Value
 
 		identityCount := 0
-		if username != "" {
+		if usernameDeclared {
 			identityCount++
 		}
-		if email != "" {
+		if emailDeclared {
 			identityCount++
 		}
-		if userID != 0 {
+		if userIDDeclared {
 			identityCount++
 		}
 
@@ -240,8 +244,33 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			report.addError(pathPrefix, ValidationIssueCodeInvalidInviteIdentity, "invite must not declare more than one of username, email, or user_id")
 		}
 
-		if userID < 0 {
-			report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must be greater than zero when provided")
+		if usernameDeclared {
+			switch {
+			case invite.Username.Null:
+				report.addError(pathPrefix+".username", ValidationIssueCodeInvalidInviteIdentity, "invite username must not be null")
+			case username == "":
+				report.addError(pathPrefix+".username", ValidationIssueCodeInvalidInviteIdentity, "invite username must not be empty when provided")
+			case !isValidGitHubUsername(username):
+				report.addError(pathPrefix+".username", ValidationIssueCodeInvalidInviteIdentity, "invite username %q is not a valid GitHub username", username)
+			}
+		}
+		if emailDeclared {
+			switch {
+			case invite.Email.Null:
+				report.addError(pathPrefix+".email", ValidationIssueCodeInvalidInviteIdentity, "invite email must not be null")
+			case email == "":
+				report.addError(pathPrefix+".email", ValidationIssueCodeInvalidInviteIdentity, "invite email must not be empty when provided")
+			case !isValidInviteEmail(email):
+				report.addError(pathPrefix+".email", ValidationIssueCodeInvalidInviteIdentity, "invite email %q is not a valid email address", email)
+			}
+		}
+		if userIDDeclared {
+			switch {
+			case invite.UserID.Null:
+				report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must not be null")
+			case userID <= 0:
+				report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must be greater than zero when provided")
+			}
 		}
 
 		if role := strings.TrimSpace(invite.Role); role != "" && !isAllowed(role, validInviteRoles) {
@@ -309,6 +338,44 @@ func validateTeamParentCycles(report *ValidationReport, teams []TeamSpec, teamIn
 func isAllowed(value string, allowed map[string]struct{}) bool {
 	_, ok := allowed[value]
 	return ok
+}
+
+func isValidGitHubUsername(username string) bool {
+	if username == "" || len(username) > 39 {
+		return false
+	}
+	if username[0] == '-' || username[len(username)-1] == '-' {
+		return false
+	}
+
+	previousHyphen := false
+	for _, r := range username {
+		switch {
+		case r >= 'a' && r <= 'z':
+			previousHyphen = false
+		case r >= 'A' && r <= 'Z':
+			previousHyphen = false
+		case r >= '0' && r <= '9':
+			previousHyphen = false
+		case r == '-':
+			if previousHyphen {
+				return false
+			}
+			previousHyphen = true
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+func isValidInviteEmail(email string) bool {
+	address, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+	return address.Address == email
 }
 
 func normalizeTeamName(name string) string {

@@ -140,8 +140,8 @@ func normalizeInvites(invites []InviteSpec) []InviteSpec {
 	}
 
 	for i := range invites {
-		invites[i].Username = strings.TrimSpace(invites[i].Username)
-		invites[i].Email = strings.TrimSpace(invites[i].Email)
+		invites[i].Username.TrimSpace()
+		invites[i].Email.TrimSpace()
 		invites[i].Role = strings.TrimSpace(invites[i].Role)
 
 		if invites[i].TeamSlugs == nil {
