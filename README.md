@@ -220,6 +220,16 @@ Behavior:
 - Prints a JSON validation report to stdout
 - Does not call GitHub APIs (fully offline)
 
+Invite rules:
+- Each invite must declare exactly one of `username`, `email`, or `user_id`
+- Declaring more than one identity field is invalid
+- Declaring none of the identity fields is invalid
+- Declared `username` values must be valid GitHub usernames
+- Declared `email` values must be valid email addresses
+- Declared `user_id` values must be greater than zero
+- Declared empty or whitespace-only `username` / `email` values are rejected
+- Explicit `null` is rejected for `username`, `email`, and `user_id`
+
 Exit codes:
 - `0`: valid configuration
 - `2`: configuration loaded, but semantic validation failed
