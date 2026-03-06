@@ -58,6 +58,16 @@ func (MockOrganizationService) ListMembers(_ context.Context, _ string, _ *gh.Li
 	return []*gh.User{}, nil, nil
 }
 
+// ListPendingOrgInvitations mocks the listing of pending organization invitations.
+func (MockOrganizationService) ListPendingOrgInvitations(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+	return []*gh.Invitation{}, &gh.Response{NextPage: 0}, nil
+}
+
+// ListOrgInvitationTeams mocks the listing of teams attached to an organization invitation.
+func (MockOrganizationService) ListOrgInvitationTeams(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+	return []*gh.Team{}, &gh.Response{NextPage: 0}, nil
+}
+
 // MockRepoService is a mock implementation of repos.Service for testing purposes.
 type MockRepoService struct{}
 

@@ -30,18 +30,25 @@ const (
 	userNameSecond  = "Second"
 	userEmailSecond = "second@example.com"
 	userURLSecond   = "https://github.com/second"
+	inviteLogin     = "monalisa"
+	inviteEmail     = "octocat@example.com"
+	inviteRole      = "direct_member"
+	inviteTeamURL   = "https://api.github.com/organizations/1/invitations/7/teams"
 
 	idOrg        = int64(7)
 	idTeamParent = int64(1)
 	idTeamChild  = int64(2)
 	idUserAda    = int64(42)
 	idUserGrace  = int64(99)
+	idInvite     = int64(77)
+	inviteTeams  = 2
 
 	rfc3339CreatedOrg = "2020-01-02T03:04:05Z"
 	rfc3339UpdatedOrg = "2021-06-07T08:09:10Z"
 	rfc3339UserAda    = "2024-07-10T01:02:03Z"
 	rfc3339UserGraceC = "2019-05-06T07:08:09Z"
 	rfc3339UserGraceU = "2022-03-04T05:06:07Z"
+	rfc3339Invite     = "2025-02-03T04:05:06Z"
 )
 
 var (
@@ -343,6 +350,91 @@ func TestOrganizationFromGhOrg(t *testing.T) {
 			t.Fatalf("expected nil timestamps, got: %#v %#v", got.CreatedAt, got.UpdatedAt)
 		}
 	})
+}
+
+func TestOrganizationInvitation_String_JSON(t *testing.T) {
+	invitation := OrganizationInvitation{
+		ID:                Ptr(idInvite),
+		Login:             Ptr(inviteLogin),
+		Email:             Ptr(inviteEmail),
+		Role:              Ptr(inviteRole),
+		TeamCount:         Ptr(inviteTeams),
+		InvitationTeamURL: Ptr(inviteTeamURL),
+	}
+
+	s := invitation.String()
+	if s == "OrganizationInvitation<marshal error>" {
+		t.Fatalf("unexpected marshal error")
+	}
+	mustBeValidJSON(t, s)
+}
+
+func TestOrganizationInvitationFromGhInvitation(t *testing.T) {
+	t.Run("nil input", func(t *testing.T) {
+		if got := OrganizationInvitationFromGhInvitation(nil); got != nil {
+			t.Fatalf("expected nil, got %#v", got)
+		}
+	})
+
+	t.Run("maps fields", func(t *testing.T) {
+		created := mustParseRFC3339(t, rfc3339Invite)
+
+		ghInvitation := &gh.Invitation{
+			ID:                gh.Int64(idInvite),
+			Login:             gh.String(inviteLogin),
+			Email:             gh.String(inviteEmail),
+			Role:              gh.String(inviteRole),
+			CreatedAt:         &gh.Timestamp{Time: created},
+			TeamCount:         gh.Int(inviteTeams),
+			InvitationTeamURL: gh.String(inviteTeamURL),
+		}
+
+		got := OrganizationInvitationFromGhInvitation(ghInvitation)
+		if got == nil {
+			t.Fatalf("got nil")
+			return
+		}
+		if got.ID == nil || *got.ID != idInvite {
+			t.Fatalf("unexpected ID: %#v", got.ID)
+		}
+		if got.Login == nil || *got.Login != inviteLogin {
+			t.Fatalf("unexpected Login: %#v", got.Login)
+		}
+		if got.Email == nil || *got.Email != inviteEmail {
+			t.Fatalf("unexpected Email: %#v", got.Email)
+		}
+		if got.Role == nil || *got.Role != inviteRole {
+			t.Fatalf("unexpected Role: %#v", got.Role)
+		}
+		if got.CreatedAt == nil || !got.CreatedAt.Equal(created) {
+			t.Fatalf("unexpected CreatedAt: %#v", got.CreatedAt)
+		}
+		if got.TeamCount == nil || *got.TeamCount != inviteTeams {
+			t.Fatalf("unexpected TeamCount: %#v", got.TeamCount)
+		}
+		if got.InvitationTeamURL == nil || *got.InvitationTeamURL != inviteTeamURL {
+			t.Fatalf("unexpected InvitationTeamURL: %#v", got.InvitationTeamURL)
+		}
+	})
+}
+
+func TestOrganizationInvitationsFromGhInvitations(t *testing.T) {
+	in := []*gh.Invitation{
+		{ID: gh.Int64(idInvite), Login: gh.String(inviteLogin)},
+		nil,
+		{ID: gh.Int64(idInvite + 1), Login: gh.String("second")},
+	}
+
+	got := OrganizationInvitationsFromGhInvitations(in)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 invitations, got %d", len(got))
+	}
+	if got[0].Login == nil || *got[0].Login != inviteLogin {
+		t.Fatalf("unexpected first invitation: %#v", got[0])
+	}
+	if got[1].Login == nil || *got[1].Login != "second" {
+		t.Fatalf("unexpected second invitation: %#v", got[1])
+	}
 }
 
 func TestUserFromGhUser(t *testing.T) {

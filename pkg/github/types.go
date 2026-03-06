@@ -358,3 +358,53 @@ func UserFromGhUser(ghUser *gh.User) *User {
 		UpdatedAt: TimestampToTime(ghUser.UpdatedAt),
 	}
 }
+
+// OrganizationInvitation represents a pending organization invitation.
+type OrganizationInvitation struct {
+	ID                *int64
+	Login             *string
+	Email             *string
+	Role              *string
+	CreatedAt         *time.Time
+	TeamCount         *int
+	InvitationTeamURL *string
+}
+
+// String implements fmt.Stringer and pretty-prints JSON.
+func (i OrganizationInvitation) String() string {
+	b, err := json.MarshalIndent(i, "", "  ")
+	if err != nil {
+		return "OrganizationInvitation<marshal error>"
+	}
+	return string(b)
+}
+
+// OrganizationInvitationFromGhInvitation converts a GitHub invitation from the
+// go-github library to the internal OrganizationInvitation type.
+func OrganizationInvitationFromGhInvitation(ghInvitation *gh.Invitation) *OrganizationInvitation {
+	if ghInvitation == nil {
+		return nil
+	}
+
+	return &OrganizationInvitation{
+		ID:                ghInvitation.ID,
+		Login:             ghInvitation.Login,
+		Email:             ghInvitation.Email,
+		Role:              ghInvitation.Role,
+		CreatedAt:         TimestampToTime(ghInvitation.CreatedAt),
+		TeamCount:         ghInvitation.TeamCount,
+		InvitationTeamURL: ghInvitation.InvitationTeamURL,
+	}
+}
+
+// OrganizationInvitationsFromGhInvitations converts a slice of GitHub
+// invitations to internal OrganizationInvitation values.
+func OrganizationInvitationsFromGhInvitations(ghInvitations []*gh.Invitation) []*OrganizationInvitation {
+	invitations := make([]*OrganizationInvitation, 0, len(ghInvitations))
+	for _, invitation := range ghInvitations {
+		if converted := OrganizationInvitationFromGhInvitation(invitation); converted != nil {
+			invitations = append(invitations, converted)
+		}
+	}
+	return invitations
+}

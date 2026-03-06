@@ -18,4 +18,10 @@ type Service interface {
 
 	// ListMembers returns the members of an organization.
 	ListMembers(ctx context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
+
+	// ListPendingOrgInvitations returns the pending invitations for an organization.
+	ListPendingOrgInvitations(ctx context.Context, org string, opts *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error)
+
+	// ListOrgInvitationTeams returns the teams attached to an organization invitation.
+	ListOrgInvitationTeams(ctx context.Context, org, invitationID string, opts *gh.ListOptions) ([]*gh.Team, *gh.Response, error)
 }
