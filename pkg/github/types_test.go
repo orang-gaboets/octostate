@@ -23,10 +23,12 @@ const (
 	teamDescParent = "parent team"
 	teamDescChild  = "child team"
 
+	userLoginFirst = "first-user"
 	userNameFirst  = "First"
 	userEmailFirst = "first@example.com"
 	userURLFirst   = "https://github.com/first"
 
+	userLoginSecond = "second-user"
 	userNameSecond  = "Second"
 	userEmailSecond = "second@example.com"
 	userURLSecond   = "https://github.com/second"
@@ -75,11 +77,16 @@ func mustBeValidJSON(t *testing.T, s string) {
 
 func TestRepository_String_JSON(t *testing.T) {
 	r := &Repository{
-		Owner:       orgLogin,
-		Name:        repoNameRocket,
-		Private:     true,
-		Description: repoDescWIP,
-		Topics:      []string{topicGo, topicCI},
+		Owner:        orgLogin,
+		Name:         repoNameRocket,
+		Private:      true,
+		Visibility:   "private",
+		Description:  repoDescWIP,
+		Homepage:     "https://example.com/repo",
+		Topics:       []string{topicGo, topicCI},
+		AllowForking: true,
+		Archived:     false,
+		IsTemplate:   true,
 	}
 	s := r.String()
 	if s == "Repository<marshal error>" {
@@ -93,7 +100,9 @@ func TestRepository_String_JSON(t *testing.T) {
 		t.Fatalf("unmarshal back: %v", err)
 	}
 	if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private ||
-		got.Description != repoDescWIP || len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
+		got.Visibility != "private" || got.Description != repoDescWIP || got.Homepage != "https://example.com/repo" ||
+		!got.AllowForking || got.Archived || !got.IsTemplate ||
+		len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
 		t.Fatalf("unexpected Repository JSON round-trip: %#v", got)
 	}
 }
@@ -107,17 +116,25 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 
 	t.Run("maps fields", func(t *testing.T) {
 		ghRepo := &gh.Repository{
-			Owner:       &gh.User{Login: gh.String(orgLogin)},
-			Name:        gh.String(repoNameRocket),
-			Private:     gh.Bool(true),
-			Description: gh.String(repoDescWIP),
-			Topics:      []string{topicGo, topicCI},
+			Owner:        &gh.User{Login: gh.String(orgLogin)},
+			Name:         gh.String(repoNameRocket),
+			Private:      gh.Bool(true),
+			Visibility:   gh.String("private"),
+			Description:  gh.String(repoDescWIP),
+			Homepage:     gh.String("https://example.com/repo"),
+			Topics:       []string{topicGo, topicCI},
+			AllowForking: gh.Bool(true),
+			Archived:     gh.Bool(false),
+			IsTemplate:   gh.Bool(true),
 		}
 		got := RepositoryFromGhRepo(ghRepo)
 		if got == nil {
 			t.Fatalf("got nil")
+			return
 		}
-		if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private || got.Description != repoDescWIP {
+		if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private || got.Visibility != "private" ||
+			got.Description != repoDescWIP || got.Homepage != "https://example.com/repo" ||
+			!got.AllowForking || got.Archived || !got.IsTemplate {
 			t.Fatalf("unexpected mapped fields: %#v", got)
 		}
 		if len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
@@ -449,6 +466,7 @@ func TestUserFromGhUser(t *testing.T) {
 		updated := mustParseRFC3339(t, rfc3339UserGraceU)
 
 		ghUser := &gh.User{
+			Login:     gh.String(userLoginSecond),
 			ID:        gh.Int64(idUserGrace),
 			Name:      gh.String(userNameSecond),
 			Email:     gh.String(userEmailSecond),
@@ -457,6 +475,9 @@ func TestUserFromGhUser(t *testing.T) {
 			UpdatedAt: &gh.Timestamp{Time: updated},
 		}
 		got := UserFromGhUser(ghUser)
+		if got.Login == nil || *got.Login != userLoginSecond {
+			t.Fatalf("unexpected Login: %#v", got.Login)
+		}
 		if got.ID == nil || *got.ID != idUserGrace {
 			t.Fatalf("unexpected ID: %#v", got.ID)
 		}

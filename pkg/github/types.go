@@ -9,11 +9,16 @@ import (
 
 // Repository contains the repository details.
 type Repository struct {
-	Owner       string
-	Name        string
-	Private     bool
-	Description string
-	Topics      []string
+	Owner        string
+	Name         string
+	Private      bool
+	Visibility   string
+	Description  string
+	Homepage     string
+	Topics       []string
+	AllowForking bool
+	Archived     bool
+	IsTemplate   bool
 }
 
 // String returns a string representation of the Repository.
@@ -33,13 +38,26 @@ func RepositoryFromGhRepo(ghRepo *gh.Repository) *Repository {
 	}
 
 	owner := ghRepo.GetOwner()
+	visibility := ghRepo.GetVisibility()
+	if visibility == "" {
+		if ghRepo.GetPrivate() {
+			visibility = "private"
+		} else {
+			visibility = "public"
+		}
+	}
 
 	return &Repository{
-		Owner:       owner.GetLogin(),
-		Name:        ghRepo.GetName(),
-		Private:     ghRepo.GetPrivate(),
-		Description: ghRepo.GetDescription(),
-		Topics:      ghRepo.Topics,
+		Owner:        owner.GetLogin(),
+		Name:         ghRepo.GetName(),
+		Private:      ghRepo.GetPrivate(),
+		Visibility:   visibility,
+		Description:  ghRepo.GetDescription(),
+		Homepage:     ghRepo.GetHomepage(),
+		Topics:       ghRepo.Topics,
+		AllowForking: ghRepo.GetAllowForking(),
+		Archived:     ghRepo.GetArchived(),
+		IsTemplate:   ghRepo.GetIsTemplate(),
 	}
 }
 
@@ -326,6 +344,7 @@ func OrganizationFromGhOrg(ghOrg *gh.Organization) *Organization {
 
 // User represents a GitHub user.
 type User struct {
+	Login     *string
 	ID        *int64
 	Name      *string
 	Email     *string
@@ -350,6 +369,7 @@ func UserFromGhUser(ghUser *gh.User) *User {
 	}
 
 	return &User{
+		Login:     ghUser.Login,
 		ID:        ghUser.ID,
 		Name:      ghUser.Name,
 		Email:     ghUser.Email,
