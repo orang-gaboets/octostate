@@ -106,7 +106,7 @@ func clonePendingInvitations(invitations []state.PendingInvitation) []state.Pend
 			Email:     invitation.Email,
 			UserID:    invitation.UserID,
 			Role:      invitation.Role,
-			TeamSlugs: append([]string(nil), invitation.TeamSlugs...),
+			TeamSlugs: append([]string{}, invitation.TeamSlugs...),
 		})
 	}
 	return result
@@ -121,7 +121,7 @@ func cloneRepositories(repositories []state.Repository) []state.Repository {
 			Visibility:   repository.Visibility,
 			Description:  repository.Description,
 			Homepage:     repository.Homepage,
-			Topics:       append([]string(nil), repository.Topics...),
+			Topics:       append([]string{}, repository.Topics...),
 			AllowForking: repository.AllowForking,
 			Archived:     repository.Archived,
 			IsTemplate:   repository.IsTemplate,

@@ -47,6 +47,27 @@ func TestNewActualSnapshotNormalizesAndClones(t *testing.T) {
 	}
 }
 
+func TestNewActualSnapshotPreservesEmptyNestedSlices(t *testing.T) {
+	t.Parallel()
+
+	snapshot := NewActualSnapshot(time.Date(2026, 3, 10, 15, 4, 5, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		PendingInvitations: []state.PendingInvitation{
+			{Username: "zoe", TeamSlugs: []string{}},
+		},
+		Repositories: []state.Repository{
+			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{}},
+		},
+	})
+
+	if snapshot.PendingInvitations[0].TeamSlugs == nil {
+		t.Fatal("expected pending invitation team slugs to stay non-nil")
+	}
+	if snapshot.Repositories[0].Topics == nil {
+		t.Fatal("expected repository topics to stay non-nil")
+	}
+}
+
 func TestNewActualSnapshotNilActualInitializesSlices(t *testing.T) {
 	t.Parallel()
 

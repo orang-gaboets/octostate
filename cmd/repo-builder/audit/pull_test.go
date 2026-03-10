@@ -116,6 +116,9 @@ func TestPullCmdPropagatesAuthError(t *testing.T) {
 	wantErr := errors.New("auth failed")
 
 	restore := replaceAuditHooks(t)
+	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}, nil
+	}
 	newAuditClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
 		return nil, wantErr
 	}
@@ -183,11 +186,8 @@ func TestPullCmdPropagatesLoadError(t *testing.T) {
 
 	restore := replaceAuditHooks(t)
 	newAuditClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
-		return auth.MockClient{
-			OrganizationsService: auth.MockOrganizationService{},
-			ReposService:         auth.MockRepoService{},
-			TeamsService:         auth.MockTeamsService{},
-		}, nil
+		t.Fatal("expected auth client construction to be skipped on config load error")
+		return nil, nil
 	}
 	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
 		return gitopsconfig.OrganizationConfig{}, wantErr

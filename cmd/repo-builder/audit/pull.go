@@ -85,12 +85,12 @@ func pullActualState(
 	appID, installationID int64,
 	appKeyPath, configDir, stateDir string,
 ) (auditPullResult, error) {
-	client, err := newAuditClient(ctx, token, appID, installationID, appKeyPath)
+	cfg, err := loadAuditConfig(strings.TrimSpace(configDir))
 	if err != nil {
 		return auditPullResult{}, err
 	}
 
-	cfg, err := loadAuditConfig(strings.TrimSpace(configDir))
+	client, err := newAuditClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
 		return auditPullResult{}, err
 	}
