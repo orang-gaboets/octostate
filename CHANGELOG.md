@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.3.0](https://github.com/orang-gaboets/repo-builder/compare/v0.2.0...v0.3.0) (2026-03-10)
+
+
+### Features
+
+* **audit:** add actual-state snapshot pull command ([#51](https://github.com/orang-gaboets/repo-builder/issues/51)) ([6f60366](https://github.com/orang-gaboets/repo-builder/commit/6f60366570c5c21cb5da01f893fe95dff94f74f6))
+
 ## [0.2.0](https://github.com/orang-gaboets/repo-builder/compare/v0.1.0...v0.2.0) (2026-03-06)
 
 
