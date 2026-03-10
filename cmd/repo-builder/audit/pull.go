@@ -89,13 +89,17 @@ func pullActualState(
 	if err != nil {
 		return auditPullResult{}, err
 	}
+	organization := strings.TrimSpace(cfg.Organization)
+	if organization == "" {
+		return auditPullResult{}, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+	}
 
 	client, err := newAuditClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
 		return auditPullResult{}, err
 	}
 
-	actual, err := collectActualState(ctx, client, strings.TrimSpace(cfg.Organization))
+	actual, err := collectActualState(ctx, client, organization)
 	if err != nil {
 		return auditPullResult{}, err
 	}

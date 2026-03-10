@@ -11,6 +11,7 @@ import (
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
+	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/repo-builder/pkg/gitops/config"
 	gitopssnapshot "github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
@@ -210,6 +211,39 @@ func TestPullCmdPropagatesLoadError(t *testing.T) {
 	}
 	if errBuf.Len() != 0 {
 		t.Fatalf("expected no stderr output on load error, got %q", errBuf.String())
+	}
+}
+
+func TestPullCmdRejectsBlankOrganizationBeforeAuth(t *testing.T) {
+	restore := replaceAuditHooks(t)
+	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{Organization: "   "}, nil
+	}
+	newAuditClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
+		t.Fatal("expected auth client construction to be skipped on blank organization")
+		return nil, nil
+	}
+	defer restore()
+
+	cmd := PullCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--state-dir", "/tmp/state"})
+
+	err := cmd.Execute()
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("unexpected error: got %v want %v", err, github.ErrMissingRequiredField)
+	}
+	if !strings.Contains(err.Error(), "organization is required") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output on blank organization error, got %q", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output on blank organization error, got %q", errBuf.String())
 	}
 }
 
