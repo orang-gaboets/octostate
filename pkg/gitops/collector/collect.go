@@ -166,7 +166,6 @@ func pendingInvitationFromOrganizationInvitation(invitation *githubpkg.Organizat
 		ID:        derefInt64(invitation.ID),
 		Username:  derefString(invitation.Login),
 		Email:     derefString(invitation.Email),
-		UserID:    0,
 		Role:      derefString(invitation.Role),
 		TeamSlugs: []string{},
 	}

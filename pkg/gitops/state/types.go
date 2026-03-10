@@ -29,7 +29,6 @@ type PendingInvitation struct {
 	ID        int64    `json:"id"`
 	Username  string   `json:"username"`
 	Email     string   `json:"email"`
-	UserID    int64    `json:"user_id"`
 	Role      string   `json:"role"`
 	TeamSlugs []string `json:"team_slugs"`
 }
@@ -137,12 +136,6 @@ func compareOrganizationMembers(a, b OrganizationMember) int {
 }
 
 func comparePendingInvitations(a, b PendingInvitation) int {
-	if a.UserID < b.UserID {
-		return -1
-	}
-	if a.UserID > b.UserID {
-		return 1
-	}
 	if diff := compareStrings(a.Username, b.Username); diff != 0 {
 		return diff
 	}

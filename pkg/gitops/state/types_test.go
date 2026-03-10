@@ -52,7 +52,7 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 		},
 		PendingInvitations: []PendingInvitation{
 			{Email: "z@example.com", TeamSlugs: []string{"zeta", "Alpha"}},
-			{UserID: 42, Username: "octocat", TeamSlugs: nil},
+			{Username: "octocat", TeamSlugs: nil},
 		},
 		Repositories: []Repository{
 			{Name: "zeta", Owner: "orang-gaboets", Topics: []string{"gitops", "Go"}},
@@ -84,7 +84,7 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 
 	wantInvitations := []PendingInvitation{
 		{Email: "z@example.com", TeamSlugs: []string{"Alpha", "zeta"}},
-		{UserID: 42, Username: "octocat", TeamSlugs: []string{}},
+		{Username: "octocat", TeamSlugs: []string{}},
 	}
 	if !reflect.DeepEqual(actual.PendingInvitations, wantInvitations) {
 		t.Fatalf("unexpected pending invitations: got %#v want %#v", actual.PendingInvitations, wantInvitations)

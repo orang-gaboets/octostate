@@ -104,7 +104,6 @@ func clonePendingInvitations(invitations []state.PendingInvitation) []state.Pend
 			ID:        invitation.ID,
 			Username:  invitation.Username,
 			Email:     invitation.Email,
-			UserID:    invitation.UserID,
 			Role:      invitation.Role,
 			TeamSlugs: append([]string{}, invitation.TeamSlugs...),
 		})
