@@ -16,9 +16,9 @@ This repository is the **engine** (CLI + reusable automation building blocks).
 - **v0 (current):** API-primitive commands (direct GitHub operations) ✅
 - **v1 (in progress):** GitOps commands + audit:
   - ✅ `repo-builder config validate`
+  - ✅ `repo-builder audit pull`
   - `repo-builder plan`
   - `repo-builder apply`
-  - `repo-builder audit pull`
   - `repo-builder audit diff`
 
 ## Installation
@@ -263,6 +263,57 @@ teams:
       - name: repo-builder
         permission: push
 ```
+
+### Audit
+
+#### Pull actual-state snapshot
+
+```bash
+repo-builder audit pull --config-dir ./config --state-dir ./state --token <token>
+```
+
+##### Flags
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--state-dir` (required): Path to the state directory where the actual-state snapshot will be written
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Loads `<config-dir>/organization.yaml` to determine the target organization
+- Collects current GitHub actual state using the GitOps collector layer
+- Writes a stable JSON snapshot to:
+  - `<state-dir>/actual/snapshot.json`
+- Prints a structured success result to stdout
+- Does not mutate GitHub state (read-only)
+
+Snapshot fields:
+- `pulled_at`
+- `organization`
+- `members`
+- `pending_invitations`
+- `repositories`
+- `teams`
+- `team_members`
+- `team_repo_permissions`
+
+Example success output:
+
+```json
+{
+  "status": "success",
+  "message": "wrote actual-state snapshot",
+  "data": {
+    "path": "state/actual/snapshot.json",
+    "organization": "orang-gaboets",
+    "pulled_at": "2026-03-10T01:30:00Z"
+  }
+}
+```
+
+This snapshot is intended to feed later GitOps workflows such as `audit diff`
+and live reconciliation planning.
 
 ### Organizations
 
@@ -695,9 +746,9 @@ state/
 
 Implemented:
 - `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
+- `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 
 Planned:
 - `repo-builder plan` — show what changes would be made
 - `repo-builder apply` — reconcile GitHub to match config/ (idempotent)
-- `repo-builder audit pull` — snapshot GitHub into state/actual/
 - `repo-builder audit diff` — detect drift / policy violations (optionally fail CI)
