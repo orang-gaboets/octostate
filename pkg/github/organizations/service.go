@@ -3,6 +3,7 @@ package organizations
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
@@ -77,4 +78,66 @@ func ListMembers(ctx context.Context, option ListMembersOptions) ([]*github.User
 
 	ghlogging.Debugf(ctx, "listed %d members for organization %s", len(members), option.OrgName)
 	return members, nil
+}
+
+// ListPendingInvitations retrieves all pending invitations of a GitHub organization.
+func ListPendingInvitations(ctx context.Context, option ListPendingInvitationsOptions) ([]*github.OrganizationInvitation, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	listOptions := &gh.ListOptions{
+		PerPage: 100,
+	}
+
+	var invitations []*github.OrganizationInvitation
+	for {
+		ghInvitations, resp, err := option.Service.ListPendingOrgInvitations(ctx, option.OrgName, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list pending invitations for organization %s", option.OrgName))
+		}
+
+		invitations = append(invitations, github.OrganizationInvitationsFromGhInvitations(ghInvitations)...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	ghlogging.Debugf(ctx, "listed %d pending invitations for organization %s", len(invitations), option.OrgName)
+	return invitations, nil
+}
+
+// ListInvitationTeams retrieves all teams attached to an organization
+// invitation.
+func ListInvitationTeams(ctx context.Context, option ListInvitationTeamsOptions) ([]*github.Team, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	listOptions := &gh.ListOptions{
+		PerPage: 100,
+	}
+
+	var teams []*github.Team
+	invitationID := strconv.FormatInt(option.InvitationID, 10)
+	for {
+		ghTeams, resp, err := option.Service.ListOrgInvitationTeams(ctx, option.OrgName, invitationID, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list invitation teams for organization %s invitation %d", option.OrgName, option.InvitationID))
+		}
+
+		teams = append(teams, github.TeamsFromGhTeams(ghTeams)...)
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+
+		listOptions.Page = resp.NextPage
+	}
+
+	ghlogging.Debugf(ctx, "listed %d invitation teams for organization %s invitation %d", len(teams), option.OrgName, option.InvitationID)
+	return teams, nil
 }

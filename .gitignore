@@ -40,3 +40,7 @@ bin/
 
 # Build files
 build/
+
+# Output directories
+dist/
+out/

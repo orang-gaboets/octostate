@@ -33,15 +33,21 @@ type mockService struct {
 	createOrgInvCalled bool
 	getCalled          bool
 	listMembersCalled  bool
+	listPendingCalled  bool
+	listInviteTeams    bool
 	createOrgInvErr    error
 	getErr             error
 	listMembersErr     error
+	listPendingErr     error
+	listInviteTeamsErr error
 	orgName            string
 	orgID              int64
 	orgDescription     string
 	orgReposURL        string
 	invitedUserID      int64
 	membersRole        string
+	invitationID       string
+	listOptionsPage    int
 }
 
 // CreateOrgInvitation is a mock implementation of the CreateOrgInvitation method.
@@ -107,6 +113,86 @@ func (m *mockService) ListMembers(_ context.Context, org string, opts *gh.ListMe
 	}
 
 	return users, &gh.Response{NextPage: 0}, nil
+}
+
+// ListPendingOrgInvitations returns mock pending invitations of an organization.
+func (m *mockService) ListPendingOrgInvitations(_ context.Context, org string, opts *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+	m.listPendingCalled = true
+	m.orgName = org
+	if opts != nil {
+		m.listOptionsPage = opts.Page
+	}
+
+	if m.listPendingErr != nil {
+		return nil, nil, m.listPendingErr
+	}
+
+	if org != *existingOrg.Name {
+		return nil, nil, github.ErrNotFound
+	}
+
+	if opts != nil && opts.Page == 2 {
+		return []*gh.Invitation{
+			{
+				ID:    github.Ptr(int64(2)),
+				Login: github.Ptr("second"),
+				Role:  github.Ptr("direct_member"),
+			},
+		}, &gh.Response{NextPage: 0}, nil
+	}
+
+	return []*gh.Invitation{
+		{
+			ID:                github.Ptr(int64(1)),
+			Login:             github.Ptr("monalisa"),
+			Email:             github.Ptr("octocat@example.com"),
+			Role:              github.Ptr("direct_member"),
+			TeamCount:         github.Ptr(2),
+			InvitationTeamURL: github.Ptr("https://api.github.com/organizations/1/invitations/1/teams"),
+		},
+	}, &gh.Response{NextPage: 2}, nil
+}
+
+// ListOrgInvitationTeams returns mock teams attached to an organization invitation.
+func (m *mockService) ListOrgInvitationTeams(_ context.Context, org, invitationID string, opts *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+	m.listInviteTeams = true
+	m.orgName = org
+	m.invitationID = invitationID
+	if opts != nil {
+		m.listOptionsPage = opts.Page
+	}
+
+	if m.listInviteTeamsErr != nil {
+		return nil, nil, m.listInviteTeamsErr
+	}
+
+	if org != *existingOrg.Name {
+		return nil, nil, github.ErrNotFound
+	}
+
+	if invitationID != "22" {
+		return nil, nil, github.ErrNotFound
+	}
+
+	if opts != nil && opts.Page == 2 {
+		return []*gh.Team{
+			{
+				ID:           github.Ptr(int64(2)),
+				Slug:         github.Ptr("docs"),
+				Name:         github.Ptr("Docs"),
+				Organization: &gh.Organization{Login: existingOrg.Name},
+			},
+		}, &gh.Response{NextPage: 0}, nil
+	}
+
+	return []*gh.Team{
+		{
+			ID:           github.Ptr(int64(1)),
+			Slug:         github.Ptr("platform"),
+			Name:         github.Ptr("Platform"),
+			Organization: &gh.Organization{Login: existingOrg.Name},
+		},
+	}, &gh.Response{NextPage: 2}, nil
 }
 
 // Test InviteUser functionality
@@ -496,5 +582,196 @@ func TestListMembersInvalidRole(t *testing.T) {
 	}
 	if mockSvc.listMembersCalled {
 		t.Fatal("expected ListMembers to not be called, but it was")
+	}
+}
+
+func TestListPendingInvitationsSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListPendingInvitationsOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+	}
+
+	ctx := context.Background()
+	invitations, err := ListPendingInvitations(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listPendingCalled {
+		t.Fatal("expected ListPendingOrgInvitations to be called, but it was not")
+	}
+	if mockSvc.orgName != *existingOrg.Name {
+		t.Fatalf("expected organization name %s, got %s", *existingOrg.Name, mockSvc.orgName)
+	}
+	if len(invitations) != 2 {
+		t.Fatalf("expected 2 invitations, got %d", len(invitations))
+	}
+	if invitations[0].Login == nil || *invitations[0].Login != "monalisa" {
+		t.Fatalf("unexpected first invitation: %#v", invitations[0])
+	}
+	if invitations[1].Login == nil || *invitations[1].Login != "second" {
+		t.Fatalf("unexpected second invitation: %#v", invitations[1])
+	}
+}
+
+func TestListPendingInvitationsNonExistingOrg(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListPendingInvitationsOptions{
+		Service: mockSvc,
+		OrgName: *nonExistingOrg.Name,
+	}
+
+	ctx := context.Background()
+	invitations, err := ListPendingInvitations(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.listPendingCalled {
+		t.Fatal("expected ListPendingOrgInvitations to be called, but it was not")
+	}
+	if invitations != nil {
+		t.Fatalf("expected invitations to be nil, got %#v", invitations)
+	}
+}
+
+func TestListPendingInvitationsNilService(t *testing.T) {
+	opts := ListPendingInvitationsOptions{
+		Service: nil,
+		OrgName: *existingOrg.Name,
+	}
+
+	ctx := context.Background()
+	invitations, err := ListPendingInvitations(ctx, opts)
+	if !errors.Is(err, github.ErrNilService) {
+		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
+	}
+	if invitations != nil {
+		t.Fatalf("expected invitations to be nil, got %#v", invitations)
+	}
+}
+
+func TestListPendingInvitationsWithServiceError(t *testing.T) {
+	serviceErr := errors.New("service error")
+	mockSvc := &mockService{
+		listPendingErr: serviceErr,
+	}
+
+	opts := ListPendingInvitationsOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+	}
+
+	ctx := context.Background()
+	invitations, err := ListPendingInvitations(ctx, opts)
+	if !errors.Is(err, serviceErr) {
+		t.Fatalf("expected error %v, got %v", serviceErr, err)
+	}
+	if !mockSvc.listPendingCalled {
+		t.Fatal("expected ListPendingOrgInvitations to be called, but it was not")
+	}
+	if invitations != nil {
+		t.Fatalf("expected invitations to be nil, got %#v", invitations)
+	}
+}
+
+func TestListInvitationTeamsSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListInvitationTeamsOptions{
+		Service:      mockSvc,
+		OrgName:      *existingOrg.Name,
+		InvitationID: 22,
+	}
+
+	ctx := context.Background()
+	teams, err := ListInvitationTeams(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.listInviteTeams {
+		t.Fatal("expected ListOrgInvitationTeams to be called, but it was not")
+	}
+	if mockSvc.invitationID != "22" {
+		t.Fatalf("expected invitation ID 22, got %s", mockSvc.invitationID)
+	}
+	if len(teams) != 2 {
+		t.Fatalf("expected 2 teams, got %d", len(teams))
+	}
+	if teams[0].Slug != "platform" {
+		t.Fatalf("unexpected first team: %#v", teams[0])
+	}
+	if teams[1].Slug != "docs" {
+		t.Fatalf("unexpected second team: %#v", teams[1])
+	}
+}
+
+func TestListInvitationTeamsNonExistingInvitation(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListInvitationTeamsOptions{
+		Service:      mockSvc,
+		OrgName:      *existingOrg.Name,
+		InvitationID: 999,
+	}
+
+	ctx := context.Background()
+	teams, err := ListInvitationTeams(ctx, opts)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
+	}
+	if !mockSvc.listInviteTeams {
+		t.Fatal("expected ListOrgInvitationTeams to be called, but it was not")
+	}
+	if teams != nil {
+		t.Fatalf("expected teams to be nil, got %#v", teams)
+	}
+}
+
+func TestListInvitationTeamsInvalidInvitationID(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := ListInvitationTeamsOptions{
+		Service:      mockSvc,
+		OrgName:      *existingOrg.Name,
+		InvitationID: 0,
+	}
+
+	ctx := context.Background()
+	teams, err := ListInvitationTeams(ctx, opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.listInviteTeams {
+		t.Fatal("expected ListOrgInvitationTeams to not be called, but it was")
+	}
+	if teams != nil {
+		t.Fatalf("expected teams to be nil, got %#v", teams)
+	}
+}
+
+func TestListInvitationTeamsWithServiceError(t *testing.T) {
+	serviceErr := errors.New("service error")
+	mockSvc := &mockService{
+		listInviteTeamsErr: serviceErr,
+	}
+
+	opts := ListInvitationTeamsOptions{
+		Service:      mockSvc,
+		OrgName:      *existingOrg.Name,
+		InvitationID: 22,
+	}
+
+	ctx := context.Background()
+	teams, err := ListInvitationTeams(ctx, opts)
+	if !errors.Is(err, serviceErr) {
+		t.Fatalf("expected error %v, got %v", serviceErr, err)
+	}
+	if !mockSvc.listInviteTeams {
+		t.Fatal("expected ListOrgInvitationTeams to be called, but it was not")
+	}
+	if teams != nil {
+		t.Fatalf("expected teams to be nil, got %#v", teams)
 	}
 }

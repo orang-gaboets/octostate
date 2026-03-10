@@ -86,3 +86,43 @@ func (opt *ListMembersOptions) Validate() error {
 	}
 	return nil
 }
+
+// ListPendingInvitationsOptions defines the options for listing pending
+// organization invitations.
+type ListPendingInvitationsOptions struct {
+	Service Service
+	OrgName string
+}
+
+// Validate checks if the ListPendingInvitationsOptions are valid.
+func (opt *ListPendingInvitationsOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.OrgName == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
+// ListInvitationTeamsOptions defines the options for listing the teams
+// attached to an organization invitation.
+type ListInvitationTeamsOptions struct {
+	Service      Service
+	OrgName      string
+	InvitationID int64
+}
+
+// Validate checks if the ListInvitationTeamsOptions are valid.
+func (opt *ListInvitationTeamsOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.OrgName == "" {
+		return github.ErrMissingRequiredField
+	}
+	if opt.InvitationID <= 0 {
+		return fmt.Errorf("invitation ID must be greater than zero: %w", github.ErrMissingRequiredField)
+	}
+	return nil
+}
