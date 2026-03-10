@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -120,5 +121,30 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 	}
 	if !reflect.DeepEqual(actual.TeamRepositoryPermissions, wantPermissions) {
 		t.Fatalf("unexpected team repository permissions: got %#v want %#v", actual.TeamRepositoryPermissions, wantPermissions)
+	}
+}
+
+func TestOrganizationStateJSONUsesSnapshotFieldNames(t *testing.T) {
+	t.Parallel()
+
+	payload, err := json.Marshal(OrganizationState{
+		TeamRepositoryPermissions: []TeamRepositoryPermission{
+			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal organization state: %v", err)
+	}
+
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("unmarshal organization state JSON: %v", err)
+	}
+
+	if _, ok := got["team_repo_permissions"]; !ok {
+		t.Fatalf("expected team_repo_permissions key in JSON payload: %s", string(payload))
+	}
+	if _, ok := got["team_repository_permissions"]; ok {
+		t.Fatalf("did not expect legacy team_repository_permissions key in JSON payload: %s", string(payload))
 	}
 }

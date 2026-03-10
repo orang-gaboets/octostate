@@ -13,7 +13,7 @@ type OrganizationState struct {
 	Repositories              []Repository               `json:"repositories"`
 	Teams                     []Team                     `json:"teams"`
 	TeamMembers               []TeamMember               `json:"team_members"`
-	TeamRepositoryPermissions []TeamRepositoryPermission `json:"team_repository_permissions"`
+	TeamRepositoryPermissions []TeamRepositoryPermission `json:"team_repo_permissions"`
 }
 
 // OrganizationMember is a current organization member.
