@@ -38,12 +38,12 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 	return ActualSnapshot{
 		PulledAt:                  pulledAt.UTC(),
 		Organization:              clone.Organization,
-		Members:                   append([]state.OrganizationMember(nil), clone.Members...),
+		Members:                   append([]state.OrganizationMember{}, clone.Members...),
 		PendingInvitations:        clonePendingInvitations(clone.PendingInvitations),
 		Repositories:              cloneRepositories(clone.Repositories),
-		Teams:                     append([]state.Team(nil), clone.Teams...),
-		TeamMembers:               append([]state.TeamMember(nil), clone.TeamMembers...),
-		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission(nil), clone.TeamRepositoryPermissions...),
+		Teams:                     append([]state.Team{}, clone.Teams...),
+		TeamMembers:               append([]state.TeamMember{}, clone.TeamMembers...),
+		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, clone.TeamRepositoryPermissions...),
 	}
 }
 
