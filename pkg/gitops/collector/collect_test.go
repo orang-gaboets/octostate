@@ -88,6 +88,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 
 	const orgName = "orang-gaboets"
 
+	var invitationTeamCalls []string
 	orgSvc := &organizationServiceStub{
 		listMembersFunc: func(_ context.Context, org string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
 			if org != orgName {
@@ -114,15 +115,17 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 			}
 			return []*gh.Invitation{
 				{
-					ID:    githubpkg.Ptr(int64(9)),
-					Login: githubpkg.Ptr("zoe"),
-					Email: githubpkg.Ptr("zoe@example.com"),
-					Role:  githubpkg.Ptr("direct_member"),
+					ID:        githubpkg.Ptr(int64(9)),
+					Login:     githubpkg.Ptr("zoe"),
+					Email:     githubpkg.Ptr("zoe@example.com"),
+					Role:      githubpkg.Ptr("direct_member"),
+					TeamCount: githubpkg.Ptr(2),
 				},
 				{
-					ID:    githubpkg.Ptr(int64(3)),
-					Login: githubpkg.Ptr("beta"),
-					Role:  githubpkg.Ptr("admin"),
+					ID:        githubpkg.Ptr(int64(3)),
+					Login:     githubpkg.Ptr("beta"),
+					Role:      githubpkg.Ptr("admin"),
+					TeamCount: githubpkg.Ptr(0),
 				},
 			}, &gh.Response{}, nil
 		},
@@ -130,6 +133,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 			if org != orgName {
 				t.Fatalf("unexpected org in ListOrgInvitationTeams: got %q want %q", org, orgName)
 			}
+			invitationTeamCalls = append(invitationTeamCalls, invitationID)
 			switch invitationID {
 			case "9":
 				return []*gh.Team{
@@ -144,8 +148,6 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 						Organization: &gh.Organization{Login: githubpkg.Ptr(orgName)},
 					},
 				}, &gh.Response{}, nil
-			case "3":
-				return nil, &gh.Response{}, nil
 			default:
 				t.Fatalf("unexpected invitation id %q", invitationID)
 				return nil, nil, nil
@@ -323,6 +325,9 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 	}
 	if !reflect.DeepEqual(teamRoleCalls, wantRoleCalls) {
 		t.Fatalf("unexpected team member role calls: got %#v want %#v", teamRoleCalls, wantRoleCalls)
+	}
+	if !reflect.DeepEqual(invitationTeamCalls, []string{"9"}) {
+		t.Fatalf("unexpected invitation team calls: got %#v want %#v", invitationTeamCalls, []string{"9"})
 	}
 }
 

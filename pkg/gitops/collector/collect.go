@@ -70,7 +70,7 @@ func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*
 		}
 
 		pendingInvitation := pendingInvitationFromOrganizationInvitation(invitation)
-		if invitation.ID != nil && *invitation.ID > 0 {
+		if shouldLoadInvitationTeams(invitation) {
 			invitationTeams, err := organizations.ListInvitationTeams(ctx, organizations.ListInvitationTeamsOptions{
 				Service:      opt.OrganizationService,
 				OrgName:      opt.OrgName,
@@ -266,6 +266,16 @@ func parentSlug(team *githubpkg.Team) string {
 		return ""
 	}
 	return team.Slug
+}
+
+func shouldLoadInvitationTeams(invitation *githubpkg.OrganizationInvitation) bool {
+	if invitation == nil || invitation.ID == nil || *invitation.ID <= 0 {
+		return false
+	}
+	if invitation.TeamCount != nil && *invitation.TeamCount == 0 {
+		return false
+	}
+	return true
 }
 
 func derefString(value *string) string {
