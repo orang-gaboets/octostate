@@ -23,7 +23,6 @@ const (
 	teamDescParent = "parent team"
 	teamDescChild  = "child team"
 
-	userLoginFirst = "first-user"
 	userNameFirst  = "First"
 	userEmailFirst = "first@example.com"
 	userURLFirst   = "https://github.com/first"

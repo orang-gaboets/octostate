@@ -21,7 +21,11 @@ func TestNewActualSnapshotNormalizesAndClones(t *testing.T) {
 			{Username: "zoe", TeamSlugs: []string{"writers", "admins"}},
 		},
 		Repositories: []state.Repository{
-			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{"gitops", "go"}},
+			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{"zeta", "alpha"}},
+		},
+		Teams: []state.Team{
+			{ID: 2, Slug: "zeta"},
+			{ID: 1, Slug: "alpha"},
 		},
 	}
 
@@ -33,17 +37,40 @@ func TestNewActualSnapshotNormalizesAndClones(t *testing.T) {
 	if !reflect.DeepEqual(snapshot.PendingInvitations[0].TeamSlugs, []string{"admins", "writers"}) {
 		t.Fatalf("unexpected team slugs: %#v", snapshot.PendingInvitations[0].TeamSlugs)
 	}
-	if !reflect.DeepEqual(snapshot.Repositories[0].Topics, []string{"gitops", "go"}) {
+	if !reflect.DeepEqual(snapshot.Repositories[0].Topics, []string{"alpha", "zeta"}) {
 		t.Fatalf("unexpected topics: %#v", snapshot.Repositories[0].Topics)
+	}
+	if !reflect.DeepEqual(snapshot.Teams, []state.Team{
+		{ID: 1, Slug: "alpha"},
+		{ID: 2, Slug: "zeta"},
+	}) {
+		t.Fatalf("unexpected teams: %#v", snapshot.Teams)
+	}
+
+	if !reflect.DeepEqual(actual.PendingInvitations[0].TeamSlugs, []string{"writers", "admins"}) {
+		t.Fatalf("expected input invitation team slugs to remain unchanged, got %#v", actual.PendingInvitations[0].TeamSlugs)
+	}
+	if !reflect.DeepEqual(actual.Repositories[0].Topics, []string{"zeta", "alpha"}) {
+		t.Fatalf("expected input repository topics to remain unchanged, got %#v", actual.Repositories[0].Topics)
+	}
+	if !reflect.DeepEqual(actual.Teams, []state.Team{
+		{ID: 2, Slug: "zeta"},
+		{ID: 1, Slug: "alpha"},
+	}) {
+		t.Fatalf("expected input teams to remain unchanged, got %#v", actual.Teams)
 	}
 
 	actual.PendingInvitations[0].TeamSlugs[0] = "mutated"
 	actual.Repositories[0].Topics[0] = "mutated"
+	actual.Teams[0].Slug = "mutated"
 	if snapshot.PendingInvitations[0].TeamSlugs[0] != "admins" {
 		t.Fatalf("expected cloned invitation team slugs, got %#v", snapshot.PendingInvitations[0].TeamSlugs)
 	}
-	if snapshot.Repositories[0].Topics[0] != "gitops" {
+	if snapshot.Repositories[0].Topics[0] != "alpha" {
 		t.Fatalf("expected cloned repository topics, got %#v", snapshot.Repositories[0].Topics)
+	}
+	if snapshot.Teams[0].Slug != "alpha" {
+		t.Fatalf("expected cloned teams, got %#v", snapshot.Teams)
 	}
 }
 
