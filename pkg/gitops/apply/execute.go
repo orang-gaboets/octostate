@@ -76,6 +76,12 @@ func (r *Result) Normalize() {
 	if r.SkippedDrift == nil {
 		r.SkippedDrift = []gitopsplan.Action{}
 	}
+	for i := range r.Executed {
+		r.Executed[i].Normalize()
+	}
+	for i := range r.SkippedDrift {
+		r.SkippedDrift[i].Normalize()
+	}
 }
 
 // Execute applies the executable portion of a planner report to GitHub.

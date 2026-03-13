@@ -103,6 +103,12 @@ func (p *applyPreview) Normalize() {
 	if p.SkippedActions == nil {
 		p.SkippedActions = []gitopsplan.Action{}
 	}
+	for i := range p.ExecutableActions {
+		p.ExecutableActions[i].Normalize()
+	}
+	for i := range p.SkippedActions {
+		p.SkippedActions[i].Normalize()
+	}
 }
 
 func applyConfig(
