@@ -43,7 +43,7 @@ func (p planner) planRepositories() []Action {
 		if !equalStringSets(actualRepository.Topics, repository.Topics) {
 			changes = append(changes, FieldChange{Field: "topics", From: sortedStrings(actualRepository.Topics), To: sortedStrings(repository.Topics)})
 		}
-		if actualRepository.AllowForking != repository.AllowForking {
+		if repository.Visibility != "private" && actualRepository.AllowForking != repository.AllowForking {
 			changes = append(changes, FieldChange{Field: "allow_forking", From: actualRepository.AllowForking, To: repository.AllowForking})
 		}
 		if actualRepository.Archived != repository.Archived {

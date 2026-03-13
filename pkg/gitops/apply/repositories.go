@@ -88,8 +88,14 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 		case "topics":
 			topicsChanged = true
 		case "allow_forking":
-			editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
-			editNeeded = true
+			private, err := visibilityPrivateFlag(repository.Visibility)
+			if err != nil {
+				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
+			}
+			if !private {
+				editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
+				editNeeded = true
+			}
 		case "archived":
 			editOptions.Archived = githubpkg.Ptr(repository.Archived)
 			editNeeded = true
@@ -116,17 +122,21 @@ func (e *executor) applyExactRepositorySettings(repository config.RepositorySpec
 		return err
 	}
 
-	_, err = repos.Edit(e.ctx, repos.EditOptions{
-		Service:      e.repositoryService,
-		Owner:        repository.Owner,
-		Repo:         repository.Name,
-		Description:  githubpkg.Ptr(repository.Description),
-		Homepage:     githubpkg.Ptr(repository.Homepage),
-		Private:      githubpkg.Ptr(private),
-		IsTemplate:   githubpkg.Ptr(repository.IsTemplate),
-		Archived:     githubpkg.Ptr(repository.Archived),
-		AllowForking: githubpkg.Ptr(repository.AllowForking),
-	})
+	editOptions := repos.EditOptions{
+		Service:     e.repositoryService,
+		Owner:       repository.Owner,
+		Repo:        repository.Name,
+		Description: githubpkg.Ptr(repository.Description),
+		Homepage:    githubpkg.Ptr(repository.Homepage),
+		Private:     githubpkg.Ptr(private),
+		IsTemplate:  githubpkg.Ptr(repository.IsTemplate),
+		Archived:    githubpkg.Ptr(repository.Archived),
+	}
+	if !private {
+		editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
+	}
+
+	_, err = repos.Edit(e.ctx, editOptions)
 	return err
 }
 

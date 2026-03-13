@@ -108,6 +108,9 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			if repository == nil || repository.Homepage == nil || *repository.Homepage != desiredRepo.Homepage {
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
+			if repository.AllowForking != nil {
+				t.Fatalf("expected allow_forking to be omitted for private repository edit, got %#v", repository)
+			}
 			return &gh.Repository{}, nil, nil
 		},
 		replaceAllTopicsFunc: func(_ context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
@@ -195,6 +198,61 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	}
 	if !reflect.DeepEqual(replacedTopics, desiredRepo.Topics) {
 		t.Fatalf("unexpected topics replacement: got %#v want %#v", replacedTopics, desiredRepo.Topics)
+	}
+}
+
+func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{
+		Owner:        "orang-gaboets",
+		Name:         "repo-builder",
+		Visibility:   "private",
+		Description:  "Updated description",
+		AllowForking: false,
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "update repository orang-gaboets/repo-builder",
+			Changes: []gitopsplan.FieldChange{
+				{Field: "allow_forking", From: true, To: false},
+				{Field: "description", From: "", To: desiredRepo.Description},
+			},
+		}},
+	}
+	plan.Normalize()
+
+	editCalled := false
+	repoSvc := &testRepoService{
+		editFunc: func(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editCalled = true
+			if owner != desiredRepo.Owner || repo != desiredRepo.Name {
+				t.Fatalf("unexpected edit target %s/%s", owner, repo)
+			}
+			if repository == nil || repository.Description == nil || *repository.Description != desiredRepo.Description {
+				t.Fatalf("unexpected repository edit payload: %#v", repository)
+			}
+			if repository.AllowForking != nil {
+				t.Fatalf("expected allow_forking to be omitted for private repository update, got %#v", repository)
+			}
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !editCalled {
+		t.Fatal("expected repository edit to be called")
 	}
 }
 

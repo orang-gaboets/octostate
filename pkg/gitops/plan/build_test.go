@@ -279,7 +279,7 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		},
 		Actions: []Action{
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: true, Message: "create repository orang-gaboets/new-repo", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "allow_forking", From: true, To: false}, {Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/repo-builder"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
+			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/repo-builder"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: "orang-gaboets/orphan-repo", Executable: false, Message: "repository orang-gaboets/orphan-repo exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform New"}, {Field: "privacy", From: "closed", To: "secret"}}},
@@ -364,6 +364,38 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected lookup failure, got %v", err)
+	}
+}
+
+func TestBuildSkipsAllowForkingDiffForPrivateRepository(t *testing.T) {
+	t.Parallel()
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:        "orang-gaboets",
+				Name:         "repo-builder",
+				Visibility:   "private",
+				AllowForking: false,
+			}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Repositories: []state.Repository{{
+				Owner:        "orang-gaboets",
+				Name:         "repo-builder",
+				Visibility:   "private",
+				AllowForking: true,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	if len(report.Actions) != 0 {
+		t.Fatalf("expected no actions for private allow_forking drift, got %#v", report.Actions)
 	}
 }
 
