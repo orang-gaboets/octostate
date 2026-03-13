@@ -29,6 +29,9 @@ func ReplaceAllTopics(ctx context.Context, option ReplaceAllTopicsOptions) ([]st
 	}
 
 	uniqueTopics := github.Unique(option.Topics)
+	if uniqueTopics == nil {
+		uniqueTopics = []string{}
+	}
 
 	ghlogging.Debugf(ctx, "replace topics on repository %s/%s with %d topics", option.Owner, option.Repo, len(uniqueTopics))
 	topics, _, err := option.Service.ReplaceAllTopics(ctx, option.Owner, option.Repo, uniqueTopics)
