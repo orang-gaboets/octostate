@@ -16,6 +16,7 @@ type CreateFromTemplateOptions struct {
 	Description        *string
 	Private            *bool
 	Topics             []string
+	SkipTopicSync      bool
 	IncludeAllBranches bool
 }
 

@@ -330,6 +330,44 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 	}
 }
 
+func TestCreateFromTemplateSkipTopicSync(t *testing.T) {
+	mockSvc := &mockService{
+		createCalled:  false,
+		replaceCalled: false,
+		listCalled:    false,
+	}
+
+	opts := CreateFromTemplateOptions{
+		Service:       mockSvc,
+		Name:          newRepo.Name,
+		Owner:         newRepo.Owner,
+		Description:   &newRepo.Description,
+		Private:       &newRepo.Private,
+		Topics:        newRepo.Topics,
+		TemplateRepo:  templateRepo.Name,
+		TemplateOwner: templateRepo.Owner,
+		SkipTopicSync: true,
+	}
+
+	ctx := context.Background()
+	repo, err := CreateFromTemplate(ctx, opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.createCalled {
+		t.Error("CreateFromTemplate was not called")
+	}
+	if mockSvc.listCalled {
+		t.Error("ListAllTopics should not be called when topic sync is skipped")
+	}
+	if mockSvc.replaceCalled {
+		t.Error("ReplaceAllTopics should not be called when topic sync is skipped")
+	}
+	if repo == nil {
+		t.Fatal("expected a repository, got nil")
+	}
+}
+
 func TestCreateFromTemplateInvalidTemplate(t *testing.T) {
 	mockSvc := &mockService{
 		createCalled: false,

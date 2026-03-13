@@ -2,6 +2,7 @@ package organizations
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
@@ -41,6 +42,49 @@ func (opt *InviteUserOptions) Validate() error {
 	if opt.UserID <= 0 {
 		return fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
 	}
+	return nil
+}
+
+// CreateInvitationOptions defines the options for creating an organization invitation.
+type CreateInvitationOptions struct {
+	Service Service
+	OrgName string
+	UserID  *int64
+	Email   string
+	Role    string
+	TeamIDs []int64
+}
+
+// Validate checks if the CreateInvitationOptions are valid.
+func (opt *CreateInvitationOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	opt.OrgName = strings.TrimSpace(opt.OrgName)
+	opt.Email = strings.TrimSpace(opt.Email)
+	opt.Role = strings.TrimSpace(opt.Role)
+	if opt.OrgName == "" {
+		return github.ErrMissingRequiredField
+	}
+
+	userIDProvided := opt.UserID != nil
+	emailProvided := opt.Email != ""
+	switch {
+	case userIDProvided && emailProvided:
+		return fmt.Errorf("exactly one invitation identity must be provided: %w", github.ErrConflictingCredentials)
+	case !userIDProvided && !emailProvided:
+		return fmt.Errorf("either user ID or email must be provided: %w", github.ErrMissingRequiredField)
+	}
+
+	if userIDProvided && *opt.UserID <= 0 {
+		return fmt.Errorf("user ID must be greater than zero: %w", github.ErrInvalidFieldValue)
+	}
+	for _, teamID := range opt.TeamIDs {
+		if teamID <= 0 {
+			return fmt.Errorf("team ID must be greater than zero: %w", github.ErrInvalidFieldValue)
+		}
+	}
+
 	return nil
 }
 

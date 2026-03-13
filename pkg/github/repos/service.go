@@ -32,30 +32,32 @@ func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (
 	}
 	ghlogging.Debugf(ctx, "created repository %s/%s", option.Owner, option.Name)
 
-	listTemplateTopicsOptions := topics.ListAllTopicsOptions{
-		Owner:   option.TemplateOwner,
-		Repo:    option.TemplateRepo,
-		Service: option.Service,
-	}
-	templateTopics, err := topics.ListAllTopics(ctx, listTemplateTopicsOptions)
-	if err != nil {
-		return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", option.TemplateOwner, option.TemplateRepo))
-	}
-	ghlogging.Debugf(ctx, "loaded %d template topics for %s/%s", len(templateTopics), option.TemplateOwner, option.TemplateRepo)
-
-	uniqueTopics := github.MergeUnique(option.Topics, templateTopics)
-
-	if len(uniqueTopics) > 0 {
-		ghlogging.Debugf(ctx, "setting %d merged topics on %s/%s", len(uniqueTopics), option.Owner, option.Name)
-		newRepoTopicsOptions := topics.ReplaceAllTopicsOptions{
-			Owner:   option.Owner,
-			Repo:    option.Name,
+	if !option.SkipTopicSync {
+		listTemplateTopicsOptions := topics.ListAllTopicsOptions{
+			Owner:   option.TemplateOwner,
+			Repo:    option.TemplateRepo,
 			Service: option.Service,
-			Topics:  uniqueTopics,
 		}
-		_, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
+		templateTopics, err := topics.ListAllTopics(ctx, listTemplateTopicsOptions)
 		if err != nil {
-			return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", option.Owner, option.Name))
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list template topics for %s/%s", option.TemplateOwner, option.TemplateRepo))
+		}
+		ghlogging.Debugf(ctx, "loaded %d template topics for %s/%s", len(templateTopics), option.TemplateOwner, option.TemplateRepo)
+
+		uniqueTopics := github.MergeUnique(option.Topics, templateTopics)
+
+		if len(uniqueTopics) > 0 {
+			ghlogging.Debugf(ctx, "setting %d merged topics on %s/%s", len(uniqueTopics), option.Owner, option.Name)
+			newRepoTopicsOptions := topics.ReplaceAllTopicsOptions{
+				Owner:   option.Owner,
+				Repo:    option.Name,
+				Service: option.Service,
+				Topics:  uniqueTopics,
+			}
+			_, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
+			if err != nil {
+				return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", option.Owner, option.Name))
+			}
 		}
 	}
 	return newRepo, nil

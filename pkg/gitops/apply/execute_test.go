@@ -1,0 +1,1078 @@
+package apply
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"strings"
+	"testing"
+
+	gh "github.com/google/go-github/v55/github"
+	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
+	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+)
+
+func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationDelete,
+				ResourceID:   "orang-gaboets/extra-repo",
+				Executable:   false,
+				Message:      "extra repository orang-gaboets/extra-repo would require deletion",
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+				Operation:    gitopsplan.ActionOperationRemove,
+				ResourceID:   "platform/alice",
+				Executable:   false,
+				Message:      "extra team membership platform/alice would require removal",
+			},
+		},
+	}
+	plan.Normalize()
+
+	result, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Executed) != 0 {
+		t.Fatalf("expected no executed actions, got %#v", result.Executed)
+	}
+	if !reflect.DeepEqual(result.SkippedDrift, plan.Actions) {
+		t.Fatalf("unexpected skipped drift:\n got %#v\nwant %#v", result.SkippedDrift, plan.Actions)
+	}
+}
+
+func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{
+		Owner:        "orang-gaboets",
+		Name:         "repo-builder",
+		Visibility:   "private",
+		Description:  "GitOps CLI",
+		Homepage:     "https://example.com/repo-builder",
+		Topics:       []string{"gitops"},
+		AllowForking: false,
+		Archived:     false,
+		IsTemplate:   false,
+		Template: config.TemplateSpec{
+			Owner:              "orang-gaboets",
+			Name:               "repo-template",
+			IncludeAllBranches: true,
+		},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "create repository orang-gaboets/repo-builder",
+		}},
+	}
+	plan.Normalize()
+
+	var createCalls int
+	var editCalls int
+	var replaceTopicsCalls [][]string
+	var listTemplateTopicsCalls int
+	var createReq *gh.TemplateRepoRequest
+
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			createCalls++
+			if templateOwner != desiredRepo.Template.Owner || templateRepo != desiredRepo.Template.Name {
+				t.Fatalf("unexpected template target %s/%s", templateOwner, templateRepo)
+			}
+			createReq = req
+			return &gh.Repository{}, nil, nil
+		},
+		listAllTopicsFunc: func(context.Context, string, string) ([]string, *gh.Response, error) {
+			listTemplateTopicsCalls++
+			return []string{"template-topic"}, nil, nil
+		},
+		editFunc: func(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editCalls++
+			if owner != desiredRepo.Owner || repo != desiredRepo.Name {
+				t.Fatalf("unexpected edit target %s/%s", owner, repo)
+			}
+			if repository == nil || repository.Homepage == nil || *repository.Homepage != desiredRepo.Homepage {
+				t.Fatalf("unexpected repository edit payload: %#v", repository)
+			}
+			if repository.AllowForking != nil {
+				t.Fatalf("expected allow_forking to be omitted for private repository edit, got %#v", repository)
+			}
+			return &gh.Repository{}, nil, nil
+		},
+		replaceAllTopicsFunc: func(_ context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
+			if owner != desiredRepo.Owner || repo != desiredRepo.Name {
+				t.Fatalf("unexpected topics target %s/%s", owner, repo)
+			}
+			replaceTopicsCalls = append(replaceTopicsCalls, append([]string(nil), topics...))
+			return topics, nil, nil
+		},
+	}
+
+	result, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if createCalls != 1 {
+		t.Fatalf("expected create from template once, got %d", createCalls)
+	}
+	if editCalls != 1 {
+		t.Fatalf("expected one repository edit call, got %d", editCalls)
+	}
+	if createReq == nil || createReq.Private == nil || !*createReq.Private || createReq.Name == nil || *createReq.Name != desiredRepo.Name {
+		t.Fatalf("unexpected template request: %#v", createReq)
+	}
+	if listTemplateTopicsCalls != 0 {
+		t.Fatalf("expected no template topic listing during apply create, got %d", listTemplateTopicsCalls)
+	}
+	if len(replaceTopicsCalls) == 0 {
+		t.Fatal("expected topic replacement calls")
+	}
+	if len(replaceTopicsCalls) != 1 {
+		t.Fatalf("expected exactly one topic replacement during apply create, got %d", len(replaceTopicsCalls))
+	}
+	if got := replaceTopicsCalls[len(replaceTopicsCalls)-1]; !reflect.DeepEqual(got, desiredRepo.Topics) {
+		t.Fatalf("unexpected final topics replacement: got %#v want %#v", got, desiredRepo.Topics)
+	}
+	if len(result.Executed) != 1 || result.Executed[0].ResourceID != plan.Actions[0].ResourceID {
+		t.Fatalf("unexpected executed actions: %#v", result.Executed)
+	}
+}
+
+func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{
+		Owner:  "orang-gaboets",
+		Name:   "repo-builder",
+		Topics: []string{"gitops", "go"},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "update repository orang-gaboets/repo-builder",
+			Changes: []gitopsplan.FieldChange{{
+				Field: "topics",
+			}},
+		}},
+	}
+	plan.Normalize()
+
+	editCalled := false
+	var replacedTopics []string
+	repoSvc := &testRepoService{
+		editFunc: func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editCalled = true
+			return &gh.Repository{}, nil, nil
+		},
+		replaceAllTopicsFunc: func(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+			replacedTopics = append([]string(nil), topics...)
+			return topics, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if editCalled {
+		t.Fatal("edit should not be called for a topics-only update")
+	}
+	if !reflect.DeepEqual(replacedTopics, desiredRepo.Topics) {
+		t.Fatalf("unexpected topics replacement: got %#v want %#v", replacedTopics, desiredRepo.Topics)
+	}
+}
+
+func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{
+		Owner:        "orang-gaboets",
+		Name:         "repo-builder",
+		Visibility:   "private",
+		Description:  "Updated description",
+		AllowForking: false,
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "update repository orang-gaboets/repo-builder",
+			Changes: []gitopsplan.FieldChange{
+				{Field: "allow_forking", From: true, To: false},
+				{Field: "description", From: "", To: desiredRepo.Description},
+			},
+		}},
+	}
+	plan.Normalize()
+
+	editCalled := false
+	repoSvc := &testRepoService{
+		editFunc: func(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editCalled = true
+			if owner != desiredRepo.Owner || repo != desiredRepo.Name {
+				t.Fatalf("unexpected edit target %s/%s", owner, repo)
+			}
+			if repository == nil || repository.Description == nil || *repository.Description != desiredRepo.Description {
+				t.Fatalf("unexpected repository edit payload: %#v", repository)
+			}
+			if repository.AllowForking != nil {
+				t.Fatalf("expected allow_forking to be omitted for private repository update, got %#v", repository)
+			}
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !editCalled {
+		t.Fatal("expected repository edit to be called")
+	}
+}
+
+func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{
+		Owner: "orang-gaboets",
+		Name:  "repo-builder",
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Changes: []gitopsplan.FieldChange{{
+				Field: "template",
+			}},
+		}},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		editFunc: func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("repository edit should not be called for unsupported planner changes")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported repository change field "template"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID("orang-gaboets", "repo-builder"),
+			Executable:   true,
+			Message:      "create repository orang-gaboets/repo-builder",
+		}},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("create from template should not be called when template is missing")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "repo-builder",
+			Visibility: "private",
+		}},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "cannot be created without a template") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecuteTeamCreatesResolveDependenciesAndInviteUsesCreatedTeamIDs(t *testing.T) {
+	createdIDs := map[string]int64{}
+	teamNames := map[string]string{
+		"app":      "App",
+		"platform": "Platform",
+	}
+	var invitationOpts *gh.CreateOrgInvitationOptions
+
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, _, slug string) (*gh.Team, *gh.Response, error) {
+			id, ok := createdIDs[slug]
+			if !ok {
+				return nil, nil, errors.New("team not created yet")
+			}
+			name := teamNames[slug]
+			if name == "" {
+				name = slug
+			}
+			return &gh.Team{ID: githubpkg.Ptr(id), Slug: githubpkg.Ptr(slug), Name: githubpkg.Ptr(name)}, nil, nil
+		},
+		createTeamFunc: func(_ context.Context, _ string, team gh.NewTeam) (*gh.Team, *gh.Response, error) {
+			slug := strings.ToLower(strings.ReplaceAll(team.Name, " ", "-"))
+			id := int64(len(createdIDs) + 100)
+			createdIDs[slug] = id
+			return &gh.Team{ID: githubpkg.Ptr(id), Slug: githubpkg.Ptr(slug), Name: githubpkg.Ptr(team.Name)}, nil, nil
+		},
+	}
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(_ context.Context, org string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			if org != "orang-gaboets" {
+				t.Fatalf("unexpected organization %q", org)
+			}
+			invitationOpts = opts
+			return &gh.Invitation{}, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{
+			{Slug: "app", Name: "App", Privacy: "closed", ParentSlug: "platform"},
+			{Slug: "platform", Name: "Platform", Privacy: "closed"},
+		},
+		Invites: []config.InviteSpec{
+			inviteByEmail("alice@example.com", "direct_member", "platform", "app"),
+		},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("app"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("platform"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "email:alice@example.com", Executable: true},
+		},
+	}
+	plan.Normalize()
+
+	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc), withOrganizationService(orgSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Executed) != 3 {
+		t.Fatalf("unexpected executed action count: %#v", result.Executed)
+	}
+	if invitationOpts == nil {
+		t.Fatal("expected invitation to be created")
+	}
+	if invitationOpts.Email == nil || *invitationOpts.Email != "alice@example.com" {
+		t.Fatalf("unexpected invitation email: %#v", invitationOpts)
+	}
+	if invitationOpts.Role == nil || *invitationOpts.Role != "direct_member" {
+		t.Fatalf("unexpected invitation role: %#v", invitationOpts)
+	}
+	if !reflect.DeepEqual(invitationOpts.TeamID, []int64{createdIDs["platform"], createdIDs["app"]}) {
+		t.Fatalf("unexpected invitation team IDs: got %#v want %#v", invitationOpts.TeamID, []int64{createdIDs["platform"], createdIDs["app"]})
+	}
+}
+
+func TestExecuteInviteCreateByUsernameResolvesUserID(t *testing.T) {
+	var invitedUserID *int64
+	userSvc := &testUserService{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			if username != "octocat" {
+				t.Fatalf("unexpected username %q", username)
+			}
+			return &gh.User{ID: githubpkg.Ptr(int64(42))}, nil, nil
+		},
+	}
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(_ context.Context, _ string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			if opts == nil || opts.InviteeID == nil {
+				t.Fatalf("unexpected invitation options: %#v", opts)
+			}
+			invitedUserID = githubpkg.Ptr(*opts.InviteeID)
+			return &gh.Invitation{}, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites:      []config.InviteSpec{inviteByUsername("octocat", "direct_member")},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeInvite,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   "username:octocat",
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if invitedUserID == nil || *invitedUserID != 42 {
+		t.Fatalf("unexpected invited user ID: %#v", invitedUserID)
+	}
+}
+
+func TestExecuteInviteCreateByUserIDAndEmail(t *testing.T) {
+	tests := []struct {
+		name   string
+		invite config.InviteSpec
+		id     int64
+		email  string
+	}{
+		{name: "user ID", invite: inviteByUserID(88, "direct_member"), id: 88},
+		{name: "email", invite: inviteByEmail("bob@example.com", "direct_member"), email: "bob@example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured *gh.CreateOrgInvitationOptions
+			orgSvc := &testOrganizationService{
+				createOrgInvitationFunc: func(_ context.Context, _ string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+					captured = opts
+					return &gh.Invitation{}, nil, nil
+				},
+			}
+			resourceID, err := desiredInviteResourceID(tt.invite)
+			if err != nil {
+				t.Fatalf("unexpected resource ID error: %v", err)
+			}
+			plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+				ResourceType: gitopsplan.ActionResourceTypeInvite,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   resourceID,
+				Executable:   true,
+			}}}
+			plan.Normalize()
+
+			_, err = Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+				Organization: "orang-gaboets",
+				Invites:      []config.InviteSpec{tt.invite},
+			}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc)))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if captured == nil {
+				t.Fatal("expected invitation request")
+			}
+			if tt.id > 0 {
+				if captured.InviteeID == nil || *captured.InviteeID != tt.id {
+					t.Fatalf("unexpected invitee ID: %#v", captured.InviteeID)
+				}
+			}
+			if tt.email != "" {
+				if captured.Email == nil || *captured.Email != tt.email {
+					t.Fatalf("unexpected email: %#v", captured.Email)
+				}
+			}
+		})
+	}
+}
+
+func TestExecuteTeamUpdateClearsParent(t *testing.T) {
+	removedParent := false
+	teamSvc := &testTeamService{
+		editTeamBySlugFunc: func(_ context.Context, org, slug string, team gh.NewTeam, removeParent bool) (*gh.Team, *gh.Response, error) {
+			if org != "orang-gaboets" || slug != "platform" {
+				t.Fatalf("unexpected edit target %s/%s", org, slug)
+			}
+			removedParent = removeParent
+			return &gh.Team{ID: githubpkg.Ptr(int64(10)), Slug: githubpkg.Ptr(slug), Name: githubpkg.Ptr(team.Name)}, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:       "platform",
+			Name:       "Platform",
+			Privacy:    "closed",
+			ParentSlug: "",
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeam,
+		Operation:    gitopsplan.ActionOperationUpdate,
+		ResourceID:   teamResourceID("platform"),
+		Executable:   true,
+		Changes:      []gitopsplan.FieldChange{{Field: "name"}, {Field: "parent_slug"}},
+	}}}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 10, Slug: "platform"}}}, plan, withTeamService(teamSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !removedParent {
+		t.Fatal("expected removeParent to be true")
+	}
+}
+
+func TestExecuteTeamUpdateFailsOnUnknownChangeField(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeam,
+		Operation:    gitopsplan.ActionOperationUpdate,
+		ResourceID:   teamResourceID("platform"),
+		Executable:   true,
+		Changes:      []gitopsplan.FieldChange{{Field: "members"}},
+	}}}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		editTeamBySlugFunc: func(context.Context, string, string, gh.NewTeam, bool) (*gh.Team, *gh.Response, error) {
+			t.Fatal("team edit should not be called for unsupported planner changes")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Teams:        []state.Team{{ID: 10, Slug: "platform"}},
+	}, plan, withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported team change field "members"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
+	membershipCalls := 0
+	repoPermissionCalls := 0
+	teamSvc := &testTeamService{
+		addTeamMembershipBySlugFunc: func(_ context.Context, org, slug, user string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+			membershipCalls++
+			if org != "orang-gaboets" || slug != "platform" || user != "alice" || opts == nil || opts.Role != "maintainer" {
+				return nil, nil, errors.New("unexpected membership call")
+			}
+			return &gh.Membership{}, nil, nil
+		},
+		addTeamRepoBySlugFunc: func(_ context.Context, org, slug, owner, repo string, opts *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+			repoPermissionCalls++
+			if org != "orang-gaboets" || slug != "platform" || owner != "orang-gaboets" || repo != "repo-builder" || opts == nil || opts.Permission != "push" {
+				return nil, errors.New("unexpected repo permission call")
+			}
+			return &gh.Response{}, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:         "platform",
+			Name:         "Platform",
+			Privacy:      "closed",
+			Members:      []config.TeamMemberSpec{{Username: "alice", Role: "maintainer"}},
+			Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"}},
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeTeamMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamMemberResourceID("platform", "alice"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamMember, Operation: gitopsplan.ActionOperationUpdate, ResourceID: teamMemberResourceID("platform", "alice"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationUpdate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"), Executable: true},
+	}}
+	plan.Normalize()
+
+	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if membershipCalls != 2 {
+		t.Fatalf("expected two membership calls, got %d", membershipCalls)
+	}
+	if repoPermissionCalls != 2 {
+		t.Fatalf("expected two repository permission calls, got %d", repoPermissionCalls)
+	}
+	if len(result.Executed) != 4 {
+		t.Fatalf("unexpected executed actions: %#v", result.Executed)
+	}
+}
+
+func TestExecuteTeamMembershipRejectsUnsupportedOperation(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Members: []config.TeamMemberSpec{{Username: "alice", Role: "member"}},
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+		Operation:    gitopsplan.ActionOperationRemove,
+		ResourceID:   teamMemberResourceID("platform", "alice"),
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+			t.Fatal("team membership API should not be called for unsupported operations")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported team member operation "remove"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "orang-gaboets",
+				Name:       "repo-builder",
+				Permission: "push",
+			}},
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
+		Operation:    gitopsplan.ActionOperationRemove,
+		ResourceID:   teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"),
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		addTeamRepoBySlugFunc: func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+			t.Fatal("team repository permission API should not be called for unsupported operations")
+			return nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported team repository permission operation "remove"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteStopsOnFirstFailure(t *testing.T) {
+	wantErr := errors.New("invite failed")
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			return nil, nil, wantErr
+		},
+	}
+	teamSvc := &testTeamService{
+		addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+			t.Fatal("membership update should not run after earlier failure")
+			return nil, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites:      []config.InviteSpec{inviteByEmail("alice@example.com", "direct_member")},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Members: []config.TeamMemberSpec{{Username: "alice", Role: "maintainer"}},
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "email:alice@example.com", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamMemberResourceID("platform", "alice"), Executable: true},
+	}}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withTeamService(teamSvc)))
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
+	}
+}
+
+func TestExecuteFailsWhenExecutableTeamCreatesAreNotContiguous(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{
+			{Slug: "app", Name: "App", Privacy: "closed", ParentSlug: "platform"},
+			{Slug: "platform", Name: "Platform", Privacy: "closed"},
+		},
+		Repositories: []config.RepositorySpec{{
+			Owner: "orang-gaboets",
+			Name:  "repo-builder",
+			Template: config.TemplateSpec{
+				Owner: "orang-gaboets",
+				Name:  "repo-template",
+			},
+			Visibility: "private",
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("platform"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "repo-builder"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("app"), Executable: true},
+		},
+	}
+
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("executor should reject invalid action ordering before applying writes")
+			return nil, nil, nil
+		},
+	}
+	teamSvc := &testTeamService{
+		createTeamFunc: func(context.Context, string, gh.NewTeam) (*gh.Team, *gh.Response, error) {
+			t.Fatal("executor should reject invalid action ordering before applying writes")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "executable team create actions must be contiguous") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func testApplyOptions(desired config.OrganizationConfig, actual *state.OrganizationState, plan *gitopsplan.Report, tweaks ...func(*Options)) Options {
+	opts := Options{
+		Desired:             desired,
+		Actual:              actual,
+		Plan:                plan,
+		OrganizationService: &testOrganizationService{},
+		RepositoryService:   &testRepoService{},
+		TeamService:         &testTeamService{},
+		UserService:         &testUserService{},
+	}
+	for _, tweak := range tweaks {
+		tweak(&opts)
+	}
+	return opts
+}
+
+func withOrganizationService(service organizations.Service) func(*Options) {
+	return func(opt *Options) { opt.OrganizationService = service }
+}
+
+func withRepoService(service interface {
+	CreateFromTemplate(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error)
+	Delete(context.Context, string, string) (*gh.Response, error)
+	Edit(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
+	Get(context.Context, string, string) (*gh.Repository, *gh.Response, error)
+	ListByOrg(context.Context, string, *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error)
+	ReplaceAllTopics(context.Context, string, string, []string) ([]string, *gh.Response, error)
+	ListAllTopics(context.Context, string, string) ([]string, *gh.Response, error)
+}) func(*Options) {
+	return func(opt *Options) { opt.RepositoryService = service }
+}
+
+func withTeamService(service interface {
+	CreateTeam(context.Context, string, gh.NewTeam) (*gh.Team, *gh.Response, error)
+	EditTeamBySlug(context.Context, string, string, gh.NewTeam, bool) (*gh.Team, *gh.Response, error)
+	DeleteTeamBySlug(context.Context, string, string) (*gh.Response, error)
+	GetTeamBySlug(context.Context, string, string) (*gh.Team, *gh.Response, error)
+	AddTeamMembershipBySlug(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error)
+	RemoveTeamMembershipBySlug(context.Context, string, string, string) (*gh.Response, error)
+	ListTeamReposBySlug(context.Context, string, string, *gh.ListOptions) ([]*gh.Repository, *gh.Response, error)
+	AddTeamRepoBySlug(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error)
+	RemoveTeamRepoBySlug(context.Context, string, string, string, string) (*gh.Response, error)
+	ListTeamMembersBySlug(context.Context, string, string, *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error)
+	ListTeams(context.Context, string, *gh.ListOptions) ([]*gh.Team, *gh.Response, error)
+}) func(*Options) {
+	return func(opt *Options) { opt.TeamService = service }
+}
+
+func withUserService(service interface {
+	Get(context.Context, string) (*gh.User, *gh.Response, error)
+	GetByID(context.Context, int64) (*gh.User, *gh.Response, error)
+}) func(*Options) {
+	return func(opt *Options) { opt.UserService = service }
+}
+
+func inviteByEmail(email, role string, teamSlugs ...string) config.InviteSpec {
+	return config.InviteSpec{
+		Email:     config.OptionalString{Present: true, Value: email},
+		Role:      role,
+		TeamSlugs: append([]string(nil), teamSlugs...),
+	}
+}
+
+func inviteByUsername(username, role string) config.InviteSpec {
+	return config.InviteSpec{
+		Username: config.OptionalString{Present: true, Value: username},
+		Role:     role,
+	}
+}
+
+func inviteByUserID(userID int64, role string) config.InviteSpec {
+	return config.InviteSpec{
+		UserID: config.OptionalInt64{Present: true, Value: userID},
+		Role:   role,
+	}
+}
+
+type testOrganizationService struct {
+	createOrgInvitationFunc    func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error)
+	getFunc                    func(context.Context, string) (*gh.Organization, *gh.Response, error)
+	listMembersFunc            func(context.Context, string, *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
+	listPendingInvitationsFunc func(context.Context, string, *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error)
+	listOrgInvitationTeamsFunc func(context.Context, string, string, *gh.ListOptions) ([]*gh.Team, *gh.Response, error)
+}
+
+func (m *testOrganizationService) CreateOrgInvitation(ctx context.Context, org string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+	if m.createOrgInvitationFunc != nil {
+		return m.createOrgInvitationFunc(ctx, org, opts)
+	}
+	return &gh.Invitation{}, nil, nil
+}
+func (m *testOrganizationService) Get(ctx context.Context, org string) (*gh.Organization, *gh.Response, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, org)
+	}
+	return &gh.Organization{}, nil, nil
+}
+func (m *testOrganizationService) ListMembers(ctx context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+	if m.listMembersFunc != nil {
+		return m.listMembersFunc(ctx, org, opts)
+	}
+	return nil, nil, nil
+}
+func (m *testOrganizationService) ListPendingOrgInvitations(ctx context.Context, org string, opts *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+	if m.listPendingInvitationsFunc != nil {
+		return m.listPendingInvitationsFunc(ctx, org, opts)
+	}
+	return nil, nil, nil
+}
+func (m *testOrganizationService) ListOrgInvitationTeams(ctx context.Context, org, invitationID string, opts *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+	if m.listOrgInvitationTeamsFunc != nil {
+		return m.listOrgInvitationTeamsFunc(ctx, org, invitationID, opts)
+	}
+	return nil, nil, nil
+}
+
+type testRepoService struct {
+	createFromTemplateFunc func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error)
+	deleteFunc             func(context.Context, string, string) (*gh.Response, error)
+	editFunc               func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
+	getFunc                func(context.Context, string, string) (*gh.Repository, *gh.Response, error)
+	listByOrgFunc          func(context.Context, string, *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error)
+	replaceAllTopicsFunc   func(context.Context, string, string, []string) ([]string, *gh.Response, error)
+	listAllTopicsFunc      func(context.Context, string, string) ([]string, *gh.Response, error)
+}
+
+func (m *testRepoService) CreateFromTemplate(ctx context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+	if m.createFromTemplateFunc != nil {
+		return m.createFromTemplateFunc(ctx, templateOwner, templateRepo, req)
+	}
+	return &gh.Repository{}, nil, nil
+}
+func (m *testRepoService) Delete(ctx context.Context, owner, repo string) (*gh.Response, error) {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, owner, repo)
+	}
+	return &gh.Response{}, nil
+}
+func (m *testRepoService) Edit(ctx context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	if m.editFunc != nil {
+		return m.editFunc(ctx, owner, repo, repository)
+	}
+	return &gh.Repository{}, nil, nil
+}
+func (m *testRepoService) Get(ctx context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, owner, repo)
+	}
+	return &gh.Repository{}, nil, nil
+}
+func (m *testRepoService) ListByOrg(ctx context.Context, org string, opts *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+	if m.listByOrgFunc != nil {
+		return m.listByOrgFunc(ctx, org, opts)
+	}
+	return nil, nil, nil
+}
+func (m *testRepoService) ReplaceAllTopics(ctx context.Context, owner, repo string, topics []string) ([]string, *gh.Response, error) {
+	if m.replaceAllTopicsFunc != nil {
+		return m.replaceAllTopicsFunc(ctx, owner, repo, topics)
+	}
+	return topics, nil, nil
+}
+func (m *testRepoService) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
+	if m.listAllTopicsFunc != nil {
+		return m.listAllTopicsFunc(ctx, owner, repo)
+	}
+	return nil, nil, nil
+}
+
+type testTeamService struct {
+	createTeamFunc              func(context.Context, string, gh.NewTeam) (*gh.Team, *gh.Response, error)
+	editTeamBySlugFunc          func(context.Context, string, string, gh.NewTeam, bool) (*gh.Team, *gh.Response, error)
+	deleteTeamBySlugFunc        func(context.Context, string, string) (*gh.Response, error)
+	getTeamBySlugFunc           func(context.Context, string, string) (*gh.Team, *gh.Response, error)
+	addTeamMembershipBySlugFunc func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error)
+	removeTeamMembershipFunc    func(context.Context, string, string, string) (*gh.Response, error)
+	listTeamReposBySlugFunc     func(context.Context, string, string, *gh.ListOptions) ([]*gh.Repository, *gh.Response, error)
+	addTeamRepoBySlugFunc       func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error)
+	removeTeamRepoBySlugFunc    func(context.Context, string, string, string, string) (*gh.Response, error)
+	listTeamMembersBySlugFunc   func(context.Context, string, string, *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error)
+	listTeamsFunc               func(context.Context, string, *gh.ListOptions) ([]*gh.Team, *gh.Response, error)
+}
+
+func (m *testTeamService) CreateTeam(ctx context.Context, org string, team gh.NewTeam) (*gh.Team, *gh.Response, error) {
+	if m.createTeamFunc != nil {
+		return m.createTeamFunc(ctx, org, team)
+	}
+	return &gh.Team{}, nil, nil
+}
+func (m *testTeamService) EditTeamBySlug(ctx context.Context, org, slug string, team gh.NewTeam, removeParent bool) (*gh.Team, *gh.Response, error) {
+	if m.editTeamBySlugFunc != nil {
+		return m.editTeamBySlugFunc(ctx, org, slug, team, removeParent)
+	}
+	return &gh.Team{}, nil, nil
+}
+func (m *testTeamService) DeleteTeamBySlug(ctx context.Context, org, slug string) (*gh.Response, error) {
+	if m.deleteTeamBySlugFunc != nil {
+		return m.deleteTeamBySlugFunc(ctx, org, slug)
+	}
+	return &gh.Response{}, nil
+}
+func (m *testTeamService) GetTeamBySlug(ctx context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+	if m.getTeamBySlugFunc != nil {
+		return m.getTeamBySlugFunc(ctx, org, slug)
+	}
+	return &gh.Team{}, nil, nil
+}
+func (m *testTeamService) AddTeamMembershipBySlug(ctx context.Context, org, slug, user string, opts *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+	if m.addTeamMembershipBySlugFunc != nil {
+		return m.addTeamMembershipBySlugFunc(ctx, org, slug, user, opts)
+	}
+	return &gh.Membership{}, nil, nil
+}
+func (m *testTeamService) RemoveTeamMembershipBySlug(ctx context.Context, org, slug, user string) (*gh.Response, error) {
+	if m.removeTeamMembershipFunc != nil {
+		return m.removeTeamMembershipFunc(ctx, org, slug, user)
+	}
+	return &gh.Response{}, nil
+}
+func (m *testTeamService) ListTeamReposBySlug(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+	if m.listTeamReposBySlugFunc != nil {
+		return m.listTeamReposBySlugFunc(ctx, org, slug, opts)
+	}
+	return nil, nil, nil
+}
+func (m *testTeamService) AddTeamRepoBySlug(ctx context.Context, org, slug, owner, repo string, opts *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+	if m.addTeamRepoBySlugFunc != nil {
+		return m.addTeamRepoBySlugFunc(ctx, org, slug, owner, repo, opts)
+	}
+	return &gh.Response{}, nil
+}
+func (m *testTeamService) RemoveTeamRepoBySlug(ctx context.Context, org, slug, owner, repo string) (*gh.Response, error) {
+	if m.removeTeamRepoBySlugFunc != nil {
+		return m.removeTeamRepoBySlugFunc(ctx, org, slug, owner, repo)
+	}
+	return &gh.Response{}, nil
+}
+func (m *testTeamService) ListTeamMembersBySlug(ctx context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+	if m.listTeamMembersBySlugFunc != nil {
+		return m.listTeamMembersBySlugFunc(ctx, org, slug, opts)
+	}
+	return nil, nil, nil
+}
+func (m *testTeamService) ListTeams(ctx context.Context, org string, opts *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+	if m.listTeamsFunc != nil {
+		return m.listTeamsFunc(ctx, org, opts)
+	}
+	return nil, nil, nil
+}
+
+type testUserService struct {
+	getFunc     func(context.Context, string) (*gh.User, *gh.Response, error)
+	getByIDFunc func(context.Context, int64) (*gh.User, *gh.Response, error)
+}
+
+func (m *testUserService) Get(ctx context.Context, username string) (*gh.User, *gh.Response, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, username)
+	}
+	return &gh.User{}, nil, nil
+}
+func (m *testUserService) GetByID(ctx context.Context, id int64) (*gh.User, *gh.Response, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, id)
+	}
+	return &gh.User{}, nil, nil
+}

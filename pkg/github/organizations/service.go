@@ -35,15 +35,46 @@ func InviteUser(ctx context.Context, option InviteUserOptions) error {
 		return err
 	}
 
-	ghlogging.Debugf(ctx, "invite user %d to organization %s", option.UserID, option.OrgName)
-	createOrgInvitationOptoins := &gh.CreateOrgInvitationOptions{
-		InviteeID: &option.UserID,
+	createInvitationOptions := CreateInvitationOptions{
+		Service: option.Service,
+		OrgName: option.OrgName,
+		UserID:  &option.UserID,
 	}
-	_, _, err := option.Service.CreateOrgInvitation(ctx, option.OrgName, createOrgInvitationOptoins)
+	err := CreateInvitation(ctx, createInvitationOptions)
 	if err != nil {
-		return github.WrapError(err, fmt.Sprintf("failed to invite user %d to organization %s", option.UserID, option.OrgName))
+		return err
 	}
-	ghlogging.Debugf(ctx, "invited user %d to organization %s", option.UserID, option.OrgName)
+	return nil
+}
+
+// CreateInvitation creates an organization invitation by user ID or email.
+func CreateInvitation(ctx context.Context, option CreateInvitationOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
+	}
+
+	logIdentity := option.Email
+	if option.UserID != nil {
+		logIdentity = strconv.FormatInt(*option.UserID, 10)
+	}
+	ghlogging.Debugf(ctx, "create organization invitation %s for %s", option.OrgName, logIdentity)
+
+	createOrgInvitationOptions := &gh.CreateOrgInvitationOptions{
+		Role:      optionalString(option.Role),
+		TeamID:    append([]int64(nil), option.TeamIDs...),
+		Email:     optionalString(option.Email),
+		InviteeID: option.UserID,
+	}
+
+	_, _, err := option.Service.CreateOrgInvitation(ctx, option.OrgName, createOrgInvitationOptions)
+	if err != nil {
+		if option.UserID != nil {
+			return github.WrapError(err, fmt.Sprintf("failed to invite user %d to organization %s", *option.UserID, option.OrgName))
+		}
+		return github.WrapError(err, fmt.Sprintf("failed to invite email %s to organization %s", option.Email, option.OrgName))
+	}
+
+	ghlogging.Debugf(ctx, "created organization invitation %s for %s", option.OrgName, logIdentity)
 	return nil
 }
 
@@ -140,4 +171,11 @@ func ListInvitationTeams(ctx context.Context, option ListInvitationTeamsOptions)
 
 	ghlogging.Debugf(ctx, "listed %d invitation teams for organization %s invitation %d", len(teams), option.OrgName, option.InvitationID)
 	return teams, nil
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
