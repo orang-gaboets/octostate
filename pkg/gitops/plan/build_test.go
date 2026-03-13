@@ -367,6 +367,51 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 	}
 }
 
+func TestBuildRepositoryTopicsTreatDuplicatesAsSetEquivalent(t *testing.T) {
+	t.Parallel()
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{
+				{
+					Owner:        "orang-gaboets",
+					Name:         "repo-builder",
+					Visibility:   "private",
+					Description:  "CLI",
+					Homepage:     "https://example.com/repo-builder",
+					Topics:       []string{"gitops", "go", "gitops"},
+					AllowForking: false,
+					Archived:     false,
+					IsTemplate:   false,
+				},
+			},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Repositories: []state.Repository{
+				{
+					Owner:        "orang-gaboets",
+					Name:         "repo-builder",
+					Visibility:   "private",
+					Description:  "CLI",
+					Homepage:     "https://example.com/repo-builder",
+					Topics:       []string{"go", "gitops"},
+					AllowForking: false,
+					Archived:     false,
+					IsTemplate:   false,
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if report.Summary.Actions != 0 || len(report.Actions) != 0 {
+		t.Fatalf("expected duplicate desired topics to be treated as set-equivalent, got %#v", report)
+	}
+}
+
 func TestBuildInviteSatisfiedByExistingMember(t *testing.T) {
 	t.Parallel()
 

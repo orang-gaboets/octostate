@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/exitcode"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
@@ -80,7 +81,7 @@ func planConfig(
 
 	validation := validatePlanConfig(cfg)
 	if !validation.Valid {
-		return nil, errors.New("configuration is invalid; run `repo-builder config validate`")
+		return nil, exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `repo-builder config validate`"))
 	}
 
 	organization := strings.TrimSpace(cfg.Organization)

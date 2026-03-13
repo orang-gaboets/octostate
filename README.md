@@ -18,8 +18,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
   - ✅ `repo-builder config validate`
   - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
-  - `repo-builder plan`
-  - `repo-builder apply`
+  - `repo-builder config apply`
   - `repo-builder audit diff`
 
 ## Installation

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	internalauth "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/exitcode"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/repo-builder/pkg/gitops/config"
@@ -222,6 +223,9 @@ func TestPlanConfigCmdInvalidConfigReturnsErrorWithoutStderr(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "configuration is invalid") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("expected no stdout output, got %q", out.String())

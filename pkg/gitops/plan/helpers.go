@@ -54,8 +54,8 @@ func pendingInvitationID(invitation state.PendingInvitation) string {
 }
 
 func equalStringSets(a, b []string) bool {
-	aValues := sortedStrings(a)
-	bValues := sortedStrings(b)
+	aValues := sortedUniqueStrings(a)
+	bValues := sortedUniqueStrings(b)
 	if len(aValues) != len(bValues) {
 		return false
 	}
@@ -65,6 +65,25 @@ func equalStringSets(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func sortedUniqueStrings(values []string) []string {
+	sorted := sortedStrings(values)
+	if len(sorted) == 0 {
+		return sorted
+	}
+
+	unique := make([]string, 0, len(sorted))
+	last := sorted[0]
+	unique = append(unique, last)
+	for i := 1; i < len(sorted); i++ {
+		if compareStrings(sorted[i], last) == 0 {
+			continue
+		}
+		last = sorted[i]
+		unique = append(unique, last)
+	}
+	return unique
 }
 
 func sortedStrings(values []string) []string {
