@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.4.1](https://github.com/orang-gaboets/repo-builder/compare/v0.4.0...v0.4.1) (2026-03-13)
+
+
+### Bug Fixes
+
+* **ci:** serialize all `release-please` workflow runs ([#57](https://github.com/orang-gaboets/repo-builder/issues/57)) ([0b0cd35](https://github.com/orang-gaboets/repo-builder/commit/0b0cd3552cf2a47b13092911b80d6ebd46c5d572))
+
 ## [0.4.0](https://github.com/orang-gaboets/repo-builder/compare/v0.3.0...v0.4.0) (2026-03-13)
 
 
