@@ -40,9 +40,6 @@ func (opt ReplaceAllTopicsOptions) Validate() error {
 	if opt.Service == nil {
 		return github.ErrNilService
 	}
-	if len(opt.Topics) == 0 {
-		return fmt.Errorf("no topics to set for repository %s/%s: %w", opt.Owner, opt.Repo, github.ErrMissingRequiredField)
-	}
 	return nil
 }
 

@@ -171,13 +171,19 @@ func TestReplaceAllTopicsEmpty(t *testing.T) {
 		Topics:  emptyTopics,
 	}
 
-	_, err := ReplaceAllTopics(ctx, option)
-	if !errors.Is(err, github.ErrMissingRequiredField) {
-		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	topics, err := ReplaceAllTopics(ctx, option)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if service.replaceCalled {
-		t.Fatal("expected ReplaceAllTopics not to be called")
+	if !service.replaceCalled {
+		t.Fatal("expected ReplaceAllTopics to be called")
+	}
+	if len(service.repoTopics) != 0 {
+		t.Fatalf("expected empty topics to be passed through, got %v", service.repoTopics)
+	}
+	if len(topics) != 0 {
+		t.Fatalf("expected empty topics result, got %v", topics)
 	}
 }
 
