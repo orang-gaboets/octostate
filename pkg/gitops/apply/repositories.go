@@ -102,6 +102,8 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 		case "is_template":
 			editOptions.IsTemplate = githubpkg.Ptr(repository.IsTemplate)
 			editNeeded = true
+		default:
+			return fmt.Errorf("unsupported repository change field %q for %s: %w", change.Field, action.ResourceID, githubpkg.ErrInvalidFieldValue)
 		}
 	}
 

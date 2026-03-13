@@ -89,6 +89,9 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
+		return nil, err
+	}
 
 	executor, err := newExecutor(ctx, opt)
 	if err != nil {
@@ -211,4 +214,24 @@ func (e *executor) executeAction(action gitopsplan.Action) error {
 
 func isTeamCreateAction(action gitopsplan.Action) bool {
 	return action.Executable && action.ResourceType == gitopsplan.ActionResourceTypeTeam && action.Operation == gitopsplan.ActionOperationCreate
+}
+
+func validateTeamCreateOrdering(actions []gitopsplan.Action) error {
+	seenTeamCreate := false
+	leftTeamCreateBlock := false
+
+	for _, action := range actions {
+		if !isTeamCreateAction(action) {
+			if seenTeamCreate {
+				leftTeamCreateBlock = true
+			}
+			continue
+		}
+		if leftTeamCreateBlock {
+			return fmt.Errorf("executable team create actions must be contiguous in the plan: %w", githubpkg.ErrInvalidFieldValue)
+		}
+		seenTeamCreate = true
+	}
+
+	return nil
 }

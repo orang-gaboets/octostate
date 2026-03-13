@@ -124,6 +124,8 @@ func (e *executor) updateTeam(action gitopsplan.Action) error {
 			} else {
 				options.ParentTeamSlug = githubpkg.Ptr(team.ParentSlug)
 			}
+		default:
+			return fmt.Errorf("unsupported team change field %q for %s: %w", change.Field, action.ResourceID, githubpkg.ErrInvalidFieldValue)
 		}
 	}
 

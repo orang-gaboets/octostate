@@ -256,6 +256,46 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 	}
 }
 
+func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{
+		Owner: "orang-gaboets",
+		Name:  "repo-builder",
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Changes: []gitopsplan.FieldChange{{
+				Field: "template",
+			}},
+		}},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		editFunc: func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("repository edit should not be called for unsupported planner changes")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported repository change field "template"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
 func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
@@ -507,6 +547,45 @@ func TestExecuteTeamUpdateClearsParent(t *testing.T) {
 	}
 }
 
+func TestExecuteTeamUpdateFailsOnUnknownChangeField(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeam,
+		Operation:    gitopsplan.ActionOperationUpdate,
+		ResourceID:   teamResourceID("platform"),
+		Executable:   true,
+		Changes:      []gitopsplan.FieldChange{{Field: "members"}},
+	}}}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		editTeamBySlugFunc: func(context.Context, string, string, gh.NewTeam, bool) (*gh.Team, *gh.Response, error) {
+			t.Fatal("team edit should not be called for unsupported planner changes")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Teams:        []state.Team{{ID: 10, Slug: "platform"}},
+	}, plan, withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported team change field "members"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
 func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 	membershipCalls := 0
 	repoPermissionCalls := 0
@@ -593,6 +672,56 @@ func TestExecuteStopsOnFirstFailure(t *testing.T) {
 	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withTeamService(teamSvc)))
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
+	}
+}
+
+func TestExecuteFailsWhenExecutableTeamCreatesAreNotContiguous(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{
+			{Slug: "app", Name: "App", Privacy: "closed", ParentSlug: "platform"},
+			{Slug: "platform", Name: "Platform", Privacy: "closed"},
+		},
+		Repositories: []config.RepositorySpec{{
+			Owner: "orang-gaboets",
+			Name:  "repo-builder",
+			Template: config.TemplateSpec{
+				Owner: "orang-gaboets",
+				Name:  "repo-template",
+			},
+			Visibility: "private",
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("platform"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "repo-builder"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("app"), Executable: true},
+		},
+	}
+
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("executor should reject invalid action ordering before applying writes")
+			return nil, nil, nil
+		},
+	}
+	teamSvc := &testTeamService{
+		createTeamFunc: func(context.Context, string, gh.NewTeam) (*gh.Team, *gh.Response, error) {
+			t.Fatal("executor should reject invalid action ordering before applying writes")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "executable team create actions must be contiguous") {
+		t.Fatalf("unexpected error message: %v", err)
 	}
 }
 
