@@ -18,7 +18,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
   - ✅ `repo-builder config validate`
   - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
-  - `repo-builder config apply`
+  - ✅ `repo-builder config apply`
   - `repo-builder audit diff`
 
 ## Installation
@@ -301,6 +301,64 @@ Example use:
 
 ```bash
 go run ./cmd/repo-builder config plan --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+#### Apply reconciliation changes
+
+```bash
+repo-builder config apply --config-dir ./config --token <token> --dry-run
+repo-builder config apply --config-dir ./config --token <token>
+```
+
+##### Flags
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Runs semantic validation before contacting GitHub
+- Collects current GitHub actual state using the GitOps collector layer
+- Builds the deterministic reconciliation plan used by `config apply`
+- `--dry-run` prints the executable actions and skipped live drift without performing writes
+- Live apply executes only supported executable `create` / `update` actions
+- Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
+- Repository creation currently requires `template.owner` and `template.name`
+
+Dry-run output fields:
+- `status`
+- `message`
+- `data.organization`
+- `data.plan_summary`
+- `data.executable_actions`
+- `data.skipped_actions`
+
+Live apply output fields:
+- `status`
+- `message`
+- `data.organization`
+- `data.plan_summary`
+- `data.executed_actions`
+- `data.skipped_actions`
+
+Exit codes:
+- `0`: apply or dry-run completed successfully
+- `2`: configuration loaded, but semantic validation failed
+- `1`: load/auth/collection/planning/apply failure
+
+Example dry-run:
+
+```bash
+go run ./cmd/repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
+```
+
+Example live apply:
+
+```bash
+go run ./cmd/repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 ### Audit
@@ -787,7 +845,7 @@ Implemented:
 - `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
 - `repo-builder config plan` — preview deterministic reconciliation actions from desired vs live state
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
+- `repo-builder config apply` — reconcile GitHub to match config/ for supported create/update actions
 
 Planned:
-- `repo-builder config apply` — reconcile GitHub to match config/ (idempotent)
 - `repo-builder audit diff` — detect drift / policy violations (optionally fail CI)
