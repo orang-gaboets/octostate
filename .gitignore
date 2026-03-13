@@ -44,3 +44,7 @@ build/
 # Output directories
 dist/
 out/
+
+# Local tool caches
+.gocache/
+.golangci-lint-cache/

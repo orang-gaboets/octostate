@@ -16,9 +16,9 @@ This repository is the **engine** (CLI + reusable automation building blocks).
 - **v0 (current):** API-primitive commands (direct GitHub operations) ✅
 - **v1 (in progress):** GitOps commands + audit:
   - ✅ `repo-builder config validate`
+  - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
-  - `repo-builder plan`
-  - `repo-builder apply`
+  - `repo-builder config apply`
   - `repo-builder audit diff`
 
 ## Installation
@@ -262,6 +262,45 @@ teams:
     repositories:
       - name: repo-builder
         permission: push
+```
+
+#### Preview reconciliation plan
+
+```bash
+repo-builder config plan --config-dir ./config --token <token>
+```
+
+##### Flags
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Runs semantic validation before contacting GitHub
+- Collects current GitHub actual state using the GitOps collector layer
+- Builds a deterministic, read-only reconciliation plan
+- Prints the JSON plan report to stdout
+- Does not mutate GitHub state
+
+Plan report fields:
+- `organization`
+- `summary`
+- `actions`
+
+Action behavior:
+- Executable actions represent supported changes that a later `config apply`
+  command can carry out, such as `create` and `update`
+- Non-executable actions represent live drift that is detected but not yet
+  automatically reconciled, such as `delete` and `remove`
+- Action ordering is deterministic so CI output and PR comments stay stable
+
+Example use:
+
+```bash
+go run ./cmd/repo-builder config plan --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 ### Audit
@@ -746,9 +785,9 @@ state/
 
 Implemented:
 - `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
+- `repo-builder config plan` — preview deterministic reconciliation actions from desired vs live state
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 
 Planned:
-- `repo-builder plan` — show what changes would be made
-- `repo-builder apply` — reconcile GitHub to match config/ (idempotent)
+- `repo-builder config apply` — reconcile GitHub to match config/ (idempotent)
 - `repo-builder audit diff` — detect drift / policy violations (optionally fail CI)
