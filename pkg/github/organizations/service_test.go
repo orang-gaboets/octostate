@@ -27,6 +27,7 @@ var (
 		ID:   github.Ptr(int64(99999)),
 		Name: github.Ptr("non-existing-user"),
 	}
+	existingInviteEmail = "invitee@example.com"
 )
 
 type mockService struct {
@@ -45,6 +46,9 @@ type mockService struct {
 	orgDescription     string
 	orgReposURL        string
 	invitedUserID      int64
+	invitedEmail       string
+	invitedRole        string
+	invitedTeamIDs     []int64
 	membersRole        string
 	invitationID       string
 	listOptionsPage    int
@@ -61,12 +65,30 @@ func (m *mockService) CreateOrgInvitation(_ context.Context, org string, invitat
 		return nil, nil, github.ErrNotFound
 	}
 
-	if invitationOptions.InviteeID == nil || *invitationOptions.InviteeID != *existingUser.ID {
-		return nil, nil, github.ErrNotFound
+	userIDProvided := invitationOptions.InviteeID != nil
+	emailProvided := invitationOptions.Email != nil
+	switch {
+	case userIDProvided && emailProvided:
+		return nil, nil, github.ErrValidationFailed
+	case userIDProvided:
+		if *invitationOptions.InviteeID != *existingUser.ID {
+			return nil, nil, github.ErrNotFound
+		}
+		m.invitedUserID = *invitationOptions.InviteeID
+	case emailProvided:
+		if *invitationOptions.Email != existingInviteEmail {
+			return nil, nil, github.ErrNotFound
+		}
+		m.invitedEmail = *invitationOptions.Email
+	default:
+		return nil, nil, github.ErrMissingRequiredField
 	}
 
 	m.orgName = org
-	m.invitedUserID = *invitationOptions.InviteeID
+	if invitationOptions.Role != nil {
+		m.invitedRole = *invitationOptions.Role
+	}
+	m.invitedTeamIDs = append([]int64(nil), invitationOptions.TeamID...)
 
 	invitation := &gh.Invitation{
 		ID: github.Ptr(int64(67890)),
@@ -222,6 +244,98 @@ func TestInviteUserSuccess(t *testing.T) {
 	}
 	if mockSvc.invitedUserID != *existingUser.ID {
 		t.Fatalf("expected invited user ID %d, got %d", *existingUser.ID, mockSvc.invitedUserID)
+	}
+}
+
+func TestCreateInvitationByUserIDWithRoleAndTeams(t *testing.T) {
+	mockSvc := &mockService{}
+	userID := *existingUser.ID
+
+	opts := CreateInvitationOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+		UserID:  &userID,
+		Role:    "direct_member",
+		TeamIDs: []int64{11, 22},
+	}
+
+	err := CreateInvitation(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.createOrgInvCalled {
+		t.Fatal("expected CreateOrgInvitation to be called")
+	}
+	if mockSvc.invitedUserID != userID {
+		t.Fatalf("expected invited user ID %d, got %d", userID, mockSvc.invitedUserID)
+	}
+	if mockSvc.invitedEmail != "" {
+		t.Fatalf("expected no invited email, got %q", mockSvc.invitedEmail)
+	}
+	if mockSvc.invitedRole != "direct_member" {
+		t.Fatalf("expected role %q, got %q", "direct_member", mockSvc.invitedRole)
+	}
+	if !equalInt64Slices(mockSvc.invitedTeamIDs, []int64{11, 22}) {
+		t.Fatalf("expected team IDs %v, got %v", []int64{11, 22}, mockSvc.invitedTeamIDs)
+	}
+}
+
+func TestCreateInvitationByEmail(t *testing.T) {
+	mockSvc := &mockService{}
+
+	opts := CreateInvitationOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+		Email:   existingInviteEmail,
+	}
+
+	err := CreateInvitation(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.createOrgInvCalled {
+		t.Fatal("expected CreateOrgInvitation to be called")
+	}
+	if mockSvc.invitedEmail != existingInviteEmail {
+		t.Fatalf("expected invited email %q, got %q", existingInviteEmail, mockSvc.invitedEmail)
+	}
+	if mockSvc.invitedUserID != 0 {
+		t.Fatalf("expected no invited user ID, got %d", mockSvc.invitedUserID)
+	}
+}
+
+func TestCreateInvitationRejectsMissingIdentity(t *testing.T) {
+	mockSvc := &mockService{}
+	opts := CreateInvitationOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+	}
+
+	err := CreateInvitation(context.Background(), opts)
+	if !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+	if mockSvc.createOrgInvCalled {
+		t.Fatal("expected CreateOrgInvitation not to be called")
+	}
+}
+
+func TestCreateInvitationRejectsConflictingIdentity(t *testing.T) {
+	mockSvc := &mockService{}
+	userID := *existingUser.ID
+	opts := CreateInvitationOptions{
+		Service: mockSvc,
+		OrgName: *existingOrg.Name,
+		UserID:  &userID,
+		Email:   existingInviteEmail,
+	}
+
+	err := CreateInvitation(context.Background(), opts)
+	if !errors.Is(err, github.ErrConflictingCredentials) {
+		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
+	}
+	if mockSvc.createOrgInvCalled {
+		t.Fatal("expected CreateOrgInvitation not to be called")
 	}
 }
 
@@ -433,6 +547,18 @@ func TestGetWithEmptyOrgName(t *testing.T) {
 	if org != nil {
 		t.Fatal("expected organization to be nil, but it was not")
 	}
+}
+
+func equalInt64Slices(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGetNilService(t *testing.T) {
