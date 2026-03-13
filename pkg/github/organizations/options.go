@@ -2,6 +2,7 @@ package organizations
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 )
@@ -59,6 +60,9 @@ func (opt *CreateInvitationOptions) Validate() error {
 	if opt.Service == nil {
 		return github.ErrNilService
 	}
+	opt.OrgName = strings.TrimSpace(opt.OrgName)
+	opt.Email = strings.TrimSpace(opt.Email)
+	opt.Role = strings.TrimSpace(opt.Role)
 	if opt.OrgName == "" {
 		return github.ErrMissingRequiredField
 	}

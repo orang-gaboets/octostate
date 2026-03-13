@@ -86,6 +86,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 	var createCalls int
 	var editCalls int
 	var replaceTopicsCalls [][]string
+	var listTemplateTopicsCalls int
 	var createReq *gh.TemplateRepoRequest
 
 	repoSvc := &testRepoService{
@@ -98,6 +99,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			return &gh.Repository{}, nil, nil
 		},
 		listAllTopicsFunc: func(context.Context, string, string) ([]string, *gh.Response, error) {
+			listTemplateTopicsCalls++
 			return []string{"template-topic"}, nil, nil
 		},
 		editFunc: func(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
@@ -139,8 +141,14 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 	if createReq == nil || createReq.Private == nil || !*createReq.Private || createReq.Name == nil || *createReq.Name != desiredRepo.Name {
 		t.Fatalf("unexpected template request: %#v", createReq)
 	}
+	if listTemplateTopicsCalls != 0 {
+		t.Fatalf("expected no template topic listing during apply create, got %d", listTemplateTopicsCalls)
+	}
 	if len(replaceTopicsCalls) == 0 {
 		t.Fatal("expected topic replacement calls")
+	}
+	if len(replaceTopicsCalls) != 1 {
+		t.Fatalf("expected exactly one topic replacement during apply create, got %d", len(replaceTopicsCalls))
 	}
 	if got := replaceTopicsCalls[len(replaceTopicsCalls)-1]; !reflect.DeepEqual(got, desiredRepo.Topics) {
 		t.Fatalf("unexpected final topics replacement: got %#v want %#v", got, desiredRepo.Topics)

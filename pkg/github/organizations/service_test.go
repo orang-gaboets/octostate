@@ -339,6 +339,36 @@ func TestCreateInvitationRejectsConflictingIdentity(t *testing.T) {
 	}
 }
 
+func TestCreateInvitationTrimsWhitespaceFields(t *testing.T) {
+	mockSvc := &mockService{}
+	userID := *existingUser.ID
+
+	opts := CreateInvitationOptions{
+		Service: mockSvc,
+		OrgName: "  " + *existingOrg.Name + "  ",
+		UserID:  &userID,
+		Email:   "   ",
+		Role:    " direct_member ",
+	}
+
+	err := CreateInvitation(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.createOrgInvCalled {
+		t.Fatal("expected CreateOrgInvitation to be called")
+	}
+	if mockSvc.orgName != *existingOrg.Name {
+		t.Fatalf("expected trimmed organization name %q, got %q", *existingOrg.Name, mockSvc.orgName)
+	}
+	if mockSvc.invitedEmail != "" {
+		t.Fatalf("expected trimmed empty email, got %q", mockSvc.invitedEmail)
+	}
+	if mockSvc.invitedRole != "direct_member" {
+		t.Fatalf("expected trimmed role %q, got %q", "direct_member", mockSvc.invitedRole)
+	}
+}
+
 func TestInviteUserNonExistingOrg(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,

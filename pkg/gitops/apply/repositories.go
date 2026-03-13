@@ -43,7 +43,7 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 		TemplateRepo:       repository.Template.Name,
 		Description:        githubpkg.Ptr(repository.Description),
 		Private:            githubpkg.Ptr(private),
-		Topics:             repository.Topics,
+		SkipTopicSync:      true,
 		IncludeAllBranches: repository.Template.IncludeAllBranches,
 	})
 	if err != nil {
