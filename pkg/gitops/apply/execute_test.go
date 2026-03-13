@@ -639,6 +639,82 @@ func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 	}
 }
 
+func TestExecuteTeamMembershipRejectsUnsupportedOperation(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Members: []config.TeamMemberSpec{{Username: "alice", Role: "member"}},
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+		Operation:    gitopsplan.ActionOperationRemove,
+		ResourceID:   teamMemberResourceID("platform", "alice"),
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+			t.Fatal("team membership API should not be called for unsupported operations")
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported team member operation "remove"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "orang-gaboets",
+				Name:       "repo-builder",
+				Permission: "push",
+			}},
+		}},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
+		Operation:    gitopsplan.ActionOperationRemove,
+		ResourceID:   teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"),
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		addTeamRepoBySlugFunc: func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+			t.Fatal("team repository permission API should not be called for unsupported operations")
+			return nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `unsupported team repository permission operation "remove"`) {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
 func TestExecuteStopsOnFirstFailure(t *testing.T) {
 	wantErr := errors.New("invite failed")
 	orgSvc := &testOrganizationService{

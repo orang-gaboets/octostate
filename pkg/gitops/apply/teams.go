@@ -143,6 +143,12 @@ func (e *executor) updateTeam(action gitopsplan.Action) error {
 }
 
 func (e *executor) executeTeamMemberAction(action gitopsplan.Action) error {
+	switch action.Operation {
+	case gitopsplan.ActionOperationCreate, gitopsplan.ActionOperationUpdate:
+	default:
+		return fmt.Errorf("unsupported team member operation %q for %s: %w", action.Operation, action.ResourceID, githubpkg.ErrInvalidFieldValue)
+	}
+
 	member, ok := e.desiredMembers[action.ResourceID]
 	if !ok {
 		return fmt.Errorf("desired team membership %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
@@ -169,6 +175,12 @@ func (e *executor) executeTeamMemberAction(action gitopsplan.Action) error {
 }
 
 func (e *executor) executeTeamRepositoryPermissionAction(action gitopsplan.Action) error {
+	switch action.Operation {
+	case gitopsplan.ActionOperationCreate, gitopsplan.ActionOperationUpdate:
+	default:
+		return fmt.Errorf("unsupported team repository permission operation %q for %s: %w", action.Operation, action.ResourceID, githubpkg.ErrInvalidFieldValue)
+	}
+
 	permission, ok := e.desiredPermissions[action.ResourceID]
 	if !ok {
 		return fmt.Errorf("desired team repository permission %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
