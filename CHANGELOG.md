@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.4.0](https://github.com/orang-gaboets/repo-builder/compare/v0.3.0...v0.4.0) (2026-03-13)
+
+
+### Features
+
+* **config:** add GitOps reconciliation planning command ([#54](https://github.com/orang-gaboets/repo-builder/issues/54)) ([bbdb431](https://github.com/orang-gaboets/repo-builder/commit/bbdb431ea331f305e76bb6a4ddc26b877b64a19d))
+
 ## [0.3.0](https://github.com/orang-gaboets/repo-builder/compare/v0.2.0...v0.3.0) (2026-03-10)
 
 
