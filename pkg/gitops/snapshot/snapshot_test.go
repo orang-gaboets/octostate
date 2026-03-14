@@ -164,8 +164,12 @@ func TestWriteActualWritesSnapshotFile(t *testing.T) {
 		t.Fatalf("decode snapshot JSON: %v; payload=%q", err, string(payload))
 	}
 
-	if !reflect.DeepEqual(got, snapshot) {
-		t.Fatalf("unexpected snapshot contents:\n got %#v\nwant %#v", got, snapshot)
+	want := snapshot
+	if err := normalizeActualSnapshot(&want); err != nil {
+		t.Fatalf("normalize expected snapshot: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected snapshot contents:\n got %#v\nwant %#v", got, want)
 	}
 }
 
@@ -218,6 +222,25 @@ func TestWriteActualRejectsEmptyStateDir(t *testing.T) {
 
 	if _, err := WriteActual("   ", ActualSnapshot{}); err == nil {
 		t.Fatal("expected error for empty state dir")
+	}
+}
+
+func TestWriteActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	_, err := WriteActual(stateDir, ActualSnapshot{
+		Organization: "orang-gaboets",
+		ResolvedInviteUserIDsByUsername: map[string]int64{
+			"octocat":   1,
+			" OCTOCAT ": 2,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if !strings.Contains(err.Error(), "conflicting entries") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -351,6 +374,41 @@ func TestReadActualRejectsMultipleJSONValues(t *testing.T) {
 		t.Fatal("expected error for multiple JSON values")
 	}
 	if !strings.Contains(err.Error(), "multiple JSON values are not allowed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+
+	payload := `{
+  "organization": "orang-gaboets",
+  "resolved_invite_user_ids_by_username": {
+    "octocat": 1,
+    " OCTOCAT ": 2
+  },
+  "members": [],
+  "pending_invitations": [],
+  "repositories": [],
+  "teams": [],
+  "team_members": [],
+  "team_repo_permissions": []
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write snapshot payload: %v", err)
+	}
+
+	_, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	if !strings.Contains(err.Error(), "conflicting entries") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -165,13 +165,6 @@ func resolveInviteUserIDsByUsername(
 	return resolved, nil
 }
 
-func derefString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
 func derefInt64(value *int64) int64 {
 	if value == nil {
 		return 0

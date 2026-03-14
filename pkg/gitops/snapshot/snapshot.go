@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
 
@@ -88,7 +89,9 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 		return nil, fmt.Errorf("decode actual-state snapshot %s: multiple JSON values are not allowed", path)
 	}
 
-	normalizeActualSnapshot(&snapshot)
+	if err := normalizeActualSnapshot(&snapshot); err != nil {
+		return nil, fmt.Errorf("normalize actual-state snapshot %s: %w", path, err)
+	}
 	return &snapshot, nil
 }
 
@@ -98,6 +101,9 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
 		return "", fmt.Errorf("state directory is required")
+	}
+	if err := normalizeActualSnapshot(&snapshot); err != nil {
+		return "", fmt.Errorf("normalize snapshot: %w", err)
 	}
 
 	path := ActualPath(stateDir)
@@ -185,9 +191,9 @@ func cloneOrganizationState(actual *state.OrganizationState) state.OrganizationS
 	}
 }
 
-func normalizeActualSnapshot(snapshot *ActualSnapshot) {
+func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 	if snapshot == nil {
-		return
+		return nil
 	}
 
 	actual := state.OrganizationState{
@@ -201,19 +207,25 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) {
 	}
 	actual.Normalize()
 
+	resolvedInviteUserIDsByUsername, err := normalizeResolvedInviteUserIDsByUsername(snapshot.ResolvedInviteUserIDsByUsername)
+	if err != nil {
+		return err
+	}
+
 	snapshot.Organization = actual.Organization
-	snapshot.ResolvedInviteUserIDsByUsername = normalizeResolvedInviteUserIDsByUsername(snapshot.ResolvedInviteUserIDsByUsername)
+	snapshot.ResolvedInviteUserIDsByUsername = resolvedInviteUserIDsByUsername
 	snapshot.Members = actual.Members
 	snapshot.PendingInvitations = actual.PendingInvitations
 	snapshot.Repositories = actual.Repositories
 	snapshot.Teams = actual.Teams
 	snapshot.TeamMembers = actual.TeamMembers
 	snapshot.TeamRepositoryPermissions = actual.TeamRepositoryPermissions
+	return nil
 }
 
-func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) map[string]int64 {
+func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
 	if len(values) == 0 {
-		return map[string]int64{}
+		return map[string]int64{}, nil
 	}
 
 	normalized := make(map[string]int64, len(values))
@@ -222,10 +234,17 @@ func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) map[strin
 		if username == "" || userID <= 0 {
 			continue
 		}
+		if existingUserID, ok := normalized[username]; ok && existingUserID != userID {
+			return nil, fmt.Errorf(
+				"resolved invite user IDs contain conflicting entries for username %q: %w",
+				username,
+				githubpkg.ErrInvalidFieldValue,
+			)
+		}
 		normalized[username] = userID
 	}
 	if len(normalized) == 0 {
-		return map[string]int64{}
+		return map[string]int64{}, nil
 	}
-	return normalized
+	return normalized, nil
 }

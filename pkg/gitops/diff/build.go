@@ -44,11 +44,15 @@ func Build(opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	resolvedInviteUserIDsByUsername, err := normalizeResolvedInviteUserIDsByUsername(opt.ResolvedInviteUserIDsByUsername)
+	if err != nil {
+		return nil, err
+	}
 
 	builder := builder{
 		desired:                         opt.Desired,
 		actual:                          organizationStateFromSnapshot(opt.Snapshot),
-		resolvedInviteUserIDsByUsername: cloneResolvedInviteUserIDsByUsername(opt.ResolvedInviteUserIDsByUsername),
+		resolvedInviteUserIDsByUsername: resolvedInviteUserIDsByUsername,
 	}
 
 	report := &Report{
@@ -56,7 +60,6 @@ func Build(opt Options) (*Report, error) {
 		SnapshotPulledAt: opt.Snapshot.PulledAt.UTC(),
 	}
 
-	var err error
 	report.Actions = append(report.Actions, builder.planRepositories()...)
 	report.Actions = append(report.Actions, builder.planTeams()...)
 	report.Actions, err = builder.appendInviteActions(report.Actions)
@@ -93,21 +96,28 @@ func organizationStateFromSnapshot(actual *snapshot.ActualSnapshot) state.Organi
 	return organization
 }
 
-func cloneResolvedInviteUserIDsByUsername(values map[string]int64) map[string]int64 {
+func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
 	if len(values) == 0 {
-		return map[string]int64{}
+		return map[string]int64{}, nil
 	}
 
-	cloned := make(map[string]int64, len(values))
+	normalized := make(map[string]int64, len(values))
 	for username, userID := range values {
 		username = strings.ToLower(strings.TrimSpace(username))
 		if username == "" || userID <= 0 {
 			continue
 		}
-		cloned[username] = userID
+		if existingUserID, ok := normalized[username]; ok && existingUserID != userID {
+			return nil, fmt.Errorf(
+				"resolved invite user IDs contain conflicting entries for username %q: %w",
+				username,
+				githubpkg.ErrInvalidFieldValue,
+			)
+		}
+		normalized[username] = userID
 	}
-	if len(cloned) == 0 {
-		return map[string]int64{}
+	if len(normalized) == 0 {
+		return map[string]int64{}, nil
 	}
-	return cloned
+	return normalized, nil
 }

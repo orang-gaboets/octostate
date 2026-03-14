@@ -64,6 +64,28 @@ func TestOptionsValidate(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+	})
+
+	_, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+		},
+		Snapshot: &snap,
+		ResolvedInviteUserIDsByUsername: map[string]int64{
+			"octocat": 1,
+			"OCTOCAT": 2,
+		},
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+}
+
 func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	t.Parallel()
 

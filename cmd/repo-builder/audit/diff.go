@@ -43,12 +43,7 @@ func DiffCmd() *cobra.Command {
 			repo-builder audit diff --config-dir ./config --state-dir ./state
 			repo-builder audit diff --config-dir /path/to/control-repo/config --state-dir /path/to/control-repo/state --fail-on-drift`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			report, driftDetected, err := auditDiff(
-				cmd.Context(),
-				configDir,
-				stateDir,
-				failOnDrift,
-			)
+			report, driftDetected, err := auditDiff(cmd.Context(), configDir, stateDir)
 			if err != nil {
 				return err
 			}
@@ -74,7 +69,6 @@ func DiffCmd() *cobra.Command {
 func auditDiff(
 	_ context.Context,
 	configDir, stateDir string,
-	_ bool,
 ) (*gitopsdiff.Report, bool, error) {
 	cfg, err := loadAuditDiffConfig(strings.TrimSpace(configDir))
 	if err != nil {
