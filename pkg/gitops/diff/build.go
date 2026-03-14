@@ -13,9 +13,9 @@ import (
 // Options defines the desired and snapshot inputs required to build one
 // offline GitOps drift report.
 type Options struct {
-	Desired                      config.OrganizationConfig
-	Snapshot                     *snapshot.ActualSnapshot
-	ResolvedInviteLoginsByUserID map[int64]string
+	Desired                         config.OrganizationConfig
+	Snapshot                        *snapshot.ActualSnapshot
+	ResolvedInviteUserIDsByUsername map[string]int64
 }
 
 // Validate checks if the drift builder inputs are usable.
@@ -46,9 +46,9 @@ func Build(opt Options) (*Report, error) {
 	}
 
 	builder := builder{
-		desired:                      opt.Desired,
-		actual:                       organizationStateFromSnapshot(opt.Snapshot),
-		resolvedInviteLoginsByUserID: cloneResolvedInviteLoginsByUserID(opt.ResolvedInviteLoginsByUserID),
+		desired:                         opt.Desired,
+		actual:                          organizationStateFromSnapshot(opt.Snapshot),
+		resolvedInviteUserIDsByUsername: cloneResolvedInviteUserIDsByUsername(opt.ResolvedInviteUserIDsByUsername),
 	}
 
 	report := &Report{
@@ -70,9 +70,9 @@ func Build(opt Options) (*Report, error) {
 }
 
 type builder struct {
-	desired                      config.OrganizationConfig
-	actual                       state.OrganizationState
-	resolvedInviteLoginsByUserID map[int64]string
+	desired                         config.OrganizationConfig
+	actual                          state.OrganizationState
+	resolvedInviteUserIDsByUsername map[string]int64
 }
 
 func organizationStateFromSnapshot(actual *snapshot.ActualSnapshot) state.OrganizationState {
@@ -93,14 +93,21 @@ func organizationStateFromSnapshot(actual *snapshot.ActualSnapshot) state.Organi
 	return organization
 }
 
-func cloneResolvedInviteLoginsByUserID(values map[int64]string) map[int64]string {
+func cloneResolvedInviteUserIDsByUsername(values map[string]int64) map[string]int64 {
 	if len(values) == 0 {
-		return map[int64]string{}
+		return map[string]int64{}
 	}
 
-	cloned := make(map[int64]string, len(values))
-	for userID, login := range values {
-		cloned[userID] = strings.TrimSpace(login)
+	cloned := make(map[string]int64, len(values))
+	for username, userID := range values {
+		username = strings.ToLower(strings.TrimSpace(username))
+		if username == "" || userID <= 0 {
+			continue
+		}
+		cloned[username] = userID
+	}
+	if len(cloned) == 0 {
+		return map[string]int64{}
 	}
 	return cloned
 }

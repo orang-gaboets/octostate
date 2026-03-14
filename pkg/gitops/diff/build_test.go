@@ -296,7 +296,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 	}
 }
 
-func TestBuildInviteUserIDSatisfiedByPendingInviteUsesResolvedLoginMap(t *testing.T) {
+func TestBuildInviteUserIDSatisfiedByPendingInviteUsesResolvedUserIDMap(t *testing.T) {
 	t.Parallel()
 
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 10, 30, 0, 0, time.UTC), &state.OrganizationState{
@@ -313,8 +313,8 @@ func TestBuildInviteUserIDSatisfiedByPendingInviteUsesResolvedLoginMap(t *testin
 				{UserID: presentInt64(99)},
 			},
 		},
-		Snapshot:                     &snap,
-		ResolvedInviteLoginsByUserID: map[int64]string{99: "octocat"},
+		Snapshot:                        &snap,
+		ResolvedInviteUserIDsByUsername: map[string]int64{"octocat": 99},
 	})
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
@@ -353,7 +353,7 @@ func TestBuildInvitesSatisfiedByExistingMembers(t *testing.T) {
 	}
 }
 
-func TestBuildInviteUserIDPendingInviteWithoutResolvedLoginErrors(t *testing.T) {
+func TestBuildInviteUserIDPendingInviteWithoutResolvedUserIDMappingCreatesDrift(t *testing.T) {
 	t.Parallel()
 
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 10, 45, 0, 0, time.UTC), &state.OrganizationState{
@@ -363,7 +363,7 @@ func TestBuildInviteUserIDPendingInviteWithoutResolvedLoginErrors(t *testing.T) 
 		},
 	})
 
-	_, err := Build(Options{
+	report, err := Build(Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Invites: []config.InviteSpec{
@@ -372,8 +372,43 @@ func TestBuildInviteUserIDPendingInviteWithoutResolvedLoginErrors(t *testing.T) 
 		},
 		Snapshot: &snap,
 	})
-	if !errors.Is(err, githubpkg.ErrMissingRequiredField) {
-		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrMissingRequiredField)
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	want := &Report{
+		Organization:     "orang-gaboets",
+		SnapshotPulledAt: snap.PulledAt.UTC(),
+		Summary: Summary{
+			HasChanges:           true,
+			Actions:              2,
+			ExecutableActions:    1,
+			NonExecutableActions: 1,
+			CreateActions:        1,
+			UpdateActions:        0,
+			DeleteActions:        0,
+			RemoveActions:        1,
+		},
+		Actions: []Action{
+			{
+				ResourceType: ActionResourceTypeInvite,
+				Operation:    ActionOperationCreate,
+				ResourceID:   "user_id:99",
+				Executable:   true,
+				Message:      "create organization invite user_id:99",
+				Changes:      []FieldChange{},
+			},
+			{
+				ResourceType: ActionResourceTypeInvite,
+				Operation:    ActionOperationRemove,
+				ResourceID:   "username:octocat",
+				Executable:   false,
+				Message:      "pending invitation username:octocat exists in snapshot state but is not declared in desired config",
+				Changes:      []FieldChange{},
+			},
+		},
+	}
+	if !reflect.DeepEqual(report, want) {
+		t.Fatalf("unexpected report:\n got %#v\nwant %#v", report, want)
 	}
 }
 

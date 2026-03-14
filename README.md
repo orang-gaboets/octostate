@@ -388,7 +388,7 @@ Behavior:
 Snapshot fields:
 - `pulled_at`
 - `organization`
-- `resolved_invite_logins_by_user_id`
+- `resolved_invite_user_ids_by_username`
 - `members`
 - `pending_invitations`
 - `repositories`

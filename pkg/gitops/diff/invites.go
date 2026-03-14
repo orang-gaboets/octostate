@@ -193,24 +193,19 @@ func (b builder) pendingInvitationMatchesIdentity(invitation state.PendingInvita
 		if invitation.Username == "" {
 			return false, nil
 		}
-		login, err := b.lookupLoginByUserID(identity.userID)
-		if err != nil {
-			return false, err
-		}
-		return strings.EqualFold(invitation.Username, login), nil
+		return b.pendingInvitationMatchesUserID(invitation.Username, identity.userID), nil
 	default:
 		return false, nil
 	}
 }
 
-func (b builder) lookupLoginByUserID(userID int64) (string, error) {
-	login, ok := b.resolvedInviteLoginsByUserID[userID]
-	if !ok || strings.TrimSpace(login) == "" {
-		return "", fmt.Errorf(
-			"resolved login for invite user_id %d is required for offline diff: %w",
-			userID,
-			githubpkg.ErrMissingRequiredField,
-		)
+func (b builder) pendingInvitationMatchesUserID(username string, userID int64) bool {
+	if userID <= 0 {
+		return false
 	}
-	return strings.TrimSpace(login), nil
+	resolvedUserID, ok := b.resolvedInviteUserIDsByUsername[strings.ToLower(strings.TrimSpace(username))]
+	if !ok || resolvedUserID <= 0 {
+		return false
+	}
+	return resolvedUserID == userID
 }

@@ -97,9 +97,9 @@ func auditDiff(
 	}
 
 	report, err := buildAuditDiffReport(gitopsdiff.Options{
-		Desired:                      cfg,
-		Snapshot:                     actualSnapshot,
-		ResolvedInviteLoginsByUserID: actualSnapshot.ResolvedInviteLoginsByUserID,
+		Desired:                         cfg,
+		Snapshot:                        actualSnapshot,
+		ResolvedInviteUserIDsByUsername: actualSnapshot.ResolvedInviteUserIDsByUsername,
 	})
 	if err != nil {
 		return nil, false, err

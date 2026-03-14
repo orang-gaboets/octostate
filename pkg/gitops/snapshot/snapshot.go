@@ -17,15 +17,15 @@ const actualSnapshotRelativePath = "actual/snapshot.json"
 
 // ActualSnapshot is the persisted actual-state snapshot written by audit pull.
 type ActualSnapshot struct {
-	PulledAt                     time.Time                        `json:"pulled_at"`
-	Organization                 string                           `json:"organization"`
-	ResolvedInviteLoginsByUserID map[int64]string                 `json:"resolved_invite_logins_by_user_id"`
-	Members                      []state.OrganizationMember       `json:"members"`
-	PendingInvitations           []state.PendingInvitation        `json:"pending_invitations"`
-	Repositories                 []state.Repository               `json:"repositories"`
-	Teams                        []state.Team                     `json:"teams"`
-	TeamMembers                  []state.TeamMember               `json:"team_members"`
-	TeamRepositoryPermissions    []state.TeamRepositoryPermission `json:"team_repo_permissions"`
+	PulledAt                        time.Time                        `json:"pulled_at"`
+	Organization                    string                           `json:"organization"`
+	ResolvedInviteUserIDsByUsername map[string]int64                 `json:"resolved_invite_user_ids_by_username"`
+	Members                         []state.OrganizationMember       `json:"members"`
+	PendingInvitations              []state.PendingInvitation        `json:"pending_invitations"`
+	Repositories                    []state.Repository               `json:"repositories"`
+	Teams                           []state.Team                     `json:"teams"`
+	TeamMembers                     []state.TeamMember               `json:"team_members"`
+	TeamRepositoryPermissions       []state.TeamRepositoryPermission `json:"team_repo_permissions"`
 }
 
 // NewActualSnapshot builds a snapshot value from a normalized actual-state model.
@@ -38,15 +38,15 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 	clone.Normalize()
 
 	return ActualSnapshot{
-		PulledAt:                     pulledAt.UTC(),
-		Organization:                 clone.Organization,
-		ResolvedInviteLoginsByUserID: map[int64]string{},
-		Members:                      clone.Members,
-		PendingInvitations:           clone.PendingInvitations,
-		Repositories:                 clone.Repositories,
-		Teams:                        clone.Teams,
-		TeamMembers:                  clone.TeamMembers,
-		TeamRepositoryPermissions:    clone.TeamRepositoryPermissions,
+		PulledAt:                        pulledAt.UTC(),
+		Organization:                    clone.Organization,
+		ResolvedInviteUserIDsByUsername: map[string]int64{},
+		Members:                         clone.Members,
+		PendingInvitations:              clone.PendingInvitations,
+		Repositories:                    clone.Repositories,
+		Teams:                           clone.Teams,
+		TeamMembers:                     clone.TeamMembers,
+		TeamRepositoryPermissions:       clone.TeamRepositoryPermissions,
 	}
 }
 
@@ -202,7 +202,7 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) {
 	actual.Normalize()
 
 	snapshot.Organization = actual.Organization
-	snapshot.ResolvedInviteLoginsByUserID = normalizeResolvedInviteLoginsByUserID(snapshot.ResolvedInviteLoginsByUserID)
+	snapshot.ResolvedInviteUserIDsByUsername = normalizeResolvedInviteUserIDsByUsername(snapshot.ResolvedInviteUserIDsByUsername)
 	snapshot.Members = actual.Members
 	snapshot.PendingInvitations = actual.PendingInvitations
 	snapshot.Repositories = actual.Repositories
@@ -211,21 +211,21 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) {
 	snapshot.TeamRepositoryPermissions = actual.TeamRepositoryPermissions
 }
 
-func normalizeResolvedInviteLoginsByUserID(values map[int64]string) map[int64]string {
+func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) map[string]int64 {
 	if len(values) == 0 {
-		return map[int64]string{}
+		return map[string]int64{}
 	}
 
-	normalized := make(map[int64]string, len(values))
-	for userID, login := range values {
-		login = strings.TrimSpace(login)
-		if userID <= 0 || login == "" {
+	normalized := make(map[string]int64, len(values))
+	for username, userID := range values {
+		username = strings.ToLower(strings.TrimSpace(username))
+		if username == "" || userID <= 0 {
 			continue
 		}
-		normalized[userID] = login
+		normalized[username] = userID
 	}
 	if len(normalized) == 0 {
-		return map[int64]string{}
+		return map[string]int64{}
 	}
 	return normalized
 }

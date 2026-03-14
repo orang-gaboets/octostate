@@ -21,9 +21,9 @@ func TestDiffCmdSuccessNoDrift(t *testing.T) {
 
 	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
 	snapshot := &gitopssnapshot.ActualSnapshot{
-		Organization:                 "orang-gaboets",
-		PulledAt:                     time.Date(2026, 3, 14, 8, 30, 0, 0, time.UTC),
-		ResolvedInviteLoginsByUserID: map[int64]string{99: "octocat"},
+		Organization:                    "orang-gaboets",
+		PulledAt:                        time.Date(2026, 3, 14, 8, 30, 0, 0, time.UTC),
+		ResolvedInviteUserIDsByUsername: map[string]int64{"octocat": 99},
 	}
 	want := &gitopsdiff.Report{
 		Organization:     "orang-gaboets",
@@ -56,8 +56,8 @@ func TestDiffCmdSuccessNoDrift(t *testing.T) {
 		if opt.Snapshot != snapshot {
 			t.Fatal("unexpected snapshot pointer")
 		}
-		if !reflect.DeepEqual(opt.ResolvedInviteLoginsByUserID, snapshot.ResolvedInviteLoginsByUserID) {
-			t.Fatalf("unexpected resolved invite logins: got %#v want %#v", opt.ResolvedInviteLoginsByUserID, snapshot.ResolvedInviteLoginsByUserID)
+		if !reflect.DeepEqual(opt.ResolvedInviteUserIDsByUsername, snapshot.ResolvedInviteUserIDsByUsername) {
+			t.Fatalf("unexpected resolved invite user IDs: got %#v want %#v", opt.ResolvedInviteUserIDsByUsername, snapshot.ResolvedInviteUserIDsByUsername)
 		}
 		return want, nil
 	}

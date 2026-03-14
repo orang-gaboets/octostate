@@ -19,13 +19,13 @@ import (
 )
 
 var (
-	loadAuditConfig          = gitopsconfig.LoadDir
-	collectAuditState        = collector.CollectOrganization
-	newAuditClient           = auth.NewClient
-	newAuditSnapshot         = gitopssnapshot.NewActualSnapshot
-	writeActualSnapshot      = gitopssnapshot.WriteActual
-	nowAuditSnapshotTime     = time.Now
-	resolveAuditInviteLogins = resolveInviteLoginsByUserID
+	loadAuditConfig           = gitopsconfig.LoadDir
+	collectAuditState         = collector.CollectOrganization
+	newAuditClient            = auth.NewClient
+	newAuditSnapshot          = gitopssnapshot.NewActualSnapshot
+	writeActualSnapshot       = gitopssnapshot.WriteActual
+	nowAuditSnapshotTime      = time.Now
+	resolveAuditInviteUserIDs = resolveInviteUserIDsByUsername
 )
 
 // PullCmd creates the audit pull command.
@@ -107,7 +107,7 @@ func pullActualState(
 	}
 
 	snapshot := newAuditSnapshot(nowAuditSnapshotTime(), actual)
-	snapshot.ResolvedInviteLoginsByUserID, err = resolveAuditInviteLogins(ctx, client.Users(), cfg)
+	snapshot.ResolvedInviteUserIDsByUsername, err = resolveAuditInviteUserIDs(ctx, client.Users(), snapshot.PendingInvitations)
 	if err != nil {
 		return auditPullResult{}, err
 	}
@@ -132,37 +132,34 @@ func collectActualState(ctx context.Context, client auth.Client, organization st
 	})
 }
 
-func resolveInviteLoginsByUserID(
+func resolveInviteUserIDsByUsername(
 	ctx context.Context,
 	service ghusers.Service,
-	cfg gitopsconfig.OrganizationConfig,
-) (map[int64]string, error) {
-	resolved := make(map[int64]string)
+	invitations []state.PendingInvitation,
+) (map[string]int64, error) {
+	resolved := make(map[string]int64)
 
-	for _, invite := range cfg.Invites {
-		if !invite.UserID.Present || invite.UserID.Null {
+	for _, invitation := range invitations {
+		username := strings.ToLower(strings.TrimSpace(invitation.Username))
+		if username == "" {
 			continue
 		}
-		userID := invite.UserID.Value
-		if userID <= 0 {
-			continue
-		}
-		if _, ok := resolved[userID]; ok {
+		if _, ok := resolved[username]; ok {
 			continue
 		}
 
-		user, err := ghusers.GetUserByID(ctx, ghusers.GetUserByIDOptions{
-			Service: service,
-			ID:      userID,
+		user, err := ghusers.GetUserByUsername(ctx, ghusers.GetUserByUsernameOptions{
+			Service:  service,
+			Username: username,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("resolve snapshot invite user_id %d: %w", userID, err)
+			return nil, fmt.Errorf("resolve snapshot invite username %q: %w", username, err)
 		}
-		login := strings.TrimSpace(derefString(user.Login))
-		if login == "" {
-			return nil, fmt.Errorf("resolve snapshot invite user_id %d: missing login: %w", userID, github.ErrInvalidFieldValue)
+		userID := derefInt64(user.ID)
+		if userID <= 0 {
+			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user id: %w", username, github.ErrInvalidFieldValue)
 		}
-		resolved[userID] = login
+		resolved[username] = userID
 	}
 
 	return resolved, nil
@@ -171,6 +168,13 @@ func resolveInviteLoginsByUserID(
 func derefString(value *string) string {
 	if value == nil {
 		return ""
+	}
+	return *value
+}
+
+func derefInt64(value *int64) int64 {
+	if value == nil {
+		return 0
 	}
 	return *value
 }

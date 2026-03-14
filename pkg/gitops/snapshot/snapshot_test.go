@@ -109,6 +109,9 @@ func TestNewActualSnapshotNilActualInitializesSlices(t *testing.T) {
 	if snapshot.Organization != "" {
 		t.Fatalf("expected empty organization, got %q", snapshot.Organization)
 	}
+	if snapshot.ResolvedInviteUserIDsByUsername == nil {
+		t.Fatal("expected resolved invite user IDs map to be initialized")
+	}
 	if snapshot.Members == nil {
 		t.Fatal("expected members to be initialized")
 	}
@@ -364,6 +367,10 @@ func TestReadActualNormalizesLoadedSnapshot(t *testing.T) {
 	payload := `{
   "pulled_at": "2026-03-10T07:08:09Z",
   "organization": "orang-gaboets",
+  "resolved_invite_user_ids_by_username": {
+    " ZOE ": 22,
+    "octocat": 0
+  },
   "pending_invitations": [
     {"username":"zoe","team_slugs":["writers","admins"]},
     {"username":"octocat","team_slugs":null}
@@ -400,5 +407,8 @@ func TestReadActualNormalizesLoadedSnapshot(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Teams, []state.Team{{ID: 1, Slug: "admins"}, {ID: 2, Slug: "platform"}}) {
 		t.Fatalf("expected sorted teams, got %#v", got.Teams)
+	}
+	if !reflect.DeepEqual(got.ResolvedInviteUserIDsByUsername, map[string]int64{"zoe": 22}) {
+		t.Fatalf("expected normalized resolved invite user IDs, got %#v", got.ResolvedInviteUserIDsByUsername)
 	}
 }

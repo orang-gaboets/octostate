@@ -21,10 +21,14 @@ import (
 )
 
 type userServiceStub struct {
+	getFunc     func(context.Context, string) (*gh.User, *gh.Response, error)
 	getByIDFunc func(context.Context, int64) (*gh.User, *gh.Response, error)
 }
 
-func (s userServiceStub) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
+func (s userServiceStub) Get(ctx context.Context, username string) (*gh.User, *gh.Response, error) {
+	if s.getFunc != nil {
+		return s.getFunc(ctx, username)
+	}
 	return &gh.User{}, &gh.Response{}, nil
 }
 
@@ -130,7 +134,7 @@ func TestPullCmdSuccess(t *testing.T) {
 	}
 }
 
-func TestPullCmdPersistsResolvedInviteLoginsForUserIDInvites(t *testing.T) {
+func TestPullCmdPersistsResolvedInviteUserIDsForPendingInvitations(t *testing.T) {
 	fixedTime := time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC)
 
 	restore := replaceAuditHooks(t)
@@ -141,11 +145,11 @@ func TestPullCmdPersistsResolvedInviteLoginsForUserIDInvites(t *testing.T) {
 			ReposService:         auth.MockRepoService{},
 			TeamsService:         auth.MockTeamsService{},
 			UsersService: userServiceStub{
-				getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
-					if id != 99 {
-						t.Fatalf("unexpected user id lookup: %d", id)
+				getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+					if username != "octocat" {
+						t.Fatalf("unexpected username lookup: %q", username)
 					}
-					return &gh.User{Login: github.Ptr("octocat")}, &gh.Response{}, nil
+					return &gh.User{Login: github.Ptr("octocat"), ID: github.Ptr(int64(99))}, &gh.Response{}, nil
 				},
 			},
 		}, nil
@@ -153,17 +157,19 @@ func TestPullCmdPersistsResolvedInviteLoginsForUserIDInvites(t *testing.T) {
 	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
 		return gitopsconfig.OrganizationConfig{
 			Organization: "orang-gaboets",
-			Invites: []gitopsconfig.InviteSpec{
-				{UserID: gitopsconfig.OptionalInt64{Present: true, Value: 99}},
-			},
 		}, nil
 	}
 	collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
-		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
+		return &state.OrganizationState{
+			Organization: "orang-gaboets",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "octocat"},
+			},
+		}, nil
 	}
 	writeActualSnapshot = func(_ string, snapshot gitopssnapshot.ActualSnapshot) (string, error) {
-		if !reflect.DeepEqual(snapshot.ResolvedInviteLoginsByUserID, map[int64]string{99: "octocat"}) {
-			t.Fatalf("unexpected resolved invite logins: %#v", snapshot.ResolvedInviteLoginsByUserID)
+		if !reflect.DeepEqual(snapshot.ResolvedInviteUserIDsByUsername, map[string]int64{"octocat": 99}) {
+			t.Fatalf("unexpected resolved invite user IDs: %#v", snapshot.ResolvedInviteUserIDsByUsername)
 		}
 		return "/tmp/state/actual/snapshot.json", nil
 	}
@@ -375,7 +381,7 @@ func replaceAuditHooks(t *testing.T) func() {
 	originalNewAuditSnapshot := newAuditSnapshot
 	originalWriteActualSnapshot := writeActualSnapshot
 	originalNowAuditSnapshotTime := nowAuditSnapshotTime
-	originalResolveAuditInviteLogins := resolveAuditInviteLogins
+	originalResolveAuditInviteUserIDs := resolveAuditInviteUserIDs
 
 	return func() {
 		loadAuditConfig = originalLoadAuditConfig
@@ -384,7 +390,7 @@ func replaceAuditHooks(t *testing.T) func() {
 		newAuditSnapshot = originalNewAuditSnapshot
 		writeActualSnapshot = originalWriteActualSnapshot
 		nowAuditSnapshotTime = originalNowAuditSnapshotTime
-		resolveAuditInviteLogins = originalResolveAuditInviteLogins
+		resolveAuditInviteUserIDs = originalResolveAuditInviteUserIDs
 	}
 }
 
