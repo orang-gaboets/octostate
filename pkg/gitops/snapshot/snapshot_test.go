@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -214,5 +215,190 @@ func TestWriteActualRejectsEmptyStateDir(t *testing.T) {
 
 	if _, err := WriteActual("   ", ActualSnapshot{}); err == nil {
 		t.Fatal("expected error for empty state dir")
+	}
+}
+
+func TestReadActualSuccess(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	written := NewActualSnapshot(time.Date(2026, 3, 10, 7, 8, 9, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		PendingInvitations: []state.PendingInvitation{
+			{Username: "zoe", TeamSlugs: []string{"writers", "admins"}},
+		},
+		Repositories: []state.Repository{
+			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{"zeta", "alpha"}},
+		},
+	})
+
+	if _, err := WriteActual(stateDir, written); err != nil {
+		t.Fatalf("write snapshot: %v", err)
+	}
+
+	got, err := ReadActual(stateDir)
+	if err != nil {
+		t.Fatalf("ReadActual returned error: %v", err)
+	}
+
+	if got == nil {
+		t.Fatal("expected snapshot, got nil")
+		return
+	}
+	if !reflect.DeepEqual(*got, written) {
+		t.Fatalf("unexpected snapshot contents:\n got %#v\nwant %#v", *got, written)
+	}
+}
+
+func TestReadActualEmptyStateDir(t *testing.T) {
+	t.Parallel()
+
+	_, err := ReadActual("   ")
+	if err == nil {
+		t.Fatal("expected error for empty state dir")
+	}
+	if !strings.Contains(err.Error(), "state directory must not be empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualMissingSnapshot(t *testing.T) {
+	t.Parallel()
+
+	_, err := ReadActual(t.TempDir())
+	if err == nil {
+		t.Fatal("expected error for missing snapshot")
+	}
+	if !strings.Contains(err.Error(), "snapshot.json") {
+		t.Fatalf("expected snapshot path in error, got %v", err)
+	}
+}
+
+func TestReadActualMalformedJSON(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`{"organization":`), 0o600); err != nil {
+		t.Fatalf("write malformed snapshot: %v", err)
+	}
+
+	_, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("expected decode error")
+	}
+	if !strings.Contains(err.Error(), "decode actual-state snapshot") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualRejectsUnknownFields(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+
+	payload := `{
+  "pulled_at": "2026-03-10T07:08:09Z",
+  "organization": "orang-gaboets",
+  "members": [],
+  "pending_invitations": [],
+  "repositories": [],
+  "teams": [],
+  "team_members": [],
+  "team_repo_permissions": [],
+  "unexpected": true
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write snapshot payload: %v", err)
+	}
+
+	_, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("expected decode error for unknown fields")
+	}
+	if !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown field error, got %v", err)
+	}
+}
+
+func TestReadActualRejectsMultipleJSONValues(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+
+	payload := `{"organization":"orang-gaboets","members":[],"pending_invitations":[],"repositories":[],"teams":[],"team_members":[],"team_repo_permissions":[]}
+{"organization":"orang-gaboets"}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write snapshot payload: %v", err)
+	}
+
+	_, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("expected error for multiple JSON values")
+	}
+	if !strings.Contains(err.Error(), "multiple JSON values are not allowed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualNormalizesLoadedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+
+	payload := `{
+  "pulled_at": "2026-03-10T07:08:09Z",
+  "organization": "orang-gaboets",
+  "pending_invitations": [
+    {"username":"zoe","team_slugs":["writers","admins"]},
+    {"username":"octocat","team_slugs":null}
+  ],
+  "repositories": [
+    {"owner":"orang-gaboets","name":"zeta","topics":["gitops","Go"]},
+    {"owner":"orang-gaboets","name":"alpha","topics":null}
+  ],
+  "teams": [
+    {"id":2,"slug":"platform"},
+    {"id":1,"slug":"admins"}
+  ]
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write snapshot payload: %v", err)
+	}
+
+	got, err := ReadActual(stateDir)
+	if err != nil {
+		t.Fatalf("ReadActual returned error: %v", err)
+	}
+
+	if got.PendingInvitations[0].Username != "octocat" || got.PendingInvitations[0].TeamSlugs == nil || len(got.PendingInvitations[0].TeamSlugs) != 0 {
+		t.Fatalf("expected normalized nil team slugs, got %#v", got.PendingInvitations)
+	}
+	if got.PendingInvitations[1].Username != "zoe" || !reflect.DeepEqual(got.PendingInvitations[1].TeamSlugs, []string{"admins", "writers"}) {
+		t.Fatalf("expected sorted invitation team slugs, got %#v", got.PendingInvitations)
+	}
+	if got.Repositories[0].Name != "alpha" || got.Repositories[0].Topics == nil || len(got.Repositories[0].Topics) != 0 {
+		t.Fatalf("expected normalized nil topics, got %#v", got.Repositories)
+	}
+	if got.Repositories[1].Name != "zeta" || !reflect.DeepEqual(got.Repositories[1].Topics, []string{"gitops", "Go"}) {
+		t.Fatalf("expected sorted repository topics, got %#v", got.Repositories)
+	}
+	if !reflect.DeepEqual(got.Teams, []state.Team{{ID: 1, Slug: "admins"}, {ID: 2, Slug: "platform"}}) {
+		t.Fatalf("expected sorted teams, got %#v", got.Teams)
 	}
 }
