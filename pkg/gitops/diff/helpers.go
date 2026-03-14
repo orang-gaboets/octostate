@@ -1,7 +1,8 @@
-package plan
+package diff
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/resourceid"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
@@ -41,6 +42,38 @@ func teamRepositoryPermissionKey(teamSlug, owner, name string) string {
 
 func pendingInvitationID(invitation state.PendingInvitation) string {
 	return resourceid.PendingInvitationID(invitation)
+}
+
+func clonePendingInvitations(invitations []state.PendingInvitation) []state.PendingInvitation {
+	result := make([]state.PendingInvitation, 0, len(invitations))
+	for _, invitation := range invitations {
+		result = append(result, state.PendingInvitation{
+			ID:        invitation.ID,
+			Username:  invitation.Username,
+			Email:     invitation.Email,
+			Role:      invitation.Role,
+			TeamSlugs: append([]string{}, invitation.TeamSlugs...),
+		})
+	}
+	return result
+}
+
+func cloneRepositories(repositories []state.Repository) []state.Repository {
+	result := make([]state.Repository, 0, len(repositories))
+	for _, repository := range repositories {
+		result = append(result, state.Repository{
+			Owner:        repository.Owner,
+			Name:         repository.Name,
+			Visibility:   repository.Visibility,
+			Description:  repository.Description,
+			Homepage:     repository.Homepage,
+			Topics:       append([]string{}, repository.Topics...),
+			AllowForking: repository.AllowForking,
+			Archived:     repository.Archived,
+			IsTemplate:   repository.IsTemplate,
+		})
+	}
+	return result
 }
 
 func equalStringSets(a, b []string) bool {
@@ -85,9 +118,20 @@ func sortedStrings(values []string) []string {
 	return result
 }
 
-func derefString(value *string) string {
-	if value == nil {
-		return ""
+func compareStrings(a, b string) int {
+	aKey := strings.ToLower(a)
+	bKey := strings.ToLower(b)
+	if aKey < bKey {
+		return -1
 	}
-	return *value
+	if aKey > bKey {
+		return 1
+	}
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }

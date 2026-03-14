@@ -11,6 +11,7 @@ import (
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
+	ghusers "github.com/orang-gaboets/repo-builder/pkg/github/users"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/repo-builder/pkg/gitops/config"
 	gitopssnapshot "github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
@@ -18,12 +19,13 @@ import (
 )
 
 var (
-	loadAuditConfig      = gitopsconfig.LoadDir
-	collectAuditState    = collector.CollectOrganization
-	newAuditClient       = auth.NewClient
-	newAuditSnapshot     = gitopssnapshot.NewActualSnapshot
-	writeActualSnapshot  = gitopssnapshot.WriteActual
-	nowAuditSnapshotTime = time.Now
+	loadAuditConfig           = gitopsconfig.LoadDir
+	collectAuditState         = collector.CollectOrganization
+	newAuditClient            = auth.NewClient
+	newAuditSnapshot          = gitopssnapshot.NewActualSnapshot
+	writeActualSnapshot       = gitopssnapshot.WriteActual
+	nowAuditSnapshotTime      = time.Now
+	resolveAuditInviteUserIDs = resolveInviteUserIDsByUsername
 )
 
 // PullCmd creates the audit pull command.
@@ -104,7 +106,10 @@ func pullActualState(
 		return auditPullResult{}, err
 	}
 
-	snapshot := newAuditSnapshot(nowAuditSnapshotTime(), actual)
+	snapshot, err := buildActualSnapshot(ctx, client, actual)
+	if err != nil {
+		return auditPullResult{}, err
+	}
 	path, err := writeActualSnapshot(strings.TrimSpace(stateDir), snapshot)
 	if err != nil {
 		return auditPullResult{}, fmt.Errorf("write actual-state snapshot: %w", err)
@@ -124,4 +129,63 @@ func collectActualState(ctx context.Context, client auth.Client, organization st
 		RepositoryService:   client.Repositories(),
 		TeamService:         client.Teams(),
 	})
+}
+
+func buildActualSnapshot(
+	ctx context.Context,
+	client auth.Client,
+	actual *state.OrganizationState,
+) (gitopssnapshot.ActualSnapshot, error) {
+	snapshot := newAuditSnapshot(nowAuditSnapshotTime(), actual)
+
+	resolvedInviteUserIDsByUsername, err := resolveAuditInviteUserIDs(ctx, client.Users(), snapshot.PendingInvitations)
+	if err != nil {
+		return gitopssnapshot.ActualSnapshot{}, err
+	}
+	snapshot.ResolvedInviteUserIDsByUsername = resolvedInviteUserIDsByUsername
+
+	return snapshot, nil
+}
+
+func resolveInviteUserIDsByUsername(
+	ctx context.Context,
+	service ghusers.Service,
+	invitations []state.PendingInvitation,
+) (map[string]int64, error) {
+	resolved := make(map[string]int64)
+
+	for _, invitation := range invitations {
+		username := strings.ToLower(strings.TrimSpace(invitation.Username))
+		if username == "" {
+			continue
+		}
+		if _, ok := resolved[username]; ok {
+			continue
+		}
+
+		user, err := ghusers.GetUserByUsername(ctx, ghusers.GetUserByUsernameOptions{
+			Service:  service,
+			Username: username,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("resolve snapshot invite username %q: %w", username, err)
+		}
+		if user == nil {
+			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user: %w", username, github.ErrInvalidFieldValue)
+		}
+		userID := derefInt64(user.ID)
+		if userID <= 0 {
+			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user id: %w", username, github.ErrInvalidFieldValue)
+		}
+		resolved[username] = userID
+	}
+
+	return resolved, nil
+}
+
+func derefInt64(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }

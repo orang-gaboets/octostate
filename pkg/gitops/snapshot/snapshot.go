@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
 
@@ -16,14 +18,15 @@ const actualSnapshotRelativePath = "actual/snapshot.json"
 
 // ActualSnapshot is the persisted actual-state snapshot written by audit pull.
 type ActualSnapshot struct {
-	PulledAt                  time.Time                        `json:"pulled_at"`
-	Organization              string                           `json:"organization"`
-	Members                   []state.OrganizationMember       `json:"members"`
-	PendingInvitations        []state.PendingInvitation        `json:"pending_invitations"`
-	Repositories              []state.Repository               `json:"repositories"`
-	Teams                     []state.Team                     `json:"teams"`
-	TeamMembers               []state.TeamMember               `json:"team_members"`
-	TeamRepositoryPermissions []state.TeamRepositoryPermission `json:"team_repo_permissions"`
+	PulledAt                        time.Time                        `json:"pulled_at"`
+	Organization                    string                           `json:"organization"`
+	ResolvedInviteUserIDsByUsername map[string]int64                 `json:"resolved_invite_user_ids_by_username"`
+	Members                         []state.OrganizationMember       `json:"members"`
+	PendingInvitations              []state.PendingInvitation        `json:"pending_invitations"`
+	Repositories                    []state.Repository               `json:"repositories"`
+	Teams                           []state.Team                     `json:"teams"`
+	TeamMembers                     []state.TeamMember               `json:"team_members"`
+	TeamRepositoryPermissions       []state.TeamRepositoryPermission `json:"team_repo_permissions"`
 }
 
 // NewActualSnapshot builds a snapshot value from a normalized actual-state model.
@@ -36,14 +39,15 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 	clone.Normalize()
 
 	return ActualSnapshot{
-		PulledAt:                  pulledAt.UTC(),
-		Organization:              clone.Organization,
-		Members:                   clone.Members,
-		PendingInvitations:        clone.PendingInvitations,
-		Repositories:              clone.Repositories,
-		Teams:                     clone.Teams,
-		TeamMembers:               clone.TeamMembers,
-		TeamRepositoryPermissions: clone.TeamRepositoryPermissions,
+		PulledAt:                        pulledAt.UTC(),
+		Organization:                    clone.Organization,
+		ResolvedInviteUserIDsByUsername: map[string]int64{},
+		Members:                         clone.Members,
+		PendingInvitations:              clone.PendingInvitations,
+		Repositories:                    clone.Repositories,
+		Teams:                           clone.Teams,
+		TeamMembers:                     clone.TeamMembers,
+		TeamRepositoryPermissions:       clone.TeamRepositoryPermissions,
 	}
 }
 
@@ -52,12 +56,54 @@ func ActualPath(stateDir string) string {
 	return filepath.Join(strings.TrimSpace(stateDir), actualSnapshotRelativePath)
 }
 
+// ReadActual loads the actual-state snapshot from
+// <state-dir>/actual/snapshot.json.
+func ReadActual(stateDir string) (*ActualSnapshot, error) {
+	stateDir = strings.TrimSpace(stateDir)
+	if stateDir == "" {
+		return nil, fmt.Errorf("state directory is required")
+	}
+
+	path := ActualPath(stateDir)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
+
+	var snapshot ActualSnapshot
+	if err := decoder.Decode(&snapshot); err != nil {
+		return nil, fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
+	}
+
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
+	}
+	if len(extra) > 0 {
+		return nil, fmt.Errorf("decode actual-state snapshot %s: multiple JSON values are not allowed", path)
+	}
+
+	if err := normalizeActualSnapshot(&snapshot); err != nil {
+		return nil, fmt.Errorf("normalize actual-state snapshot %s: %w", path, err)
+	}
+	return &snapshot, nil
+}
+
 // WriteActual writes the actual-state snapshot to
 // <state-dir>/actual/snapshot.json.
 func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
 		return "", fmt.Errorf("state directory is required")
+	}
+	if err := normalizeActualSnapshot(&snapshot); err != nil {
+		return "", fmt.Errorf("normalize snapshot: %w", err)
 	}
 
 	path := ActualPath(stateDir)
@@ -143,4 +189,71 @@ func cloneOrganizationState(actual *state.OrganizationState) state.OrganizationS
 		TeamMembers:               append([]state.TeamMember{}, actual.TeamMembers...),
 		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, actual.TeamRepositoryPermissions...),
 	}
+}
+
+func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
+	if snapshot == nil {
+		return nil
+	}
+	if !snapshot.PulledAt.IsZero() {
+		snapshot.PulledAt = snapshot.PulledAt.UTC()
+	}
+
+	actual := state.OrganizationState{
+		Organization:              snapshot.Organization,
+		Members:                   append([]state.OrganizationMember{}, snapshot.Members...),
+		PendingInvitations:        clonePendingInvitations(snapshot.PendingInvitations),
+		Repositories:              cloneRepositories(snapshot.Repositories),
+		Teams:                     append([]state.Team{}, snapshot.Teams...),
+		TeamMembers:               append([]state.TeamMember{}, snapshot.TeamMembers...),
+		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, snapshot.TeamRepositoryPermissions...),
+	}
+	actual.Normalize()
+
+	resolvedInviteUserIDsByUsername, err := normalizeResolvedInviteUserIDsByUsername(snapshot.ResolvedInviteUserIDsByUsername)
+	if err != nil {
+		return err
+	}
+
+	snapshot.Organization = actual.Organization
+	snapshot.ResolvedInviteUserIDsByUsername = resolvedInviteUserIDsByUsername
+	snapshot.Members = actual.Members
+	snapshot.PendingInvitations = actual.PendingInvitations
+	snapshot.Repositories = actual.Repositories
+	snapshot.Teams = actual.Teams
+	snapshot.TeamMembers = actual.TeamMembers
+	snapshot.TeamRepositoryPermissions = actual.TeamRepositoryPermissions
+	return nil
+}
+
+// NormalizeResolvedInviteUserIDsByUsername canonicalizes username keys and
+// rejects conflicting entries that collapse to the same canonical username.
+func NormalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
+	return normalizeResolvedInviteUserIDsByUsername(values)
+}
+
+func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
+	if len(values) == 0 {
+		return map[string]int64{}, nil
+	}
+
+	normalized := make(map[string]int64, len(values))
+	for username, userID := range values {
+		username = strings.ToLower(strings.TrimSpace(username))
+		if username == "" || userID <= 0 {
+			continue
+		}
+		if existingUserID, ok := normalized[username]; ok && existingUserID != userID {
+			return nil, fmt.Errorf(
+				"resolved invite user IDs contain conflicting entries for username %q: %w",
+				username,
+				githubpkg.ErrInvalidFieldValue,
+			)
+		}
+		normalized[username] = userID
+	}
+	if len(normalized) == 0 {
+		return map[string]int64{}, nil
+	}
+	return normalized, nil
 }

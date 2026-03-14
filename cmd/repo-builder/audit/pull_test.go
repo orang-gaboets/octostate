@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
@@ -17,6 +19,25 @@ import (
 	gitopssnapshot "github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
+
+type userServiceStub struct {
+	getFunc     func(context.Context, string) (*gh.User, *gh.Response, error)
+	getByIDFunc func(context.Context, int64) (*gh.User, *gh.Response, error)
+}
+
+func (s userServiceStub) Get(ctx context.Context, username string) (*gh.User, *gh.Response, error) {
+	if s.getFunc != nil {
+		return s.getFunc(ctx, username)
+	}
+	return &gh.User{}, &gh.Response{}, nil
+}
+
+func (s userServiceStub) GetByID(ctx context.Context, id int64) (*gh.User, *gh.Response, error) {
+	if s.getByIDFunc != nil {
+		return s.getByIDFunc(ctx, id)
+	}
+	return &gh.User{}, &gh.Response{}, nil
+}
 
 func TestPullCmdSuccess(t *testing.T) {
 	fixedTime := time.Date(2026, 3, 10, 9, 30, 0, 0, time.FixedZone("UTC+8", 8*60*60))
@@ -110,6 +131,90 @@ func TestPullCmdSuccess(t *testing.T) {
 	}
 	if errBuf.Len() != 0 {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+}
+
+func TestPullCmdPersistsResolvedInviteUserIDsForPendingInvitations(t *testing.T) {
+	fixedTime := time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC)
+
+	restore := replaceAuditHooks(t)
+	nowAuditSnapshotTime = func() time.Time { return fixedTime }
+	newAuditClient = func(_ context.Context, _ string, _, _ int64, _ string) (auth.Client, error) {
+		return auth.MockClient{
+			OrganizationsService: auth.MockOrganizationService{},
+			ReposService:         auth.MockRepoService{},
+			TeamsService:         auth.MockTeamsService{},
+			UsersService: userServiceStub{
+				getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+					if username != "octocat" {
+						t.Fatalf("unexpected username lookup: %q", username)
+					}
+					return &gh.User{Login: github.Ptr("octocat"), ID: github.Ptr(int64(99))}, &gh.Response{}, nil
+				},
+			},
+		}, nil
+	}
+	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+		}, nil
+	}
+	collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{
+			Organization: "orang-gaboets",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "octocat"},
+			},
+		}, nil
+	}
+	writeActualSnapshot = func(_ string, snapshot gitopssnapshot.ActualSnapshot) (string, error) {
+		if !reflect.DeepEqual(snapshot.ResolvedInviteUserIDsByUsername, map[string]int64{"octocat": 99}) {
+			t.Fatalf("unexpected resolved invite user IDs: %#v", snapshot.ResolvedInviteUserIDsByUsername)
+		}
+		return "/tmp/state/actual/snapshot.json", nil
+	}
+	defer restore()
+
+	cmd := PullCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--token", "token-value",
+		"--config-dir", "/control/config",
+		"--state-dir", "/tmp/state",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+}
+
+func TestResolveInviteUserIDsByUsernameRejectsNilUser(t *testing.T) {
+	t.Parallel()
+
+	resolved, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{
+		getFunc: func(context.Context, string) (*gh.User, *gh.Response, error) {
+			return nil, &gh.Response{}, nil
+		},
+	}, []state.PendingInvitation{
+		{Username: "octocat"},
+	})
+	if err == nil {
+		t.Fatal("expected error for nil user")
+	}
+	if !errors.Is(err, github.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, github.ErrInvalidFieldValue)
+	}
+	if !strings.Contains(err.Error(), "missing user") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	if resolved != nil {
+		t.Fatalf("expected nil resolved map on error, got %#v", resolved)
 	}
 }
 
@@ -300,6 +405,7 @@ func replaceAuditHooks(t *testing.T) func() {
 	originalNewAuditSnapshot := newAuditSnapshot
 	originalWriteActualSnapshot := writeActualSnapshot
 	originalNowAuditSnapshotTime := nowAuditSnapshotTime
+	originalResolveAuditInviteUserIDs := resolveAuditInviteUserIDs
 
 	return func() {
 		loadAuditConfig = originalLoadAuditConfig
@@ -308,6 +414,7 @@ func replaceAuditHooks(t *testing.T) func() {
 		newAuditSnapshot = originalNewAuditSnapshot
 		writeActualSnapshot = originalWriteActualSnapshot
 		nowAuditSnapshotTime = originalNowAuditSnapshotTime
+		resolveAuditInviteUserIDs = originalResolveAuditInviteUserIDs
 	}
 }
 
