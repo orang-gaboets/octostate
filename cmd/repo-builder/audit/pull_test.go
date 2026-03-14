@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	gh "github.com/google/go-github/v55/github"
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
@@ -17,6 +19,21 @@ import (
 	gitopssnapshot "github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
+
+type userServiceStub struct {
+	getByIDFunc func(context.Context, int64) (*gh.User, *gh.Response, error)
+}
+
+func (s userServiceStub) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
+	return &gh.User{}, &gh.Response{}, nil
+}
+
+func (s userServiceStub) GetByID(ctx context.Context, id int64) (*gh.User, *gh.Response, error) {
+	if s.getByIDFunc != nil {
+		return s.getByIDFunc(ctx, id)
+	}
+	return &gh.User{}, &gh.Response{}, nil
+}
 
 func TestPullCmdSuccess(t *testing.T) {
 	fixedTime := time.Date(2026, 3, 10, 9, 30, 0, 0, time.FixedZone("UTC+8", 8*60*60))
@@ -107,6 +124,64 @@ func TestPullCmdSuccess(t *testing.T) {
 	}
 	if payload["pulled_at"] != fixedTime.UTC().Format(time.RFC3339) {
 		t.Fatalf("unexpected pulled_at: got %#v want %q", payload["pulled_at"], fixedTime.UTC().Format(time.RFC3339))
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+}
+
+func TestPullCmdPersistsResolvedInviteLoginsForUserIDInvites(t *testing.T) {
+	fixedTime := time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC)
+
+	restore := replaceAuditHooks(t)
+	nowAuditSnapshotTime = func() time.Time { return fixedTime }
+	newAuditClient = func(_ context.Context, _ string, _, _ int64, _ string) (auth.Client, error) {
+		return auth.MockClient{
+			OrganizationsService: auth.MockOrganizationService{},
+			ReposService:         auth.MockRepoService{},
+			TeamsService:         auth.MockTeamsService{},
+			UsersService: userServiceStub{
+				getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+					if id != 99 {
+						t.Fatalf("unexpected user id lookup: %d", id)
+					}
+					return &gh.User{Login: github.Ptr("octocat")}, &gh.Response{}, nil
+				},
+			},
+		}, nil
+	}
+	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Invites: []gitopsconfig.InviteSpec{
+				{UserID: gitopsconfig.OptionalInt64{Present: true, Value: 99}},
+			},
+		}, nil
+	}
+	collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
+	}
+	writeActualSnapshot = func(_ string, snapshot gitopssnapshot.ActualSnapshot) (string, error) {
+		if !reflect.DeepEqual(snapshot.ResolvedInviteLoginsByUserID, map[int64]string{99: "octocat"}) {
+			t.Fatalf("unexpected resolved invite logins: %#v", snapshot.ResolvedInviteLoginsByUserID)
+		}
+		return "/tmp/state/actual/snapshot.json", nil
+	}
+	defer restore()
+
+	cmd := PullCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--token", "token-value",
+		"--config-dir", "/control/config",
+		"--state-dir", "/tmp/state",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if errBuf.Len() != 0 {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
@@ -300,6 +375,7 @@ func replaceAuditHooks(t *testing.T) func() {
 	originalNewAuditSnapshot := newAuditSnapshot
 	originalWriteActualSnapshot := writeActualSnapshot
 	originalNowAuditSnapshotTime := nowAuditSnapshotTime
+	originalResolveAuditInviteLogins := resolveAuditInviteLogins
 
 	return func() {
 		loadAuditConfig = originalLoadAuditConfig
@@ -308,6 +384,7 @@ func replaceAuditHooks(t *testing.T) func() {
 		newAuditSnapshot = originalNewAuditSnapshot
 		writeActualSnapshot = originalWriteActualSnapshot
 		nowAuditSnapshotTime = originalNowAuditSnapshotTime
+		resolveAuditInviteLogins = originalResolveAuditInviteLogins
 	}
 }
 

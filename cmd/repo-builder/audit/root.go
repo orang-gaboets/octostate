@@ -11,6 +11,7 @@ func NewAuditCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		DiffCmd(),
 		PullCmd(),
 	)
 

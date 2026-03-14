@@ -17,14 +17,15 @@ const actualSnapshotRelativePath = "actual/snapshot.json"
 
 // ActualSnapshot is the persisted actual-state snapshot written by audit pull.
 type ActualSnapshot struct {
-	PulledAt                  time.Time                        `json:"pulled_at"`
-	Organization              string                           `json:"organization"`
-	Members                   []state.OrganizationMember       `json:"members"`
-	PendingInvitations        []state.PendingInvitation        `json:"pending_invitations"`
-	Repositories              []state.Repository               `json:"repositories"`
-	Teams                     []state.Team                     `json:"teams"`
-	TeamMembers               []state.TeamMember               `json:"team_members"`
-	TeamRepositoryPermissions []state.TeamRepositoryPermission `json:"team_repo_permissions"`
+	PulledAt                     time.Time                        `json:"pulled_at"`
+	Organization                 string                           `json:"organization"`
+	ResolvedInviteLoginsByUserID map[int64]string                 `json:"resolved_invite_logins_by_user_id"`
+	Members                      []state.OrganizationMember       `json:"members"`
+	PendingInvitations           []state.PendingInvitation        `json:"pending_invitations"`
+	Repositories                 []state.Repository               `json:"repositories"`
+	Teams                        []state.Team                     `json:"teams"`
+	TeamMembers                  []state.TeamMember               `json:"team_members"`
+	TeamRepositoryPermissions    []state.TeamRepositoryPermission `json:"team_repo_permissions"`
 }
 
 // NewActualSnapshot builds a snapshot value from a normalized actual-state model.
@@ -37,14 +38,15 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 	clone.Normalize()
 
 	return ActualSnapshot{
-		PulledAt:                  pulledAt.UTC(),
-		Organization:              clone.Organization,
-		Members:                   clone.Members,
-		PendingInvitations:        clone.PendingInvitations,
-		Repositories:              clone.Repositories,
-		Teams:                     clone.Teams,
-		TeamMembers:               clone.TeamMembers,
-		TeamRepositoryPermissions: clone.TeamRepositoryPermissions,
+		PulledAt:                     pulledAt.UTC(),
+		Organization:                 clone.Organization,
+		ResolvedInviteLoginsByUserID: map[int64]string{},
+		Members:                      clone.Members,
+		PendingInvitations:           clone.PendingInvitations,
+		Repositories:                 clone.Repositories,
+		Teams:                        clone.Teams,
+		TeamMembers:                  clone.TeamMembers,
+		TeamRepositoryPermissions:    clone.TeamRepositoryPermissions,
 	}
 }
 
@@ -200,10 +202,30 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) {
 	actual.Normalize()
 
 	snapshot.Organization = actual.Organization
+	snapshot.ResolvedInviteLoginsByUserID = normalizeResolvedInviteLoginsByUserID(snapshot.ResolvedInviteLoginsByUserID)
 	snapshot.Members = actual.Members
 	snapshot.PendingInvitations = actual.PendingInvitations
 	snapshot.Repositories = actual.Repositories
 	snapshot.Teams = actual.Teams
 	snapshot.TeamMembers = actual.TeamMembers
 	snapshot.TeamRepositoryPermissions = actual.TeamRepositoryPermissions
+}
+
+func normalizeResolvedInviteLoginsByUserID(values map[int64]string) map[int64]string {
+	if len(values) == 0 {
+		return map[int64]string{}
+	}
+
+	normalized := make(map[int64]string, len(values))
+	for userID, login := range values {
+		login = strings.TrimSpace(login)
+		if userID <= 0 || login == "" {
+			continue
+		}
+		normalized[userID] = login
+	}
+	if len(normalized) == 0 {
+		return map[int64]string{}
+	}
+	return normalized
 }
