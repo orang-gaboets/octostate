@@ -220,8 +220,12 @@ func TestWriteActualOverwritesExistingSnapshotFile(t *testing.T) {
 func TestWriteActualRejectsEmptyStateDir(t *testing.T) {
 	t.Parallel()
 
-	if _, err := WriteActual("   ", ActualSnapshot{}); err == nil {
+	_, err := WriteActual("   ", ActualSnapshot{})
+	if err == nil {
 		t.Fatal("expected error for empty state dir")
+	}
+	if !strings.Contains(err.Error(), "state directory is required") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -283,7 +287,7 @@ func TestReadActualEmptyStateDir(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty state dir")
 	}
-	if !strings.Contains(err.Error(), "state directory must not be empty") {
+	if !strings.Contains(err.Error(), "state directory is required") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

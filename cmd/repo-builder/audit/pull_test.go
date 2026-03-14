@@ -194,6 +194,30 @@ func TestPullCmdPersistsResolvedInviteUserIDsForPendingInvitations(t *testing.T)
 	}
 }
 
+func TestResolveInviteUserIDsByUsernameRejectsNilUser(t *testing.T) {
+	t.Parallel()
+
+	resolved, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{
+		getFunc: func(context.Context, string) (*gh.User, *gh.Response, error) {
+			return nil, &gh.Response{}, nil
+		},
+	}, []state.PendingInvitation{
+		{Username: "octocat"},
+	})
+	if err == nil {
+		t.Fatal("expected error for nil user")
+	}
+	if !errors.Is(err, github.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, github.ErrInvalidFieldValue)
+	}
+	if !strings.Contains(err.Error(), "missing user") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	if resolved != nil {
+		t.Fatalf("expected nil resolved map on error, got %#v", resolved)
+	}
+}
+
 func TestPullCmdPropagatesAuthError(t *testing.T) {
 	wantErr := errors.New("auth failed")
 

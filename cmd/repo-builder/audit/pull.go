@@ -155,6 +155,9 @@ func resolveInviteUserIDsByUsername(
 		if err != nil {
 			return nil, fmt.Errorf("resolve snapshot invite username %q: %w", username, err)
 		}
+		if user == nil {
+			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user: %w", username, github.ErrInvalidFieldValue)
+		}
 		userID := derefInt64(user.ID)
 		if userID <= 0 {
 			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user id: %w", username, github.ErrInvalidFieldValue)

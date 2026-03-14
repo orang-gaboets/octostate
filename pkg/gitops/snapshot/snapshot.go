@@ -61,7 +61,7 @@ func ActualPath(stateDir string) string {
 func ReadActual(stateDir string) (*ActualSnapshot, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
-		return nil, fmt.Errorf("state directory must not be empty")
+		return nil, fmt.Errorf("state directory is required")
 	}
 
 	path := ActualPath(stateDir)
