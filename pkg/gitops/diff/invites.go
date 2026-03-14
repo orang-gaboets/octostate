@@ -180,9 +180,9 @@ func (b builder) memberMatchesIdentity(member state.OrganizationMember, identity
 	}
 }
 
-// Offline snapshots do not carry invitee user IDs, so user_id invites can
-// only be matched to pending invitations when the caller provides a resolved
-// login mapping.
+// Pending invitations themselves do not include invitee user IDs, and offline
+// snapshots only match user_id invites to pending invitations when a resolved
+// username-to-user-ID mapping is available.
 func (b builder) pendingInvitationMatchesIdentity(invitation state.PendingInvitation, identity inviteIdentity) (bool, error) {
 	switch identity.kind {
 	case inviteIdentityKindUsername:

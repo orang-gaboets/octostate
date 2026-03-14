@@ -1,56 +1,47 @@
 package diff
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/resourceid"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
 
 func repositoryID(owner, name string) string {
-	return owner + "/" + name
+	return resourceid.RepositoryID(owner, name)
 }
 
 func repositoryKey(owner, name string) string {
-	return strings.ToLower(repositoryID(owner, name))
+	return resourceid.RepositoryKey(owner, name)
 }
 
 func teamID(slug string) string {
-	return slug
+	return resourceid.TeamID(slug)
 }
 
 func teamKey(slug string) string {
-	return strings.ToLower(slug)
+	return resourceid.TeamKey(slug)
 }
 
 func teamMemberID(teamSlug, username string) string {
-	return teamSlug + "/" + username
+	return resourceid.TeamMemberID(teamSlug, username)
 }
 
 func teamMemberKey(teamSlug, username string) string {
-	return strings.ToLower(teamMemberID(teamSlug, username))
+	return resourceid.TeamMemberKey(teamSlug, username)
 }
 
 func teamRepositoryPermissionID(teamSlug, owner, name string) string {
-	return teamSlug + "/" + owner + "/" + name
+	return resourceid.TeamRepositoryPermissionID(teamSlug, owner, name)
 }
 
 func teamRepositoryPermissionKey(teamSlug, owner, name string) string {
-	return strings.ToLower(teamRepositoryPermissionID(teamSlug, owner, name))
+	return resourceid.TeamRepositoryPermissionKey(teamSlug, owner, name)
 }
 
 func pendingInvitationID(invitation state.PendingInvitation) string {
-	if invitation.Username != "" {
-		return "username:" + invitation.Username
-	}
-	if invitation.Email != "" {
-		return "email:" + invitation.Email
-	}
-	if invitation.ID > 0 {
-		return fmt.Sprintf("invitation:%d", invitation.ID)
-	}
-	return "invitation"
+	return resourceid.PendingInvitationID(invitation)
 }
 
 func clonePendingInvitations(invitations []state.PendingInvitation) []state.PendingInvitation {
