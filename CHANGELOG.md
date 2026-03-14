@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.6.0](https://github.com/orang-gaboets/repo-builder/compare/v0.5.0...v0.6.0) (2026-03-14)
+
+
+### Features
+
+* **audit:** add offline GitOps drift diff command ([#64](https://github.com/orang-gaboets/repo-builder/issues/64)) ([24518dd](https://github.com/orang-gaboets/repo-builder/commit/24518dd328317b47b441a79543af68176c673f48))
+
 ## [0.5.0](https://github.com/orang-gaboets/repo-builder/compare/v0.4.1...v0.5.0) (2026-03-13)
 
 
