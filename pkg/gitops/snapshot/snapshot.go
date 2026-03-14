@@ -195,6 +195,9 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 	if snapshot == nil {
 		return nil
 	}
+	if !snapshot.PulledAt.IsZero() {
+		snapshot.PulledAt = snapshot.PulledAt.UTC()
+	}
 
 	actual := state.OrganizationState{
 		Organization:              snapshot.Organization,

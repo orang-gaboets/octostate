@@ -86,6 +86,60 @@ func TestBuildRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.T) {
 	}
 }
 
+func TestBuildUsesSnapshotResolvedInviteUserIDsByUsernameByDefault(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		PendingInvitations: []state.PendingInvitation{
+			{Username: "octocat"},
+		},
+	})
+	snap.ResolvedInviteUserIDsByUsername = map[string]int64{"octocat": 99}
+
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if report.Summary.HasChanges {
+		t.Fatalf("expected no drift when snapshot mapping satisfies user_id invite, got %#v", report)
+	}
+}
+
+func TestBuildOptionsResolvedInviteUserIDsRejectConflictingSnapshotValues(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		PendingInvitations: []state.PendingInvitation{
+			{Username: "octocat"},
+		},
+	})
+	snap.ResolvedInviteUserIDsByUsername = map[string]int64{"octocat": 1}
+
+	_, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Snapshot:                        &snap,
+		ResolvedInviteUserIDsByUsername: map[string]int64{"OCTOCAT": 99},
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+}
+
 func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	t.Parallel()
 

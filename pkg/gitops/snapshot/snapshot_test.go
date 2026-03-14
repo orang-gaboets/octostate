@@ -248,6 +248,34 @@ func TestWriteActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing
 	}
 }
 
+func TestWriteActualNormalizesPulledAtToUTC(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	snapshot := ActualSnapshot{
+		PulledAt:     time.Date(2026, 3, 10, 15, 4, 5, 0, time.FixedZone("SGT", 8*60*60)),
+		Organization: "orang-gaboets",
+	}
+
+	path, err := WriteActual(stateDir, snapshot)
+	if err != nil {
+		t.Fatalf("WriteActual returned error: %v", err)
+	}
+
+	payload, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read snapshot: %v", err)
+	}
+
+	var got ActualSnapshot
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("decode snapshot JSON: %v; payload=%q", err, string(payload))
+	}
+	if !got.PulledAt.Equal(snapshot.PulledAt.UTC()) {
+		t.Fatalf("unexpected pulled_at normalization: got %v want %v", got.PulledAt, snapshot.PulledAt.UTC())
+	}
+}
+
 func TestReadActualSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -472,5 +500,8 @@ func TestReadActualNormalizesLoadedSnapshot(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.ResolvedInviteUserIDsByUsername, map[string]int64{"zoe": 22}) {
 		t.Fatalf("expected normalized resolved invite user IDs, got %#v", got.ResolvedInviteUserIDsByUsername)
+	}
+	if !got.PulledAt.Equal(time.Date(2026, 3, 10, 7, 8, 9, 0, time.UTC)) {
+		t.Fatalf("expected pulled_at to normalize to UTC, got %v", got.PulledAt)
 	}
 }

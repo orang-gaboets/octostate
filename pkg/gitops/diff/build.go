@@ -44,10 +44,27 @@ func Build(opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
-	var resolvedInviteUserIDsByUsername map[string]int64
+
+	var rawResolvedInviteUserIDsByUsername map[string]int64
 	var err error
+	if opt.Snapshot != nil && opt.Snapshot.ResolvedInviteUserIDsByUsername != nil {
+		rawResolvedInviteUserIDsByUsername = make(map[string]int64, len(opt.Snapshot.ResolvedInviteUserIDsByUsername))
+		for username, userID := range opt.Snapshot.ResolvedInviteUserIDsByUsername {
+			rawResolvedInviteUserIDsByUsername[username] = userID
+		}
+	}
 	if opt.ResolvedInviteUserIDsByUsername != nil {
-		resolvedInviteUserIDsByUsername, err = snapshot.NormalizeResolvedInviteUserIDsByUsername(opt.ResolvedInviteUserIDsByUsername)
+		if rawResolvedInviteUserIDsByUsername == nil {
+			rawResolvedInviteUserIDsByUsername = make(map[string]int64, len(opt.ResolvedInviteUserIDsByUsername))
+		}
+		for username, userID := range opt.ResolvedInviteUserIDsByUsername {
+			rawResolvedInviteUserIDsByUsername[username] = userID
+		}
+	}
+
+	var resolvedInviteUserIDsByUsername map[string]int64
+	if rawResolvedInviteUserIDsByUsername != nil {
+		resolvedInviteUserIDsByUsername, err = snapshot.NormalizeResolvedInviteUserIDsByUsername(rawResolvedInviteUserIDsByUsername)
 		if err != nil {
 			return nil, err
 		}
