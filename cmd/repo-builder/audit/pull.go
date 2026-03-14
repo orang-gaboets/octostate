@@ -106,8 +106,7 @@ func pullActualState(
 		return auditPullResult{}, err
 	}
 
-	snapshot := newAuditSnapshot(nowAuditSnapshotTime(), actual)
-	snapshot.ResolvedInviteUserIDsByUsername, err = resolveAuditInviteUserIDs(ctx, client.Users(), snapshot.PendingInvitations)
+	snapshot, err := buildActualSnapshot(ctx, client, actual)
 	if err != nil {
 		return auditPullResult{}, err
 	}
@@ -130,6 +129,22 @@ func collectActualState(ctx context.Context, client auth.Client, organization st
 		RepositoryService:   client.Repositories(),
 		TeamService:         client.Teams(),
 	})
+}
+
+func buildActualSnapshot(
+	ctx context.Context,
+	client auth.Client,
+	actual *state.OrganizationState,
+) (gitopssnapshot.ActualSnapshot, error) {
+	snapshot := newAuditSnapshot(nowAuditSnapshotTime(), actual)
+
+	resolvedInviteUserIDsByUsername, err := resolveAuditInviteUserIDs(ctx, client.Users(), snapshot.PendingInvitations)
+	if err != nil {
+		return gitopssnapshot.ActualSnapshot{}, err
+	}
+	snapshot.ResolvedInviteUserIDsByUsername = resolvedInviteUserIDsByUsername
+
+	return snapshot, nil
 }
 
 func resolveInviteUserIDsByUsername(

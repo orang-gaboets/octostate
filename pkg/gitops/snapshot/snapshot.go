@@ -223,6 +223,12 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 	return nil
 }
 
+// NormalizeResolvedInviteUserIDsByUsername canonicalizes username keys and
+// rejects conflicting entries that collapse to the same canonical username.
+func NormalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
+	return normalizeResolvedInviteUserIDsByUsername(values)
+}
+
 func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
 	if len(values) == 0 {
 		return map[string]int64{}, nil

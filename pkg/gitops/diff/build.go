@@ -44,9 +44,13 @@ func Build(opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
-	resolvedInviteUserIDsByUsername, err := normalizeResolvedInviteUserIDsByUsername(opt.ResolvedInviteUserIDsByUsername)
-	if err != nil {
-		return nil, err
+	var resolvedInviteUserIDsByUsername map[string]int64
+	var err error
+	if opt.ResolvedInviteUserIDsByUsername != nil {
+		resolvedInviteUserIDsByUsername, err = snapshot.NormalizeResolvedInviteUserIDsByUsername(opt.ResolvedInviteUserIDsByUsername)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	builder := builder{
@@ -94,30 +98,4 @@ func organizationStateFromSnapshot(actual *snapshot.ActualSnapshot) state.Organi
 	}
 	organization.Normalize()
 	return organization
-}
-
-func normalizeResolvedInviteUserIDsByUsername(values map[string]int64) (map[string]int64, error) {
-	if len(values) == 0 {
-		return map[string]int64{}, nil
-	}
-
-	normalized := make(map[string]int64, len(values))
-	for username, userID := range values {
-		username = strings.ToLower(strings.TrimSpace(username))
-		if username == "" || userID <= 0 {
-			continue
-		}
-		if existingUserID, ok := normalized[username]; ok && existingUserID != userID {
-			return nil, fmt.Errorf(
-				"resolved invite user IDs contain conflicting entries for username %q: %w",
-				username,
-				githubpkg.ErrInvalidFieldValue,
-			)
-		}
-		normalized[username] = userID
-	}
-	if len(normalized) == 0 {
-		return map[string]int64{}, nil
-	}
-	return normalized, nil
 }
