@@ -19,7 +19,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
   - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
   - ✅ `repo-builder config apply`
-  - `repo-builder audit diff`
+  - ✅ `repo-builder audit diff`
 
 ## Installation
 
@@ -388,6 +388,7 @@ Behavior:
 Snapshot fields:
 - `pulled_at`
 - `organization`
+- `resolved_invite_logins_by_user_id`
 - `members`
 - `pending_invitations`
 - `repositories`
@@ -409,8 +410,58 @@ Example success output:
 }
 ```
 
-This snapshot is intended to feed later GitOps workflows such as `audit diff`
-and live reconciliation planning.
+This snapshot feeds offline GitOps workflows such as `audit diff` and can also
+support later reconciliation planning.
+
+#### Diff desired state against the stored snapshot
+
+```bash
+repo-builder audit diff --config-dir ./config --state-dir ./state
+repo-builder audit diff --config-dir ./config --state-dir ./state --fail-on-drift
+```
+
+##### Flags
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--state-dir` (required): Path to the state directory containing `actual/snapshot.json`
+- `--fail-on-drift`: Exit with code `2` when any drift is detected
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Runs semantic validation before building the offline diff
+- Loads the stored snapshot from:
+  - `<state-dir>/actual/snapshot.json`
+- Builds a deterministic offline drift report without calling GitHub APIs
+- Prints the JSON drift report to stdout
+- Uses the latest `audit pull` snapshot as its source of actual state
+
+Drift report fields:
+- `organization`
+- `snapshot_pulled_at`
+- `summary`
+- `actions`
+
+Drift behavior:
+- Uses the same resource ordering and action schema as `config plan`
+- Reports `create` / `update` drift for desired state that is missing or changed
+- Reports `delete` / `remove` drift for unsupported extra snapshot state
+- Does not mutate GitHub state
+
+Exit codes:
+- `0`: no drift, or drift detected without `--fail-on-drift`
+- `2`: drift detected and `--fail-on-drift` is set
+- `1`: load/decode/validation/runtime failure
+
+Example offline diff:
+
+```bash
+go run ./cmd/repo-builder audit diff --config-dir ./config --state-dir ./state
+```
+
+Example CI-style drift gate:
+
+```bash
+go run ./cmd/repo-builder audit diff --config-dir ./config --state-dir ./state --fail-on-drift
+```
 
 ### Organizations
 
@@ -846,6 +897,7 @@ Implemented:
 - `repo-builder config plan` — preview deterministic reconciliation actions from desired vs live state
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 - `repo-builder config apply` — reconcile GitHub to match config/ for supported create/update actions
+- `repo-builder audit diff` — compare desired config against the stored snapshot offline
 
 Planned:
-- `repo-builder audit diff` — detect drift / policy violations (optionally fail CI)
+- bounded-concurrency collection for GitOps collectors
