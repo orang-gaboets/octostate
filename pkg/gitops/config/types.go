@@ -134,6 +134,46 @@ type TemplateSpec struct {
 	IncludeAllBranches bool   `yaml:"include_all_branches"`
 }
 
+// UnmarshalYAML strictly decodes template fields and rejects duplicates.
+func (t *TemplateSpec) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("template must be a YAML mapping")
+	}
+
+	*t = TemplateSpec{}
+	seen := make(map[string]struct{}, len(node.Content)/2)
+
+	for index := 0; index < len(node.Content); index += 2 {
+		keyNode := node.Content[index]
+		valueNode := node.Content[index+1]
+		key := keyNode.Value
+
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("field %s already declared in type config.TemplateSpec", key)
+		}
+		seen[key] = struct{}{}
+
+		switch key {
+		case "owner":
+			if err := valueNode.Decode(&t.Owner); err != nil {
+				return err
+			}
+		case "name":
+			if err := valueNode.Decode(&t.Name); err != nil {
+				return err
+			}
+		case "include_all_branches":
+			if err := valueNode.Decode(&t.IncludeAllBranches); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("field %s not found in type config.TemplateSpec", key)
+		}
+	}
+
+	return nil
+}
+
 // TeamSpec describes a team desired in organization.yaml.
 type TeamSpec struct {
 	Slug         string               `yaml:"slug"`

@@ -410,6 +410,32 @@ invites: []
 	}
 }
 
+func TestLoadDirRejectsUnknownRepositoryTemplateField(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeTestOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    template:
+      owner: orang-gaboets
+      name: repo-template
+      unsupported: true
+teams: []
+invites: []
+`)
+
+	_, err := LoadDir(configDir)
+	if err == nil {
+		t.Fatal("expected error for unknown repository template field")
+	}
+	if !strings.Contains(err.Error(), "field unsupported not found in type config.TemplateSpec") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadDirRejectsUnknownInviteField(t *testing.T) {
 	t.Parallel()
 
