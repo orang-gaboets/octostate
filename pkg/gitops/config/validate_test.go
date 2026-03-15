@@ -444,6 +444,79 @@ func TestValidateInvalidEnums(t *testing.T) {
 	}
 }
 
+func TestValidateRepositoryOptionalFieldsOmittedAreValid(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0] = RepositorySpec{
+		Owner:      "orang-gaboets",
+		Name:       "repo-builder",
+		Template:   TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
+		Visibility: "private",
+		Topics:     []string{"go", "gitops"},
+	}
+
+	report := Validate(cfg)
+	if !report.Valid {
+		t.Fatalf("expected omitted repository optional fields to be valid, got %#v", report)
+	}
+}
+
+func TestValidateRepositoryOptionalStringsExplicitEmptyAreValid(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].Description = ""
+	cfg.Repositories[0].description = optionalString("")
+	cfg.Repositories[0].Homepage = ""
+	cfg.Repositories[0].homepage = optionalString("")
+
+	report := Validate(cfg)
+	if !report.Valid {
+		t.Fatalf("expected explicit empty repository optional strings to be valid, got %#v", report)
+	}
+}
+
+func TestValidateRepositoryOptionalBooleansExplicitFalseAreValid(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].AllowForking = false
+	cfg.Repositories[0].allowForking = optionalBool(false)
+	cfg.Repositories[0].Archived = false
+	cfg.Repositories[0].archived = optionalBool(false)
+	cfg.Repositories[0].IsTemplate = false
+	cfg.Repositories[0].isTemplate = optionalBool(false)
+
+	report := Validate(cfg)
+	if !report.Valid {
+		t.Fatalf("expected explicit false repository optional booleans to be valid, got %#v", report)
+	}
+}
+
+func TestValidateRepositoryOptionalNullFieldsAreInvalid(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].description = nullOptionalString()
+	cfg.Repositories[0].Description = ""
+	cfg.Repositories[0].homepage = nullOptionalString()
+	cfg.Repositories[0].Homepage = ""
+	cfg.Repositories[0].allowForking = nullOptionalBool()
+	cfg.Repositories[0].AllowForking = false
+	cfg.Repositories[0].archived = nullOptionalBool()
+	cfg.Repositories[0].Archived = false
+	cfg.Repositories[0].isTemplate = nullOptionalBool()
+	cfg.Repositories[0].IsTemplate = false
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].description", ValidationIssueCodeInvalidFieldValue)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].homepage", ValidationIssueCodeInvalidFieldValue)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].allow_forking", ValidationIssueCodeInvalidFieldValue)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].archived", ValidationIssueCodeInvalidFieldValue)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].is_template", ValidationIssueCodeInvalidFieldValue)
+}
+
 func TestValidateSlugNameMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -455,6 +528,21 @@ func TestValidateSlugNameMismatch(t *testing.T) {
 }
 
 func validOrganizationConfig() OrganizationConfig {
+	repo := RepositorySpec{
+		Owner:       "orang-gaboets",
+		Name:        "repo-builder",
+		Template:    TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
+		Visibility:  "private",
+		Description: "GitHub organization operations CLI",
+		Homepage:    "https://github.com/orang-gaboets/repo-builder",
+		Topics:      []string{"go", "gitops"},
+	}
+	repo.description = optionalString("GitHub organization operations CLI")
+	repo.homepage = optionalString("https://github.com/orang-gaboets/repo-builder")
+	repo.allowForking = optionalBool(false)
+	repo.archived = optionalBool(false)
+	repo.isTemplate = optionalBool(false)
+
 	return OrganizationConfig{
 		Organization: "orang-gaboets",
 		Invites: []InviteSpec{{
@@ -462,15 +550,7 @@ func validOrganizationConfig() OrganizationConfig {
 			Role:      "direct_member",
 			TeamSlugs: []string{"platform"},
 		}},
-		Repositories: []RepositorySpec{{
-			Owner:       "orang-gaboets",
-			Name:        "repo-builder",
-			Template:    TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
-			Visibility:  "private",
-			Description: "GitHub organization operations CLI",
-			Homepage:    "https://github.com/orang-gaboets/repo-builder",
-			Topics:      []string{"go", "gitops"},
-		}},
+		Repositories: []RepositorySpec{repo},
 		Teams: []TeamSpec{{
 			Slug:        "platform",
 			Name:        "Platform",
@@ -545,6 +625,20 @@ func optionalInt64(v int64) OptionalInt64 {
 
 func nullOptionalInt64() OptionalInt64 {
 	return OptionalInt64{
+		Present: true,
+		Null:    true,
+	}
+}
+
+func optionalBool(v bool) OptionalBool {
+	return OptionalBool{
+		Present: true,
+		Value:   v,
+	}
+}
+
+func nullOptionalBool() OptionalBool {
+	return OptionalBool{
 		Present: true,
 		Null:    true,
 	}
