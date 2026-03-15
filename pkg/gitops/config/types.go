@@ -163,9 +163,39 @@ func (r RepositorySpec) DescriptionOption() OptionalString {
 	return r.description
 }
 
+// ManagedDescription returns the description value when it should be
+// reconciled, along with whether the field is managed at all.
+func (r RepositorySpec) ManagedDescription() (string, bool) {
+	if r.description.Present {
+		if r.description.Null {
+			return "", false
+		}
+		return r.Description, true
+	}
+	if strings.TrimSpace(r.Description) != "" {
+		return r.Description, true
+	}
+	return "", false
+}
+
 // HomepageOption returns the repository homepage declaration metadata.
 func (r RepositorySpec) HomepageOption() OptionalString {
 	return r.homepage
+}
+
+// ManagedHomepage returns the homepage value when it should be reconciled,
+// along with whether the field is managed at all.
+func (r RepositorySpec) ManagedHomepage() (string, bool) {
+	if r.homepage.Present {
+		if r.homepage.Null {
+			return "", false
+		}
+		return r.Homepage, true
+	}
+	if strings.TrimSpace(r.Homepage) != "" {
+		return r.Homepage, true
+	}
+	return "", false
 }
 
 // AllowForkingOption returns the repository allow_forking declaration metadata.
@@ -173,14 +203,59 @@ func (r RepositorySpec) AllowForkingOption() OptionalBool {
 	return r.allowForking
 }
 
+// ManagedAllowForking returns the allow_forking value when it should be
+// reconciled, along with whether the field is managed at all.
+func (r RepositorySpec) ManagedAllowForking() (bool, bool) {
+	if r.allowForking.Present {
+		if r.allowForking.Null {
+			return false, false
+		}
+		return r.AllowForking, true
+	}
+	if r.AllowForking {
+		return true, true
+	}
+	return false, false
+}
+
 // ArchivedOption returns the repository archived declaration metadata.
 func (r RepositorySpec) ArchivedOption() OptionalBool {
 	return r.archived
 }
 
+// ManagedArchived returns the archived value when it should be reconciled,
+// along with whether the field is managed at all.
+func (r RepositorySpec) ManagedArchived() (bool, bool) {
+	if r.archived.Present {
+		if r.archived.Null {
+			return false, false
+		}
+		return r.Archived, true
+	}
+	if r.Archived {
+		return true, true
+	}
+	return false, false
+}
+
 // IsTemplateOption returns the repository is_template declaration metadata.
 func (r RepositorySpec) IsTemplateOption() OptionalBool {
 	return r.isTemplate
+}
+
+// ManagedIsTemplate returns the is_template value when it should be
+// reconciled, along with whether the field is managed at all.
+func (r RepositorySpec) ManagedIsTemplate() (bool, bool) {
+	if r.isTemplate.Present {
+		if r.isTemplate.Null {
+			return false, false
+		}
+		return r.IsTemplate, true
+	}
+	if r.IsTemplate {
+		return true, true
+	}
+	return false, false
 }
 
 func isYAMLNull(node *yaml.Node) bool {

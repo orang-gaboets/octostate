@@ -39,23 +39,23 @@ func (b builder) planRepositories() []Action {
 		if actualRepository.Visibility != repository.Visibility {
 			changes = append(changes, FieldChange{Field: "visibility", From: actualRepository.Visibility, To: repository.Visibility})
 		}
-		if actualRepository.Description != repository.Description {
-			changes = append(changes, FieldChange{Field: "description", From: actualRepository.Description, To: repository.Description})
+		if description, managed := repository.ManagedDescription(); managed && actualRepository.Description != description {
+			changes = append(changes, FieldChange{Field: "description", From: actualRepository.Description, To: description})
 		}
-		if actualRepository.Homepage != repository.Homepage {
-			changes = append(changes, FieldChange{Field: "homepage", From: actualRepository.Homepage, To: repository.Homepage})
+		if homepage, managed := repository.ManagedHomepage(); managed && actualRepository.Homepage != homepage {
+			changes = append(changes, FieldChange{Field: "homepage", From: actualRepository.Homepage, To: homepage})
 		}
 		if !equalStringSets(actualRepository.Topics, repository.Topics) {
 			changes = append(changes, FieldChange{Field: "topics", From: sortedStrings(actualRepository.Topics), To: sortedStrings(repository.Topics)})
 		}
-		if repository.Visibility != "private" && actualRepository.AllowForking != repository.AllowForking {
-			changes = append(changes, FieldChange{Field: "allow_forking", From: actualRepository.AllowForking, To: repository.AllowForking})
+		if allowForking, managed := repository.ManagedAllowForking(); managed && repository.Visibility != "private" && actualRepository.AllowForking != allowForking {
+			changes = append(changes, FieldChange{Field: "allow_forking", From: actualRepository.AllowForking, To: allowForking})
 		}
-		if actualRepository.Archived != repository.Archived {
-			changes = append(changes, FieldChange{Field: "archived", From: actualRepository.Archived, To: repository.Archived})
+		if archived, managed := repository.ManagedArchived(); managed && actualRepository.Archived != archived {
+			changes = append(changes, FieldChange{Field: "archived", From: actualRepository.Archived, To: archived})
 		}
-		if actualRepository.IsTemplate != repository.IsTemplate {
-			changes = append(changes, FieldChange{Field: "is_template", From: actualRepository.IsTemplate, To: repository.IsTemplate})
+		if isTemplate, managed := repository.ManagedIsTemplate(); managed && actualRepository.IsTemplate != isTemplate {
+			changes = append(changes, FieldChange{Field: "is_template", From: actualRepository.IsTemplate, To: isTemplate})
 		}
 		if len(changes) == 0 {
 			continue

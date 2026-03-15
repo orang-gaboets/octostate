@@ -2,6 +2,8 @@ package diff
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -508,23 +510,23 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 		},
 	})
 
+	desired := loadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    description: "CLI"
+    homepage: "https://example.com/repo-builder"
+    topics: [gitops]
+    allow_forking: false
+    archived: false
+    is_template: false
+teams: []
+invites: []
+`)
+
 	report, err := Build(Options{
-		Desired: config.OrganizationConfig{
-			Organization: "orang-gaboets",
-			Repositories: []config.RepositorySpec{
-				{
-					Owner:        "orang-gaboets",
-					Name:         "repo-builder",
-					Visibility:   "private",
-					Description:  "CLI",
-					Homepage:     "https://example.com/repo-builder",
-					Topics:       []string{"gitops"},
-					AllowForking: false,
-					Archived:     false,
-					IsTemplate:   false,
-				},
-			},
-		},
+		Desired:  desired,
 		Snapshot: &snap,
 	})
 	if err != nil {
@@ -532,6 +534,110 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 	}
 	if len(report.Actions) != 0 {
 		t.Fatalf("expected no actions, got %#v", report.Actions)
+	}
+}
+
+func TestBuildRepositoryOmittedOptionalFieldsProduceNoDiff(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 20, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{
+			{
+				Owner:        "orang-gaboets",
+				Name:         "repo-builder",
+				Visibility:   "public",
+				Description:  "CLI",
+				Homepage:     "https://example.com/repo-builder",
+				Topics:       []string{"gitops"},
+				AllowForking: true,
+				Archived:     true,
+				IsTemplate:   true,
+			},
+		},
+	})
+
+	desired := loadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: public
+    topics: [gitops]
+teams: []
+invites: []
+`)
+
+	report, err := Build(Options{
+		Desired:  desired,
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Actions) != 0 {
+		t.Fatalf("expected omitted optional repository fields to produce no diff, got %#v", report.Actions)
+	}
+}
+
+func TestBuildRepositoryExplicitOptionalZeroValuesProduceDiff(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 25, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{
+			{
+				Owner:        "orang-gaboets",
+				Name:         "repo-builder",
+				Visibility:   "public",
+				Description:  "CLI",
+				Homepage:     "https://example.com/repo-builder",
+				Topics:       []string{"gitops"},
+				AllowForking: true,
+				Archived:     true,
+				IsTemplate:   true,
+			},
+		},
+	})
+
+	desired := loadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: public
+    description: ""
+    homepage: ""
+    topics: [gitops]
+    allow_forking: false
+    archived: false
+    is_template: false
+teams: []
+invites: []
+`)
+
+	report, err := Build(Options{
+		Desired:  desired,
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	want := []Action{{
+		ResourceType: ActionResourceTypeRepository,
+		Operation:    ActionOperationUpdate,
+		ResourceID:   "orang-gaboets/repo-builder",
+		Executable:   true,
+		Message:      "update repository orang-gaboets/repo-builder",
+		Changes: []FieldChange{
+			{Field: "allow_forking", From: true, To: false},
+			{Field: "archived", From: true, To: false},
+			{Field: "description", From: "CLI", To: ""},
+			{Field: "homepage", From: "https://example.com/repo-builder", To: ""},
+			{Field: "is_template", From: true, To: false},
+		},
+	}}
+	if !reflect.DeepEqual(report.Actions, want) {
+		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
 	}
 }
 
@@ -547,4 +653,20 @@ func presentInt64(value int64) config.OptionalInt64 {
 		Present: true,
 		Value:   value,
 	}
+}
+
+func loadDesiredConfig(t *testing.T, contents string) config.OrganizationConfig {
+	t.Helper()
+
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write organization config: %v", err)
+	}
+
+	cfg, err := config.LoadDir(configDir)
+	if err != nil {
+		t.Fatalf("load desired config: %v", err)
+	}
+	return cfg
 }

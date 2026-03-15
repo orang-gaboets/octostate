@@ -3,6 +3,8 @@ package plan
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -370,16 +372,18 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 func TestBuildSkipsAllowForkingDiffForPrivateRepository(t *testing.T) {
 	t.Parallel()
 
+	desired := loadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    allow_forking: false
+teams: []
+invites: []
+`)
+
 	report, err := Build(context.Background(), Options{
-		Desired: config.OrganizationConfig{
-			Organization: "orang-gaboets",
-			Repositories: []config.RepositorySpec{{
-				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
-				Visibility:   "private",
-				AllowForking: false,
-			}},
-		},
+		Desired: desired,
 		Actual: &state.OrganizationState{
 			Organization: "orang-gaboets",
 			Repositories: []state.Repository{{
@@ -396,6 +400,102 @@ func TestBuildSkipsAllowForkingDiffForPrivateRepository(t *testing.T) {
 
 	if len(report.Actions) != 0 {
 		t.Fatalf("expected no actions for private allow_forking drift, got %#v", report.Actions)
+	}
+}
+
+func TestBuildRepositoryOmittedOptionalFieldsProduceNoDiff(t *testing.T) {
+	t.Parallel()
+
+	desired := loadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: public
+    topics: [gitops]
+teams: []
+invites: []
+`)
+
+	report, err := Build(context.Background(), Options{
+		Desired: desired,
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Repositories: []state.Repository{{
+				Owner:        "orang-gaboets",
+				Name:         "repo-builder",
+				Visibility:   "public",
+				Description:  "CLI",
+				Homepage:     "https://example.com/repo-builder",
+				Topics:       []string{"gitops"},
+				AllowForking: true,
+				Archived:     true,
+				IsTemplate:   true,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Actions) != 0 {
+		t.Fatalf("expected omitted optional repository fields to produce no diff, got %#v", report.Actions)
+	}
+}
+
+func TestBuildRepositoryExplicitOptionalZeroValuesProduceDiff(t *testing.T) {
+	t.Parallel()
+
+	desired := loadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: public
+    description: ""
+    homepage: ""
+    topics: [gitops]
+    allow_forking: false
+    archived: false
+    is_template: false
+teams: []
+invites: []
+`)
+
+	report, err := Build(context.Background(), Options{
+		Desired: desired,
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Repositories: []state.Repository{{
+				Owner:        "orang-gaboets",
+				Name:         "repo-builder",
+				Visibility:   "public",
+				Description:  "CLI",
+				Homepage:     "https://example.com/repo-builder",
+				Topics:       []string{"gitops"},
+				AllowForking: true,
+				Archived:     true,
+				IsTemplate:   true,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	want := []Action{{
+		ResourceType: ActionResourceTypeRepository,
+		Operation:    ActionOperationUpdate,
+		ResourceID:   "orang-gaboets/repo-builder",
+		Executable:   true,
+		Message:      "update repository orang-gaboets/repo-builder",
+		Changes: []FieldChange{
+			{Field: "allow_forking", From: true, To: false},
+			{Field: "archived", From: true, To: false},
+			{Field: "description", From: "CLI", To: ""},
+			{Field: "homepage", From: "https://example.com/repo-builder", To: ""},
+			{Field: "is_template", From: true, To: false},
+		},
+	}}
+	if !reflect.DeepEqual(report.Actions, want) {
+		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
 	}
 }
 
@@ -585,4 +685,20 @@ func presentString(value string) config.OptionalString {
 
 func presentInt64(value int64) config.OptionalInt64 {
 	return config.OptionalInt64{Present: true, Value: value}
+}
+
+func loadDesiredConfig(t *testing.T, contents string) config.OrganizationConfig {
+	t.Helper()
+
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write organization config: %v", err)
+	}
+
+	cfg, err := config.LoadDir(configDir)
+	if err != nil {
+		t.Fatalf("load desired config: %v", err)
+	}
+	return cfg
 }
