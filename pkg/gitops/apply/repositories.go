@@ -35,13 +35,18 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
 	}
 
+	var description *string
+	if value, managed := repository.ManagedDescription(); managed {
+		description = githubpkg.Ptr(value)
+	}
+
 	_, err = repos.CreateFromTemplate(e.ctx, repos.CreateFromTemplateOptions{
 		Service:            e.repositoryService,
 		Name:               repository.Name,
 		Owner:              repository.Owner,
 		TemplateOwner:      repository.Template.Owner,
 		TemplateRepo:       repository.Template.Name,
-		Description:        githubpkg.Ptr(repository.Description),
+		Description:        description,
 		Private:            githubpkg.Ptr(private),
 		SkipTopicSync:      true,
 		IncludeAllBranches: repository.Template.IncludeAllBranches,
@@ -125,17 +130,27 @@ func (e *executor) applyExactRepositorySettings(repository config.RepositorySpec
 	}
 
 	editOptions := repos.EditOptions{
-		Service:     e.repositoryService,
-		Owner:       repository.Owner,
-		Repo:        repository.Name,
-		Description: githubpkg.Ptr(repository.Description),
-		Homepage:    githubpkg.Ptr(repository.Homepage),
-		Private:     githubpkg.Ptr(private),
-		IsTemplate:  githubpkg.Ptr(repository.IsTemplate),
-		Archived:    githubpkg.Ptr(repository.Archived),
+		Service: e.repositoryService,
+		Owner:   repository.Owner,
+		Repo:    repository.Name,
+		Private: githubpkg.Ptr(private),
+	}
+	if description, managed := repository.ManagedDescription(); managed {
+		editOptions.Description = githubpkg.Ptr(description)
+	}
+	if homepage, managed := repository.ManagedHomepage(); managed {
+		editOptions.Homepage = githubpkg.Ptr(homepage)
+	}
+	if archived, managed := repository.ManagedArchived(); managed {
+		editOptions.Archived = githubpkg.Ptr(archived)
+	}
+	if isTemplate, managed := repository.ManagedIsTemplate(); managed {
+		editOptions.IsTemplate = githubpkg.Ptr(isTemplate)
 	}
 	if !private {
-		editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
+		if allowForking, managed := repository.ManagedAllowForking(); managed {
+			editOptions.AllowForking = githubpkg.Ptr(allowForking)
+		}
 	}
 
 	_, err = repos.Edit(e.ctx, editOptions)
