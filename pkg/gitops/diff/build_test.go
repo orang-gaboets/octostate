@@ -2,14 +2,13 @@ package diff
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/testconfig"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
@@ -510,7 +509,7 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 		},
 	})
 
-	desired := loadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: repo-builder
@@ -557,7 +556,7 @@ func TestBuildRepositoryOmittedOptionalFieldsProduceNoDiff(t *testing.T) {
 		},
 	})
 
-	desired := loadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: repo-builder
@@ -599,7 +598,7 @@ func TestBuildRepositoryExplicitOptionalZeroValuesProduceDiff(t *testing.T) {
 		},
 	})
 
-	desired := loadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: repo-builder
@@ -653,20 +652,4 @@ func presentInt64(value int64) config.OptionalInt64 {
 		Present: true,
 		Value:   value,
 	}
-}
-
-func loadDesiredConfig(t *testing.T, contents string) config.OrganizationConfig {
-	t.Helper()
-
-	configDir := t.TempDir()
-	configPath := filepath.Join(configDir, "organization.yaml")
-	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
-		t.Fatalf("write organization config: %v", err)
-	}
-
-	cfg, err := config.LoadDir(configDir)
-	if err != nil {
-		t.Fatalf("load desired config: %v", err)
-	}
-	return cfg
 }

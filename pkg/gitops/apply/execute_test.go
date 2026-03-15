@@ -3,8 +3,6 @@ package apply
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +11,7 @@ import (
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/testconfig"
 	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
@@ -163,7 +162,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 func TestExecuteRepositoryCreateOmitsUnmanagedOptionalFields(t *testing.T) {
 	t.Parallel()
 
-	desired := loadApplyDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: repo-builder
@@ -228,7 +227,7 @@ invites: []
 func TestExecuteRepositoryCreateManagedZeroValuesAreApplied(t *testing.T) {
 	t.Parallel()
 
-	desired := loadApplyDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: repo-builder
@@ -413,7 +412,7 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 func TestExecuteRepositoryUpdateManagedZeroValuesAreApplied(t *testing.T) {
 	t.Parallel()
 
-	desired := loadApplyDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: repo-builder
@@ -1102,22 +1101,6 @@ func inviteByUserID(userID int64, role string) config.InviteSpec {
 		UserID: config.OptionalInt64{Present: true, Value: userID},
 		Role:   role,
 	}
-}
-
-func loadApplyDesiredConfig(t *testing.T, contents string) config.OrganizationConfig {
-	t.Helper()
-
-	configDir := t.TempDir()
-	configPath := filepath.Join(configDir, "organization.yaml")
-	if err := os.WriteFile(configPath, []byte(contents), 0o600); err != nil {
-		t.Fatalf("write organization config: %v", err)
-	}
-
-	cfg, err := config.LoadDir(configDir)
-	if err != nil {
-		t.Fatalf("load desired config: %v", err)
-	}
-	return cfg
 }
 
 type testOrganizationService struct {
