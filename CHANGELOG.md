@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.7.0](https://github.com/orang-gaboets/repo-builder/compare/v0.6.0...v0.7.0) (2026-03-15)
+
+
+### Features
+
+* **gitops:** make repository reconciliation fields presence-aware ([#67](https://github.com/orang-gaboets/repo-builder/issues/67)) ([91002b3](https://github.com/orang-gaboets/repo-builder/commit/91002b3ccfa3a1d42a13330f8c5af659f9e48b31))
+
 ## [0.6.0](https://github.com/orang-gaboets/repo-builder/compare/v0.5.0...v0.6.0) (2026-03-14)
 
 
