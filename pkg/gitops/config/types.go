@@ -41,6 +41,14 @@ type OptionalInt64 struct {
 	Value   int64 `yaml:"-"`
 }
 
+// OptionalBool preserves whether a boolean field was declared and whether it
+// was explicitly set to null in YAML.
+type OptionalBool struct {
+	Present bool `yaml:"-"`
+	Null    bool `yaml:"-"`
+	Value   bool `yaml:"-"`
+}
+
 // InviteSpec describes an organization invite desired in organization.yaml.
 type InviteSpec struct {
 	Username  OptionalString `yaml:"username"`
@@ -111,6 +119,12 @@ type RepositorySpec struct {
 	AllowForking bool         `yaml:"allow_forking"`
 	Archived     bool         `yaml:"archived"`
 	IsTemplate   bool         `yaml:"is_template"`
+
+	description  OptionalString `yaml:"-"`
+	homepage     OptionalString `yaml:"-"`
+	allowForking OptionalBool   `yaml:"-"`
+	archived     OptionalBool   `yaml:"-"`
+	isTemplate   OptionalBool   `yaml:"-"`
 }
 
 // TemplateSpec identifies the template repository used to create a repository.
@@ -118,6 +132,46 @@ type TemplateSpec struct {
 	Owner              string `yaml:"owner"`
 	Name               string `yaml:"name"`
 	IncludeAllBranches bool   `yaml:"include_all_branches"`
+}
+
+// UnmarshalYAML strictly decodes template fields and rejects duplicates.
+func (t *TemplateSpec) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("template must be a YAML mapping")
+	}
+
+	*t = TemplateSpec{}
+	seen := make(map[string]struct{}, len(node.Content)/2)
+
+	for index := 0; index < len(node.Content); index += 2 {
+		keyNode := node.Content[index]
+		valueNode := node.Content[index+1]
+		key := keyNode.Value
+
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("field %s already declared in type config.TemplateSpec", key)
+		}
+		seen[key] = struct{}{}
+
+		switch key {
+		case "owner":
+			if err := valueNode.Decode(&t.Owner); err != nil {
+				return err
+			}
+		case "name":
+			if err := valueNode.Decode(&t.Name); err != nil {
+				return err
+			}
+		case "include_all_branches":
+			if err := valueNode.Decode(&t.IncludeAllBranches); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("field %s not found in type config.TemplateSpec", key)
+		}
+	}
+
+	return nil
 }
 
 // TeamSpec describes a team desired in organization.yaml.
@@ -142,6 +196,106 @@ type TeamRepositorySpec struct {
 	Owner      string `yaml:"owner"`
 	Name       string `yaml:"name"`
 	Permission string `yaml:"permission"`
+}
+
+// DescriptionOption returns the repository description declaration metadata.
+func (r RepositorySpec) DescriptionOption() OptionalString {
+	return r.description
+}
+
+// ManagedDescription returns the description value when it should be
+// reconciled, along with whether the field is managed at all.
+func (r RepositorySpec) ManagedDescription() (string, bool) {
+	if r.description.Present {
+		if r.description.Null {
+			return "", false
+		}
+		return r.Description, true
+	}
+	if strings.TrimSpace(r.Description) != "" {
+		return r.Description, true
+	}
+	return "", false
+}
+
+// HomepageOption returns the repository homepage declaration metadata.
+func (r RepositorySpec) HomepageOption() OptionalString {
+	return r.homepage
+}
+
+// ManagedHomepage returns the homepage value when it should be reconciled,
+// along with whether the field is managed at all.
+func (r RepositorySpec) ManagedHomepage() (string, bool) {
+	if r.homepage.Present {
+		if r.homepage.Null {
+			return "", false
+		}
+		return r.Homepage, true
+	}
+	if strings.TrimSpace(r.Homepage) != "" {
+		return r.Homepage, true
+	}
+	return "", false
+}
+
+// AllowForkingOption returns the repository allow_forking declaration metadata.
+func (r RepositorySpec) AllowForkingOption() OptionalBool {
+	return r.allowForking
+}
+
+// ManagedAllowForking returns the allow_forking value when it should be
+// reconciled, along with whether the field is managed at all.
+func (r RepositorySpec) ManagedAllowForking() (bool, bool) {
+	if r.allowForking.Present {
+		if r.allowForking.Null {
+			return false, false
+		}
+		return r.AllowForking, true
+	}
+	if r.AllowForking {
+		return true, true
+	}
+	return false, false
+}
+
+// ArchivedOption returns the repository archived declaration metadata.
+func (r RepositorySpec) ArchivedOption() OptionalBool {
+	return r.archived
+}
+
+// ManagedArchived returns the archived value when it should be reconciled,
+// along with whether the field is managed at all.
+func (r RepositorySpec) ManagedArchived() (bool, bool) {
+	if r.archived.Present {
+		if r.archived.Null {
+			return false, false
+		}
+		return r.Archived, true
+	}
+	if r.Archived {
+		return true, true
+	}
+	return false, false
+}
+
+// IsTemplateOption returns the repository is_template declaration metadata.
+func (r RepositorySpec) IsTemplateOption() OptionalBool {
+	return r.isTemplate
+}
+
+// ManagedIsTemplate returns the is_template value when it should be
+// reconciled, along with whether the field is managed at all.
+func (r RepositorySpec) ManagedIsTemplate() (bool, bool) {
+	if r.isTemplate.Present {
+		if r.isTemplate.Null {
+			return false, false
+		}
+		return r.IsTemplate, true
+	}
+	if r.IsTemplate {
+		return true, true
+	}
+	return false, false
 }
 
 func isYAMLNull(node *yaml.Node) bool {
@@ -181,5 +335,107 @@ func decodeOptionalInt64Node(node *yaml.Node, out *OptionalInt64) error {
 
 	out.Null = false
 	out.Value = value
+	return nil
+}
+
+func decodeOptionalBoolNode(node *yaml.Node, out *OptionalBool) error {
+	out.Present = true
+	if isYAMLNull(node) {
+		out.Null = true
+		out.Value = false
+		return nil
+	}
+
+	var value bool
+	if err := node.Decode(&value); err != nil {
+		return err
+	}
+
+	out.Null = false
+	out.Value = value
+	return nil
+}
+
+// UnmarshalYAML preserves whether repository optional fields were omitted,
+// null, or explicitly declared in YAML.
+func (r *RepositorySpec) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("repository must be a YAML mapping")
+	}
+
+	*r = RepositorySpec{}
+	seen := make(map[string]struct{}, len(node.Content)/2)
+
+	for index := 0; index < len(node.Content); index += 2 {
+		keyNode := node.Content[index]
+		valueNode := node.Content[index+1]
+		key := keyNode.Value
+
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("field %s already declared in type config.RepositorySpec", key)
+		}
+		seen[key] = struct{}{}
+
+		switch key {
+		case "owner":
+			if err := valueNode.Decode(&r.Owner); err != nil {
+				return err
+			}
+		case "name":
+			if err := valueNode.Decode(&r.Name); err != nil {
+				return err
+			}
+		case "template":
+			if err := valueNode.Decode(&r.Template); err != nil {
+				return err
+			}
+		case "visibility":
+			if err := valueNode.Decode(&r.Visibility); err != nil {
+				return err
+			}
+		case "description":
+			if err := decodeOptionalStringNode(valueNode, &r.description); err != nil {
+				return err
+			}
+			if !r.description.Null {
+				r.Description = r.description.Value
+			}
+		case "homepage":
+			if err := decodeOptionalStringNode(valueNode, &r.homepage); err != nil {
+				return err
+			}
+			if !r.homepage.Null {
+				r.Homepage = r.homepage.Value
+			}
+		case "topics":
+			if err := valueNode.Decode(&r.Topics); err != nil {
+				return err
+			}
+		case "allow_forking":
+			if err := decodeOptionalBoolNode(valueNode, &r.allowForking); err != nil {
+				return err
+			}
+			if !r.allowForking.Null {
+				r.AllowForking = r.allowForking.Value
+			}
+		case "archived":
+			if err := decodeOptionalBoolNode(valueNode, &r.archived); err != nil {
+				return err
+			}
+			if !r.archived.Null {
+				r.Archived = r.archived.Value
+			}
+		case "is_template":
+			if err := decodeOptionalBoolNode(valueNode, &r.isTemplate); err != nil {
+				return err
+			}
+			if !r.isTemplate.Null {
+				r.IsTemplate = r.isTemplate.Value
+			}
+		default:
+			return fmt.Errorf("field %s not found in type config.RepositorySpec", key)
+		}
+	}
+
 	return nil
 }

@@ -230,6 +230,16 @@ Invite rules:
 - Declared empty or whitespace-only `username` / `email` values are rejected
 - Explicit `null` is rejected for `username`, `email`, and `user_id`
 
+Repository field rules:
+- `visibility` and `topics` are exact-reconcile fields
+- `template.owner` and `template.name` remain create-time inputs for repository creation
+- `description`, `homepage`, `allow_forking`, `archived`, and `is_template` are presence-aware optional fields
+- If one of those optional repository fields is omitted, GitOps leaves it unmanaged
+- Explicit empty strings for `description` or `homepage` clear those fields
+- Boolean repository fields are only managed when explicitly set to `true` or `false`
+- Explicit `null` is rejected for `description`, `homepage`, `allow_forking`, `archived`, and `is_template`
+- `allow_forking` is still ignored for private repositories
+
 Exit codes:
 - `0`: valid configuration
 - `2`: configuration loaded, but semantic validation failed
@@ -284,6 +294,7 @@ Behavior:
 - Builds a deterministic, read-only reconciliation plan
 - Prints the JSON plan report to stdout
 - Does not mutate GitHub state
+- Repository optional fields are only diffed when they are explicitly declared in config
 
 Plan report fields:
 - `organization`
@@ -327,6 +338,9 @@ Behavior:
 - Live apply executes only supported executable `create` / `update` actions
 - Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
 - Repository creation currently requires `template.owner` and `template.name`
+- Omitted optional repository fields are left unmanaged during apply
+- Explicit empty `description` / `homepage` values are applied as clears
+- Explicit boolean repository values are only applied when declared in config
 
 Dry-run output fields:
 - `status`

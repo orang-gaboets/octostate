@@ -27,6 +27,8 @@ const (
 	ValidationIssueCodeDuplicateTeamRepository ValidationIssueCode = "duplicate_team_repository"
 	// ValidationIssueCodeInvalidEnum indicates a field has an unsupported enum value.
 	ValidationIssueCodeInvalidEnum ValidationIssueCode = "invalid_enum"
+	// ValidationIssueCodeInvalidFieldValue indicates a field value is invalid for its schema.
+	ValidationIssueCodeInvalidFieldValue ValidationIssueCode = "invalid_field_value"
 	// ValidationIssueCodeSlugNameMismatch indicates a team slug does not match its normalized name.
 	ValidationIssueCodeSlugNameMismatch ValidationIssueCode = "slug_name_mismatch"
 )

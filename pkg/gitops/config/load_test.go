@@ -58,13 +58,21 @@ func TestLoadDir(t *testing.T) {
 				}
 
 				wantRepos := []RepositorySpec{{
-					Owner:       "orang-gaboets",
-					Name:        "repo-builder",
-					Template:    TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
-					Visibility:  "private",
-					Description: "GitHub organization operations CLI",
-					Homepage:    "https://github.com/orang-gaboets/repo-builder",
-					Topics:      []string{"go", "gitops"},
+					Owner:        "orang-gaboets",
+					Name:         "repo-builder",
+					Template:     TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
+					Visibility:   "private",
+					Description:  "GitHub organization operations CLI",
+					Homepage:     "https://github.com/orang-gaboets/repo-builder",
+					Topics:       []string{"go", "gitops"},
+					AllowForking: false,
+					Archived:     false,
+					IsTemplate:   false,
+					description:  optionalString("GitHub organization operations CLI"),
+					homepage:     optionalString("https://github.com/orang-gaboets/repo-builder"),
+					allowForking: optionalBool(false),
+					archived:     optionalBool(false),
+					isTemplate:   optionalBool(false),
 				}}
 				if !reflect.DeepEqual(got.Repositories, wantRepos) {
 					t.Fatalf("unexpected repositories: got %#v want %#v", got.Repositories, wantRepos)
@@ -282,6 +290,149 @@ teams: []
 	}
 	if !got.Invites[0].Email.Null {
 		t.Fatalf("expected email explicit null to be preserved, got %#v", got.Invites[0].Email)
+	}
+}
+
+func TestLoadDirRepositoryOptionalFieldsPresenceIsPreserved(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeTestOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    description: "   "
+    homepage: ""
+    allow_forking: false
+    archived: false
+    is_template: false
+teams: []
+invites: []
+`)
+
+	got, err := LoadDir(configDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Repositories) != 1 {
+		t.Fatalf("expected one repository, got %#v", got.Repositories)
+	}
+
+	repo := got.Repositories[0]
+	if repo.Description != "" {
+		t.Fatalf("expected normalized empty description, got %#v", repo.Description)
+	}
+	if repo.Homepage != "" {
+		t.Fatalf("expected normalized empty homepage, got %#v", repo.Homepage)
+	}
+	if !repo.DescriptionOption().Present || repo.DescriptionOption().Null || repo.DescriptionOption().Value != "" {
+		t.Fatalf("unexpected description option: %#v", repo.DescriptionOption())
+	}
+	if !repo.HomepageOption().Present || repo.HomepageOption().Null || repo.HomepageOption().Value != "" {
+		t.Fatalf("unexpected homepage option: %#v", repo.HomepageOption())
+	}
+	if !repo.AllowForkingOption().Present || repo.AllowForkingOption().Null || repo.AllowForkingOption().Value {
+		t.Fatalf("unexpected allow_forking option: %#v", repo.AllowForkingOption())
+	}
+	if !repo.ArchivedOption().Present || repo.ArchivedOption().Null || repo.ArchivedOption().Value {
+		t.Fatalf("unexpected archived option: %#v", repo.ArchivedOption())
+	}
+	if !repo.IsTemplateOption().Present || repo.IsTemplateOption().Null || repo.IsTemplateOption().Value {
+		t.Fatalf("unexpected is_template option: %#v", repo.IsTemplateOption())
+	}
+}
+
+func TestLoadDirRepositoryOptionalNullsArePreserved(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeTestOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    description: null
+    homepage: null
+    allow_forking: null
+    archived: null
+    is_template: null
+teams: []
+invites: []
+`)
+
+	got, err := LoadDir(configDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Repositories) != 1 {
+		t.Fatalf("expected one repository, got %#v", got.Repositories)
+	}
+
+	repo := got.Repositories[0]
+	if !repo.DescriptionOption().Present || !repo.DescriptionOption().Null {
+		t.Fatalf("expected description explicit null to be preserved, got %#v", repo.DescriptionOption())
+	}
+	if !repo.HomepageOption().Present || !repo.HomepageOption().Null {
+		t.Fatalf("expected homepage explicit null to be preserved, got %#v", repo.HomepageOption())
+	}
+	if !repo.AllowForkingOption().Present || !repo.AllowForkingOption().Null {
+		t.Fatalf("expected allow_forking explicit null to be preserved, got %#v", repo.AllowForkingOption())
+	}
+	if !repo.ArchivedOption().Present || !repo.ArchivedOption().Null {
+		t.Fatalf("expected archived explicit null to be preserved, got %#v", repo.ArchivedOption())
+	}
+	if !repo.IsTemplateOption().Present || !repo.IsTemplateOption().Null {
+		t.Fatalf("expected is_template explicit null to be preserved, got %#v", repo.IsTemplateOption())
+	}
+}
+
+func TestLoadDirRejectsUnknownRepositoryField(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeTestOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    unsupported: true
+teams: []
+invites: []
+`)
+
+	_, err := LoadDir(configDir)
+	if err == nil {
+		t.Fatal("expected error for unknown repository field")
+	}
+	if !strings.Contains(err.Error(), "field unsupported not found in type config.RepositorySpec") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadDirRejectsUnknownRepositoryTemplateField(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeTestOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    template:
+      owner: orang-gaboets
+      name: repo-template
+      unsupported: true
+teams: []
+invites: []
+`)
+
+	_, err := LoadDir(configDir)
+	if err == nil {
+		t.Fatal("expected error for unknown repository template field")
+	}
+	if !strings.Contains(err.Error(), "field unsupported not found in type config.TemplateSpec") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

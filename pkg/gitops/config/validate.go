@@ -101,6 +101,21 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 		case templateOwner != "" && templateName == "":
 			report.addError(pathPrefix+".template.name", ValidationIssueCodeMissingRequiredField, "template name is required when template owner is set")
 		}
+		if repo.DescriptionOption().Null {
+			report.addError(pathPrefix+".description", ValidationIssueCodeInvalidFieldValue, "repository description must not be null when provided")
+		}
+		if repo.HomepageOption().Null {
+			report.addError(pathPrefix+".homepage", ValidationIssueCodeInvalidFieldValue, "repository homepage must not be null when provided")
+		}
+		if repo.AllowForkingOption().Null {
+			report.addError(pathPrefix+".allow_forking", ValidationIssueCodeInvalidFieldValue, "repository allow_forking must not be null when provided")
+		}
+		if repo.ArchivedOption().Null {
+			report.addError(pathPrefix+".archived", ValidationIssueCodeInvalidFieldValue, "repository archived must not be null when provided")
+		}
+		if repo.IsTemplateOption().Null {
+			report.addError(pathPrefix+".is_template", ValidationIssueCodeInvalidFieldValue, "repository is_template must not be null when provided")
+		}
 
 		for j, topic := range repo.Topics {
 			if strings.TrimSpace(topic) == "" {

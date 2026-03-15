@@ -11,6 +11,7 @@ import (
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/testconfig"
 	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
@@ -158,6 +159,150 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 	}
 }
 
+func TestExecuteRepositoryCreateOmitsUnmanagedOptionalFields(t *testing.T) {
+	t.Parallel()
+
+	desired := testconfig.LoadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: private
+    topics: [gitops]
+    template:
+      owner: orang-gaboets
+      name: repo-template
+teams: []
+invites: []
+`)
+	desiredRepo := desired.Repositories[0]
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "create repository orang-gaboets/repo-builder",
+		}},
+	}
+	plan.Normalize()
+
+	var createReq *gh.TemplateRepoRequest
+	var editReq *gh.Repository
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(_ context.Context, _, _ string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			createReq = req
+			return &gh.Repository{}, nil, nil
+		},
+		editFunc: func(_ context.Context, _, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editReq = repository
+			return &gh.Repository{}, nil, nil
+		},
+		replaceAllTopicsFunc: func(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+			return topics, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createReq == nil {
+		t.Fatal("expected template creation request")
+	}
+	if createReq.Description != nil {
+		t.Fatalf("expected unmanaged description to be omitted from create request, got %#v", createReq.Description)
+	}
+	if editReq == nil {
+		t.Fatal("expected follow-up repository edit request")
+	}
+	if editReq.Private == nil || !*editReq.Private {
+		t.Fatalf("expected private repository edit payload, got %#v", editReq)
+	}
+	if editReq.Description != nil || editReq.Homepage != nil || editReq.Archived != nil || editReq.IsTemplate != nil || editReq.AllowForking != nil {
+		t.Fatalf("expected unmanaged optional fields to be omitted from edit payload, got %#v", editReq)
+	}
+}
+
+func TestExecuteRepositoryCreateManagedZeroValuesAreApplied(t *testing.T) {
+	t.Parallel()
+
+	desired := testconfig.LoadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: public
+    description: ""
+    homepage: ""
+    topics: [gitops]
+    allow_forking: false
+    archived: false
+    is_template: false
+    template:
+      owner: orang-gaboets
+      name: repo-template
+teams: []
+invites: []
+`)
+	desiredRepo := desired.Repositories[0]
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "create repository orang-gaboets/repo-builder",
+		}},
+	}
+	plan.Normalize()
+
+	var createReq *gh.TemplateRepoRequest
+	var editReq *gh.Repository
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(_ context.Context, _, _ string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			createReq = req
+			return &gh.Repository{}, nil, nil
+		},
+		editFunc: func(_ context.Context, _, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editReq = repository
+			return &gh.Repository{}, nil, nil
+		},
+		replaceAllTopicsFunc: func(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+			return topics, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createReq == nil || createReq.Description == nil || *createReq.Description != "" {
+		t.Fatalf("expected explicit empty description on create request, got %#v", createReq)
+	}
+	if editReq == nil {
+		t.Fatal("expected follow-up repository edit request")
+	}
+	if editReq.Private == nil || *editReq.Private {
+		t.Fatalf("expected public repository edit payload, got %#v", editReq)
+	}
+	if editReq.Description == nil || *editReq.Description != "" {
+		t.Fatalf("expected explicit empty description in edit payload, got %#v", editReq)
+	}
+	if editReq.Homepage == nil || *editReq.Homepage != "" {
+		t.Fatalf("expected explicit empty homepage in edit payload, got %#v", editReq)
+	}
+	if editReq.AllowForking == nil || *editReq.AllowForking {
+		t.Fatalf("expected explicit false allow_forking in edit payload, got %#v", editReq)
+	}
+	if editReq.Archived == nil || *editReq.Archived {
+		t.Fatalf("expected explicit false archived in edit payload, got %#v", editReq)
+	}
+	if editReq.IsTemplate == nil || *editReq.IsTemplate {
+		t.Fatalf("expected explicit false is_template in edit payload, got %#v", editReq)
+	}
+}
+
 func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	t.Parallel()
 
@@ -261,6 +406,78 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 	}
 	if !editCalled {
 		t.Fatal("expected repository edit to be called")
+	}
+}
+
+func TestExecuteRepositoryUpdateManagedZeroValuesAreApplied(t *testing.T) {
+	t.Parallel()
+
+	desired := testconfig.LoadDesiredConfig(t, `
+organization: orang-gaboets
+repositories:
+  - name: repo-builder
+    visibility: public
+    description: ""
+    homepage: ""
+    topics: [gitops]
+    allow_forking: false
+    archived: false
+    is_template: false
+teams: []
+invites: []
+`)
+	desiredRepo := desired.Repositories[0]
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+			Executable:   true,
+			Message:      "update repository orang-gaboets/repo-builder",
+			Changes: []gitopsplan.FieldChange{
+				{Field: "description", From: "CLI", To: ""},
+				{Field: "homepage", From: "https://example.com/repo-builder", To: ""},
+				{Field: "allow_forking", From: true, To: false},
+				{Field: "archived", From: true, To: false},
+				{Field: "is_template", From: true, To: false},
+			},
+		}},
+	}
+	plan.Normalize()
+
+	var editReq *gh.Repository
+	repoSvc := &testRepoService{
+		editFunc: func(_ context.Context, _, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			editReq = repository
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if editReq == nil {
+		t.Fatal("expected repository edit request")
+	}
+	if editReq.Private != nil {
+		t.Fatalf("did not expect visibility update in edit payload, got %#v", editReq)
+	}
+	if editReq.Description == nil || *editReq.Description != "" {
+		t.Fatalf("expected explicit empty description in edit payload, got %#v", editReq)
+	}
+	if editReq.Homepage == nil || *editReq.Homepage != "" {
+		t.Fatalf("expected explicit empty homepage in edit payload, got %#v", editReq)
+	}
+	if editReq.AllowForking == nil || *editReq.AllowForking {
+		t.Fatalf("expected explicit false allow_forking in edit payload, got %#v", editReq)
+	}
+	if editReq.Archived == nil || *editReq.Archived {
+		t.Fatalf("expected explicit false archived in edit payload, got %#v", editReq)
+	}
+	if editReq.IsTemplate == nil || *editReq.IsTemplate {
+		t.Fatalf("expected explicit false is_template in edit payload, got %#v", editReq)
 	}
 }
 
