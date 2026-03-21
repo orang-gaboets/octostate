@@ -134,6 +134,205 @@ func TestEncodeYAMLPreservesExplicitNullOptionals(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLIncludesInviteUserID(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []InviteSpec{{
+			UserID: optionalInt64(12345),
+			Role:   "direct_member",
+		}},
+		Repositories: []RepositorySpec{},
+		Teams:        []TeamSpec{},
+	}
+
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := string(got)
+	for _, expected := range []string{
+		"user_id: 12345",
+		"role: direct_member",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected YAML to contain %q, got:\n%s", expected, text)
+		}
+	}
+
+	roundTripped := loadEncodedConfig(t, got)
+	if len(roundTripped.Invites) != 1 {
+		t.Fatalf("expected one round-tripped invite, got %#v", roundTripped.Invites)
+	}
+	if !roundTripped.Invites[0].UserID.Present || roundTripped.Invites[0].UserID.Null || roundTripped.Invites[0].UserID.Value != 12345 {
+		t.Fatalf("unexpected round-tripped user_id option: %#v", roundTripped.Invites[0].UserID)
+	}
+}
+
+func TestEncodeYAMLRoundTripIsStable(t *testing.T) {
+	t.Parallel()
+
+	first, err := EncodeYAML(validOrganizationConfig())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	roundTripped := loadEncodedConfig(t, first)
+	second, err := EncodeYAML(roundTripped)
+	if err != nil {
+		t.Fatalf("unexpected error on second encode: %v", err)
+	}
+
+	if string(second) != string(first) {
+		t.Fatalf("expected stable encode-load-encode round trip:\nfirst:\n%s\nsecond:\n%s", string(first), string(second))
+	}
+}
+
+func TestEncodeYAMLOmitsOrgOwnersAndEmptyNestedSections(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []InviteSpec{{
+			Username: optionalString("octocat"),
+			Role:     "direct_member",
+		}},
+		Repositories: []RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "repo-builder",
+			Visibility: "private",
+			Template: TemplateSpec{
+				Owner: "orang-gaboets",
+				Name:  "repo-template",
+			},
+		}},
+		Teams: []TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+		}},
+	}
+
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := string(got)
+	for _, unexpected := range []string{
+		"team_slugs:",
+		"\n    members:",
+		"\n    repositories:",
+		"include_all_branches:",
+	} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("did not expect YAML to contain %q, got:\n%s", unexpected, text)
+		}
+	}
+	if strings.Contains(text, "\n  - owner: orang-gaboets") {
+		t.Fatalf("did not expect org-owned repository entries to emit owner, got:\n%s", text)
+	}
+}
+
+func TestEncodeYAMLIncludesExplicitOptionalsAndExternalOwners(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites:      []InviteSpec{},
+		Repositories: []RepositorySpec{{
+			Owner:        "shared-platform",
+			Name:         "repo-builder",
+			Visibility:   "public",
+			Description:  "",
+			Homepage:     "",
+			description:  optionalString(""),
+			homepage:     optionalString(""),
+			allowForking: optionalBool(false),
+			archived:     optionalBool(false),
+			isTemplate:   optionalBool(false),
+			Template: TemplateSpec{
+				Owner:              "shared-platform",
+				Name:               "repo-template",
+				IncludeAllBranches: true,
+			},
+		}},
+		Teams: []TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []TeamRepositorySpec{{
+				Owner:      "shared-platform",
+				Name:       "repo-builder",
+				Permission: "push",
+			}},
+		}},
+	}
+
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := string(got)
+	for _, expected := range []string{
+		"owner: shared-platform",
+		"description: \"\"",
+		"homepage: \"\"",
+		"allow_forking: false",
+		"archived: false",
+		"is_template: false",
+		"include_all_branches: true",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected YAML to contain %q, got:\n%s", expected, text)
+		}
+	}
+}
+
+func TestEncodeYAMLIncludesTeamParentSlug(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites:      []InviteSpec{},
+		Repositories: []RepositorySpec{},
+		Teams: []TeamSpec{
+			{
+				Slug:    "platform",
+				Name:    "Platform",
+				Privacy: "closed",
+			},
+			{
+				Slug:       "platform-infra",
+				Name:       "Platform Infra",
+				Privacy:    "closed",
+				ParentSlug: "platform",
+			},
+		},
+	}
+
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := string(got)
+	if !strings.Contains(text, "parent_slug: platform") {
+		t.Fatalf("expected YAML to contain parent_slug, got:\n%s", text)
+	}
+
+	roundTripped := loadEncodedConfig(t, got)
+	if len(roundTripped.Teams) != 2 {
+		t.Fatalf("expected two round-tripped teams, got %#v", roundTripped.Teams)
+	}
+	if roundTripped.Teams[1].ParentSlug != "platform" {
+		t.Fatalf("expected round-tripped parent slug, got %#v", roundTripped.Teams[1].ParentSlug)
+	}
+}
+
 func loadEncodedConfig(t *testing.T, encoded []byte) OrganizationConfig {
 	t.Helper()
 
