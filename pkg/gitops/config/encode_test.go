@@ -333,6 +333,62 @@ func TestEncodeYAMLIncludesTeamParentSlug(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLProgrammaticRepositoryFallbacks(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites:      []InviteSpec{},
+		Repositories: []RepositorySpec{{
+			Name:         "repo-builder",
+			Visibility:   "public",
+			Description:  "GitOps CLI",
+			Homepage:     "https://example.com/repo-builder",
+			AllowForking: true,
+			Archived:     true,
+			IsTemplate:   true,
+			Topics:       []string{"go"},
+		}},
+		Teams: []TeamSpec{},
+	}
+
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := string(got)
+	for _, expected := range []string{
+		"description: GitOps CLI",
+		"homepage: https://example.com/repo-builder",
+		"allow_forking: true",
+		"archived: true",
+		"is_template: true",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected YAML to contain %q, got:\n%s", expected, text)
+		}
+	}
+
+	roundTripped := loadEncodedConfig(t, got)
+	repo := roundTripped.Repositories[0]
+	if value, managed := repo.ManagedDescription(); !managed || value != "GitOps CLI" {
+		t.Fatalf("expected round-tripped fallback description, got value=%q managed=%v", value, managed)
+	}
+	if value, managed := repo.ManagedHomepage(); !managed || value != "https://example.com/repo-builder" {
+		t.Fatalf("expected round-tripped fallback homepage, got value=%q managed=%v", value, managed)
+	}
+	if value, managed := repo.ManagedAllowForking(); !managed || !value {
+		t.Fatalf("expected round-tripped fallback allow_forking, got value=%v managed=%v", value, managed)
+	}
+	if value, managed := repo.ManagedArchived(); !managed || !value {
+		t.Fatalf("expected round-tripped fallback archived, got value=%v managed=%v", value, managed)
+	}
+	if value, managed := repo.ManagedIsTemplate(); !managed || !value {
+		t.Fatalf("expected round-tripped fallback is_template, got value=%v managed=%v", value, managed)
+	}
+}
+
 func TestAppendOptionalInt64FieldOmitsUndeclaredValue(t *testing.T) {
 	t.Parallel()
 

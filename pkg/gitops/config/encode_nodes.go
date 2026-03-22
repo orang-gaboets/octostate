@@ -40,6 +40,28 @@ func appendOptionalBoolField(node *yaml.Node, key string, value OptionalBool) {
 	appendMapField(node, key, boolNode(value.Value))
 }
 
+func appendManagedRepositoryStringField(node *yaml.Node, key string, value OptionalString, fallback string) {
+	if value.Present {
+		appendOptionalStringField(node, key, value)
+		return
+	}
+	if strings.TrimSpace(fallback) == "" {
+		return
+	}
+	appendMapField(node, key, stringNode(fallback))
+}
+
+func appendManagedRepositoryBoolField(node *yaml.Node, key string, value OptionalBool, fallback bool) {
+	if value.Present {
+		appendOptionalBoolField(node, key, value)
+		return
+	}
+	if !fallback {
+		return
+	}
+	appendMapField(node, key, boolNode(fallback))
+}
+
 func appendMapField(node *yaml.Node, key string, value *yaml.Node) {
 	node.Content = append(node.Content, stringNode(key), value)
 }

@@ -75,14 +75,14 @@ func encodeRepositories(repositories []RepositorySpec, organization string) *yam
 		}
 
 		appendMapField(item, "visibility", stringNode(strings.TrimSpace(repo.Visibility)))
-		appendOptionalStringField(item, "description", repo.DescriptionOption())
-		appendOptionalStringField(item, "homepage", repo.HomepageOption())
+		appendManagedRepositoryStringField(item, "description", repo.DescriptionOption(), repo.Description)
+		appendManagedRepositoryStringField(item, "homepage", repo.HomepageOption(), repo.Homepage)
 		if len(repo.Topics) > 0 {
 			appendMapField(item, "topics", stringSequenceNode(repo.Topics))
 		}
-		appendOptionalBoolField(item, "allow_forking", repo.AllowForkingOption())
-		appendOptionalBoolField(item, "archived", repo.ArchivedOption())
-		appendOptionalBoolField(item, "is_template", repo.IsTemplateOption())
+		appendManagedRepositoryBoolField(item, "allow_forking", repo.AllowForkingOption(), repo.AllowForking)
+		appendManagedRepositoryBoolField(item, "archived", repo.ArchivedOption(), repo.Archived)
+		appendManagedRepositoryBoolField(item, "is_template", repo.IsTemplateOption(), repo.IsTemplate)
 
 		items = append(items, item)
 	}

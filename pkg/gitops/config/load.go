@@ -163,10 +163,18 @@ func normalizeRepository(repo *RepositorySpec, organization string) {
 
 	repo.Name = strings.TrimSpace(repo.Name)
 	repo.Visibility = strings.TrimSpace(repo.Visibility)
-	repo.description.TrimSpace()
-	repo.Description = repo.description.Value
-	repo.homepage.TrimSpace()
-	repo.Homepage = repo.homepage.Value
+	if repo.description.Present {
+		repo.description.TrimSpace()
+		repo.Description = repo.description.Value
+	} else {
+		repo.Description = strings.TrimSpace(repo.Description)
+	}
+	if repo.homepage.Present {
+		repo.homepage.TrimSpace()
+		repo.Homepage = repo.homepage.Value
+	} else {
+		repo.Homepage = strings.TrimSpace(repo.Homepage)
+	}
 	repo.Template.Owner = strings.TrimSpace(repo.Template.Owner)
 	repo.Template.Name = strings.TrimSpace(repo.Template.Name)
 

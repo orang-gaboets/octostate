@@ -23,7 +23,6 @@ const (
 	syncFromLiveOrganizationFile    = "organization.yaml"
 	syncFromLiveTempFilePattern     = "organization-*.yaml"
 	syncFromLiveConfigDirectoryMode = 0o755
-	syncFromLiveConfigFileMode      = 0o600
 )
 
 var (
