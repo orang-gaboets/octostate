@@ -16,6 +16,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
 - **v0 (current):** API-primitive commands (direct GitHub operations) ✅
 - **v1 (in progress):** GitOps commands + audit:
   - ✅ `repo-builder config validate`
+  - ✅ `repo-builder config sync-from-live --mode bootstrap`
   - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
   - ✅ `repo-builder config apply`
@@ -272,6 +273,57 @@ teams:
     repositories:
       - name: repo-builder
         permission: push
+```
+
+#### Bootstrap desired-state config from live GitHub state
+
+```bash
+repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
+repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
+```
+
+##### Flags
+- `--mode` (required): Sync mode to run (currently only `bootstrap`)
+- `--org` (required): GitHub organization to read from live state
+- `--config-dir` (required): Path to the config directory containing or receiving `organization.yaml`
+- `--write`: Write the generated `organization.yaml` into `--config-dir` instead of printing YAML to stdout
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Collects live GitHub organization state required for bootstrap generation
+- Builds a canonical `organization.yaml` proposal from:
+  - repositories
+  - teams
+  - team memberships
+  - team repository permissions
+- Prints the generated YAML to stdout by default
+- Validates the generated config before printing or writing it
+- With `--write`, writes `<config-dir>/organization.yaml`
+
+Bootstrap rules:
+- Pending invites are excluded by default
+- Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
+- `allow_forking` is omitted for private repositories
+- Bootstrap fails if it detects direct organization members outside teams, because current GitOps config cannot represent them safely
+
+Write behavior:
+- `--write` fails if `<config-dir>/organization.yaml` already exists
+- Writes are atomic: the file is written through a temp file and then renamed into place
+- Existing-target checks happen before GitHub authentication and live collection
+
+Example print-to-stdout use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+Example write use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 #### Preview reconciliation plan
@@ -908,6 +960,7 @@ state/
 
 Implemented:
 - `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
+- `repo-builder config sync-from-live --mode bootstrap` — generate a canonical bootstrap `organization.yaml` from live GitHub state
 - `repo-builder config plan` — preview deterministic reconciliation actions from desired vs live state
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 - `repo-builder config apply` — reconcile GitHub to match config/ for supported create/update actions
