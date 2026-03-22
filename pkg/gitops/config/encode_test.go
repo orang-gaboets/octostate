@@ -333,6 +333,36 @@ func TestEncodeYAMLIncludesTeamParentSlug(t *testing.T) {
 	}
 }
 
+func TestAppendOptionalInt64FieldOmitsUndeclaredValue(t *testing.T) {
+	t.Parallel()
+
+	node := mapNode()
+	appendOptionalInt64Field(node, "user_id", OptionalInt64{})
+
+	if len(node.Content) != 0 {
+		t.Fatalf("expected no map content for undeclared optional int64, got %#v", node.Content)
+	}
+}
+
+func TestSequenceNodeNilReturnsEmptySequence(t *testing.T) {
+	t.Parallel()
+
+	node := sequenceNode(nil)
+	if node == nil {
+		t.Fatal("expected non-nil sequence node")
+		return
+	}
+	if node.Kind != 2 { // yaml.SequenceNode
+		t.Fatalf("expected sequence node kind, got %#v", node.Kind)
+	}
+	if node.Content == nil {
+		t.Fatal("expected non-nil empty sequence content")
+	}
+	if len(node.Content) != 0 {
+		t.Fatalf("expected empty sequence content, got %#v", node.Content)
+	}
+}
+
 func loadEncodedConfig(t *testing.T, encoded []byte) OrganizationConfig {
 	t.Helper()
 

@@ -203,6 +203,16 @@ func (r RepositorySpec) DescriptionOption() OptionalString {
 	return r.description
 }
 
+// SetManagedDescription marks description as explicitly managed in
+// programmatic config construction.
+func (r *RepositorySpec) SetManagedDescription(value string) {
+	r.Description = value
+	r.description = OptionalString{
+		Present: true,
+		Value:   value,
+	}
+}
+
 // ManagedDescription returns the description value when it should be
 // reconciled, along with whether the field is managed at all.
 func (r RepositorySpec) ManagedDescription() (string, bool) {
@@ -221,6 +231,16 @@ func (r RepositorySpec) ManagedDescription() (string, bool) {
 // HomepageOption returns the repository homepage declaration metadata.
 func (r RepositorySpec) HomepageOption() OptionalString {
 	return r.homepage
+}
+
+// SetManagedHomepage marks homepage as explicitly managed in programmatic
+// config construction.
+func (r *RepositorySpec) SetManagedHomepage(value string) {
+	r.Homepage = value
+	r.homepage = OptionalString{
+		Present: true,
+		Value:   value,
+	}
 }
 
 // ManagedHomepage returns the homepage value when it should be reconciled,
@@ -243,6 +263,16 @@ func (r RepositorySpec) AllowForkingOption() OptionalBool {
 	return r.allowForking
 }
 
+// SetManagedAllowForking marks allow_forking as explicitly managed in
+// programmatic config construction.
+func (r *RepositorySpec) SetManagedAllowForking(value bool) {
+	r.AllowForking = value
+	r.allowForking = OptionalBool{
+		Present: true,
+		Value:   value,
+	}
+}
+
 // ManagedAllowForking returns the allow_forking value when it should be
 // reconciled, along with whether the field is managed at all.
 func (r RepositorySpec) ManagedAllowForking() (bool, bool) {
@@ -263,6 +293,16 @@ func (r RepositorySpec) ArchivedOption() OptionalBool {
 	return r.archived
 }
 
+// SetManagedArchived marks archived as explicitly managed in programmatic
+// config construction.
+func (r *RepositorySpec) SetManagedArchived(value bool) {
+	r.Archived = value
+	r.archived = OptionalBool{
+		Present: true,
+		Value:   value,
+	}
+}
+
 // ManagedArchived returns the archived value when it should be reconciled,
 // along with whether the field is managed at all.
 func (r RepositorySpec) ManagedArchived() (bool, bool) {
@@ -281,6 +321,16 @@ func (r RepositorySpec) ManagedArchived() (bool, bool) {
 // IsTemplateOption returns the repository is_template declaration metadata.
 func (r RepositorySpec) IsTemplateOption() OptionalBool {
 	return r.isTemplate
+}
+
+// SetManagedIsTemplate marks is_template as explicitly managed in programmatic
+// config construction.
+func (r *RepositorySpec) SetManagedIsTemplate(value bool) {
+	r.IsTemplate = value
+	r.isTemplate = OptionalBool{
+		Present: true,
+		Value:   value,
+	}
 }
 
 // ManagedIsTemplate returns the is_template value when it should be
