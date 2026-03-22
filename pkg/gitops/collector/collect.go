@@ -19,6 +19,11 @@ type CollectOrganizationOptions struct {
 	TeamService         teams.Service
 }
 
+type collectOrganizationBehavior struct {
+	includeMembers            bool
+	includePendingInvitations bool
+}
+
 // Validate checks if the CollectOrganizationOptions are valid.
 func (opt *CollectOrganizationOptions) Validate() error {
 	switch {
@@ -38,6 +43,25 @@ func (opt *CollectOrganizationOptions) Validate() error {
 // CollectOrganization loads the current GitHub state for one organization into
 // a normalized OrganizationState value.
 func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+	return collectOrganization(ctx, opt, collectOrganizationBehavior{
+		includeMembers:            true,
+		includePendingInvitations: true,
+	})
+}
+
+// CollectOrganizationForBootstrap loads only the live organization state
+// required for sync-from-live bootstrap generation.
+func CollectOrganizationForBootstrap(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+	return collectOrganization(ctx, opt, collectOrganizationBehavior{
+		includeMembers: true,
+	})
+}
+
+func collectOrganization(
+	ctx context.Context,
+	opt CollectOrganizationOptions,
+	behavior collectOrganizationBehavior,
+) (*state.OrganizationState, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
@@ -46,42 +70,46 @@ func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*
 		Organization: opt.OrgName,
 	}
 
-	members, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
-		Service: opt.OrganizationService,
-		OrgName: opt.OrgName,
-		Role:    organizations.MemberRoleAll,
-	})
-	if err != nil {
-		return nil, err
-	}
-	actual.Members = organizationMembersFromUsers(members)
-
-	invitations, err := organizations.ListPendingInvitations(ctx, organizations.ListPendingInvitationsOptions{
-		Service: opt.OrganizationService,
-		OrgName: opt.OrgName,
-	})
-	if err != nil {
-		return nil, err
-	}
-	actual.PendingInvitations = make([]state.PendingInvitation, 0, len(invitations))
-	for _, invitation := range invitations {
-		if invitation == nil {
-			continue
+	if behavior.includeMembers {
+		members, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
+			Service: opt.OrganizationService,
+			OrgName: opt.OrgName,
+			Role:    organizations.MemberRoleAll,
+		})
+		if err != nil {
+			return nil, err
 		}
+		actual.Members = organizationMembersFromUsers(members)
+	}
 
-		pendingInvitation := pendingInvitationFromOrganizationInvitation(invitation)
-		if shouldLoadInvitationTeams(invitation) {
-			invitationTeams, err := organizations.ListInvitationTeams(ctx, organizations.ListInvitationTeamsOptions{
-				Service:      opt.OrganizationService,
-				OrgName:      opt.OrgName,
-				InvitationID: *invitation.ID,
-			})
-			if err != nil {
-				return nil, err
+	if behavior.includePendingInvitations {
+		invitations, err := organizations.ListPendingInvitations(ctx, organizations.ListPendingInvitationsOptions{
+			Service: opt.OrganizationService,
+			OrgName: opt.OrgName,
+		})
+		if err != nil {
+			return nil, err
+		}
+		actual.PendingInvitations = make([]state.PendingInvitation, 0, len(invitations))
+		for _, invitation := range invitations {
+			if invitation == nil {
+				continue
 			}
-			pendingInvitation.TeamSlugs = teamSlugsFromTeams(invitationTeams)
+
+			pendingInvitation := pendingInvitationFromOrganizationInvitation(invitation)
+			if shouldLoadInvitationTeams(invitation) {
+				invitationTeams, err := organizations.ListInvitationTeams(ctx, organizations.ListInvitationTeamsOptions{
+					Service:      opt.OrganizationService,
+					OrgName:      opt.OrgName,
+					InvitationID: *invitation.ID,
+				})
+				if err != nil {
+					return nil, err
+				}
+				pendingInvitation.TeamSlugs = teamSlugsFromTeams(invitationTeams)
+			}
+			actual.PendingInvitations = append(actual.PendingInvitations, pendingInvitation)
 		}
-		actual.PendingInvitations = append(actual.PendingInvitations, pendingInvitation)
 	}
 
 	repositories, err := repos.ListOrgRepos(ctx, repos.ListOrgReposOptions{

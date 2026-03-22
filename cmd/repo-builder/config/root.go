@@ -14,6 +14,7 @@ func NewConfigCmd() *cobra.Command {
 	cmd.AddCommand(
 		ApplyConfigCmd(),
 		PlanConfigCmd(),
+		SyncFromLiveConfigCmd(),
 		ValidateConfigCmd(),
 	)
 

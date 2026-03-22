@@ -69,6 +69,32 @@ func TestBuildBootstrapConfigRejectsUnknownTeamRelationships(t *testing.T) {
 	}
 }
 
+func TestBuildBootstrapConfigRejectsDirectOrganizationMembers(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Members: []state.OrganizationMember{
+				{Username: "alice"},
+				{Username: "carol"},
+			},
+			Teams: []state.Team{
+				{Slug: "platform", Name: "Platform", Privacy: "closed"},
+			},
+			TeamMembers: []state.TeamMember{
+				{TeamSlug: "platform", Username: "alice", Role: "member"},
+			},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "direct organization members outside teams") {
+		t.Fatalf("expected direct member error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "carol") {
+		t.Fatalf("expected unsupported member details in error, got %v", err)
+	}
+}
+
 func loadBootstrapConfig(t *testing.T, encoded []byte) config.OrganizationConfig {
 	t.Helper()
 
@@ -87,7 +113,11 @@ func loadBootstrapConfig(t *testing.T, encoded []byte) config.OrganizationConfig
 
 func canonicalBootstrapActualState() *state.OrganizationState {
 	return &state.OrganizationState{
-		Organization:       " orang-gaboets ",
+		Organization: " orang-gaboets ",
+		Members: []state.OrganizationMember{
+			{Username: "bob"},
+			{Username: "alice"},
+		},
 		PendingInvitations: []state.PendingInvitation{{Username: "octocat", Role: "direct_member"}},
 		Repositories: []state.Repository{
 			{
