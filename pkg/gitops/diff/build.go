@@ -83,6 +83,7 @@ func Build(opt Options) (*Report, error) {
 
 	report.Actions = append(report.Actions, builder.planRepositories()...)
 	report.Actions = append(report.Actions, builder.planTeams()...)
+	report.Actions = append(report.Actions, builder.planOrganizationMembers()...)
 	report.Actions, err = builder.appendInviteActions(report.Actions)
 	if err != nil {
 		return nil, err

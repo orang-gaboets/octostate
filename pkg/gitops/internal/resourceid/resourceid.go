@@ -27,6 +27,16 @@ func TeamKey(slug string) string {
 	return strings.ToLower(slug)
 }
 
+// OrganizationMemberID returns the canonical organization member resource ID.
+func OrganizationMemberID(username string) string {
+	return username
+}
+
+// OrganizationMemberKey returns the case-insensitive organization member lookup key.
+func OrganizationMemberKey(username string) string {
+	return strings.ToLower(OrganizationMemberID(username))
+}
+
 // TeamMemberID returns the canonical team membership resource ID.
 func TeamMemberID(teamSlug, username string) string {
 	return teamSlug + "/" + username

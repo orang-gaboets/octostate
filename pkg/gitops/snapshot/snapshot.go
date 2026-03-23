@@ -209,6 +209,9 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, snapshot.TeamRepositoryPermissions...),
 	}
 	actual.Normalize()
+	if err := validateOrganizationMemberRoles(actual.Members); err != nil {
+		return err
+	}
 
 	resolvedInviteUserIDsByUsername, err := normalizeResolvedInviteUserIDsByUsername(snapshot.ResolvedInviteUserIDsByUsername)
 	if err != nil {
@@ -223,6 +226,27 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 	snapshot.Teams = actual.Teams
 	snapshot.TeamMembers = actual.TeamMembers
 	snapshot.TeamRepositoryPermissions = actual.TeamRepositoryPermissions
+	return nil
+}
+
+func validateOrganizationMemberRoles(members []state.OrganizationMember) error {
+	for _, member := range members {
+		username := strings.TrimSpace(member.Username)
+		role := strings.TrimSpace(member.Role)
+		switch role {
+		case "admin", "member":
+		default:
+			if username == "" {
+				return fmt.Errorf("snapshot organization member role is required: %w", githubpkg.ErrInvalidFieldValue)
+			}
+			return fmt.Errorf(
+				"snapshot organization member %q has unsupported or missing role %q; re-run audit pull to refresh actual state: %w",
+				username,
+				role,
+				githubpkg.ErrInvalidFieldValue,
+			)
+		}
+	}
 	return nil
 }
 

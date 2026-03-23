@@ -13,6 +13,9 @@ type Service interface {
 	// CreateOrgInvitation creates an invitation for a user to join an organization.
 	CreateOrgInvitation(ctx context.Context, org string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error)
 
+	// EditOrgMembership sets or updates a user's organization membership.
+	EditOrgMembership(ctx context.Context, user, org string, membership *gh.Membership) (*gh.Membership, *gh.Response, error)
+
 	// Get gets an organization by its name.
 	Get(ctx context.Context, org string) (*gh.Organization, *gh.Response, error)
 

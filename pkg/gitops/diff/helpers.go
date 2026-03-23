@@ -24,6 +24,14 @@ func teamKey(slug string) string {
 	return resourceid.TeamKey(slug)
 }
 
+func organizationMemberID(username string) string {
+	return resourceid.OrganizationMemberID(username)
+}
+
+func organizationMemberKey(username string) string {
+	return resourceid.OrganizationMemberKey(username)
+}
+
 func teamMemberID(teamSlug, username string) string {
 	return resourceid.TeamMemberID(teamSlug, username)
 }

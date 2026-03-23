@@ -3,6 +3,7 @@ package diff
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,6 +116,34 @@ func TestBuildUsesSnapshotResolvedInviteUserIDsByUsernameByDefault(t *testing.T)
 	}
 }
 
+func TestBuildRejectsInviteThatDuplicatesDesiredMemberByResolvedUserID(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+	})
+	snap.ResolvedInviteUserIDsByUsername = map[string]int64{"alice": 99}
+
+	_, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Snapshot: &snap,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
 func TestBuildOptionsResolvedInviteUserIDsRejectConflictingSnapshotValues(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +176,9 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	pulledAt := time.Date(2026, 3, 14, 9, 30, 0, 0, time.FixedZone("SGT", 8*60*60))
 	actual := state.OrganizationState{
 		Organization: "ORANG-GABOETS",
+		Members: []state.OrganizationMember{
+			{Username: "alice", Role: "member"},
+		},
 		PendingInvitations: []state.PendingInvitation{
 			{ID: 10, Username: "ZOE", Role: "admin", TeamSlugs: []string{}},
 		},
@@ -178,6 +210,9 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	report, err := Build(Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
 			Invites: []config.InviteSpec{
 				{Username: presentString("zoe"), Role: "direct_member", TeamSlugs: []string{"platform"}},
 			},
@@ -241,6 +276,10 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 	pulledAt := time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC)
 	actual := state.OrganizationState{
 		Organization: "orang-gaboets",
+		Members: []state.OrganizationMember{
+			{Username: "alice", Role: "member"},
+			{Username: "bob", Role: "member"},
+		},
 		PendingInvitations: []state.PendingInvitation{
 			{ID: 5, Email: "orphan@example.com", Role: "direct_member", TeamSlugs: []string{}},
 		},
@@ -276,6 +315,10 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 	report, err := Build(Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "admin"},
+				{Username: "charlie", Role: "member"},
+			},
 			Invites: []config.InviteSpec{
 				{Username: presentString("invite-user")},
 				{Email: presentString("invite@example.com")},
@@ -341,12 +384,12 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		SnapshotPulledAt: pulledAt.UTC(),
 		Summary: Summary{
 			HasChanges:           true,
-			Actions:              16,
-			ExecutableActions:    10,
-			NonExecutableActions: 6,
-			CreateActions:        7,
-			UpdateActions:        4,
-			DeleteActions:        2,
+			Actions:              19,
+			ExecutableActions:    11,
+			NonExecutableActions: 8,
+			CreateActions:        8,
+			UpdateActions:        5,
+			DeleteActions:        3,
 			RemoveActions:        3,
 		},
 		Actions: []Action{
@@ -356,11 +399,14 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform New"}, {Field: "privacy", From: "closed", To: "secret"}}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationDelete, ResourceID: "legacy", Executable: false, Message: "team legacy exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationCreate, ResourceID: "charlie", Executable: true, Message: "create organization member charlie", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationUpdate, ResourceID: "alice", Executable: true, Message: "update organization member alice", Changes: []FieldChange{{Field: "role", From: "member", To: "admin"}}},
+			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationDelete, ResourceID: "bob", Executable: false, Message: "organization member bob exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "email:invite@example.com", Executable: true, Message: "create organization invite email:invite@example.com", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "user_id:42", Executable: true, Message: "create organization invite user_id:42", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "username:invite-user", Executable: true, Message: "create organization invite username:invite-user", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationRemove, ResourceID: "email:orphan@example.com", Executable: false, Message: "pending invitation email:orphan@example.com exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: true, Message: "add team membership platform/charlie", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: false, Message: "team membership platform/charlie requires organization member charlie to exist first", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
@@ -407,7 +453,7 @@ func TestBuildInvitesSatisfiedByExistingMembers(t *testing.T) {
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 0, 0, 0, time.UTC), &state.OrganizationState{
 		Organization: "orang-gaboets",
 		Members: []state.OrganizationMember{
-			{ID: 99, Username: "octocat", Email: "octocat@example.com"},
+			{ID: 99, Username: "octocat", Role: "member", Email: "octocat@example.com"},
 		},
 	})
 
@@ -425,8 +471,16 @@ func TestBuildInvitesSatisfiedByExistingMembers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
-	if len(report.Actions) != 0 {
-		t.Fatalf("expected no actions, got %#v", report.Actions)
+	want := []Action{{
+		ResourceType: ActionResourceTypeOrganizationMember,
+		Operation:    ActionOperationDelete,
+		ResourceID:   "octocat",
+		Executable:   false,
+		Message:      "organization member octocat exists in snapshot state but is not declared in desired config",
+		Changes:      []FieldChange{},
+	}}
+	if !reflect.DeepEqual(report.Actions, want) {
+		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
 	}
 }
 

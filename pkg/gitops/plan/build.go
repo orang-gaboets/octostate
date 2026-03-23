@@ -61,6 +61,7 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 	var err error
 	report.Actions = append(report.Actions, planner.planRepositories()...)
 	report.Actions = append(report.Actions, planner.planTeams()...)
+	report.Actions = append(report.Actions, planner.planOrganizationMembers()...)
 	report.Actions, err = planner.appendInviteActions(report.Actions)
 	if err != nil {
 		return nil, err

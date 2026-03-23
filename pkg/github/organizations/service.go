@@ -78,6 +78,26 @@ func CreateInvitation(ctx context.Context, option CreateInvitationOptions) error
 	return nil
 }
 
+// SetMembership sets or updates a user's organization membership role.
+func SetMembership(ctx context.Context, option SetMembershipOptions) error {
+	if err := option.Validate(); err != nil {
+		return err
+	}
+
+	ghlogging.Debugf(ctx, "set organization membership %s/%s role=%s", option.OrgName, option.Username, option.Role)
+
+	membership := &gh.Membership{
+		Role: github.Ptr(option.Role),
+	}
+	_, _, err := option.Service.EditOrgMembership(ctx, option.Username, option.OrgName, membership)
+	if err != nil {
+		return github.WrapError(err, fmt.Sprintf("failed to set organization membership %s/%s", option.OrgName, option.Username))
+	}
+
+	ghlogging.Debugf(ctx, "set organization membership %s/%s role=%s", option.OrgName, option.Username, option.Role)
+	return nil
+}
+
 // ListMembers retrieves all members of a GitHub organization.
 func ListMembers(ctx context.Context, option ListMembersOptions) ([]*github.User, error) {
 	if err := option.Validate(); err != nil {

@@ -76,6 +76,16 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 				Executable:   false,
 				Message:      "delete unsupported extra team",
 			},
+			{
+				ResourceType: ActionResourceTypeOrganizationMember,
+				Operation:    ActionOperationUpdate,
+				ResourceID:   "alice",
+				Executable:   true,
+				Message:      "update organization member alice",
+				Changes: []FieldChange{
+					{Field: "role", From: "member", To: "admin"},
+				},
+			},
 		},
 	}
 
@@ -110,6 +120,16 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 			Changes:      []FieldChange{},
 		},
 		{
+			ResourceType: ActionResourceTypeOrganizationMember,
+			Operation:    ActionOperationUpdate,
+			ResourceID:   "alice",
+			Executable:   true,
+			Message:      "update organization member alice",
+			Changes: []FieldChange{
+				{Field: "role", From: "member", To: "admin"},
+			},
+		},
+		{
 			ResourceType: ActionResourceTypeTeamRepositoryPermission,
 			Operation:    ActionOperationRemove,
 			ResourceID:   "platform/orang-gaboets/repo-builder",
@@ -124,11 +144,11 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 
 	wantSummary := Summary{
 		HasChanges:           true,
-		Actions:              4,
-		ExecutableActions:    2,
+		Actions:              5,
+		ExecutableActions:    3,
 		NonExecutableActions: 2,
 		CreateActions:        1,
-		UpdateActions:        1,
+		UpdateActions:        2,
 		DeleteActions:        1,
 		RemoveActions:        1,
 	}

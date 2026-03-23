@@ -140,7 +140,7 @@ func TestWriteActualWritesSnapshotFile(t *testing.T) {
 		PulledAt:     time.Date(2026, 3, 10, 7, 8, 9, 0, time.UTC),
 		Organization: "orang-gaboets",
 		Members: []state.OrganizationMember{
-			{ID: 1, Username: "alice"},
+			{ID: 1, Username: "alice", Role: "member"},
 		},
 	}
 
@@ -441,6 +441,39 @@ func TestReadActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.
 		t.Fatal("expected conflict error")
 	}
 	if !strings.Contains(err.Error(), "conflicting entries") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualRejectsSnapshotMembersMissingRole(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+
+	payload := `{
+  "organization": "orang-gaboets",
+  "members": [
+    {"id": 1, "username": "alice"}
+  ],
+  "pending_invitations": [],
+  "repositories": [],
+  "teams": [],
+  "team_members": [],
+  "team_repo_permissions": []
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write snapshot payload: %v", err)
+	}
+
+	_, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("expected member role error")
+	}
+	if !strings.Contains(err.Error(), "re-run audit pull") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

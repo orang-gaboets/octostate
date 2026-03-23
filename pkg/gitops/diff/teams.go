@@ -80,6 +80,10 @@ func (b builder) planTeamMembers() []Action {
 	for _, member := range b.actual.TeamMembers {
 		actualMembers[teamMemberKey(member.TeamSlug, member.Username)] = member
 	}
+	actualOrganizationMembers := make(map[string]struct{}, len(b.actual.Members))
+	for _, member := range b.actual.Members {
+		actualOrganizationMembers[organizationMemberKey(member.Username)] = struct{}{}
+	}
 
 	desiredMembers := make(map[string]config.TeamMemberSpec)
 	for _, team := range b.desired.Teams {
@@ -88,12 +92,22 @@ func (b builder) planTeamMembers() []Action {
 			desiredMembers[key] = member
 			actualMember, ok := actualMembers[key]
 			if !ok {
+				_, organizationMemberExists := actualOrganizationMembers[organizationMemberKey(member.Username)]
+				executable := organizationMemberExists
+				message := fmt.Sprintf("add team membership %s", teamMemberID(team.Slug, member.Username))
+				if !organizationMemberExists {
+					message = fmt.Sprintf(
+						"team membership %s requires organization member %s to exist first",
+						teamMemberID(team.Slug, member.Username),
+						organizationMemberID(member.Username),
+					)
+				}
 				actions = append(actions, Action{
 					ResourceType: ActionResourceTypeTeamMember,
 					Operation:    ActionOperationCreate,
 					ResourceID:   teamMemberID(team.Slug, member.Username),
-					Executable:   true,
-					Message:      fmt.Sprintf("add team membership %s", teamMemberID(team.Slug, member.Username)),
+					Executable:   executable,
+					Message:      message,
 				})
 				continue
 			}

@@ -614,6 +614,10 @@ func (s *organizationServiceStub) CreateOrgInvitation(context.Context, string, *
 	panic("unexpected CreateOrgInvitation call")
 }
 
+func (s *organizationServiceStub) EditOrgMembership(context.Context, string, string, *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	panic("unexpected EditOrgMembership call")
+}
+
 func (s *organizationServiceStub) Get(context.Context, string) (*gh.Organization, *gh.Response, error) {
 	panic("unexpected Get call")
 }

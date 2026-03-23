@@ -3,6 +3,7 @@ package organizations
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -32,11 +33,13 @@ var (
 
 type mockService struct {
 	createOrgInvCalled bool
+	editOrgMemCalled   bool
 	getCalled          bool
 	listMembersCalled  bool
 	listPendingCalled  bool
 	listInviteTeams    bool
 	createOrgInvErr    error
+	editOrgMemErr      error
 	getErr             error
 	listMembersErr     error
 	listPendingErr     error
@@ -49,6 +52,8 @@ type mockService struct {
 	invitedEmail       string
 	invitedRole        string
 	invitedTeamIDs     []int64
+	memberUsername     string
+	memberRole         string
 	membersRole        string
 	invitationID       string
 	listOptionsPage    int
@@ -94,6 +99,28 @@ func (m *mockService) CreateOrgInvitation(_ context.Context, org string, invitat
 		ID: github.Ptr(int64(67890)),
 	}
 	return invitation, nil, nil
+}
+
+// EditOrgMembership is a mock implementation of the EditOrgMembership method.
+func (m *mockService) EditOrgMembership(_ context.Context, user, org string, membership *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	m.editOrgMemCalled = true
+	if m.editOrgMemErr != nil {
+		return nil, nil, m.editOrgMemErr
+	}
+	if org != *existingOrg.Name {
+		return nil, nil, github.ErrNotFound
+	}
+	if strings.TrimSpace(user) == "" {
+		return nil, nil, github.ErrMissingRequiredField
+	}
+
+	m.orgName = org
+	m.memberUsername = user
+	if membership != nil && membership.Role != nil {
+		m.memberRole = *membership.Role
+	}
+
+	return membership, nil, nil
 }
 
 // Get returns a mock organization based on the orgName.
@@ -366,6 +393,49 @@ func TestCreateInvitationTrimsWhitespaceFields(t *testing.T) {
 	}
 	if mockSvc.invitedRole != "direct_member" {
 		t.Fatalf("expected trimmed role %q, got %q", "direct_member", mockSvc.invitedRole)
+	}
+}
+
+func TestSetMembershipSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+
+	err := SetMembership(context.Background(), SetMembershipOptions{
+		Service:  mockSvc,
+		OrgName:  " existing-org ",
+		Username: " octocat ",
+		Role:     " member ",
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !mockSvc.editOrgMemCalled {
+		t.Fatal("expected EditOrgMembership to be called")
+	}
+	if mockSvc.orgName != *existingOrg.Name {
+		t.Fatalf("expected organization name %q, got %q", *existingOrg.Name, mockSvc.orgName)
+	}
+	if mockSvc.memberUsername != "octocat" {
+		t.Fatalf("expected member username %q, got %q", "octocat", mockSvc.memberUsername)
+	}
+	if mockSvc.memberRole != "member" {
+		t.Fatalf("expected member role %q, got %q", "member", mockSvc.memberRole)
+	}
+}
+
+func TestSetMembershipRejectsInvalidRole(t *testing.T) {
+	mockSvc := &mockService{}
+
+	err := SetMembership(context.Background(), SetMembershipOptions{
+		Service:  mockSvc,
+		OrgName:  *existingOrg.Name,
+		Username: "octocat",
+		Role:     "owner",
+	})
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("expected error %v, got %v", github.ErrValidationFailed, err)
+	}
+	if mockSvc.editOrgMemCalled {
+		t.Fatal("expected EditOrgMembership not to be called")
 	}
 }
 
