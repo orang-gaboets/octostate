@@ -149,6 +149,10 @@ Conventional Commits on `main`.
 
 Version updates for this project are performed by `release-please` using a
 GitHub App installation token rather than a user-owned personal access token.
+Release state is anchored explicitly in:
+
+- `release-please-config.json`
+- `.release-please-manifest.json`
 
 - Use Conventional Commit subjects on the commits that land on `main`.
 - If you use squash merge, put the Conventional Commit prefix in the PR title.
@@ -159,17 +163,12 @@ GitHub App installation token rather than a user-owned personal access token.
   If the app credentials are not configured, it falls back to `GITHUB_TOKEN`.
 - In repository settings, enable "Allow GitHub Actions to create and approve
   pull requests" so the workflow can open release PRs.
+- Do not manually re-bootstrap historical releases in normal operation; update
+  the manifest/config intentionally if release state ever needs repair.
 
-Bootstrap the current CLI baseline as `v0.1.0` once before relying on automated
-version bumps:
-
-```bash
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
-```
-
-After `v0.1.0` exists, future releasable commits on `main` will cause
-`release-please` to open or update a release PR automatically.
+With the manifest baseline in place, future releasable commits on `main` will
+cause `release-please` to open or update a release PR automatically from the
+current anchored version.
 
 ### Auto-merge
 
