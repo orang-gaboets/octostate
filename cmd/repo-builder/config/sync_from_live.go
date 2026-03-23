@@ -219,9 +219,7 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 		}
 		return "", fmt.Errorf("link bootstrap config %s: %w", targetPath, err)
 	}
-	if err := removeSyncFromLivePath(tempPath); err != nil {
-		return "", fmt.Errorf("remove bootstrap config temp file %s: %w", tempPath, err)
-	}
+	_ = removeSyncFromLivePath(tempPath)
 
 	return targetPath, nil
 }

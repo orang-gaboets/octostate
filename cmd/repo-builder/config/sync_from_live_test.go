@@ -360,6 +360,38 @@ func TestWriteBootstrapConfigFileLinkExistingTargetRemovesTempFile(t *testing.T)
 	}
 }
 
+func TestWriteBootstrapConfigFileRemoveAfterSuccessfulLinkIsBestEffort(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	removeErr := errors.New("remove failed")
+
+	linkSyncFromLivePath = func(oldname, newname string) error {
+		return os.Link(oldname, newname)
+	}
+	removeSyncFromLivePath = func(path string) error {
+		if strings.HasPrefix(filepath.Base(path), "organization-") {
+			return removeErr
+		}
+		return os.Remove(path)
+	}
+
+	targetPath, err := writeBootstrapConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err != nil {
+		t.Fatalf("expected successful write despite temp cleanup failure, got %v", err)
+	}
+	if targetPath != filepath.Join(configDir, syncFromLiveOrganizationFile) {
+		t.Fatalf("unexpected target path %q", targetPath)
+	}
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read target config: %v", err)
+	}
+	if string(content) != "organization: orang-gaboets\n" {
+		t.Fatalf("unexpected target config content %q", string(content))
+	}
+}
+
 func TestSyncFromLiveConfigCmdAuthCollectBuildEncodeFailuresPropagate(t *testing.T) {
 	authErr := errors.New("auth failed")
 	collectErr := errors.New("collect failed")

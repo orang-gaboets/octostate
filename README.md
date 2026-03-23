@@ -311,7 +311,7 @@ Bootstrap rules:
 
 Write behavior:
 - `--write` fails if `<config-dir>/organization.yaml` already exists
-- Writes are atomic: the file is written through a temp file and then renamed into place
+- Writes are atomic: the file is written to a temp file, hard-linked into place at `<config-dir>/organization.yaml`, and then the temp file is removed
 - Existing-target checks happen before GitHub authentication and live collection
 
 Example print-to-stdout use:
