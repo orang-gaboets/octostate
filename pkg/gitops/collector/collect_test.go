@@ -440,6 +440,135 @@ func TestCollectOrganizationReturnsTeamMemberError(t *testing.T) {
 	}
 }
 
+func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitations(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+
+	orgSvc := &organizationServiceStub{
+		listMembersFunc: func(_ context.Context, org string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListMembers: got %q want %q", org, orgName)
+			}
+			return []*gh.User{
+				{
+					ID:    githubpkg.Ptr(int64(7)),
+					Login: githubpkg.Ptr("alice"),
+					Name:  githubpkg.Ptr("Alice"),
+					Email: githubpkg.Ptr("alice@example.com"),
+				},
+			}, &gh.Response{}, nil
+		},
+		listPendingOrgInvitationsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+			t.Fatal("ListPendingOrgInvitations should not be called for bootstrap collection")
+			return nil, nil, nil
+		},
+		listOrgInvitationTeamsFunc: func(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			t.Fatal("ListOrgInvitationTeams should not be called for bootstrap collection")
+			return nil, nil, nil
+		},
+	}
+
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, org string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListByOrg: got %q want %q", org, orgName)
+			}
+			return []*gh.Repository{
+				{
+					Owner:        &gh.User{Login: githubpkg.Ptr(orgName)},
+					Name:         githubpkg.Ptr("repo-builder"),
+					Visibility:   githubpkg.Ptr("private"),
+					Description:  githubpkg.Ptr("CLI"),
+					Homepage:     githubpkg.Ptr("https://example.com/repo-builder"),
+					Topics:       []string{"gitops", "go"},
+					AllowForking: githubpkg.Ptr(false),
+					Archived:     githubpkg.Ptr(false),
+					IsTemplate:   githubpkg.Ptr(false),
+				},
+			}, &gh.Response{}, nil
+		},
+	}
+
+	teamSvc := &teamServiceStub{
+		listTeamsFunc: func(_ context.Context, org string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListTeams: got %q want %q", org, orgName)
+			}
+			return []*gh.Team{
+				{
+					ID:           githubpkg.Ptr(int64(1)),
+					Slug:         githubpkg.Ptr("platform"),
+					Name:         githubpkg.Ptr("Platform"),
+					Description:  githubpkg.Ptr("Platform engineering"),
+					Privacy:      githubpkg.Ptr("closed"),
+					Organization: &gh.Organization{Login: githubpkg.Ptr(orgName)},
+				},
+			}, &gh.Response{}, nil
+		},
+		listTeamMembersBySlugFunc: func(_ context.Context, _ string, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+			if slug != "platform" {
+				t.Fatalf("unexpected slug: got %q want %q", slug, "platform")
+			}
+			switch opts.Role {
+			case "member":
+				return []*gh.User{{Login: githubpkg.Ptr("alice")}}, &gh.Response{}, nil
+			case "maintainer":
+				return []*gh.User{}, &gh.Response{}, nil
+			default:
+				t.Fatalf("unexpected team member role: %q", opts.Role)
+				return nil, nil, nil
+			}
+		},
+		listTeamReposBySlugFunc: func(_ context.Context, _ string, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+			if slug != "platform" {
+				t.Fatalf("unexpected slug: got %q want %q", slug, "platform")
+			}
+			return []*gh.Repository{
+				{
+					Owner:       &gh.User{Login: githubpkg.Ptr(orgName)},
+					Name:        githubpkg.Ptr("repo-builder"),
+					Permissions: map[string]bool{"pull": true, "push": true},
+				},
+			}, &gh.Response{}, nil
+		},
+	}
+
+	actual, err := CollectOrganizationForBootstrap(context.Background(), CollectOrganizationOptions{
+		OrgName:             orgName,
+		OrganizationService: orgSvc,
+		RepositoryService:   repoSvc,
+		TeamService:         teamSvc,
+	})
+	if err != nil {
+		t.Fatalf("CollectOrganizationForBootstrap returned error: %v", err)
+	}
+
+	want := &state.OrganizationState{
+		Organization: orgName,
+		Members: []state.OrganizationMember{
+			{ID: 7, Username: "alice", Name: "Alice", Email: "alice@example.com"},
+		},
+		PendingInvitations: []state.PendingInvitation{},
+		Repositories: []state.Repository{
+			{Owner: orgName, Name: "repo-builder", Visibility: "private", Description: "CLI", Homepage: "https://example.com/repo-builder", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
+		},
+		Teams: []state.Team{
+			{ID: 1, Slug: "platform", Name: "Platform", Description: "Platform engineering", Privacy: "closed", ParentSlug: ""},
+		},
+		TeamMembers: []state.TeamMember{
+			{TeamSlug: "platform", Username: "alice", Role: "member"},
+		},
+		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
+			{TeamSlug: "platform", Owner: orgName, Name: "repo-builder", Permission: "push"},
+		},
+	}
+
+	if !reflect.DeepEqual(actual, want) {
+		t.Fatalf("unexpected bootstrap organization state:\n got %#v\nwant %#v", actual, want)
+	}
+}
+
 type organizationServiceStub struct {
 	listMembersFunc               func(context.Context, string, *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
 	listPendingOrgInvitationsFunc func(context.Context, string, *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error)
