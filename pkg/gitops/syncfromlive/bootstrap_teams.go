@@ -71,13 +71,7 @@ func bootstrapTeams(
 	for _, team := range teams {
 		teamKey := strings.ToLower(strings.TrimSpace(team.Slug))
 		members := append([]config.TeamMemberSpec{}, membersByTeam[teamKey]...)
-		if members == nil {
-			members = []config.TeamMemberSpec{}
-		}
 		repositories := append([]config.TeamRepositorySpec{}, permissionsByTeam[teamKey]...)
-		if repositories == nil {
-			repositories = []config.TeamRepositorySpec{}
-		}
 
 		desired = append(desired, config.TeamSpec{
 			Slug:         strings.TrimSpace(team.Slug),
