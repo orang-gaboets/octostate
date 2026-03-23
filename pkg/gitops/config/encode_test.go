@@ -21,6 +21,7 @@ func TestEncodeYAMLMinimal(t *testing.T) {
 
 	want := strings.Join([]string{
 		"organization: orang-gaboets",
+		"members: []",
 		"invites: []",
 		"repositories: []",
 		"teams: []",
@@ -35,7 +36,7 @@ func TestEncodeYAMLMinimal(t *testing.T) {
 	if roundTripped.Organization != "orang-gaboets" {
 		t.Fatalf("unexpected round-tripped organization: %#v", roundTripped.Organization)
 	}
-	if roundTripped.Invites == nil || roundTripped.Repositories == nil || roundTripped.Teams == nil {
+	if roundTripped.Members == nil || roundTripped.Invites == nil || roundTripped.Repositories == nil || roundTripped.Teams == nil {
 		t.Fatalf("expected non-nil top-level slices, got %#v", roundTripped)
 	}
 }
@@ -50,6 +51,9 @@ func TestEncodeYAMLValidRoundTrip(t *testing.T) {
 
 	want := strings.Join([]string{
 		"organization: orang-gaboets",
+		"members:",
+		"  - username: alice",
+		"    role: member",
 		"invites:",
 		"  - username: octocat",
 		"    role: direct_member",

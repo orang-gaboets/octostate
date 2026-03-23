@@ -27,6 +27,9 @@ func TestLoadDir(t *testing.T) {
 				if got.Organization != "orang-gaboets" {
 					t.Fatalf("expected organization orang-gaboets, got %q", got.Organization)
 				}
+				if got.Members == nil || len(got.Members) != 0 {
+					t.Fatalf("expected empty non-nil members slice, got %#v", got.Members)
+				}
 				if got.Invites == nil || len(got.Invites) != 0 {
 					t.Fatalf("expected empty non-nil invites slice, got %#v", got.Invites)
 				}
@@ -46,6 +49,14 @@ func TestLoadDir(t *testing.T) {
 
 				if got.Organization != "orang-gaboets" {
 					t.Fatalf("expected trimmed organization, got %q", got.Organization)
+				}
+
+				wantMembers := []OrganizationMemberSpec{{
+					Username: "alice",
+					Role:     "member",
+				}}
+				if !reflect.DeepEqual(got.Members, wantMembers) {
+					t.Fatalf("unexpected members: got %#v want %#v", got.Members, wantMembers)
 				}
 
 				wantInvites := []InviteSpec{{

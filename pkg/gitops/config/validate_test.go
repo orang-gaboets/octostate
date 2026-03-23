@@ -11,7 +11,7 @@ func TestValidateValidConfig(t *testing.T) {
 	if !report.Valid {
 		t.Fatalf("expected valid report, got %#v", report)
 	}
-	if report.Summary.Repositories != 1 || report.Summary.Teams != 1 || report.Summary.Invites != 1 {
+	if report.Summary.Repositories != 1 || report.Summary.Members != 1 || report.Summary.Teams != 1 || report.Summary.Invites != 1 {
 		t.Fatalf("unexpected summary counts: %#v", report.Summary)
 	}
 	if len(report.Errors) != 0 {
@@ -80,6 +80,42 @@ func TestValidateDuplicateTeamSlugsCaseInsensitive(t *testing.T) {
 
 	report := Validate(cfg)
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateTeamSlug)
+}
+
+func TestValidateDuplicateOrganizationMembers(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Members = append(cfg.Members, OrganizationMemberSpec{
+		Username: "alice",
+		Role:     "admin",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateOrganizationMember)
+}
+
+func TestValidateDuplicateOrganizationMembersCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Members = append(cfg.Members, OrganizationMemberSpec{
+		Username: "ALICE",
+		Role:     "admin",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateOrganizationMember)
+}
+
+func TestValidateInvalidOrganizationMemberUsername(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Members[0].Username = "not a valid login"
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "members[0].username", ValidationIssueCodeInvalidFieldValue)
 }
 
 func TestValidateInvalidInviteIdentityNone(t *testing.T) {
@@ -431,6 +467,7 @@ func TestValidateInvalidEnums(t *testing.T) {
 	t.Parallel()
 
 	cfg := validOrganizationConfig()
+	cfg.Members[0].Role = "owner"
 	cfg.Invites[0].Role = "owner"
 	cfg.Repositories[0].Visibility = "internal"
 	cfg.Teams[0].Privacy = "visible"
@@ -439,9 +476,39 @@ func TestValidateInvalidEnums(t *testing.T) {
 
 	report := Validate(cfg)
 	assertHasIssueCode(t, report, ValidationIssueCodeInvalidEnum)
-	if report.Summary.Errors < 5 {
+	if report.Summary.Errors < 6 {
 		t.Fatalf("expected multiple invalid enum errors, got %#v", report.Errors)
 	}
+}
+
+func TestValidateTeamMembersMustExistInTopLevelMembers(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Members = []OrganizationMemberSpec{}
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "teams[0].members[0].username", ValidationIssueCodeUnknownOrganizationMember)
+}
+
+func TestValidateTeamMembersMatchTopLevelMembersCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Members[0].Username = "ALICE"
+
+	report := Validate(cfg)
+	assertNotHasIssueCode(t, report, ValidationIssueCodeUnknownOrganizationMember)
+}
+
+func TestValidateInviteUsernameMustNotOverlapTopLevelMembers(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites[0].Username = optionalString("alice")
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "invites[0].username", ValidationIssueCodeDuplicateOrganizationMemberInvite)
 }
 
 func TestValidateRepositoryOptionalFieldsOmittedAreValid(t *testing.T) {
@@ -545,6 +612,10 @@ func validOrganizationConfig() OrganizationConfig {
 
 	return OrganizationConfig{
 		Organization: "orang-gaboets",
+		Members: []OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Invites: []InviteSpec{{
 			Username:  optionalString("octocat"),
 			Role:      "direct_member",

@@ -4,16 +4,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
 )
 
-func TestEnsureNoUnsupportedDirectMembersAllowsTeamBackedMembers(t *testing.T) {
+func TestBootstrapOrganizationMembersBuildsStableMembersWithRoles(t *testing.T) {
 	t.Parallel()
 
-	err := ensureNoUnsupportedDirectMembers(
+	got, err := bootstrapOrganizationMembers(
 		[]state.OrganizationMember{
-			{Username: " Alice "},
-			{Username: "bob"},
+			{Username: " bob ", Role: "member"},
+			{Username: "Alice", Role: "admin"},
 		},
 		[]state.TeamMember{
 			{TeamSlug: "platform", Username: "alice", Role: "maintainer"},
@@ -21,29 +22,49 @@ func TestEnsureNoUnsupportedDirectMembersAllowsTeamBackedMembers(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("expected no error for team-backed members, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []config.OrganizationMemberSpec{
+		{Username: "Alice", Role: "admin"},
+		{Username: "bob", Role: "member"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected organization members length: got %#v want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected organization members: got %#v want %#v", got, want)
+		}
 	}
 }
 
-func TestEnsureNoUnsupportedDirectMembersRejectsDirectMembers(t *testing.T) {
+func TestBootstrapOrganizationMembersRejectsMissingTeamBackedOrgMember(t *testing.T) {
 	t.Parallel()
 
-	err := ensureNoUnsupportedDirectMembers(
+	_, err := bootstrapOrganizationMembers(
 		[]state.OrganizationMember{
-			{Username: "bob"},
-			{Email: "carol@example.com"},
+			{Username: "alice", Role: "admin"},
 		},
 		[]state.TeamMember{
-			{TeamSlug: "platform", Username: "alice", Role: "member"},
+			{TeamSlug: "platform", Username: "bob", Role: "member"},
 		},
 	)
-	if err == nil {
-		t.Fatal("expected unsupported direct member error")
+	if err == nil || !strings.Contains(err.Error(), "missing from organization members") {
+		t.Fatalf("expected missing organization member error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "direct organization members outside teams") {
-		t.Fatalf("expected direct member error, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "bob") || !strings.Contains(err.Error(), "carol@example.com") {
-		t.Fatalf("expected member labels in error, got %v", err)
+}
+
+func TestBootstrapOrganizationMembersRejectsUnknownRole(t *testing.T) {
+	t.Parallel()
+
+	_, err := bootstrapOrganizationMembers(
+		[]state.OrganizationMember{
+			{Username: "alice", Role: ""},
+		},
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "unsupported role") {
+		t.Fatalf("expected unsupported role error, got %v", err)
 	}
 }

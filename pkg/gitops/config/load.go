@@ -117,6 +117,13 @@ func decodeYAMLFile(path string, out any) error {
 
 func normalize(cfg *OrganizationConfig) {
 	cfg.Organization = strings.TrimSpace(cfg.Organization)
+	if cfg.Members == nil {
+		cfg.Members = []OrganizationMemberSpec{}
+	}
+	for i := range cfg.Members {
+		cfg.Members[i].Username = strings.TrimSpace(cfg.Members[i].Username)
+		cfg.Members[i].Role = strings.TrimSpace(cfg.Members[i].Role)
+	}
 	cfg.Invites = normalizeInvites(cfg.Invites)
 
 	if cfg.Repositories == nil {

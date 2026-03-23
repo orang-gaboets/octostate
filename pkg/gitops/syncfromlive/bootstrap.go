@@ -37,10 +37,6 @@ func BuildBootstrapConfig(opt BootstrapOptions) (config.OrganizationConfig, erro
 	actual := cloneOrganizationState(opt.Actual)
 	organization := strings.TrimSpace(actual.Organization)
 
-	if err := ensureNoUnsupportedDirectMembers(actual.Members, actual.TeamMembers); err != nil {
-		return config.OrganizationConfig{}, err
-	}
-
 	membersByTeam, err := bootstrapTeamMembers(actual.Teams, actual.TeamMembers)
 	if err != nil {
 		return config.OrganizationConfig{}, err
@@ -49,9 +45,14 @@ func BuildBootstrapConfig(opt BootstrapOptions) (config.OrganizationConfig, erro
 	if err != nil {
 		return config.OrganizationConfig{}, err
 	}
+	members, err := bootstrapOrganizationMembers(actual.Members, actual.TeamMembers)
+	if err != nil {
+		return config.OrganizationConfig{}, err
+	}
 
 	return config.OrganizationConfig{
 		Organization: organization,
+		Members:      members,
 		Invites:      []config.InviteSpec{},
 		Repositories: bootstrapRepositories(organization, actual.Repositories),
 		Teams:        bootstrapTeams(actual.Teams, membersByTeam, permissionsByTeam),

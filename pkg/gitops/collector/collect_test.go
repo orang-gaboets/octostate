@@ -89,25 +89,40 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 	const orgName = "orang-gaboets"
 
 	var invitationTeamCalls []string
+	var orgMemberRoleCalls []string
 	orgSvc := &organizationServiceStub{
-		listMembersFunc: func(_ context.Context, org string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+		listMembersFunc: func(_ context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
 			if org != orgName {
 				t.Fatalf("unexpected org in ListMembers: got %q want %q", org, orgName)
 			}
-			return []*gh.User{
-				{
-					ID:    githubpkg.Ptr(int64(2)),
-					Login: githubpkg.Ptr("zulu"),
-					Name:  githubpkg.Ptr("Zulu"),
-					Email: githubpkg.Ptr("zulu@example.com"),
-				},
-				{
-					ID:    githubpkg.Ptr(int64(1)),
-					Login: githubpkg.Ptr("alpha"),
-					Name:  githubpkg.Ptr("Alpha"),
-					Email: githubpkg.Ptr("alpha@example.com"),
-				},
-			}, &gh.Response{}, nil
+			if opts == nil {
+				t.Fatal("expected member list options")
+				return nil, nil, nil
+			}
+			orgMemberRoleCalls = append(orgMemberRoleCalls, opts.Role)
+			switch opts.Role {
+			case "admin":
+				return []*gh.User{
+					{
+						ID:    githubpkg.Ptr(int64(1)),
+						Login: githubpkg.Ptr("alpha"),
+						Name:  githubpkg.Ptr("Alpha"),
+						Email: githubpkg.Ptr("alpha@example.com"),
+					},
+				}, &gh.Response{}, nil
+			case "member":
+				return []*gh.User{
+					{
+						ID:    githubpkg.Ptr(int64(2)),
+						Login: githubpkg.Ptr("zulu"),
+						Name:  githubpkg.Ptr("Zulu"),
+						Email: githubpkg.Ptr("zulu@example.com"),
+					},
+				}, &gh.Response{}, nil
+			default:
+				t.Fatalf("unexpected org member role query: %q", opts.Role)
+				return nil, nil, nil
+			}
 		},
 		listPendingOrgInvitationsFunc: func(_ context.Context, org string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
 			if org != orgName {
@@ -289,8 +304,8 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 	want := &state.OrganizationState{
 		Organization: orgName,
 		Members: []state.OrganizationMember{
-			{ID: 1, Username: "alpha", Name: "Alpha", Email: "alpha@example.com"},
-			{ID: 2, Username: "zulu", Name: "Zulu", Email: "zulu@example.com"},
+			{ID: 1, Username: "alpha", Role: "admin", Name: "Alpha", Email: "alpha@example.com"},
+			{ID: 2, Username: "zulu", Role: "member", Name: "Zulu", Email: "zulu@example.com"},
 		},
 		PendingInvitations: []state.PendingInvitation{
 			{ID: 3, Username: "beta", Role: "admin", TeamSlugs: []string{}},
@@ -325,6 +340,9 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 	}
 	if !reflect.DeepEqual(teamRoleCalls, wantRoleCalls) {
 		t.Fatalf("unexpected team member role calls: got %#v want %#v", teamRoleCalls, wantRoleCalls)
+	}
+	if !reflect.DeepEqual(orgMemberRoleCalls, []string{"admin", "member"}) {
+		t.Fatalf("unexpected organization member role calls: got %#v want %#v", orgMemberRoleCalls, []string{"admin", "member"})
 	}
 	if !reflect.DeepEqual(invitationTeamCalls, []string{"9"}) {
 		t.Fatalf("unexpected invitation team calls: got %#v want %#v", invitationTeamCalls, []string{"9"})
@@ -444,20 +462,34 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 	t.Parallel()
 
 	const orgName = "orang-gaboets"
+	var orgMemberRoleCalls []string
 
 	orgSvc := &organizationServiceStub{
-		listMembersFunc: func(_ context.Context, org string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+		listMembersFunc: func(_ context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
 			if org != orgName {
 				t.Fatalf("unexpected org in ListMembers: got %q want %q", org, orgName)
 			}
-			return []*gh.User{
-				{
-					ID:    githubpkg.Ptr(int64(7)),
-					Login: githubpkg.Ptr("alice"),
-					Name:  githubpkg.Ptr("Alice"),
-					Email: githubpkg.Ptr("alice@example.com"),
-				},
-			}, &gh.Response{}, nil
+			if opts == nil {
+				t.Fatal("expected member list options")
+				return nil, nil, nil
+			}
+			orgMemberRoleCalls = append(orgMemberRoleCalls, opts.Role)
+			switch opts.Role {
+			case "admin":
+				return []*gh.User{}, &gh.Response{}, nil
+			case "member":
+				return []*gh.User{
+					{
+						ID:    githubpkg.Ptr(int64(7)),
+						Login: githubpkg.Ptr("alice"),
+						Name:  githubpkg.Ptr("Alice"),
+						Email: githubpkg.Ptr("alice@example.com"),
+					},
+				}, &gh.Response{}, nil
+			default:
+				t.Fatalf("unexpected org member role query: %q", opts.Role)
+				return nil, nil, nil
+			}
 		},
 		listPendingOrgInvitationsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
 			t.Fatal("ListPendingOrgInvitations should not be called for bootstrap collection")
@@ -547,7 +579,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 	want := &state.OrganizationState{
 		Organization: orgName,
 		Members: []state.OrganizationMember{
-			{ID: 7, Username: "alice", Name: "Alice", Email: "alice@example.com"},
+			{ID: 7, Username: "alice", Role: "member", Name: "Alice", Email: "alice@example.com"},
 		},
 		PendingInvitations: []state.PendingInvitation{},
 		Repositories: []state.Repository{
@@ -566,6 +598,9 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 
 	if !reflect.DeepEqual(actual, want) {
 		t.Fatalf("unexpected bootstrap organization state:\n got %#v\nwant %#v", actual, want)
+	}
+	if !reflect.DeepEqual(orgMemberRoleCalls, []string{"admin", "member"}) {
+		t.Fatalf("unexpected bootstrap organization member role calls: got %#v want %#v", orgMemberRoleCalls, []string{"admin", "member"})
 	}
 }
 

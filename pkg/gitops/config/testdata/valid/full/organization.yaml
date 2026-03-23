@@ -1,4 +1,7 @@
 organization: orang-gaboets
+members:
+  - username: " alice "
+    role: " member "
 invites:
   - username: " octocat "
     role: " direct_member "

@@ -11,12 +11,16 @@ const (
 	ValidationIssueCodeMissingRequiredField ValidationIssueCode = "missing_required_field"
 	// ValidationIssueCodeDuplicateRepository indicates a repository identity was repeated.
 	ValidationIssueCodeDuplicateRepository ValidationIssueCode = "duplicate_repository"
+	// ValidationIssueCodeDuplicateOrganizationMember indicates a top-level organization member was repeated.
+	ValidationIssueCodeDuplicateOrganizationMember ValidationIssueCode = "duplicate_organization_member"
 	// ValidationIssueCodeDuplicateTeamSlug indicates a team slug was repeated.
 	ValidationIssueCodeDuplicateTeamSlug ValidationIssueCode = "duplicate_team_slug"
 	// ValidationIssueCodeInvalidInviteIdentity indicates an invite identity declaration is invalid.
 	ValidationIssueCodeInvalidInviteIdentity ValidationIssueCode = "invalid_invite_identity"
 	// ValidationIssueCodeUnknownInviteTeamSlug indicates an invite referenced an unknown team slug.
 	ValidationIssueCodeUnknownInviteTeamSlug ValidationIssueCode = "unknown_invite_team_slug"
+	// ValidationIssueCodeUnknownOrganizationMember indicates a reference to an undeclared top-level organization member.
+	ValidationIssueCodeUnknownOrganizationMember ValidationIssueCode = "unknown_organization_member"
 	// ValidationIssueCodeUnknownTeamParentSlug indicates a team parent_slug reference could not be resolved.
 	ValidationIssueCodeUnknownTeamParentSlug ValidationIssueCode = "unknown_team_parent_slug"
 	// ValidationIssueCodeTeamParentCycle indicates the team parent graph contains a cycle.
@@ -25,6 +29,8 @@ const (
 	ValidationIssueCodeDuplicateTeamMember ValidationIssueCode = "duplicate_team_member"
 	// ValidationIssueCodeDuplicateTeamRepository indicates a team repository permission entry was repeated.
 	ValidationIssueCodeDuplicateTeamRepository ValidationIssueCode = "duplicate_team_repository"
+	// ValidationIssueCodeDuplicateOrganizationMemberInvite indicates a username is declared in both members and invites.
+	ValidationIssueCodeDuplicateOrganizationMemberInvite ValidationIssueCode = "duplicate_organization_member_invite"
 	// ValidationIssueCodeInvalidEnum indicates a field has an unsupported enum value.
 	ValidationIssueCodeInvalidEnum ValidationIssueCode = "invalid_enum"
 	// ValidationIssueCodeInvalidFieldValue indicates a field value is invalid for its schema.
@@ -44,6 +50,7 @@ type ValidationReport struct {
 // ValidationSummary contains the high-level object counts and issue counts.
 type ValidationSummary struct {
 	Repositories int `json:"repositories"`
+	Members      int `json:"members"`
 	Teams        int `json:"teams"`
 	Invites      int `json:"invites"`
 	Errors       int `json:"errors"`

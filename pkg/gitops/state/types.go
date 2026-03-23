@@ -20,6 +20,7 @@ type OrganizationState struct {
 type OrganizationMember struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 }
@@ -121,6 +122,9 @@ func (s *OrganizationState) Normalize() {
 
 func compareOrganizationMembers(a, b OrganizationMember) int {
 	if diff := compareStrings(a.Username, b.Username); diff != 0 {
+		return diff
+	}
+	if diff := compareStrings(a.Role, b.Role); diff != 0 {
 		return diff
 	}
 	if a.ID < b.ID {
