@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	internalauth "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/exitcode"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/repo-builder/pkg/gitops/config"
@@ -223,14 +224,23 @@ func TestSyncFromLiveConfigCmdGeneratedInvalidConfigFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "generated bootstrap config is invalid") {
 		t.Fatalf("expected generated invalid config error, got %v", err)
 	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
 	if !strings.Contains(err.Error(), "repositories[0].visibility: repository visibility is required") {
 		t.Fatalf("expected validation details in error, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "and 1 more error(s)") {
 		t.Fatalf("expected remaining error count in error, got %v", err)
 	}
-	if out.Len() != 0 || errBuf.Len() != 0 {
-		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: generated bootstrap config is invalid") {
+		t.Fatalf("expected validation error on stderr, got %q", got)
+	}
+	if !strings.Contains(errBuf.String(), "repositories[0].visibility: repository visibility is required") {
+		t.Fatalf("expected detailed validation stderr output, got %q", errBuf.String())
 	}
 }
 
@@ -274,7 +284,7 @@ func TestSyncFromLiveConfigCmdWriteFailsWhenTargetExists(t *testing.T) {
 	}
 }
 
-func TestWriteBootstrapConfigFileRenameFailureRemovesTempFile(t *testing.T) {
+func TestWriteBootstrapConfigFileLinkFailureRemovesTempFile(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 
 	configDir := t.TempDir()
@@ -289,8 +299,8 @@ func TestWriteBootstrapConfigFileRenameFailureRemovesTempFile(t *testing.T) {
 		tempPath = file.Name()
 		return file, nil
 	}
-	renameSyncFromLivePath = func(_, _ string) error {
-		return errors.New("rename failed")
+	linkSyncFromLivePath = func(_, _ string) error {
+		return errors.New("link failed")
 	}
 	removeSyncFromLivePath = func(path string) error {
 		removedPath = path
@@ -298,8 +308,46 @@ func TestWriteBootstrapConfigFileRenameFailureRemovesTempFile(t *testing.T) {
 	}
 
 	_, err := writeBootstrapConfigFile(configDir, []byte("organization: orang-gaboets\n"))
-	if err == nil || !strings.Contains(err.Error(), "replace bootstrap config") {
-		t.Fatalf("expected replace error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "link bootstrap config") {
+		t.Fatalf("expected link error, got %v", err)
+	}
+	if tempPath == "" {
+		t.Fatal("expected temp file path to be captured")
+	}
+	if removedPath != tempPath {
+		t.Fatalf("expected temp file removal, removed=%q temp=%q", removedPath, tempPath)
+	}
+	if _, statErr := os.Stat(tempPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected temp file to be removed, got stat error %v", statErr)
+	}
+}
+
+func TestWriteBootstrapConfigFileLinkExistingTargetRemovesTempFile(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	var tempPath string
+	var removedPath string
+
+	createTempSyncFromLiveFile = func(dir, pattern string) (*os.File, error) {
+		file, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		tempPath = file.Name()
+		return file, nil
+	}
+	linkSyncFromLivePath = func(_, _ string) error {
+		return os.ErrExist
+	}
+	removeSyncFromLivePath = func(path string) error {
+		removedPath = path
+		return os.Remove(path)
+	}
+
+	_, err := writeBootstrapConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected target exists error, got %v", err)
 	}
 	if tempPath == "" {
 		t.Fatal("expected temp file path to be captured")
@@ -422,7 +470,7 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 	oldStat := statSyncFromLivePath
 	oldMkdirAll := mkdirAllSyncFromLiveConfigDir
 	oldCreateTemp := createTempSyncFromLiveFile
-	oldRename := renameSyncFromLivePath
+	oldLink := linkSyncFromLivePath
 	oldRemove := removeSyncFromLivePath
 
 	t.Cleanup(func() {
@@ -434,7 +482,7 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 		statSyncFromLivePath = oldStat
 		mkdirAllSyncFromLiveConfigDir = oldMkdirAll
 		createTempSyncFromLiveFile = oldCreateTemp
-		renameSyncFromLivePath = oldRename
+		linkSyncFromLivePath = oldLink
 		removeSyncFromLivePath = oldRemove
 	})
 }

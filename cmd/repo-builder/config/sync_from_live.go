@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
+	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/exitcode"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
@@ -34,7 +35,7 @@ var (
 	statSyncFromLivePath          = os.Stat
 	mkdirAllSyncFromLiveConfigDir = os.MkdirAll
 	createTempSyncFromLiveFile    = os.CreateTemp
-	renameSyncFromLivePath        = os.Rename
+	linkSyncFromLivePath          = os.Link
 	removeSyncFromLivePath        = os.Remove
 )
 
@@ -74,6 +75,9 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 				write,
 			)
 			if err != nil {
+				if code, ok := exitcode.Code(err); ok && code == validateExitCodeInvalidConfig {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
+				}
 				return err
 			}
 			if write {
@@ -151,7 +155,7 @@ func syncFromLiveConfig(
 	}
 	report := validateSyncFromLiveConfig(cfg)
 	if !report.Valid {
-		return nil, nil, generatedBootstrapConfigValidationError(report)
+		return nil, nil, exitcode.New(validateExitCodeInvalidConfig, generatedBootstrapConfigValidationError(report))
 	}
 
 	yamlBytes, err := encodeSyncFromLiveConfig(cfg)
@@ -208,9 +212,15 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 		return "", fmt.Errorf("close bootstrap config temp file %s: %w", tempPath, closeErr)
 	}
 
-	if err := renameSyncFromLivePath(tempPath, targetPath); err != nil {
+	if err := linkSyncFromLivePath(tempPath, targetPath); err != nil {
 		_ = removeSyncFromLivePath(tempPath)
-		return "", fmt.Errorf("replace bootstrap config %s: %w", targetPath, err)
+		if errors.Is(err, os.ErrExist) {
+			return "", fmt.Errorf("bootstrap config target already exists: %s", targetPath)
+		}
+		return "", fmt.Errorf("link bootstrap config %s: %w", targetPath, err)
+	}
+	if err := removeSyncFromLivePath(tempPath); err != nil {
+		return "", fmt.Errorf("remove bootstrap config temp file %s: %w", tempPath, err)
 	}
 
 	return targetPath, nil
