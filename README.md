@@ -154,6 +154,8 @@ Release state is anchored explicitly in:
 - `release-please-config.json`
 - `.release-please-manifest.json`
 
+Release workflow guidelines:
+
 - Use Conventional Commit subjects on the commits that land on `main`.
 - If you use squash merge, put the Conventional Commit prefix in the PR title.
 - `fix:` produces a patch release, `feat:` produces a minor release, and
