@@ -251,6 +251,10 @@ Example `organization.yaml`:
 
 ```yaml
 organization: orang-gaboets
+members:
+  - username: alice
+    role: member
+
 invites:
   - username: octocat
     role: direct_member
@@ -296,6 +300,7 @@ repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config
 Behavior:
 - Collects live GitHub organization state required for bootstrap generation
 - Builds a canonical `organization.yaml` proposal from:
+  - organization members
   - repositories
   - teams
   - team memberships
@@ -306,9 +311,10 @@ Behavior:
 
 Bootstrap rules:
 - Pending invites are excluded by default
+- Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
 - `allow_forking` is omitted for private repositories
-- Bootstrap fails if it detects direct organization members outside teams, because current GitOps config cannot represent them safely
+- Direct organization members outside teams are represented through top-level `members:`
 
 Write behavior:
 - `--write` fails if `<config-dir>/organization.yaml` already exists
@@ -479,6 +485,11 @@ Example success output:
 
 This snapshot feeds offline GitOps workflows such as `audit diff` and can also
 support later reconciliation planning.
+
+If you are upgrading from an older snapshot format that did not record
+organization member roles, run `repo-builder audit pull` once before using
+`audit diff` so the stored snapshot includes the current `members[].role`
+values.
 
 #### Diff desired state against the stored snapshot
 
@@ -950,7 +961,7 @@ The GitOps workflow will live in a separate **control repository** per organizat
 
 ```text
 config/
-  organization.yaml # desired organization state (invites, repositories, teams)
+  organization.yaml # desired organization state (members, invites, repositories, teams)
 state/
   actual/           # generated snapshots from GitHub (never hand-edit)
   diff/             # drift reports (optional)
