@@ -61,7 +61,7 @@ when release pull requests are created and merged.
 
 * add offline GitOps config validate command and single-file organization.yaml schema ([#48](https://github.com/orang-gaboets/repo-builder/issues/48)) ([e76484a](https://github.com/orang-gaboets/repo-builder/commit/e76484ac8d3ff26c279bd82932270e55698721da))
 
-## [0.1.0] (2026-03-03)
+## 0.1.0 (2026-03-03)
 
 Initial release of `repo-builder`.
 
