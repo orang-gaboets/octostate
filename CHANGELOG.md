@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.8.0](https://github.com/orang-gaboets/repo-builder/compare/v0.7.0...v0.8.0) (2026-03-23)
+
+
+### Features
+
+* **config:** add sync-from-live bootstrap mode ([#74](https://github.com/orang-gaboets/repo-builder/issues/74)) ([7c5a266](https://github.com/orang-gaboets/repo-builder/commit/7c5a266f6a9ee1860dc453721d7815d53eb9d179))
+
 ## [0.7.0](https://github.com/orang-gaboets/repo-builder/compare/v0.6.0...v0.7.0) (2026-03-15)
 
 
