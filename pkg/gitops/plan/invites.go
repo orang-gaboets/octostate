@@ -186,7 +186,8 @@ func (p *planner) hasDesiredMember(username string) bool {
 		return false
 	}
 	for _, member := range p.desired.Members {
-		if strings.EqualFold(member.Username, usernameKey) {
+		memberKey := strings.ToLower(strings.TrimSpace(member.Username))
+		if memberKey == usernameKey {
 			return true
 		}
 	}

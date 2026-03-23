@@ -94,7 +94,7 @@ func SetMembership(ctx context.Context, option SetMembershipOptions) error {
 		return github.WrapError(err, fmt.Sprintf("failed to set organization membership %s/%s", option.OrgName, option.Username))
 	}
 
-	ghlogging.Debugf(ctx, "set organization membership %s/%s role=%s", option.OrgName, option.Username, option.Role)
+	ghlogging.Debugf(ctx, "successfully set organization membership %s/%s role=%s", option.OrgName, option.Username, option.Role)
 	return nil
 }
 

@@ -144,6 +144,34 @@ func TestBuildRejectsInviteThatDuplicatesDesiredMemberByResolvedUserID(t *testin
 	}
 }
 
+func TestBuildRejectsInviteThatDuplicatesUnnormalizedDesiredMemberByResolvedUserID(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+	})
+	snap.ResolvedInviteUserIDsByUsername = map[string]int64{"alice": 99}
+
+	_, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: " alice ", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Snapshot: &snap,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
 func TestBuildOptionsResolvedInviteUserIDsRejectConflictingSnapshotValues(t *testing.T) {
 	t.Parallel()
 

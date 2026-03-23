@@ -191,7 +191,8 @@ func (b builder) hasDesiredMember(username string) bool {
 		return false
 	}
 	for _, member := range b.desired.Members {
-		if strings.EqualFold(member.Username, usernameKey) {
+		memberKey := strings.ToLower(strings.TrimSpace(member.Username))
+		if memberKey == usernameKey {
 			return true
 		}
 	}

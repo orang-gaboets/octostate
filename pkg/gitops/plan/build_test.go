@@ -356,6 +356,42 @@ func TestBuildRejectsInviteThatDuplicatesDesiredMemberByUserID(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsInviteThatDuplicatesUnnormalizedDesiredMemberByUserID(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			if id != 99 {
+				t.Fatalf("unexpected user lookup id %d", id)
+			}
+			return &gh.User{Login: githubpkg.Ptr("alice")}, &gh.Response{}, nil
+		},
+	}
+
+	_, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: " alice ", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual:      &state.OrganizationState{Organization: "orang-gaboets"},
+		UserService: userService,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+	if !reflect.DeepEqual(userService.calls, []int64{99}) {
+		t.Fatalf("unexpected user lookups: got %#v want %#v", userService.calls, []int64{99})
+	}
+}
+
 func TestBuildInviteUserIDSatisfiedByPendingInviteUsesLookupCache(t *testing.T) {
 	t.Parallel()
 
