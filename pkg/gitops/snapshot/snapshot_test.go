@@ -478,6 +478,39 @@ func TestReadActualRejectsSnapshotMembersMissingRole(t *testing.T) {
 	}
 }
 
+func TestReadActualRejectsSnapshotMembersMissingUsername(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	path := filepath.Join(stateDir, "actual", "snapshot.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir actual dir: %v", err)
+	}
+
+	payload := `{
+  "organization": "orang-gaboets",
+  "members": [
+    {"id": 1, "username": "   ", "role": "member"}
+  ],
+  "pending_invitations": [],
+  "repositories": [],
+  "teams": [],
+  "team_members": [],
+  "team_repo_permissions": []
+}`
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+		t.Fatalf("write snapshot payload: %v", err)
+	}
+
+	_, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("expected member username error")
+	}
+	if !strings.Contains(err.Error(), "username is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestReadActualNormalizesLoadedSnapshot(t *testing.T) {
 	t.Parallel()
 

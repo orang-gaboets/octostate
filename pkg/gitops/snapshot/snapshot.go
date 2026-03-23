@@ -233,12 +233,12 @@ func validateOrganizationMemberRoles(members []state.OrganizationMember) error {
 	for _, member := range members {
 		username := strings.TrimSpace(member.Username)
 		role := strings.TrimSpace(member.Role)
+		if username == "" {
+			return fmt.Errorf("snapshot organization member username is required: %w", githubpkg.ErrInvalidFieldValue)
+		}
 		switch role {
 		case "admin", "member":
 		default:
-			if username == "" {
-				return fmt.Errorf("snapshot organization member role is required: %w", githubpkg.ErrInvalidFieldValue)
-			}
 			return fmt.Errorf(
 				"snapshot organization member %q has unsupported or missing role %q; re-run audit pull to refresh actual state: %w",
 				username,
