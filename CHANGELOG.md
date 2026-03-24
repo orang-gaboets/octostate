@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.9.0](https://github.com/orang-gaboets/repo-builder/compare/v0.8.0...v0.9.0) (2026-03-24)
+
+
+### Features
+
+* **gitops:** add first-class organization membership ([#80](https://github.com/orang-gaboets/repo-builder/issues/80)) ([ed97c63](https://github.com/orang-gaboets/repo-builder/commit/ed97c6374327b4e47317fe589a5447c1b38f2bcd))
+
 ## [0.8.0](https://github.com/orang-gaboets/repo-builder/compare/v0.7.0...v0.8.0) (2026-03-23)
 
 
