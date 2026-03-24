@@ -8,6 +8,10 @@ import (
 )
 
 var (
+	validOrganizationMemberRoles = map[string]struct{}{
+		"admin":  {},
+		"member": {},
+	}
 	validInviteRoles = map[string]struct{}{
 		"admin":           {},
 		"direct_member":   {},
@@ -39,6 +43,7 @@ func Validate(cfg OrganizationConfig) ValidationReport {
 	report := ValidationReport{
 		Summary: ValidationSummary{
 			Repositories: len(cfg.Repositories),
+			Members:      len(cfg.Members),
 			Teams:        len(cfg.Teams),
 			Invites:      len(cfg.Invites),
 		},
@@ -53,8 +58,9 @@ func Validate(cfg OrganizationConfig) ValidationReport {
 
 	validateRepositories(&report, cfg.Repositories, organization)
 
-	teamIndex := validateTeams(&report, cfg.Teams, organization)
-	validateInvites(&report, cfg.Invites, teamIndex)
+	memberIndex := validateMembers(&report, cfg.Members)
+	teamIndex := validateTeams(&report, cfg.Teams, organization, memberIndex)
+	validateInvites(&report, cfg.Invites, teamIndex, memberIndex)
 	validateTeamParentCycles(&report, cfg.Teams, teamIndex)
 
 	report.Summary.Errors = len(report.Errors)
@@ -70,6 +76,39 @@ func (r *ValidationReport) addError(path string, code ValidationIssueCode, forma
 		Code:    code,
 		Message: fmt.Sprintf(format, args...),
 	})
+}
+
+func validateMembers(report *ValidationReport, members []OrganizationMemberSpec) map[string]int {
+	memberIndex := make(map[string]int, len(members))
+
+	for i, member := range members {
+		pathPrefix := fmt.Sprintf("members[%d]", i)
+		username := strings.TrimSpace(member.Username)
+		role := strings.TrimSpace(member.Role)
+
+		if username == "" {
+			report.addError(pathPrefix+".username", ValidationIssueCodeMissingRequiredField, "organization member username is required")
+		} else if !isValidGitHubUsername(username) {
+			report.addError(pathPrefix+".username", ValidationIssueCodeInvalidFieldValue, "organization member username %q is not a valid GitHub username", username)
+		}
+		if role == "" {
+			report.addError(pathPrefix+".role", ValidationIssueCodeMissingRequiredField, "organization member role is required")
+		} else if !isAllowed(role, validOrganizationMemberRoles) {
+			report.addError(pathPrefix+".role", ValidationIssueCodeInvalidEnum, "organization member role %q is not supported", role)
+		}
+
+		if username == "" {
+			continue
+		}
+		usernameKey := strings.ToLower(username)
+		if firstIndex, ok := memberIndex[usernameKey]; ok {
+			report.addError(pathPrefix, ValidationIssueCodeDuplicateOrganizationMember, "organization member %q duplicates members[%d]", username, firstIndex)
+			continue
+		}
+		memberIndex[usernameKey] = i
+	}
+
+	return memberIndex
 }
 
 func validateRepositories(report *ValidationReport, repositories []RepositorySpec, organization string) {
@@ -135,7 +174,7 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 	}
 }
 
-func validateTeams(report *ValidationReport, teams []TeamSpec, organization string) map[string]int {
+func validateTeams(report *ValidationReport, teams []TeamSpec, organization string, organizationMemberIndex map[string]int) map[string]int {
 	teamIndex := make(map[string]int, len(teams))
 
 	for i, team := range teams {
@@ -167,7 +206,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			}
 		}
 
-		memberIndex := make(map[string]int, len(team.Members))
+		teamMemberIndex := make(map[string]int, len(team.Members))
 		for j, member := range team.Members {
 			memberPath := fmt.Sprintf("%s.members[%d]", pathPrefix, j)
 			username := strings.TrimSpace(member.Username)
@@ -180,12 +219,15 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			if username == "" {
 				continue
 			}
+			if _, ok := organizationMemberIndex[strings.ToLower(username)]; !ok {
+				report.addError(memberPath+".username", ValidationIssueCodeUnknownOrganizationMember, "team member %q must also be declared in top-level members", username)
+			}
 			usernameKey := strings.ToLower(username)
-			if firstIndex, ok := memberIndex[usernameKey]; ok {
+			if firstIndex, ok := teamMemberIndex[usernameKey]; ok {
 				report.addError(memberPath, ValidationIssueCodeDuplicateTeamMember, "team member %q duplicates teams[%d].members[%d]", username, i, firstIndex)
 				continue
 			}
-			memberIndex[usernameKey] = j
+			teamMemberIndex[usernameKey] = j
 		}
 
 		repositoryIndex := make(map[string]int, len(team.Repositories))
@@ -231,7 +273,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 	return teamIndex
 }
 
-func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex map[string]int) {
+func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex map[string]int, memberIndex map[string]int) {
 	for i, invite := range invites {
 		pathPrefix := fmt.Sprintf("invites[%d]", i)
 		usernameDeclared := invite.Username.Present
@@ -267,6 +309,8 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 				report.addError(pathPrefix+".username", ValidationIssueCodeInvalidInviteIdentity, "invite username must not be empty when provided")
 			case !isValidGitHubUsername(username):
 				report.addError(pathPrefix+".username", ValidationIssueCodeInvalidInviteIdentity, "invite username %q is not a valid GitHub username", username)
+			case hasOrganizationMember(memberIndex, username):
+				report.addError(pathPrefix+".username", ValidationIssueCodeDuplicateOrganizationMemberInvite, "invite username %q duplicates a declared top-level member", username)
 			}
 		}
 		if emailDeclared {
@@ -303,6 +347,11 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			}
 		}
 	}
+}
+
+func hasOrganizationMember(memberIndex map[string]int, username string) bool {
+	_, ok := memberIndex[strings.ToLower(strings.TrimSpace(username))]
+	return ok
 }
 
 func validateTeamParentCycles(report *ValidationReport, teams []TeamSpec, teamIndex map[string]int) {

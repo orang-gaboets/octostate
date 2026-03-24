@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -86,6 +87,9 @@ func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 	report, err := Build(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
 			Invites: []config.InviteSpec{
 				{Username: presentString("zoe"), Role: "direct_member", TeamSlugs: []string{"platform"}},
 			},
@@ -119,6 +123,9 @@ func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 		},
 		Actual: &state.OrganizationState{
 			Organization: "ORANG-GABOETS",
+			Members: []state.OrganizationMember{
+				{Username: "alice", Role: "member"},
+			},
 			PendingInvitations: []state.PendingInvitation{
 				{ID: 10, Username: "ZOE", Role: "admin", TeamSlugs: []string{}},
 			},
@@ -175,6 +182,10 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 	report, err := Build(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "admin"},
+				{Username: "charlie", Role: "member"},
+			},
 			Invites: []config.InviteSpec{
 				{Username: presentString("invite-user")},
 				{Email: presentString("invite@example.com")},
@@ -231,6 +242,10 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		},
 		Actual: &state.OrganizationState{
 			Organization: "orang-gaboets",
+			Members: []state.OrganizationMember{
+				{Username: "alice", Role: "member"},
+				{Username: "bob", Role: "member"},
+			},
 			PendingInvitations: []state.PendingInvitation{
 				{ID: 5, Email: "orphan@example.com", Role: "direct_member", TeamSlugs: []string{}},
 			},
@@ -270,12 +285,12 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		Organization: "orang-gaboets",
 		Summary: Summary{
 			HasChanges:           true,
-			Actions:              16,
-			ExecutableActions:    10,
-			NonExecutableActions: 6,
-			CreateActions:        7,
-			UpdateActions:        4,
-			DeleteActions:        2,
+			Actions:              19,
+			ExecutableActions:    11,
+			NonExecutableActions: 8,
+			CreateActions:        8,
+			UpdateActions:        5,
+			DeleteActions:        3,
 			RemoveActions:        3,
 		},
 		Actions: []Action{
@@ -285,11 +300,14 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform New"}, {Field: "privacy", From: "closed", To: "secret"}}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationDelete, ResourceID: "legacy", Executable: false, Message: "team legacy exists in live state but is not declared in desired config", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationCreate, ResourceID: "charlie", Executable: true, Message: "create organization member charlie", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationUpdate, ResourceID: "alice", Executable: true, Message: "update organization member alice", Changes: []FieldChange{{Field: "role", From: "member", To: "admin"}}},
+			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationDelete, ResourceID: "bob", Executable: false, Message: "organization member bob exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "email:invite@example.com", Executable: true, Message: "create organization invite email:invite@example.com", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "user_id:42", Executable: true, Message: "create organization invite user_id:42", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "username:invite-user", Executable: true, Message: "create organization invite username:invite-user", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationRemove, ResourceID: "email:orphan@example.com", Executable: false, Message: "pending invitation email:orphan@example.com exists in live state but is not declared in desired config", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: true, Message: "add team membership platform/charlie", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: false, Message: "team membership platform/charlie requires organization member charlie to exist first", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
@@ -299,6 +317,148 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 	}
 	if !reflect.DeepEqual(report, want) {
 		t.Fatalf("unexpected report:\n got %#v\nwant %#v", report, want)
+	}
+}
+
+func TestBuildRejectsInviteThatDuplicatesDesiredMemberByUserID(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			if id != 99 {
+				t.Fatalf("unexpected user id lookup: got %d want 99", id)
+			}
+			return &gh.User{Login: githubpkg.Ptr("alice")}, &gh.Response{}, nil
+		},
+	}
+
+	_, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual:      &state.OrganizationState{Organization: "orang-gaboets"},
+		UserService: userService,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+	if !reflect.DeepEqual(userService.calls, []int64{99}) {
+		t.Fatalf("unexpected user lookups: got %#v want %#v", userService.calls, []int64{99})
+	}
+}
+
+func TestBuildRejectsInviteThatDuplicatesUnnormalizedDesiredMemberByUserID(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			if id != 99 {
+				t.Fatalf("unexpected user lookup id %d", id)
+			}
+			return &gh.User{Login: githubpkg.Ptr("alice")}, &gh.Response{}, nil
+		},
+	}
+
+	_, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: " alice ", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual:      &state.OrganizationState{Organization: "orang-gaboets"},
+		UserService: userService,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+	if !reflect.DeepEqual(userService.calls, []int64{99}) {
+		t.Fatalf("unexpected user lookups: got %#v want %#v", userService.calls, []int64{99})
+	}
+}
+
+func TestBuildInviteUserIDWithoutDesiredMembersDoesNotLookupUser(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			t.Fatalf("unexpected user lookup id %d", id)
+			return nil, nil, nil
+		},
+	}
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual:      &state.OrganizationState{Organization: "orang-gaboets"},
+		UserService: userService,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(userService.calls) != 0 {
+		t.Fatalf("unexpected user lookups: got %#v want none", userService.calls)
+	}
+	if len(report.Actions) != 1 || report.Actions[0].ResourceID != "user_id:99" {
+		t.Fatalf("unexpected actions: %#v", report.Actions)
+	}
+}
+
+func TestBuildRejectsInviteThatDuplicatesDesiredMemberByActualMemberIDWithoutLookup(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			t.Fatalf("unexpected user lookup id %d", id)
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Members: []state.OrganizationMember{
+				{ID: 99, Username: "alice", Role: "member"},
+			},
+		},
+		UserService: userService,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+	if len(userService.calls) != 0 {
+		t.Fatalf("unexpected user lookups: got %#v want none", userService.calls)
 	}
 }
 
@@ -593,17 +753,17 @@ func TestBuildInviteSatisfiedByExistingMember(t *testing.T) {
 		{
 			name:   "username",
 			invite: config.InviteSpec{Username: presentString("octocat")},
-			member: state.OrganizationMember{ID: 1, Username: "OctoCat"},
+			member: state.OrganizationMember{ID: 1, Username: "OctoCat", Role: "member"},
 		},
 		{
 			name:   "email",
 			invite: config.InviteSpec{Email: presentString("octocat@example.com")},
-			member: state.OrganizationMember{ID: 1, Username: "octocat", Email: "OctoCat@example.com"},
+			member: state.OrganizationMember{ID: 1, Username: "octocat", Role: "member", Email: "OctoCat@example.com"},
 		},
 		{
 			name:   "user id",
 			invite: config.InviteSpec{UserID: presentInt64(99)},
-			member: state.OrganizationMember{ID: 99, Username: "octocat"},
+			member: state.OrganizationMember{ID: 99, Username: "octocat", Role: "member"},
 		},
 	}
 
@@ -625,8 +785,16 @@ func TestBuildInviteSatisfiedByExistingMember(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Build returned error: %v", err)
 			}
-			if report.Summary.Actions != 0 || len(report.Actions) != 0 {
-				t.Fatalf("expected no plan actions, got %#v", report)
+			want := []Action{{
+				ResourceType: ActionResourceTypeOrganizationMember,
+				Operation:    ActionOperationDelete,
+				ResourceID:   tt.member.Username,
+				Executable:   false,
+				Message:      "organization member " + tt.member.Username + " exists in live state but is not declared in desired config",
+				Changes:      []FieldChange{},
+			}}
+			if !reflect.DeepEqual(report.Actions, want) {
+				t.Fatalf("unexpected plan actions:\n got %#v\nwant %#v", report.Actions, want)
 			}
 		})
 	}

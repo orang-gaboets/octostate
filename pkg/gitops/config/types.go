@@ -10,10 +10,11 @@ import (
 // OrganizationConfig contains the normalized desired-state configuration loaded
 // from organization.yaml.
 type OrganizationConfig struct {
-	Organization string           `yaml:"organization"`
-	Invites      []InviteSpec     `yaml:"invites"`
-	Repositories []RepositorySpec `yaml:"repositories"`
-	Teams        []TeamSpec       `yaml:"teams"`
+	Organization string                   `yaml:"organization"`
+	Members      []OrganizationMemberSpec `yaml:"members"`
+	Invites      []InviteSpec             `yaml:"invites"`
+	Repositories []RepositorySpec         `yaml:"repositories"`
+	Teams        []TeamSpec               `yaml:"teams"`
 }
 
 // OptionalString preserves whether a string field was declared and whether it
@@ -56,6 +57,13 @@ type InviteSpec struct {
 	UserID    OptionalInt64  `yaml:"user_id"`
 	Role      string         `yaml:"role"`
 	TeamSlugs []string       `yaml:"team_slugs"`
+}
+
+// OrganizationMemberSpec describes a durable organization member declared in
+// organization.yaml.
+type OrganizationMemberSpec struct {
+	Username string `yaml:"username"`
+	Role     string `yaml:"role"`
 }
 
 // UnmarshalYAML preserves whether invite identity fields were omitted, null,

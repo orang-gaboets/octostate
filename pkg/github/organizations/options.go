@@ -88,6 +88,37 @@ func (opt *CreateInvitationOptions) Validate() error {
 	return nil
 }
 
+// SetMembershipOptions defines the options for setting or updating an
+// organization membership.
+type SetMembershipOptions struct {
+	Service  Service
+	OrgName  string
+	Username string
+	Role     string
+}
+
+// Validate checks if the SetMembershipOptions are valid.
+func (opt *SetMembershipOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	opt.OrgName = strings.TrimSpace(opt.OrgName)
+	opt.Username = strings.TrimSpace(opt.Username)
+	opt.Role = strings.TrimSpace(opt.Role)
+	if opt.OrgName == "" {
+		return github.ErrMissingRequiredField
+	}
+	if opt.Username == "" {
+		return github.ErrMissingRequiredField
+	}
+	switch MemberRole(opt.Role) {
+	case MemberRoleAdmin, MemberRoleMember:
+		return nil
+	default:
+		return fmt.Errorf("invalid membership role %q: %w", opt.Role, github.ErrValidationFailed)
+	}
+}
+
 // MemberRole specifies the membership role to filter by when listing organization members.
 type MemberRole string
 

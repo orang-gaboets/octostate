@@ -15,6 +15,8 @@ const (
 	ActionResourceTypeRepository ActionResourceType = "repository"
 	// ActionResourceTypeTeam identifies a team resource action.
 	ActionResourceTypeTeam ActionResourceType = "team"
+	// ActionResourceTypeOrganizationMember identifies an organization membership action.
+	ActionResourceTypeOrganizationMember ActionResourceType = "organization_member"
 	// ActionResourceTypeInvite identifies an organization invitation action.
 	ActionResourceTypeInvite ActionResourceType = "invite"
 	// ActionResourceTypeTeamMember identifies a team membership action.
@@ -168,6 +170,7 @@ func compareActionResourceTypes(a, b ActionResourceType) int {
 	return compareOrderedStrings(string(a), string(b), []string{
 		string(ActionResourceTypeRepository),
 		string(ActionResourceTypeTeam),
+		string(ActionResourceTypeOrganizationMember),
 		string(ActionResourceTypeInvite),
 		string(ActionResourceTypeTeamMember),
 		string(ActionResourceTypeTeamRepositoryPermission),

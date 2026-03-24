@@ -144,6 +144,7 @@ type executor struct {
 	teamIDs             map[string]int64
 	desiredRepositories map[string]config.RepositorySpec
 	desiredTeams        map[string]config.TeamSpec
+	desiredOrgMembers   map[string]config.OrganizationMemberSpec
 	desiredMembers      map[string]config.TeamMemberSpec
 	desiredPermissions  map[string]config.TeamRepositorySpec
 	desiredInvites      map[string]config.InviteSpec
@@ -160,6 +161,7 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 		teamIDs:             make(map[string]int64, len(opt.Actual.Teams)),
 		desiredRepositories: make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
 		desiredTeams:        make(map[string]config.TeamSpec, len(opt.Desired.Teams)),
+		desiredOrgMembers:   make(map[string]config.OrganizationMemberSpec, len(opt.Desired.Members)),
 		desiredMembers:      map[string]config.TeamMemberSpec{},
 		desiredPermissions:  map[string]config.TeamRepositorySpec{},
 		desiredInvites:      map[string]config.InviteSpec{},
@@ -174,6 +176,9 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 
 	for _, repository := range opt.Desired.Repositories {
 		exec.desiredRepositories[repositoryResourceID(repository.Owner, repository.Name)] = repository
+	}
+	for _, member := range opt.Desired.Members {
+		exec.desiredOrgMembers[organizationMemberResourceID(member.Username)] = member
 	}
 	for _, team := range opt.Desired.Teams {
 		exec.desiredTeams[teamResourceID(team.Slug)] = team
@@ -201,6 +206,8 @@ func (e *executor) executeAction(action gitopsplan.Action) error {
 		return e.executeRepositoryAction(action)
 	case gitopsplan.ActionResourceTypeTeam:
 		return e.executeTeamAction(action)
+	case gitopsplan.ActionResourceTypeOrganizationMember:
+		return e.executeOrganizationMemberAction(action)
 	case gitopsplan.ActionResourceTypeInvite:
 		return e.executeInviteAction(action)
 	case gitopsplan.ActionResourceTypeTeamMember:

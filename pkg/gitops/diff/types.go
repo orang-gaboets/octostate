@@ -26,6 +26,7 @@ type (
 const (
 	ActionResourceTypeRepository               = gitopsplan.ActionResourceTypeRepository
 	ActionResourceTypeTeam                     = gitopsplan.ActionResourceTypeTeam
+	ActionResourceTypeOrganizationMember       = gitopsplan.ActionResourceTypeOrganizationMember
 	ActionResourceTypeInvite                   = gitopsplan.ActionResourceTypeInvite
 	ActionResourceTypeTeamMember               = gitopsplan.ActionResourceTypeTeamMember
 	ActionResourceTypeTeamRepositoryPermission = gitopsplan.ActionResourceTypeTeamRepositoryPermission

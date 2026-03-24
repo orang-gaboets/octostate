@@ -38,10 +38,22 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 func encodeOrganizationConfig(cfg OrganizationConfig) *yaml.Node {
 	root := mapNode()
 	appendMapField(root, "organization", stringNode(strings.TrimSpace(cfg.Organization)))
+	appendMapField(root, "members", encodeMembers(cfg.Members))
 	appendMapField(root, "invites", encodeInvites(cfg.Invites))
 	appendMapField(root, "repositories", encodeRepositories(cfg.Repositories, cfg.Organization))
 	appendMapField(root, "teams", encodeTeams(cfg.Teams, cfg.Organization))
 	return root
+}
+
+func encodeMembers(members []OrganizationMemberSpec) *yaml.Node {
+	items := make([]*yaml.Node, 0, len(members))
+	for _, member := range members {
+		item := mapNode()
+		appendMapField(item, "username", stringNode(strings.TrimSpace(member.Username)))
+		appendMapField(item, "role", stringNode(strings.TrimSpace(member.Role)))
+		items = append(items, item)
+	}
+	return sequenceNode(items)
 }
 
 func encodeInvites(invites []InviteSpec) *yaml.Node {

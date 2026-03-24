@@ -16,6 +16,10 @@ func teamResourceID(slug string) string {
 	return slug
 }
 
+func organizationMemberResourceID(username string) string {
+	return username
+}
+
 func teamMemberResourceID(teamSlug, username string) string {
 	return teamSlug + "/" + username
 }

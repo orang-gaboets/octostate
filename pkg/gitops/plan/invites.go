@@ -44,6 +44,17 @@ func (p planner) appendInviteActions(actions []Action) ([]Action, error) {
 		if err != nil {
 			return nil, err
 		}
+		overlapsMember, err := p.desiredMemberMatchesInviteIdentity(identity)
+		if err != nil {
+			return nil, err
+		}
+		if overlapsMember {
+			return nil, fmt.Errorf(
+				"invite %s duplicates a declared top-level member: %w",
+				identity.resourceID(),
+				githubpkg.ErrInvalidFieldValue,
+			)
+		}
 		satisfied, err := p.inviteIdentitySatisfied(identity)
 		if err != nil {
 			return nil, err
@@ -149,6 +160,49 @@ func (p *planner) inviteIdentitySatisfied(identity inviteIdentity) (bool, error)
 	}
 
 	return false, nil
+}
+
+func (p *planner) desiredMemberMatchesInviteIdentity(identity inviteIdentity) (bool, error) {
+	if len(p.desired.Members) == 0 {
+		return false, nil
+	}
+	switch identity.kind {
+	case inviteIdentityKindUsername:
+		return p.hasDesiredMember(identity.username), nil
+	case inviteIdentityKindUserID:
+		if identity.userID <= 0 {
+			return false, nil
+		}
+		for _, member := range p.actual.Members {
+			if member.ID == identity.userID {
+				return p.hasDesiredMember(member.Username), nil
+			}
+		}
+		if p.userService == nil {
+			return false, nil
+		}
+		login, err := p.lookupLoginByUserID(identity.userID)
+		if err != nil {
+			return false, err
+		}
+		return p.hasDesiredMember(login), nil
+	default:
+		return false, nil
+	}
+}
+
+func (p *planner) hasDesiredMember(username string) bool {
+	usernameKey := strings.ToLower(strings.TrimSpace(username))
+	if usernameKey == "" {
+		return false
+	}
+	for _, member := range p.desired.Members {
+		memberKey := strings.ToLower(strings.TrimSpace(member.Username))
+		if memberKey == usernameKey {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *planner) pendingInvitationDeclared(invitation state.PendingInvitation) (bool, error) {

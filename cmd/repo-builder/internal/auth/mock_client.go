@@ -48,6 +48,11 @@ func (MockOrganizationService) CreateOrgInvitation(_ context.Context, _ string, 
 	return &gh.Invitation{}, nil, nil
 }
 
+// EditOrgMembership mocks setting an organization membership.
+func (MockOrganizationService) EditOrgMembership(_ context.Context, _, _ string, _ *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	return &gh.Membership{}, nil, nil
+}
+
 // Get mocks the retrieval organization details by name.
 func (MockOrganizationService) Get(_ context.Context, _ string) (*gh.Organization, *gh.Response, error) {
 	return &gh.Organization{}, nil, nil

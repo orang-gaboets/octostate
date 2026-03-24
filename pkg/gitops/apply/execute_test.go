@@ -53,6 +53,109 @@ func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
 	}
 }
 
+func TestExecuteOrganizationMemberCreateAndUpdate(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{
+			{Username: "alice", Role: "member"},
+			{Username: "bob", Role: "admin"},
+		},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeOrganizationMember,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   organizationMemberResourceID("alice"),
+				Executable:   true,
+				Message:      "create organization member alice",
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeOrganizationMember,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   organizationMemberResourceID("bob"),
+				Executable:   true,
+				Message:      "update organization member bob",
+				Changes: []gitopsplan.FieldChange{{
+					Field: "role",
+					From:  "member",
+					To:    "admin",
+				}},
+			},
+		},
+	}
+	plan.Normalize()
+
+	var calls []struct {
+		user string
+		role string
+	}
+	orgSvc := &testOrganizationService{
+		editOrgMembershipFunc: func(_ context.Context, user, org string, membership *gh.Membership) (*gh.Membership, *gh.Response, error) {
+			if org != "orang-gaboets" {
+				t.Fatalf("unexpected organization %q", org)
+			}
+			if membership == nil || membership.Role == nil {
+				t.Fatalf("expected membership role payload, got %#v", membership)
+			}
+			calls = append(calls, struct {
+				user string
+				role string
+			}{user: user, role: *membership.Role})
+			return membership, nil, nil
+		},
+	}
+
+	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantCalls := []struct {
+		user string
+		role string
+	}{
+		{user: "alice", role: "member"},
+		{user: "bob", role: "admin"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("unexpected membership calls: got %#v want %#v", calls, wantCalls)
+	}
+	if !reflect.DeepEqual(result.Executed, plan.Actions) {
+		t.Fatalf("unexpected executed actions:\n got %#v\nwant %#v", result.Executed, plan.Actions)
+	}
+}
+
+func TestExecuteOrganizationMemberUnsupportedOperationFails(t *testing.T) {
+	t.Parallel()
+
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeOrganizationMember,
+			Operation:    gitopsplan.ActionOperationDelete,
+			ResourceID:   organizationMemberResourceID("alice"),
+			Executable:   true,
+			Message:      "delete organization member alice",
+		}},
+	}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
+	if !strings.Contains(err.Error(), `unsupported organization member operation "delete"`) {
+		t.Fatalf("expected unsupported organization member operation error, got %v", err)
+	}
+}
+
 func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 	t.Parallel()
 
@@ -1105,6 +1208,7 @@ func inviteByUserID(userID int64, role string) config.InviteSpec {
 
 type testOrganizationService struct {
 	createOrgInvitationFunc    func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error)
+	editOrgMembershipFunc      func(context.Context, string, string, *gh.Membership) (*gh.Membership, *gh.Response, error)
 	getFunc                    func(context.Context, string) (*gh.Organization, *gh.Response, error)
 	listMembersFunc            func(context.Context, string, *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
 	listPendingInvitationsFunc func(context.Context, string, *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error)
@@ -1116,6 +1220,12 @@ func (m *testOrganizationService) CreateOrgInvitation(ctx context.Context, org s
 		return m.createOrgInvitationFunc(ctx, org, opts)
 	}
 	return &gh.Invitation{}, nil, nil
+}
+func (m *testOrganizationService) EditOrgMembership(ctx context.Context, user, org string, membership *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	if m.editOrgMembershipFunc != nil {
+		return m.editOrgMembershipFunc(ctx, user, org, membership)
+	}
+	return &gh.Membership{}, nil, nil
 }
 func (m *testOrganizationService) Get(ctx context.Context, org string) (*gh.Organization, *gh.Response, error) {
 	if m.getFunc != nil {

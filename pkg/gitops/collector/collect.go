@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"strings"
 
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
@@ -71,15 +72,11 @@ func collectOrganization(
 	}
 
 	if behavior.includeMembers {
-		members, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
-			Service: opt.OrganizationService,
-			OrgName: opt.OrgName,
-			Role:    organizations.MemberRoleAll,
-		})
+		members, err := collectOrganizationMembers(ctx, opt)
 		if err != nil {
 			return nil, err
 		}
-		actual.Members = organizationMembersFromUsers(members)
+		actual.Members = members
 	}
 
 	if behavior.includePendingInvitations {
@@ -173,7 +170,33 @@ func collectOrganization(
 	return actual, nil
 }
 
-func organizationMembersFromUsers(users []*githubpkg.User) []state.OrganizationMember {
+func collectOrganizationMembers(ctx context.Context, opt CollectOrganizationOptions) ([]state.OrganizationMember, error) {
+	admins, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
+		Service: opt.OrganizationService,
+		OrgName: opt.OrgName,
+		Role:    organizations.MemberRoleAdmin,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	members, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
+		Service: opt.OrganizationService,
+		OrgName: opt.OrgName,
+		Role:    organizations.MemberRoleMember,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	collected := append(
+		organizationMembersFromUsers(admins, string(organizations.MemberRoleAdmin)),
+		organizationMembersFromUsers(members, string(organizations.MemberRoleMember))...,
+	)
+	return dedupeOrganizationMembers(collected), nil
+}
+
+func organizationMembersFromUsers(users []*githubpkg.User, role string) []state.OrganizationMember {
 	result := make([]state.OrganizationMember, 0, len(users))
 	for _, user := range users {
 		if user == nil {
@@ -182,9 +205,39 @@ func organizationMembersFromUsers(users []*githubpkg.User) []state.OrganizationM
 		result = append(result, state.OrganizationMember{
 			ID:       derefInt64(user.ID),
 			Username: derefString(user.Login),
+			Role:     role,
 			Name:     derefString(user.Name),
 			Email:    derefString(user.Email),
 		})
+	}
+	return result
+}
+
+func dedupeOrganizationMembers(members []state.OrganizationMember) []state.OrganizationMember {
+	if len(members) == 0 {
+		return []state.OrganizationMember{}
+	}
+
+	byUsername := make(map[string]state.OrganizationMember, len(members))
+	order := make([]string, 0, len(members))
+	for _, member := range members {
+		username := strings.ToLower(strings.TrimSpace(member.Username))
+		if username == "" {
+			continue
+		}
+		if existing, ok := byUsername[username]; ok {
+			if existing.Role != string(organizations.MemberRoleAdmin) && member.Role == string(organizations.MemberRoleAdmin) {
+				byUsername[username] = member
+			}
+			continue
+		}
+		byUsername[username] = member
+		order = append(order, username)
+	}
+
+	result := make([]state.OrganizationMember, 0, len(order))
+	for _, username := range order {
+		result = append(result, byUsername[username])
 	}
 	return result
 }

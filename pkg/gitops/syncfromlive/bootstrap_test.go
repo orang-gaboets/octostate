@@ -69,15 +69,15 @@ func TestBuildBootstrapConfigRejectsUnknownTeamRelationships(t *testing.T) {
 	}
 }
 
-func TestBuildBootstrapConfigRejectsDirectOrganizationMembers(t *testing.T) {
+func TestBuildBootstrapConfigIncludesDirectOrganizationMembers(t *testing.T) {
 	t.Parallel()
 
-	_, err := BuildBootstrapConfig(BootstrapOptions{
+	got, err := BuildBootstrapConfig(BootstrapOptions{
 		Actual: &state.OrganizationState{
 			Organization: "orang-gaboets",
 			Members: []state.OrganizationMember{
-				{Username: "alice"},
-				{Username: "carol"},
+				{Username: "alice", Role: "admin"},
+				{Username: "carol", Role: "member"},
 			},
 			Teams: []state.Team{
 				{Slug: "platform", Name: "Platform", Privacy: "closed"},
@@ -87,11 +87,17 @@ func TestBuildBootstrapConfigRejectsDirectOrganizationMembers(t *testing.T) {
 			},
 		},
 	})
-	if err == nil || !strings.Contains(err.Error(), "direct organization members outside teams") {
-		t.Fatalf("expected direct member error, got %v", err)
+	if err != nil {
+		t.Fatalf("expected direct members to be included, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "carol") {
-		t.Fatalf("expected unsupported member details in error, got %v", err)
+	if got.Members == nil || len(got.Members) != 2 {
+		t.Fatalf("expected direct members in bootstrap config, got %#v", got.Members)
+	}
+	if got.Members[0] != (config.OrganizationMemberSpec{Username: "alice", Role: "admin"}) {
+		t.Fatalf("unexpected first member %#v", got.Members[0])
+	}
+	if got.Members[1] != (config.OrganizationMemberSpec{Username: "carol", Role: "member"}) {
+		t.Fatalf("unexpected second member %#v", got.Members[1])
 	}
 }
 
@@ -115,8 +121,8 @@ func canonicalBootstrapActualState() *state.OrganizationState {
 	return &state.OrganizationState{
 		Organization: " orang-gaboets ",
 		Members: []state.OrganizationMember{
-			{Username: "bob"},
-			{Username: "alice"},
+			{Username: "bob", Role: "member"},
+			{Username: "alice", Role: "admin"},
 		},
 		PendingInvitations: []state.PendingInvitation{{Username: "octocat", Role: "direct_member"}},
 		Repositories: []state.Repository{
@@ -184,6 +190,15 @@ func assertBootstrapTopLevel(t *testing.T, got config.OrganizationConfig) {
 
 	if got.Organization != "orang-gaboets" {
 		t.Fatalf("expected trimmed organization, got %#v", got.Organization)
+	}
+	if got.Members == nil || len(got.Members) != 2 {
+		t.Fatalf("expected top-level members for team-backed users, got %#v", got.Members)
+	}
+	if got.Members[0] != (config.OrganizationMemberSpec{Username: "alice", Role: "admin"}) {
+		t.Fatalf("unexpected first top-level member: %#v", got.Members[0])
+	}
+	if got.Members[1] != (config.OrganizationMemberSpec{Username: "bob", Role: "member"}) {
+		t.Fatalf("unexpected second top-level member: %#v", got.Members[1])
 	}
 	if got.Invites == nil || len(got.Invites) != 0 {
 		t.Fatalf("expected pending invites to be excluded, got %#v", got.Invites)

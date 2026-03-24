@@ -48,8 +48,8 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 	actual := &OrganizationState{
 		Organization: "orang-gaboets",
 		Members: []OrganizationMember{
-			{ID: 2, Username: "zulu"},
-			{ID: 1, Username: "Alpha"},
+			{ID: 2, Username: "zulu", Role: "member"},
+			{ID: 1, Username: "Alpha", Role: "admin"},
 		},
 		PendingInvitations: []PendingInvitation{
 			{Email: "z@example.com", TeamSlugs: []string{"zeta", "Alpha"}},
@@ -76,8 +76,8 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 	actual.Normalize()
 
 	wantMembers := []OrganizationMember{
-		{ID: 1, Username: "Alpha"},
-		{ID: 2, Username: "zulu"},
+		{ID: 1, Username: "Alpha", Role: "admin"},
+		{ID: 2, Username: "zulu", Role: "member"},
 	}
 	if !reflect.DeepEqual(actual.Members, wantMembers) {
 		t.Fatalf("unexpected members: got %#v want %#v", actual.Members, wantMembers)
