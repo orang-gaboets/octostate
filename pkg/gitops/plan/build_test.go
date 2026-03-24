@@ -392,6 +392,76 @@ func TestBuildRejectsInviteThatDuplicatesUnnormalizedDesiredMemberByUserID(t *te
 	}
 }
 
+func TestBuildInviteUserIDWithoutDesiredMembersDoesNotLookupUser(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			t.Fatalf("unexpected user lookup id %d", id)
+			return nil, nil, nil
+		},
+	}
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual:      &state.OrganizationState{Organization: "orang-gaboets"},
+		UserService: userService,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(userService.calls) != 0 {
+		t.Fatalf("unexpected user lookups: got %#v want none", userService.calls)
+	}
+	if len(report.Actions) != 1 || report.Actions[0].ResourceID != "user_id:99" {
+		t.Fatalf("unexpected actions: %#v", report.Actions)
+	}
+}
+
+func TestBuildRejectsInviteThatDuplicatesDesiredMemberByActualMemberIDWithoutLookup(t *testing.T) {
+	t.Parallel()
+
+	userService := &userServiceStub{
+		getByIDFunc: func(_ context.Context, id int64) (*gh.User, *gh.Response, error) {
+			t.Fatalf("unexpected user lookup id %d", id)
+			return nil, nil, nil
+		},
+	}
+
+	_, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+			Members: []state.OrganizationMember{
+				{ID: 99, Username: "alice", Role: "member"},
+			},
+		},
+		UserService: userService,
+	})
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: got %v want %v", err, githubpkg.ErrInvalidFieldValue)
+	}
+	if err == nil || !strings.Contains(err.Error(), "duplicates a declared top-level member") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+	if len(userService.calls) != 0 {
+		t.Fatalf("unexpected user lookups: got %#v want none", userService.calls)
+	}
+}
+
 func TestBuildInviteUserIDSatisfiedByPendingInviteUsesLookupCache(t *testing.T) {
 	t.Parallel()
 

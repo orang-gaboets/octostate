@@ -163,11 +163,22 @@ func (p *planner) inviteIdentitySatisfied(identity inviteIdentity) (bool, error)
 }
 
 func (p *planner) desiredMemberMatchesInviteIdentity(identity inviteIdentity) (bool, error) {
+	if len(p.desired.Members) == 0 {
+		return false, nil
+	}
 	switch identity.kind {
 	case inviteIdentityKindUsername:
 		return p.hasDesiredMember(identity.username), nil
 	case inviteIdentityKindUserID:
-		if identity.userID <= 0 || p.userService == nil {
+		if identity.userID <= 0 {
+			return false, nil
+		}
+		for _, member := range p.actual.Members {
+			if member.ID == identity.userID {
+				return p.hasDesiredMember(member.Username), nil
+			}
+		}
+		if p.userService == nil {
 			return false, nil
 		}
 		login, err := p.lookupLoginByUserID(identity.userID)
