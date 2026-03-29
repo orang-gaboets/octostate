@@ -360,7 +360,7 @@ Adopt rules:
 - Pending invites are excluded by default
 - Top-level durable org membership is adopted into `members:`
 - Presence-aware repository fields are only updated from live when they are already explicitly managed in config
-- Newly adopted repositories leave presence-aware repository fields unmanaged; use `materialize` later if you want them made explicit
+- Newly adopted repositories leave presence-aware repository fields unmanaged; add those fields manually to `organization.yaml` if you want them explicit today
 - Existing config order is preserved where possible; newly adopted entries append deterministically
 
 Example print-to-stdout use:
