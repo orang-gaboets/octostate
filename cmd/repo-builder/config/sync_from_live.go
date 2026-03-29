@@ -21,21 +21,27 @@ import (
 
 const (
 	syncFromLiveModeBootstrap       = "bootstrap"
+	syncFromLiveModeAdopt           = "adopt"
 	syncFromLiveOrganizationFile    = "organization.yaml"
 	syncFromLiveTempFilePattern     = "organization-*.yaml"
 	syncFromLiveConfigDirectoryMode = 0o755
+	syncFromLiveConfigFileMode      = 0o644
 )
 
 var (
 	newSyncFromLiveClient         = auth.NewClient
-	collectSyncFromLiveState      = collector.CollectOrganizationForBootstrap
+	collectSyncFromLiveState      = collector.CollectOrganizationForSyncFromLive
+	loadSyncFromLiveConfig        = gitopsconfig.LoadDir
 	buildSyncFromLiveBootstrap    = syncfromlive.BuildBootstrapConfig
+	buildSyncFromLiveAdopt        = syncfromlive.BuildAdoptConfig
 	validateSyncFromLiveConfig    = gitopsconfig.Validate
 	encodeSyncFromLiveConfig      = gitopsconfig.EncodeYAML
 	statSyncFromLivePath          = os.Stat
 	mkdirAllSyncFromLiveConfigDir = os.MkdirAll
 	createTempSyncFromLiveFile    = os.CreateTemp
+	chmodSyncFromLivePath         = os.Chmod
 	linkSyncFromLivePath          = os.Link
+	renameSyncFromLivePath        = os.Rename
 	removeSyncFromLivePath        = os.Remove
 )
 
@@ -55,12 +61,14 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "sync-from-live",
 		Short:         "Generate GitOps config from live GitHub state",
-		Long:          "Collect live GitHub organization state and generate a canonical GitOps organization.yaml proposal. Bootstrap mode prints YAML by default and only writes files when --write is set.",
+		Long:          "Collect live GitHub organization state and generate or update a GitOps organization.yaml proposal. Sync-from-live prints YAML by default and only writes files when --write is set.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
 			repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
 			repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
+			repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
+			repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
 			repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir /path/to/control-repo/config --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --write`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			yamlBytes, writeResult, err := syncFromLiveConfig(
@@ -81,7 +89,7 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 				return err
 			}
 			if write {
-				return cmdoutput.PrintSuccess(cmd, "wrote bootstrap GitOps config", writeResult)
+				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("wrote %s GitOps config", mode), writeResult)
 			}
 			_, err = cmd.OutOrStdout().Write(yamlBytes)
 			return err
@@ -90,7 +98,7 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
 
-	cmd.Flags().StringVar(&mode, "mode", "", "Sync mode to run (currently only bootstrap)")
+	cmd.Flags().StringVar(&mode, "mode", "", "Sync mode to run (bootstrap or adopt)")
 	cmd.Flags().StringVar(&organization, "org", "", "GitHub organization to read from live state")
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing or receiving organization.yaml")
 	cmd.Flags().BoolVar(&write, "write", false, "Write the generated organization.yaml into --config-dir instead of printing YAML to stdout")
@@ -118,6 +126,7 @@ func syncFromLiveConfig(
 
 	switch mode {
 	case syncFromLiveModeBootstrap:
+	case syncFromLiveModeAdopt:
 	default:
 		return nil, nil, fmt.Errorf("sync-from-live mode %q is not supported", mode)
 	}
@@ -128,9 +137,31 @@ func syncFromLiveConfig(
 	if configDir == "" {
 		return nil, nil, fmt.Errorf("config directory is required: %w", github.ErrMissingRequiredField)
 	}
-	if write {
+	if write && mode == syncFromLiveModeBootstrap {
 		if _, err := ensureBootstrapConfigTargetAvailable(configDir); err != nil {
 			return nil, nil, err
+		}
+	}
+
+	var desired gitopsconfig.OrganizationConfig
+	var err error
+	if mode == syncFromLiveModeAdopt {
+		desired, err = loadSyncFromLiveConfig(configDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		report := validateSyncFromLiveConfig(desired)
+		if !report.Valid {
+			return nil, nil, exitcode.New(validateExitCodeInvalidConfig, existingSyncFromLiveConfigValidationError(report))
+		}
+		if !strings.EqualFold(strings.TrimSpace(desired.Organization), organization) {
+			return nil, nil, fmt.Errorf(
+				"organization %q in %s does not match --org %q: %w",
+				desired.Organization,
+				syncFromLiveOrganizationFile,
+				organization,
+				github.ErrInvalidFieldValue,
+			)
 		}
 	}
 
@@ -149,13 +180,22 @@ func syncFromLiveConfig(
 		return nil, nil, err
 	}
 
-	cfg, err := buildSyncFromLiveBootstrap(syncfromlive.BootstrapOptions{Actual: actual})
+	var cfg gitopsconfig.OrganizationConfig
+	switch mode {
+	case syncFromLiveModeBootstrap:
+		cfg, err = buildSyncFromLiveBootstrap(syncfromlive.BootstrapOptions{Actual: actual})
+	case syncFromLiveModeAdopt:
+		cfg, err = buildSyncFromLiveAdopt(syncfromlive.AdoptOptions{
+			Desired: desired,
+			Actual:  actual,
+		})
+	}
 	if err != nil {
 		return nil, nil, err
 	}
 	report := validateSyncFromLiveConfig(cfg)
 	if !report.Valid {
-		return nil, nil, exitcode.New(validateExitCodeInvalidConfig, generatedBootstrapConfigValidationError(report))
+		return nil, nil, exitcode.New(validateExitCodeInvalidConfig, generatedSyncFromLiveConfigValidationError(mode, report))
 	}
 
 	yamlBytes, err := encodeSyncFromLiveConfig(cfg)
@@ -166,7 +206,7 @@ func syncFromLiveConfig(
 		return yamlBytes, nil, nil
 	}
 
-	targetPath, err := writeBootstrapConfigFile(configDir, yamlBytes)
+	targetPath, err := writeSyncFromLiveConfigFile(mode, configDir, yamlBytes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -176,6 +216,17 @@ func syncFromLiveConfig(
 		Mode:         mode,
 		Path:         targetPath,
 	}, nil
+}
+
+func writeSyncFromLiveConfigFile(mode, configDir string, yamlBytes []byte) (string, error) {
+	switch mode {
+	case syncFromLiveModeBootstrap:
+		return writeBootstrapConfigFile(configDir, yamlBytes)
+	case syncFromLiveModeAdopt:
+		return replaceSyncFromLiveConfigFile(configDir, yamlBytes)
+	default:
+		return "", fmt.Errorf("sync-from-live mode %q is not supported", mode)
+	}
 }
 
 func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error) {
@@ -212,6 +263,11 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 		return "", fmt.Errorf("close bootstrap config temp file %s: %w", tempPath, closeErr)
 	}
 
+	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
+		_ = removeSyncFromLivePath(tempPath)
+		return "", fmt.Errorf("set bootstrap config file mode %s: %w", tempPath, err)
+	}
+
 	if err := linkSyncFromLivePath(tempPath, targetPath); err != nil {
 		_ = removeSyncFromLivePath(tempPath)
 		if errors.Is(err, os.ErrExist) {
@@ -220,6 +276,50 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 		return "", fmt.Errorf("link bootstrap config %s: %w", targetPath, err)
 	}
 	_ = removeSyncFromLivePath(tempPath)
+
+	return targetPath, nil
+}
+
+func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, error) {
+	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
+
+	if err := mkdirAllSyncFromLiveConfigDir(strings.TrimSpace(configDir), syncFromLiveConfigDirectoryMode); err != nil {
+		return "", fmt.Errorf("create config directory %s: %w", configDir, err)
+	}
+
+	file, err := createTempSyncFromLiveFile(filepath.Dir(targetPath), syncFromLiveTempFilePattern)
+	if err != nil {
+		return "", fmt.Errorf("create sync-from-live config temp file: %w", err)
+	}
+	tempPath := file.Name()
+
+	writeErr := error(nil)
+	if _, err := file.Write(yamlBytes); err != nil {
+		writeErr = err
+	}
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		_ = removeSyncFromLivePath(tempPath)
+	}
+
+	switch {
+	case writeErr != nil && closeErr != nil:
+		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, errors.Join(writeErr, closeErr))
+	case writeErr != nil:
+		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, writeErr)
+	case closeErr != nil:
+		return "", fmt.Errorf("close sync-from-live config temp file %s: %w", tempPath, closeErr)
+	}
+
+	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
+		_ = removeSyncFromLivePath(tempPath)
+		return "", fmt.Errorf("set sync-from-live config file mode %s: %w", tempPath, err)
+	}
+
+	if err := renameSyncFromLivePath(tempPath, targetPath); err != nil {
+		_ = removeSyncFromLivePath(tempPath)
+		return "", fmt.Errorf("replace sync-from-live config %s: %w", targetPath, err)
+	}
 
 	return targetPath, nil
 }
@@ -236,9 +336,17 @@ func ensureBootstrapConfigTargetAvailable(configDir string) (string, error) {
 	return targetPath, nil
 }
 
-func generatedBootstrapConfigValidationError(report gitopsconfig.ValidationReport) error {
+func existingSyncFromLiveConfigValidationError(report gitopsconfig.ValidationReport) error {
+	return syncFromLiveConfigValidationError("existing config is invalid", report)
+}
+
+func generatedSyncFromLiveConfigValidationError(mode string, report gitopsconfig.ValidationReport) error {
+	return syncFromLiveConfigValidationError(fmt.Sprintf("generated %s config is invalid", strings.TrimSpace(mode)), report)
+}
+
+func syncFromLiveConfigValidationError(prefix string, report gitopsconfig.ValidationReport) error {
 	if len(report.Errors) == 0 {
-		return fmt.Errorf("generated bootstrap config is invalid")
+		return fmt.Errorf("%s", prefix)
 	}
 
 	first := report.Errors[0]
@@ -247,10 +355,11 @@ func generatedBootstrapConfigValidationError(report gitopsconfig.ValidationRepor
 		detail = fmt.Sprintf("%s: %s", path, first.Message)
 	}
 	if len(report.Errors) == 1 {
-		return fmt.Errorf("generated bootstrap config is invalid: %s", detail)
+		return fmt.Errorf("%s: %s", prefix, detail)
 	}
 	return fmt.Errorf(
-		"generated bootstrap config is invalid: %s (and %d more error(s))",
+		"%s: %s (and %d more error(s))",
+		prefix,
 		detail,
 		len(report.Errors)-1,
 	)

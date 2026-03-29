@@ -53,6 +53,12 @@ func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*
 // CollectOrganizationForBootstrap loads only the live organization state
 // required for sync-from-live bootstrap generation.
 func CollectOrganizationForBootstrap(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+	return CollectOrganizationForSyncFromLive(ctx, opt)
+}
+
+// CollectOrganizationForSyncFromLive loads the live organization state needed
+// for sync-from-live proposal generation.
+func CollectOrganizationForSyncFromLive(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
 		includeMembers: true,
 	})

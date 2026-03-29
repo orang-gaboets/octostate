@@ -17,6 +17,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
 - **v1 (in progress):** GitOps commands + audit:
   - ✅ `repo-builder config validate`
   - ✅ `repo-builder config sync-from-live --mode bootstrap`
+  - ✅ `repo-builder config sync-from-live --mode adopt`
   - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
   - ✅ `repo-builder config apply`
@@ -288,7 +289,7 @@ repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config
 ```
 
 ##### Flags
-- `--mode` (required): Sync mode to run (currently only `bootstrap`)
+- `--mode` (required): Sync mode to run (`bootstrap` or `adopt`)
 - `--org` (required): GitHub organization to read from live state
 - `--config-dir` (required): Path to the config directory containing or receiving `organization.yaml`
 - `--write`: Write the generated `organization.yaml` into `--config-dir` instead of printing YAML to stdout
@@ -331,6 +332,47 @@ Example write use:
 
 ```bash
 go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+```
+
+#### Adopt supported live state into an existing desired config
+
+```bash
+repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
+repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
+```
+
+Behavior:
+- Loads and validates the existing `<config-dir>/organization.yaml` before contacting GitHub
+- Collects live GitHub organization state required for adoption generation
+- Merges supported live state back into config for:
+  - top-level `members`
+  - repositories
+  - teams
+  - team memberships
+  - team repository permissions
+- Preserves existing invites that are still transitional; removes invites already satisfied by live org membership
+- Preserves existing config-only declarations; `adopt` does not auto-remove config that is missing from live state
+- Prints the adopted YAML to stdout by default
+- Validates the merged config before printing or writing it
+- With `--write`, atomically replaces `<config-dir>/organization.yaml`
+
+Adopt rules:
+- Pending invites are excluded by default
+- Top-level durable org membership is adopted into `members:`
+- Presence-aware repository fields are only updated from live when they are already explicitly managed in config
+- Newly adopted repositories leave presence-aware repository fields unmanaged; add those fields manually to `organization.yaml` if you want them explicit today
+- Existing config order is preserved where possible; newly adopted entries append deterministically
+
+Example print-to-stdout use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+Example write use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 #### Preview reconciliation plan
@@ -973,6 +1015,7 @@ state/
 Implemented:
 - `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
 - `repo-builder config sync-from-live --mode bootstrap` — generate a canonical bootstrap `organization.yaml` from live GitHub state
+- `repo-builder config sync-from-live --mode adopt` — merge supported live GitHub state back into an existing `organization.yaml` proposal
 - `repo-builder config plan` — preview deterministic reconciliation actions from desired vs live state
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 - `repo-builder config apply` — reconcile GitHub to match config/ for supported create/update actions
