@@ -350,7 +350,7 @@ Behavior:
   - teams
   - team memberships
   - team repository permissions
-- Preserves existing `invites` unchanged
+- Preserves existing invites that are still transitional; removes invites already satisfied by live org membership
 - Preserves existing config-only declarations; `adopt` does not auto-remove config that is missing from live state
 - Prints the adopted YAML to stdout by default
 - Validates the merged config before printing or writing it

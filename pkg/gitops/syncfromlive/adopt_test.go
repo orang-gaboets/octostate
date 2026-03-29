@@ -165,6 +165,65 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 	}
 }
 
+func TestBuildAdoptConfigDropsInvitesSatisfiedByLiveMembers(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []config.OrganizationMemberSpec{},
+		Invites: []config.InviteSpec{
+			{
+				Username: config.OptionalString{Present: true, Value: "alice"},
+				Role:     "direct_member",
+			},
+			{
+				UserID: config.OptionalInt64{Present: true, Value: 42},
+				Role:   "direct_member",
+			},
+			{
+				Email: config.OptionalString{Present: true, Value: "carol@example.com"},
+				Role:  "direct_member",
+			},
+			{
+				Username: config.OptionalString{Present: true, Value: "octocat"},
+				Role:     "direct_member",
+			},
+		},
+		Repositories: []config.RepositorySpec{},
+		Teams:        []config.TeamSpec{},
+	}
+
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Members: []state.OrganizationMember{
+			{ID: 1, Username: "alice", Role: "member"},
+			{ID: 42, Username: "bob", Role: "member"},
+			{ID: 99, Username: "carol", Email: "carol@example.com", Role: "admin"},
+		},
+	}
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: desired,
+		Actual:  actual,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(got.Invites) != 1 {
+		t.Fatalf("expected only unmatched invites to remain, got %#v", got.Invites)
+	}
+	if got.Invites[0].Username.Value != "octocat" {
+		t.Fatalf("expected unmatched invite to be preserved, got %#v", got.Invites[0])
+	}
+	if len(got.Members) != 3 {
+		t.Fatalf("expected live org members to be adopted, got %#v", got.Members)
+	}
+	if report := config.Validate(got); !report.Valid {
+		t.Fatalf("expected adopted config to validate after removing satisfied invites, got %#v", report)
+	}
+}
+
 func assertAdoptedMembers(t *testing.T, members []config.OrganizationMemberSpec) {
 	t.Helper()
 

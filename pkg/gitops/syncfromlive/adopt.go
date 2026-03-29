@@ -63,11 +63,58 @@ func BuildAdoptConfig(opt AdoptOptions) (config.OrganizationConfig, error) {
 	}
 
 	desired.Organization = organization
+	desired.Invites = adoptInvites(desired.Invites, actual.Members)
 	desired.Members = adoptOrganizationMembers(desired.Members, actualMembers)
 	desired.Repositories = adoptRepositories(organization, desired.Repositories, actual.Repositories)
 	desired.Teams = adoptTeams(organization, desired.Teams, actual.Teams, membersByTeam, permissionsByTeam)
 
 	return desired, nil
+}
+
+func adoptInvites(
+	desired []config.InviteSpec,
+	actualMembers []state.OrganizationMember,
+) []config.InviteSpec {
+	adopted := make([]config.InviteSpec, 0, len(desired))
+	for _, invite := range desired {
+		if inviteSatisfiedByActualMember(invite, actualMembers) {
+			continue
+		}
+		adopted = append(adopted, invite)
+	}
+	return adopted
+}
+
+func inviteSatisfiedByActualMember(
+	invite config.InviteSpec,
+	actualMembers []state.OrganizationMember,
+) bool {
+	for _, member := range actualMembers {
+		if actualMemberMatchesInvite(member, invite) {
+			return true
+		}
+	}
+	return false
+}
+
+func actualMemberMatchesInvite(member state.OrganizationMember, invite config.InviteSpec) bool {
+	switch {
+	case invite.Username.Present && !invite.Username.Null:
+		return strings.EqualFold(
+			strings.TrimSpace(member.Username),
+			strings.TrimSpace(invite.Username.Value),
+		)
+	case invite.UserID.Present && !invite.UserID.Null:
+		return member.ID > 0 && member.ID == invite.UserID.Value
+	case invite.Email.Present && !invite.Email.Null:
+		memberEmail := strings.TrimSpace(member.Email)
+		return memberEmail != "" && strings.EqualFold(
+			memberEmail,
+			strings.TrimSpace(invite.Email.Value),
+		)
+	default:
+		return false
+	}
 }
 
 func adoptOrganizationMembers(
