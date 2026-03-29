@@ -417,6 +417,54 @@ func TestSyncFromLiveConfigCmdAdoptExistingConfigInvalidFailsBeforeAuth(t *testi
 	}
 }
 
+func TestSyncFromLiveConfigCmdAdoptOrganizationMismatchFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "other-org",
+			Members:      []gitopsconfig.OrganizationMemberSpec{},
+			Invites:      []gitopsconfig.InviteSpec{},
+			Repositories: []gitopsconfig.RepositorySpec{},
+			Teams:        []gitopsconfig.TeamSpec{},
+		}, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when adopt config organization mismatches --org")
+		return nil, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveState should not be called when adopt config organization mismatches --org")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "adopt",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `organization "other-org" in organization.yaml does not match --org "orang-gaboets"`) {
+		t.Fatalf("expected organization mismatch error, got %v", err)
+	}
+	if _, ok := exitcode.Code(err); ok {
+		t.Fatalf("expected plain error, got typed exit error %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
 func TestSyncFromLiveConfigCmdAdoptMissingConfigFailsBeforeAuth(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 

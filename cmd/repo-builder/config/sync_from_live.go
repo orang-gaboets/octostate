@@ -152,6 +152,15 @@ func syncFromLiveConfig(
 		if !report.Valid {
 			return nil, nil, exitcode.New(validateExitCodeInvalidConfig, existingSyncFromLiveConfigValidationError(report))
 		}
+		if !strings.EqualFold(strings.TrimSpace(desired.Organization), organization) {
+			return nil, nil, fmt.Errorf(
+				"organization %q in %s does not match --org %q: %w",
+				desired.Organization,
+				syncFromLiveOrganizationFile,
+				organization,
+				github.ErrInvalidFieldValue,
+			)
+		}
 	}
 
 	client, err := newSyncFromLiveClient(ctx, token, appID, installationID, appKeyPath)
