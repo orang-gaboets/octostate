@@ -159,6 +159,240 @@ func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
 	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `mode "materialize" is not supported`) {
+		t.Fatalf("expected unsupported mode error, got %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdPrintsAdoptedYAML(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	existing := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	adopted := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+
+	loadSyncFromLiveConfig = func(configDir string) (gitopsconfig.OrganizationConfig, error) {
+		if configDir != "./config" {
+			t.Fatalf("unexpected configDir %q", configDir)
+		}
+		return existing, nil
+	}
+	newSyncFromLiveClient = func(_ context.Context, token string, appID, installationID int64, appKeyPath string) (internalauth.Client, error) {
+		if token != "secret-token" || appID != 0 || installationID != 0 || appKeyPath != "" {
+			t.Fatalf("unexpected auth args token=%q appID=%d installationID=%d appKeyPath=%q", token, appID, installationID, appKeyPath)
+		}
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		if opt.OrgName != "orang-gaboets" {
+			t.Fatalf("unexpected organization %q", opt.OrgName)
+		}
+		return actual, nil
+	}
+	buildSyncFromLiveAdopt = func(opt syncfromlive.AdoptOptions) (gitopsconfig.OrganizationConfig, error) {
+		if opt.Actual != actual {
+			t.Fatal("unexpected actual state pointer")
+		}
+		if opt.Desired.Organization != existing.Organization {
+			t.Fatalf("unexpected desired config %#v", opt.Desired)
+		}
+		return adopted, nil
+	}
+	validateCalls := 0
+	validateSyncFromLiveConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		validateCalls++
+		switch validateCalls {
+		case 1:
+			if got.Organization != existing.Organization {
+				t.Fatalf("unexpected existing config %#v", got)
+			}
+		case 2:
+			if got.Organization != adopted.Organization || len(got.Members) != 1 {
+				t.Fatalf("unexpected adopted config %#v", got)
+			}
+		default:
+			t.Fatalf("unexpected validate call %d with %#v", validateCalls, got)
+		}
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	encodeSyncFromLiveConfig = func(got gitopsconfig.OrganizationConfig) ([]byte, error) {
+		if got.Organization != adopted.Organization || len(got.Members) != 1 {
+			t.Fatalf("unexpected config %#v", got)
+		}
+		return []byte("organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n"), nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "adopt",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+	if got := out.String(); got != "organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n" {
+		t.Fatalf("unexpected YAML output: %q", got)
+	}
+}
+
+func TestSyncFromLiveConfigCmdAdoptWriteSuccess(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := filepath.Join(t.TempDir(), "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	existingPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	if err := os.WriteFile(existingPath, []byte("organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories: []\nteams: []\n"), 0o644); err != nil {
+		t.Fatalf("seed existing config: %v", err)
+	}
+
+	existing := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+	adopted := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+
+	loadSyncFromLiveConfig = func(gotConfigDir string) (gitopsconfig.OrganizationConfig, error) {
+		if gotConfigDir != configDir {
+			t.Fatalf("unexpected configDir %q", gotConfigDir)
+		}
+		return existing, nil
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
+	}
+	buildSyncFromLiveAdopt = func(syncfromlive.AdoptOptions) (gitopsconfig.OrganizationConfig, error) {
+		return adopted, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	encodeSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) ([]byte, error) {
+		return []byte("organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n"), nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "adopt",
+		"--org", "orang-gaboets",
+		"--config-dir", configDir,
+		"--token", "secret-token",
+		"--write",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+
+	envelope := decodeSyncFromLiveEnvelope(t, out.Bytes())
+	if envelope.Status != string(cmdoutput.OperationResultStatusSuccess) {
+		t.Fatalf("unexpected status: got %q want %q", envelope.Status, cmdoutput.OperationResultStatusSuccess)
+	}
+	var result syncFromLiveWriteResult
+	decodeSyncFromLiveData(t, envelope.Data, &result)
+	if result.Organization != "orang-gaboets" || result.Mode != syncFromLiveModeAdopt {
+		t.Fatalf("unexpected write result %#v", result)
+	}
+
+	writtenPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	if result.Path != writtenPath {
+		t.Fatalf("unexpected written path %#v", result.Path)
+	}
+	content, err := os.ReadFile(writtenPath)
+	if err != nil {
+		t.Fatalf("read written config: %v", err)
+	}
+	if string(content) != "organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n" {
+		t.Fatalf("unexpected written config:\n%s", string(content))
+	}
+}
+
+func TestSyncFromLiveConfigCmdAdoptExistingConfigInvalidFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members:      []gitopsconfig.OrganizationMemberSpec{{Username: "alice", Role: ""}},
+		}, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{
+			Valid: false,
+			Errors: []gitopsconfig.ValidationIssue{{
+				Path:    "members[0].role",
+				Code:    gitopsconfig.ValidationIssueCodeMissingRequiredField,
+				Message: "organization member role is required",
+			}},
+		}
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when existing adopt config is invalid")
+		return nil, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveState should not be called when existing adopt config is invalid")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
 		"--mode", "adopt",
 		"--org", "orang-gaboets",
 		"--config-dir", "./config",
@@ -166,11 +400,131 @@ func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), `mode "adopt" is not supported`) {
-		t.Fatalf("expected unsupported mode error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "existing config is invalid") {
+		t.Fatalf("expected existing config invalid error, got %v", err)
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: existing config is invalid") {
+		t.Fatalf("expected validation error on stderr, got %q", got)
+	}
+	if !strings.Contains(errBuf.String(), "members[0].role: organization member role is required") {
+		t.Fatalf("expected detailed validation stderr output, got %q", errBuf.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdAdoptMissingConfigFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(configDir string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{}, &gitopsconfig.LoadError{
+			Kind: gitopsconfig.LoadErrorMissingFile,
+			Path: filepath.Join(configDir, "organization.yaml"),
+			Err:  os.ErrNotExist,
+		}
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when adopt config file is missing")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "adopt",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "organization.yaml") {
+		t.Fatalf("expected missing config error, got %v", err)
+	}
+	if _, ok := exitcode.Code(err); ok {
+		t.Fatalf("expected plain error, got typed exit error %v", err)
 	}
 	if out.Len() != 0 || errBuf.Len() != 0 {
 		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdAdoptGeneratedInvalidConfigFails(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members:      []gitopsconfig.OrganizationMemberSpec{},
+			Invites:      []gitopsconfig.InviteSpec{},
+			Repositories: []gitopsconfig.RepositorySpec{},
+			Teams:        []gitopsconfig.TeamSpec{},
+		}, nil
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
+	}
+	buildSyncFromLiveAdopt = func(syncfromlive.AdoptOptions) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []gitopsconfig.OrganizationMemberSpec{
+				{Username: "alice", Role: ""},
+			},
+		}, nil
+	}
+	validateCalls := 0
+	validateSyncFromLiveConfig = func(_ gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		validateCalls++
+		if validateCalls == 1 {
+			return gitopsconfig.ValidationReport{Valid: true}
+		}
+		return gitopsconfig.ValidationReport{
+			Valid: false,
+			Errors: []gitopsconfig.ValidationIssue{{
+				Path:    "members[0].role",
+				Code:    gitopsconfig.ValidationIssueCodeMissingRequiredField,
+				Message: "organization member role is required",
+			}},
+		}
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "adopt",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "generated adopt config is invalid") {
+		t.Fatalf("expected generated adopt config invalid error, got %v", err)
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: generated adopt config is invalid") {
+		t.Fatalf("expected validation error on stderr, got %q", got)
+	}
+	if !strings.Contains(errBuf.String(), "members[0].role: organization member role is required") {
+		t.Fatalf("expected detailed validation stderr output, got %q", errBuf.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
 	}
 }
 
@@ -392,6 +746,44 @@ func TestWriteBootstrapConfigFileRemoveAfterSuccessfulLinkIsBestEffort(t *testin
 	}
 }
 
+func TestReplaceSyncFromLiveConfigFileRenameFailureRemovesTempFile(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	var tempPath string
+	var removedPath string
+
+	createTempSyncFromLiveFile = func(dir, pattern string) (*os.File, error) {
+		file, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		tempPath = file.Name()
+		return file, nil
+	}
+	renameSyncFromLivePath = func(_, _ string) error {
+		return errors.New("rename failed")
+	}
+	removeSyncFromLivePath = func(path string) error {
+		removedPath = path
+		return os.Remove(path)
+	}
+
+	_, err := replaceSyncFromLiveConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err == nil || !strings.Contains(err.Error(), "replace sync-from-live config") {
+		t.Fatalf("expected rename error, got %v", err)
+	}
+	if tempPath == "" {
+		t.Fatal("expected temp file path to be captured")
+	}
+	if removedPath != tempPath {
+		t.Fatalf("expected temp file removal, removed=%q temp=%q", removedPath, tempPath)
+	}
+	if _, statErr := os.Stat(tempPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected temp file to be removed, got stat error %v", statErr)
+	}
+}
+
 func TestSyncFromLiveConfigCmdAuthCollectBuildEncodeFailuresPropagate(t *testing.T) {
 	authErr := errors.New("auth failed")
 	collectErr := errors.New("collect failed")
@@ -496,25 +888,31 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 
 	oldNewClient := newSyncFromLiveClient
 	oldCollect := collectSyncFromLiveState
+	oldLoad := loadSyncFromLiveConfig
 	oldBuild := buildSyncFromLiveBootstrap
+	oldBuildAdopt := buildSyncFromLiveAdopt
 	oldValidate := validateSyncFromLiveConfig
 	oldEncode := encodeSyncFromLiveConfig
 	oldStat := statSyncFromLivePath
 	oldMkdirAll := mkdirAllSyncFromLiveConfigDir
 	oldCreateTemp := createTempSyncFromLiveFile
 	oldLink := linkSyncFromLivePath
+	oldRename := renameSyncFromLivePath
 	oldRemove := removeSyncFromLivePath
 
 	t.Cleanup(func() {
 		newSyncFromLiveClient = oldNewClient
 		collectSyncFromLiveState = oldCollect
+		loadSyncFromLiveConfig = oldLoad
 		buildSyncFromLiveBootstrap = oldBuild
+		buildSyncFromLiveAdopt = oldBuildAdopt
 		validateSyncFromLiveConfig = oldValidate
 		encodeSyncFromLiveConfig = oldEncode
 		statSyncFromLivePath = oldStat
 		mkdirAllSyncFromLiveConfigDir = oldMkdirAll
 		createTempSyncFromLiveFile = oldCreateTemp
 		linkSyncFromLivePath = oldLink
+		renameSyncFromLivePath = oldRename
 		removeSyncFromLivePath = oldRemove
 	})
 }
