@@ -27,16 +27,26 @@ type collectOrganizationBehavior struct {
 	includeTeams              bool
 }
 
-// Validate checks if the CollectOrganizationOptions are valid.
+// Validate checks if the CollectOrganizationOptions are valid for the full
+// organization collection path.
 func (opt *CollectOrganizationOptions) Validate() error {
+	return opt.validateForBehavior(collectOrganizationBehavior{
+		includeMembers:            true,
+		includePendingInvitations: true,
+		includeRepositories:       true,
+		includeTeams:              true,
+	})
+}
+
+func (opt *CollectOrganizationOptions) validateForBehavior(behavior collectOrganizationBehavior) error {
 	switch {
 	case opt.OrgName == "":
 		return githubpkg.ErrMissingRequiredField
-	case opt.OrganizationService == nil:
+	case (behavior.includeMembers || behavior.includePendingInvitations) && opt.OrganizationService == nil:
 		return githubpkg.ErrNilService
-	case opt.RepositoryService == nil:
+	case behavior.includeRepositories && opt.RepositoryService == nil:
 		return githubpkg.ErrNilService
-	case opt.TeamService == nil:
+	case behavior.includeTeams && opt.TeamService == nil:
 		return githubpkg.ErrNilService
 	default:
 		return nil
@@ -83,7 +93,7 @@ func collectOrganization(
 	opt CollectOrganizationOptions,
 	behavior collectOrganizationBehavior,
 ) (*state.OrganizationState, error) {
-	if err := opt.Validate(); err != nil {
+	if err := opt.validateForBehavior(behavior); err != nil {
 		return nil, err
 	}
 

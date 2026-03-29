@@ -687,6 +687,42 @@ func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
 	}
 }
 
+func TestCollectOrganizationForMaterializeAllowsUnusedServicesToBeNil(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, org string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListByOrg: got %q want %q", org, orgName)
+			}
+			return []*gh.Repository{
+				{
+					Owner:      &gh.User{Login: githubpkg.Ptr(orgName)},
+					Name:       githubpkg.Ptr("repo-builder"),
+					Visibility: githubpkg.Ptr("private"),
+				},
+			}, &gh.Response{}, nil
+		},
+	}
+
+	actual, err := CollectOrganizationForMaterialize(context.Background(), CollectOrganizationOptions{
+		OrgName:           orgName,
+		RepositoryService: repoSvc,
+	})
+	if err != nil {
+		t.Fatalf("CollectOrganizationForMaterialize returned error: %v", err)
+	}
+
+	if actual.Organization != orgName {
+		t.Fatalf("unexpected organization %q", actual.Organization)
+	}
+	if len(actual.Repositories) != 1 || actual.Repositories[0].Name != "repo-builder" {
+		t.Fatalf("unexpected repositories %#v", actual.Repositories)
+	}
+}
+
 type organizationServiceStub struct {
 	listMembersFunc               func(context.Context, string, *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
 	listPendingOrgInvitationsFunc func(context.Context, string, *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error)
