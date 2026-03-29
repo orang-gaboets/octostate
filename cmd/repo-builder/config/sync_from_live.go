@@ -25,6 +25,7 @@ const (
 	syncFromLiveOrganizationFile    = "organization.yaml"
 	syncFromLiveTempFilePattern     = "organization-*.yaml"
 	syncFromLiveConfigDirectoryMode = 0o755
+	syncFromLiveConfigFileMode      = 0o644
 )
 
 var (
@@ -38,6 +39,7 @@ var (
 	statSyncFromLivePath          = os.Stat
 	mkdirAllSyncFromLiveConfigDir = os.MkdirAll
 	createTempSyncFromLiveFile    = os.CreateTemp
+	chmodSyncFromLivePath         = os.Chmod
 	linkSyncFromLivePath          = os.Link
 	renameSyncFromLivePath        = os.Rename
 	removeSyncFromLivePath        = os.Remove
@@ -261,6 +263,11 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 		return "", fmt.Errorf("close bootstrap config temp file %s: %w", tempPath, closeErr)
 	}
 
+	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
+		_ = removeSyncFromLivePath(tempPath)
+		return "", fmt.Errorf("set bootstrap config file mode %s: %w", tempPath, err)
+	}
+
 	if err := linkSyncFromLivePath(tempPath, targetPath); err != nil {
 		_ = removeSyncFromLivePath(tempPath)
 		if errors.Is(err, os.ErrExist) {
@@ -302,6 +309,11 @@ func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, 
 		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, writeErr)
 	case closeErr != nil:
 		return "", fmt.Errorf("close sync-from-live config temp file %s: %w", tempPath, closeErr)
+	}
+
+	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
+		_ = removeSyncFromLivePath(tempPath)
+		return "", fmt.Errorf("set sync-from-live config file mode %s: %w", tempPath, err)
 	}
 
 	if err := renameSyncFromLivePath(tempPath, targetPath); err != nil {

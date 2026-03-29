@@ -143,6 +143,9 @@ func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 	if string(content) != "organization: orang-gaboets\ninvites: []\nrepositories: []\nteams: []\n" {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
+	if mode := os.FileMode(syncFromLiveConfigFileMode); fileMode(t, writtenPath) != mode {
+		t.Fatalf("unexpected written mode: got %o want %o", fileMode(t, writtenPath), mode)
+	}
 }
 
 func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {
@@ -356,6 +359,9 @@ func TestSyncFromLiveConfigCmdAdoptWriteSuccess(t *testing.T) {
 	}
 	if string(content) != "organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n" {
 		t.Fatalf("unexpected written config:\n%s", string(content))
+	}
+	if mode := os.FileMode(syncFromLiveConfigFileMode); fileMode(t, writtenPath) != mode {
+		t.Fatalf("unexpected written mode: got %o want %o", fileMode(t, writtenPath), mode)
 	}
 }
 
@@ -794,6 +800,47 @@ func TestWriteBootstrapConfigFileRemoveAfterSuccessfulLinkIsBestEffort(t *testin
 	}
 }
 
+func TestWriteBootstrapConfigFileChmodFailureRemovesTempFile(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	var tempPath string
+	var removedPath string
+
+	createTempSyncFromLiveFile = func(dir, pattern string) (*os.File, error) {
+		file, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		tempPath = file.Name()
+		return file, nil
+	}
+	chmodSyncFromLivePath = func(_ string, mode os.FileMode) error {
+		if mode != syncFromLiveConfigFileMode {
+			t.Fatalf("unexpected chmod mode %o", mode)
+		}
+		return errors.New("chmod failed")
+	}
+	removeSyncFromLivePath = func(path string) error {
+		removedPath = path
+		return os.Remove(path)
+	}
+
+	_, err := writeBootstrapConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err == nil || !strings.Contains(err.Error(), "set bootstrap config file mode") {
+		t.Fatalf("expected chmod error, got %v", err)
+	}
+	if tempPath == "" {
+		t.Fatal("expected temp file path to be captured")
+	}
+	if removedPath != tempPath {
+		t.Fatalf("expected temp file removal, removed=%q temp=%q", removedPath, tempPath)
+	}
+	if _, statErr := os.Stat(tempPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected temp file to be removed, got stat error %v", statErr)
+	}
+}
+
 func TestReplaceSyncFromLiveConfigFileRenameFailureRemovesTempFile(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 
@@ -820,6 +867,47 @@ func TestReplaceSyncFromLiveConfigFileRenameFailureRemovesTempFile(t *testing.T)
 	_, err := replaceSyncFromLiveConfigFile(configDir, []byte("organization: orang-gaboets\n"))
 	if err == nil || !strings.Contains(err.Error(), "replace sync-from-live config") {
 		t.Fatalf("expected rename error, got %v", err)
+	}
+	if tempPath == "" {
+		t.Fatal("expected temp file path to be captured")
+	}
+	if removedPath != tempPath {
+		t.Fatalf("expected temp file removal, removed=%q temp=%q", removedPath, tempPath)
+	}
+	if _, statErr := os.Stat(tempPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected temp file to be removed, got stat error %v", statErr)
+	}
+}
+
+func TestReplaceSyncFromLiveConfigFileChmodFailureRemovesTempFile(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	var tempPath string
+	var removedPath string
+
+	createTempSyncFromLiveFile = func(dir, pattern string) (*os.File, error) {
+		file, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		tempPath = file.Name()
+		return file, nil
+	}
+	chmodSyncFromLivePath = func(_ string, mode os.FileMode) error {
+		if mode != syncFromLiveConfigFileMode {
+			t.Fatalf("unexpected chmod mode %o", mode)
+		}
+		return errors.New("chmod failed")
+	}
+	removeSyncFromLivePath = func(path string) error {
+		removedPath = path
+		return os.Remove(path)
+	}
+
+	_, err := replaceSyncFromLiveConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err == nil || !strings.Contains(err.Error(), "set sync-from-live config file mode") {
+		t.Fatalf("expected chmod error, got %v", err)
 	}
 	if tempPath == "" {
 		t.Fatal("expected temp file path to be captured")
@@ -944,6 +1032,7 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 	oldStat := statSyncFromLivePath
 	oldMkdirAll := mkdirAllSyncFromLiveConfigDir
 	oldCreateTemp := createTempSyncFromLiveFile
+	oldChmod := chmodSyncFromLivePath
 	oldLink := linkSyncFromLivePath
 	oldRename := renameSyncFromLivePath
 	oldRemove := removeSyncFromLivePath
@@ -959,10 +1048,21 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 		statSyncFromLivePath = oldStat
 		mkdirAllSyncFromLiveConfigDir = oldMkdirAll
 		createTempSyncFromLiveFile = oldCreateTemp
+		chmodSyncFromLivePath = oldChmod
 		linkSyncFromLivePath = oldLink
 		renameSyncFromLivePath = oldRename
 		removeSyncFromLivePath = oldRemove
 	})
+}
+
+func fileMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return info.Mode().Perm()
 }
 
 type syncFromLiveEnvelope struct {
