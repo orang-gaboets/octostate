@@ -604,6 +604,125 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 	}
 }
 
+func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+
+	orgSvc := &organizationServiceStub{
+		listMembersFunc: func(_ context.Context, _ string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+			t.Fatal("ListMembers should not be called for materialize collection")
+			return nil, nil, nil
+		},
+		listPendingOrgInvitationsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+			t.Fatal("ListPendingOrgInvitations should not be called for materialize collection")
+			return nil, nil, nil
+		},
+		listOrgInvitationTeamsFunc: func(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			t.Fatal("ListOrgInvitationTeams should not be called for materialize collection")
+			return nil, nil, nil
+		},
+	}
+
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, org string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListByOrg: got %q want %q", org, orgName)
+			}
+			return []*gh.Repository{
+				{
+					Owner:        &gh.User{Login: githubpkg.Ptr(orgName)},
+					Name:         githubpkg.Ptr("repo-builder"),
+					Visibility:   githubpkg.Ptr("private"),
+					Description:  githubpkg.Ptr("CLI"),
+					Homepage:     githubpkg.Ptr("https://example.com/repo-builder"),
+					Topics:       []string{"gitops", "go"},
+					AllowForking: githubpkg.Ptr(false),
+					Archived:     githubpkg.Ptr(false),
+					IsTemplate:   githubpkg.Ptr(false),
+				},
+			}, &gh.Response{}, nil
+		},
+	}
+
+	teamSvc := &teamServiceStub{
+		listTeamsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			t.Fatal("ListTeams should not be called for materialize collection")
+			return nil, nil, nil
+		},
+		listTeamMembersBySlugFunc: func(_ context.Context, _ string, _ string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+			t.Fatal("ListTeamMembersBySlug should not be called for materialize collection")
+			return nil, nil, nil
+		},
+		listTeamReposBySlugFunc: func(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+			t.Fatal("ListTeamReposBySlug should not be called for materialize collection")
+			return nil, nil, nil
+		},
+	}
+
+	actual, err := CollectOrganizationForMaterialize(context.Background(), CollectOrganizationOptions{
+		OrgName:             orgName,
+		OrganizationService: orgSvc,
+		RepositoryService:   repoSvc,
+		TeamService:         teamSvc,
+	})
+	if err != nil {
+		t.Fatalf("CollectOrganizationForMaterialize returned error: %v", err)
+	}
+
+	want := &state.OrganizationState{
+		Organization:       orgName,
+		Members:            []state.OrganizationMember{},
+		PendingInvitations: []state.PendingInvitation{},
+		Repositories: []state.Repository{
+			{Owner: orgName, Name: "repo-builder", Visibility: "private", Description: "CLI", Homepage: "https://example.com/repo-builder", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
+		},
+		Teams:                     []state.Team{},
+		TeamMembers:               []state.TeamMember{},
+		TeamRepositoryPermissions: []state.TeamRepositoryPermission{},
+	}
+
+	if !reflect.DeepEqual(actual, want) {
+		t.Fatalf("unexpected materialize organization state:\n got %#v\nwant %#v", actual, want)
+	}
+}
+
+func TestCollectOrganizationForMaterializeAllowsUnusedServicesToBeNil(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, org string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListByOrg: got %q want %q", org, orgName)
+			}
+			return []*gh.Repository{
+				{
+					Owner:      &gh.User{Login: githubpkg.Ptr(orgName)},
+					Name:       githubpkg.Ptr("repo-builder"),
+					Visibility: githubpkg.Ptr("private"),
+				},
+			}, &gh.Response{}, nil
+		},
+	}
+
+	actual, err := CollectOrganizationForMaterialize(context.Background(), CollectOrganizationOptions{
+		OrgName:           orgName,
+		RepositoryService: repoSvc,
+	})
+	if err != nil {
+		t.Fatalf("CollectOrganizationForMaterialize returned error: %v", err)
+	}
+
+	if actual.Organization != orgName {
+		t.Fatalf("unexpected organization %q", actual.Organization)
+	}
+	if len(actual.Repositories) != 1 || actual.Repositories[0].Name != "repo-builder" {
+		t.Fatalf("unexpected repositories %#v", actual.Repositories)
+	}
+}
+
 type organizationServiceStub struct {
 	listMembersFunc               func(context.Context, string, *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error)
 	listPendingOrgInvitationsFunc func(context.Context, string, *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error)

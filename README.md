@@ -18,6 +18,7 @@ This repository is the **engine** (CLI + reusable automation building blocks).
   - ✅ `repo-builder config validate`
   - ✅ `repo-builder config sync-from-live --mode bootstrap`
   - ✅ `repo-builder config sync-from-live --mode adopt`
+  - ✅ `repo-builder config sync-from-live --mode materialize`
   - ✅ `repo-builder config plan`
   - ✅ `repo-builder audit pull`
   - ✅ `repo-builder config apply`
@@ -289,7 +290,7 @@ repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config
 ```
 
 ##### Flags
-- `--mode` (required): Sync mode to run (`bootstrap` or `adopt`)
+- `--mode` (required): Sync mode to run (`bootstrap`, `adopt`, or `materialize`)
 - `--org` (required): GitHub organization to read from live state
 - `--config-dir` (required): Path to the config directory containing or receiving `organization.yaml`
 - `--write`: Write the generated `organization.yaml` into `--config-dir` instead of printing YAML to stdout
@@ -373,6 +374,47 @@ Example write use:
 
 ```bash
 go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+```
+
+#### Materialize unmanaged repository fields in an existing desired config
+
+```bash
+repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
+repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
+```
+
+Behavior:
+- Loads and validates the existing `<config-dir>/organization.yaml` before contacting GitHub
+- Collects only the live GitHub organization identity and repositories required for materialization
+- Fills currently unmanaged optional repository fields from live state for already-declared repositories only
+- Preserves `organization`, `members`, `invites`, `teams`, repository order, and already-managed repository fields
+- Does not adopt live-only repositories or remove config-only declarations
+- Prints the materialized YAML to stdout by default
+- Validates the merged config before printing or writing it
+- With `--write`, atomically replaces `<config-dir>/organization.yaml`
+
+Materialize rules:
+- Only these repository fields are materialized:
+  - `description`
+  - `homepage`
+  - `allow_forking`
+  - `archived`
+  - `is_template`
+- Empty live string values become explicit managed empty-string clears
+- Boolean live values, including `false`, become explicit managed booleans
+- `allow_forking` is not materialized for desired private repositories
+- If a repository is not yet declared in config, adopt it first and then materialize optional fields afterward
+
+Example print-to-stdout use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+Example write use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 #### Preview reconciliation plan
@@ -1016,6 +1058,7 @@ Implemented:
 - `repo-builder config validate` — validate `organization.yaml` schema + invariants offline
 - `repo-builder config sync-from-live --mode bootstrap` — generate a canonical bootstrap `organization.yaml` from live GitHub state
 - `repo-builder config sync-from-live --mode adopt` — merge supported live GitHub state back into an existing `organization.yaml` proposal
+- `repo-builder config sync-from-live --mode materialize` — fill unmanaged optional repository fields from live state for already-declared repositories
 - `repo-builder config plan` — preview deterministic reconciliation actions from desired vs live state
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 - `repo-builder config apply` — reconcile GitHub to match config/ for supported create/update actions

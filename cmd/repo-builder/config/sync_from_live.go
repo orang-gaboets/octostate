@@ -22,6 +22,7 @@ import (
 const (
 	syncFromLiveModeBootstrap       = "bootstrap"
 	syncFromLiveModeAdopt           = "adopt"
+	syncFromLiveModeMaterialize     = "materialize"
 	syncFromLiveOrganizationFile    = "organization.yaml"
 	syncFromLiveTempFilePattern     = "organization-*.yaml"
 	syncFromLiveConfigDirectoryMode = 0o755
@@ -29,20 +30,22 @@ const (
 )
 
 var (
-	newSyncFromLiveClient         = auth.NewClient
-	collectSyncFromLiveState      = collector.CollectOrganizationForSyncFromLive
-	loadSyncFromLiveConfig        = gitopsconfig.LoadDir
-	buildSyncFromLiveBootstrap    = syncfromlive.BuildBootstrapConfig
-	buildSyncFromLiveAdopt        = syncfromlive.BuildAdoptConfig
-	validateSyncFromLiveConfig    = gitopsconfig.Validate
-	encodeSyncFromLiveConfig      = gitopsconfig.EncodeYAML
-	statSyncFromLivePath          = os.Stat
-	mkdirAllSyncFromLiveConfigDir = os.MkdirAll
-	createTempSyncFromLiveFile    = os.CreateTemp
-	chmodSyncFromLivePath         = os.Chmod
-	linkSyncFromLivePath          = os.Link
-	renameSyncFromLivePath        = os.Rename
-	removeSyncFromLivePath        = os.Remove
+	newSyncFromLiveClient               = auth.NewClient
+	collectSyncFromLiveState            = collector.CollectOrganizationForSyncFromLive
+	collectSyncFromLiveMaterializeState = collector.CollectOrganizationForMaterialize
+	loadSyncFromLiveConfig              = gitopsconfig.LoadDir
+	buildSyncFromLiveBootstrap          = syncfromlive.BuildBootstrapConfig
+	buildSyncFromLiveAdopt              = syncfromlive.BuildAdoptConfig
+	buildSyncFromLiveMaterialize        = syncfromlive.BuildMaterializeConfig
+	validateSyncFromLiveConfig          = gitopsconfig.Validate
+	encodeSyncFromLiveConfig            = gitopsconfig.EncodeYAML
+	statSyncFromLivePath                = os.Stat
+	mkdirAllSyncFromLiveConfigDir       = os.MkdirAll
+	createTempSyncFromLiveFile          = os.CreateTemp
+	chmodSyncFromLivePath               = os.Chmod
+	linkSyncFromLivePath                = os.Link
+	renameSyncFromLivePath              = os.Rename
+	removeSyncFromLivePath              = os.Remove
 )
 
 // SyncFromLiveConfigCmd creates the config sync-from-live command.
@@ -69,6 +72,8 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 			repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
 			repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
 			repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
+			repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
+			repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
 			repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir /path/to/control-repo/config --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --write`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			yamlBytes, writeResult, err := syncFromLiveConfig(
@@ -98,7 +103,7 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
 
-	cmd.Flags().StringVar(&mode, "mode", "", "Sync mode to run (bootstrap or adopt)")
+	cmd.Flags().StringVar(&mode, "mode", "", "Sync mode to run (bootstrap, adopt, or materialize)")
 	cmd.Flags().StringVar(&organization, "org", "", "GitHub organization to read from live state")
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing or receiving organization.yaml")
 	cmd.Flags().BoolVar(&write, "write", false, "Write the generated organization.yaml into --config-dir instead of printing YAML to stdout")
@@ -127,6 +132,7 @@ func syncFromLiveConfig(
 	switch mode {
 	case syncFromLiveModeBootstrap:
 	case syncFromLiveModeAdopt:
+	case syncFromLiveModeMaterialize:
 	default:
 		return nil, nil, fmt.Errorf("sync-from-live mode %q is not supported", mode)
 	}
@@ -145,7 +151,7 @@ func syncFromLiveConfig(
 
 	var desired gitopsconfig.OrganizationConfig
 	var err error
-	if mode == syncFromLiveModeAdopt {
+	if mode == syncFromLiveModeAdopt || mode == syncFromLiveModeMaterialize {
 		desired, err = loadSyncFromLiveConfig(configDir)
 		if err != nil {
 			return nil, nil, err
@@ -170,7 +176,12 @@ func syncFromLiveConfig(
 		return nil, nil, err
 	}
 
-	actual, err := collectSyncFromLiveState(ctx, collector.CollectOrganizationOptions{
+	collectState := collectSyncFromLiveState
+	if mode == syncFromLiveModeMaterialize {
+		collectState = collectSyncFromLiveMaterializeState
+	}
+
+	actual, err := collectState(ctx, collector.CollectOrganizationOptions{
 		OrgName:             organization,
 		OrganizationService: client.Organizations(),
 		RepositoryService:   client.Repositories(),
@@ -186,6 +197,11 @@ func syncFromLiveConfig(
 		cfg, err = buildSyncFromLiveBootstrap(syncfromlive.BootstrapOptions{Actual: actual})
 	case syncFromLiveModeAdopt:
 		cfg, err = buildSyncFromLiveAdopt(syncfromlive.AdoptOptions{
+			Desired: desired,
+			Actual:  actual,
+		})
+	case syncFromLiveModeMaterialize:
+		cfg, err = buildSyncFromLiveMaterialize(syncfromlive.MaterializeOptions{
 			Desired: desired,
 			Actual:  actual,
 		})
@@ -223,6 +239,8 @@ func writeSyncFromLiveConfigFile(mode, configDir string, yamlBytes []byte) (stri
 	case syncFromLiveModeBootstrap:
 		return writeBootstrapConfigFile(configDir, yamlBytes)
 	case syncFromLiveModeAdopt:
+		return replaceSyncFromLiveConfigFile(configDir, yamlBytes)
+	case syncFromLiveModeMaterialize:
 		return replaceSyncFromLiveConfigFile(configDir, yamlBytes)
 	default:
 		return "", fmt.Errorf("sync-from-live mode %q is not supported", mode)

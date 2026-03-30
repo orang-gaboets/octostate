@@ -162,18 +162,221 @@ func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
 	cmd.SetArgs([]string{
-		"--mode", "materialize",
+		"--mode", "reconcile",
 		"--org", "orang-gaboets",
 		"--config-dir", "./config",
 		"--token", "secret-token",
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), `mode "materialize" is not supported`) {
+	if err == nil || !strings.Contains(err.Error(), `mode "reconcile" is not supported`) {
 		t.Fatalf("expected unsupported mode error, got %v", err)
 	}
 	if out.Len() != 0 || errBuf.Len() != 0 {
 		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdPrintsMaterializedYAML(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	existing := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{Owner: "orang-gaboets", Name: "repo-builder"}},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	materialized := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{
+			Owner: "orang-gaboets",
+			Name:  "repo-builder",
+		}},
+		Teams: []gitopsconfig.TeamSpec{},
+	}
+	materialized.Repositories[0].SetManagedHomepage("https://example.com/repo-builder")
+
+	loadSyncFromLiveConfig = func(configDir string) (gitopsconfig.OrganizationConfig, error) {
+		if configDir != "./config" {
+			t.Fatalf("unexpected configDir %q", configDir)
+		}
+		return existing, nil
+	}
+	newSyncFromLiveClient = func(_ context.Context, token string, appID, installationID int64, appKeyPath string) (internalauth.Client, error) {
+		if token != "secret-token" || appID != 0 || installationID != 0 || appKeyPath != "" {
+			t.Fatalf("unexpected auth args token=%q appID=%d installationID=%d appKeyPath=%q", token, appID, installationID, appKeyPath)
+		}
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
+		return nil, nil
+	}
+	collectSyncFromLiveMaterializeState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		if opt.OrgName != "orang-gaboets" {
+			t.Fatalf("unexpected organization %q", opt.OrgName)
+		}
+		return actual, nil
+	}
+	buildSyncFromLiveMaterialize = func(opt syncfromlive.MaterializeOptions) (gitopsconfig.OrganizationConfig, error) {
+		if opt.Actual != actual {
+			t.Fatal("unexpected actual state pointer")
+		}
+		if opt.Desired.Organization != existing.Organization || len(opt.Desired.Repositories) != 1 {
+			t.Fatalf("unexpected desired config %#v", opt.Desired)
+		}
+		return materialized, nil
+	}
+	validateCalls := 0
+	validateSyncFromLiveConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		validateCalls++
+		switch validateCalls {
+		case 1:
+			if got.Organization != existing.Organization || len(got.Repositories) != 1 {
+				t.Fatalf("unexpected existing config %#v", got)
+			}
+		case 2:
+			homepage, managed := got.Repositories[0].ManagedHomepage()
+			if got.Organization != materialized.Organization || !managed || homepage != "https://example.com/repo-builder" {
+				t.Fatalf("unexpected materialized config %#v", got)
+			}
+		default:
+			t.Fatalf("unexpected validate call %d with %#v", validateCalls, got)
+		}
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	encodeSyncFromLiveConfig = func(got gitopsconfig.OrganizationConfig) ([]byte, error) {
+		homepage, managed := got.Repositories[0].ManagedHomepage()
+		if got.Organization != materialized.Organization || !managed || homepage != "https://example.com/repo-builder" {
+			t.Fatalf("unexpected config %#v", got)
+		}
+		return []byte("organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories:\n  - owner: orang-gaboets\n    name: repo-builder\n    homepage: https://example.com/repo-builder\nteams: []\n"), nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+	if got := out.String(); got != "organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories:\n  - owner: orang-gaboets\n    name: repo-builder\n    homepage: https://example.com/repo-builder\nteams: []\n" {
+		t.Fatalf("unexpected YAML output: %q", got)
+	}
+}
+
+func TestSyncFromLiveConfigCmdMaterializeWriteSuccess(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := filepath.Join(t.TempDir(), "config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	existingPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	if err := os.WriteFile(existingPath, []byte("organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories:\n  - owner: orang-gaboets\n    name: repo-builder\nteams: []\n"), 0o644); err != nil {
+		t.Fatalf("seed existing config: %v", err)
+	}
+
+	existing := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{Owner: "orang-gaboets", Name: "repo-builder"}},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+	materialized := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{Owner: "orang-gaboets", Name: "repo-builder"}},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+	materialized.Repositories[0].SetManagedHomepage("https://example.com/repo-builder")
+
+	loadSyncFromLiveConfig = func(gotConfigDir string) (gitopsconfig.OrganizationConfig, error) {
+		if gotConfigDir != configDir {
+			t.Fatalf("unexpected configDir %q", gotConfigDir)
+		}
+		return existing, nil
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
+		return nil, nil
+	}
+	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
+	}
+	buildSyncFromLiveMaterialize = func(syncfromlive.MaterializeOptions) (gitopsconfig.OrganizationConfig, error) {
+		return materialized, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	encodeSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) ([]byte, error) {
+		return []byte("organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories:\n  - owner: orang-gaboets\n    name: repo-builder\n    homepage: https://example.com/repo-builder\nteams: []\n"), nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", configDir,
+		"--token", "secret-token",
+		"--write",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+
+	envelope := decodeSyncFromLiveEnvelope(t, out.Bytes())
+	if envelope.Status != string(cmdoutput.OperationResultStatusSuccess) {
+		t.Fatalf("unexpected status: got %q want %q", envelope.Status, cmdoutput.OperationResultStatusSuccess)
+	}
+	var result syncFromLiveWriteResult
+	decodeSyncFromLiveData(t, envelope.Data, &result)
+	if result.Organization != "orang-gaboets" || result.Mode != syncFromLiveModeMaterialize {
+		t.Fatalf("unexpected write result %#v", result)
+	}
+
+	writtenPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	if result.Path != writtenPath {
+		t.Fatalf("unexpected written path %#v", result.Path)
+	}
+	content, err := os.ReadFile(writtenPath)
+	if err != nil {
+		t.Fatalf("read written config: %v", err)
+	}
+	if string(content) != "organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories:\n  - owner: orang-gaboets\n    name: repo-builder\n    homepage: https://example.com/repo-builder\nteams: []\n" {
+		t.Fatalf("unexpected written config:\n%s", string(content))
+	}
+	if mode := os.FileMode(syncFromLiveConfigFileMode); fileMode(t, writtenPath) != mode {
+		t.Fatalf("unexpected written mode: got %o want %o", fileMode(t, writtenPath), mode)
 	}
 }
 
@@ -575,6 +778,225 @@ func TestSyncFromLiveConfigCmdAdoptGeneratedInvalidConfigFails(t *testing.T) {
 		t.Fatalf("expected validation error on stderr, got %q", got)
 	}
 	if !strings.Contains(errBuf.String(), "members[0].role: organization member role is required") {
+		t.Fatalf("expected detailed validation stderr output, got %q", errBuf.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdMaterializeExistingConfigInvalidFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []gitopsconfig.RepositorySpec{{Owner: "", Name: "repo-builder"}},
+		}, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{
+			Valid: false,
+			Errors: []gitopsconfig.ValidationIssue{{
+				Path:    "repositories[0].owner",
+				Code:    gitopsconfig.ValidationIssueCodeMissingRequiredField,
+				Message: "repository owner is required",
+			}},
+		}
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when existing materialize config is invalid")
+		return nil, nil
+	}
+	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveMaterializeState should not be called when existing materialize config is invalid")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "existing config is invalid") {
+		t.Fatalf("expected existing config invalid error, got %v", err)
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: existing config is invalid") {
+		t.Fatalf("expected validation error on stderr, got %q", got)
+	}
+	if !strings.Contains(errBuf.String(), "repositories[0].owner: repository owner is required") {
+		t.Fatalf("expected detailed validation stderr output, got %q", errBuf.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdMaterializeOrganizationMismatchFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "other-org",
+			Members:      []gitopsconfig.OrganizationMemberSpec{},
+			Invites:      []gitopsconfig.InviteSpec{},
+			Repositories: []gitopsconfig.RepositorySpec{},
+			Teams:        []gitopsconfig.TeamSpec{},
+		}, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when materialize config organization mismatches --org")
+		return nil, nil
+	}
+	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveMaterializeState should not be called when materialize config organization mismatches --org")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), `organization "other-org" in organization.yaml does not match --org "orang-gaboets"`) {
+		t.Fatalf("expected organization mismatch error, got %v", err)
+	}
+	if _, ok := exitcode.Code(err); ok {
+		t.Fatalf("expected plain error, got typed exit error %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdMaterializeMissingConfigFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(configDir string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{}, &gitopsconfig.LoadError{
+			Kind: gitopsconfig.LoadErrorMissingFile,
+			Path: filepath.Join(configDir, "organization.yaml"),
+			Err:  os.ErrNotExist,
+		}
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when materialize config file is missing")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "organization.yaml") {
+		t.Fatalf("expected missing config error, got %v", err)
+	}
+	if _, ok := exitcode.Code(err); ok {
+		t.Fatalf("expected plain error, got typed exit error %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdMaterializeGeneratedInvalidConfigFails(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members:      []gitopsconfig.OrganizationMemberSpec{},
+			Invites:      []gitopsconfig.InviteSpec{},
+			Repositories: []gitopsconfig.RepositorySpec{{Owner: "orang-gaboets", Name: "repo-builder"}},
+			Teams:        []gitopsconfig.TeamSpec{},
+		}, nil
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
+		return nil, nil
+	}
+	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
+	}
+	buildSyncFromLiveMaterialize = func(syncfromlive.MaterializeOptions) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []gitopsconfig.RepositorySpec{{Owner: "", Name: "repo-builder"}},
+		}, nil
+	}
+	validateCalls := 0
+	validateSyncFromLiveConfig = func(_ gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		validateCalls++
+		if validateCalls == 1 {
+			return gitopsconfig.ValidationReport{Valid: true}
+		}
+		return gitopsconfig.ValidationReport{
+			Valid: false,
+			Errors: []gitopsconfig.ValidationIssue{{
+				Path:    "repositories[0].owner",
+				Code:    gitopsconfig.ValidationIssueCodeMissingRequiredField,
+				Message: "repository owner is required",
+			}},
+		}
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "generated materialize config is invalid") {
+		t.Fatalf("expected generated materialize config invalid error, got %v", err)
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: generated materialize config is invalid") {
+		t.Fatalf("expected validation error on stderr, got %q", got)
+	}
+	if !strings.Contains(errBuf.String(), "repositories[0].owner: repository owner is required") {
 		t.Fatalf("expected detailed validation stderr output, got %q", errBuf.String())
 	}
 	if out.Len() != 0 {
@@ -1024,9 +1446,11 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 
 	oldNewClient := newSyncFromLiveClient
 	oldCollect := collectSyncFromLiveState
+	oldCollectMaterialize := collectSyncFromLiveMaterializeState
 	oldLoad := loadSyncFromLiveConfig
 	oldBuild := buildSyncFromLiveBootstrap
 	oldBuildAdopt := buildSyncFromLiveAdopt
+	oldBuildMaterialize := buildSyncFromLiveMaterialize
 	oldValidate := validateSyncFromLiveConfig
 	oldEncode := encodeSyncFromLiveConfig
 	oldStat := statSyncFromLivePath
@@ -1040,9 +1464,11 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 	t.Cleanup(func() {
 		newSyncFromLiveClient = oldNewClient
 		collectSyncFromLiveState = oldCollect
+		collectSyncFromLiveMaterializeState = oldCollectMaterialize
 		loadSyncFromLiveConfig = oldLoad
 		buildSyncFromLiveBootstrap = oldBuild
 		buildSyncFromLiveAdopt = oldBuildAdopt
+		buildSyncFromLiveMaterialize = oldBuildMaterialize
 		validateSyncFromLiveConfig = oldValidate
 		encodeSyncFromLiveConfig = oldEncode
 		statSyncFromLivePath = oldStat

@@ -23,18 +23,30 @@ type CollectOrganizationOptions struct {
 type collectOrganizationBehavior struct {
 	includeMembers            bool
 	includePendingInvitations bool
+	includeRepositories       bool
+	includeTeams              bool
 }
 
-// Validate checks if the CollectOrganizationOptions are valid.
+// Validate checks if the CollectOrganizationOptions are valid for the full
+// organization collection path.
 func (opt *CollectOrganizationOptions) Validate() error {
+	return opt.validateForBehavior(collectOrganizationBehavior{
+		includeMembers:            true,
+		includePendingInvitations: true,
+		includeRepositories:       true,
+		includeTeams:              true,
+	})
+}
+
+func (opt *CollectOrganizationOptions) validateForBehavior(behavior collectOrganizationBehavior) error {
 	switch {
 	case opt.OrgName == "":
 		return githubpkg.ErrMissingRequiredField
-	case opt.OrganizationService == nil:
+	case (behavior.includeMembers || behavior.includePendingInvitations) && opt.OrganizationService == nil:
 		return githubpkg.ErrNilService
-	case opt.RepositoryService == nil:
+	case behavior.includeRepositories && opt.RepositoryService == nil:
 		return githubpkg.ErrNilService
-	case opt.TeamService == nil:
+	case behavior.includeTeams && opt.TeamService == nil:
 		return githubpkg.ErrNilService
 	default:
 		return nil
@@ -47,6 +59,8 @@ func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
 		includeMembers:            true,
 		includePendingInvitations: true,
+		includeRepositories:       true,
+		includeTeams:              true,
 	})
 }
 
@@ -60,7 +74,17 @@ func CollectOrganizationForBootstrap(ctx context.Context, opt CollectOrganizatio
 // for sync-from-live proposal generation.
 func CollectOrganizationForSyncFromLive(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
-		includeMembers: true,
+		includeMembers:      true,
+		includeRepositories: true,
+		includeTeams:        true,
+	})
+}
+
+// CollectOrganizationForMaterialize loads only the live organization state
+// required for sync-from-live materialize generation.
+func CollectOrganizationForMaterialize(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+	return collectOrganization(ctx, opt, collectOrganizationBehavior{
+		includeRepositories: true,
 	})
 }
 
@@ -69,7 +93,7 @@ func collectOrganization(
 	opt CollectOrganizationOptions,
 	behavior collectOrganizationBehavior,
 ) (*state.OrganizationState, error) {
-	if err := opt.Validate(); err != nil {
+	if err := opt.validateForBehavior(behavior); err != nil {
 		return nil, err
 	}
 
@@ -115,61 +139,65 @@ func collectOrganization(
 		}
 	}
 
-	repositories, err := repos.ListOrgRepos(ctx, repos.ListOrgReposOptions{
-		Service: opt.RepositoryService,
-		Org:     opt.OrgName,
-		Type:    repos.RepoTypeAll,
-	})
-	if err != nil {
-		return nil, err
+	if behavior.includeRepositories {
+		repositories, err := repos.ListOrgRepos(ctx, repos.ListOrgReposOptions{
+			Service: opt.RepositoryService,
+			Org:     opt.OrgName,
+			Type:    repos.RepoTypeAll,
+		})
+		if err != nil {
+			return nil, err
+		}
+		actual.Repositories = repositoriesFromRepositories(repositories)
 	}
-	actual.Repositories = repositoriesFromRepositories(repositories)
 
-	collectedTeams, err := teams.ListTeams(ctx, teams.ListTeamsOptions{
-		Service: opt.TeamService,
-		Org:     opt.OrgName,
-	})
-	if err != nil {
-		return nil, err
-	}
-	actual.Teams = teamsFromTeams(collectedTeams)
-
-	for _, team := range collectedTeams {
-		if team == nil || team.Slug == "" {
-			continue
-		}
-
-		members, err := teams.ListTeamMembersBySlug(ctx, teams.ListTeamMembersBySlugOptions{
+	if behavior.includeTeams {
+		collectedTeams, err := teams.ListTeams(ctx, teams.ListTeamsOptions{
 			Service: opt.TeamService,
 			Org:     opt.OrgName,
-			Slug:    team.Slug,
-			Role:    teams.TeamMemberRoleMember,
 		})
 		if err != nil {
 			return nil, err
 		}
-		actual.TeamMembers = append(actual.TeamMembers, teamMembersFromUsers(team.Slug, "member", members)...)
+		actual.Teams = teamsFromTeams(collectedTeams)
 
-		maintainers, err := teams.ListTeamMembersBySlug(ctx, teams.ListTeamMembersBySlugOptions{
-			Service: opt.TeamService,
-			Org:     opt.OrgName,
-			Slug:    team.Slug,
-			Role:    teams.TeamMemberRoleMaintainer,
-		})
-		if err != nil {
-			return nil, err
-		}
-		actual.TeamMembers = append(actual.TeamMembers, teamMembersFromUsers(team.Slug, "maintainer", maintainers)...)
+		for _, team := range collectedTeams {
+			if team == nil || team.Slug == "" {
+				continue
+			}
 
-		repoPermissions, err := teams.ListTeamRepoPermissionsBySlug(ctx, teams.ListTeamRepoPermissionsBySlugOptions{
-			Service: opt.TeamService,
-			Org:     opt.OrgName,
-			Slug:    team.Slug,
-		})
-		if err != nil {
-			return nil, err
+			members, err := teams.ListTeamMembersBySlug(ctx, teams.ListTeamMembersBySlugOptions{
+				Service: opt.TeamService,
+				Org:     opt.OrgName,
+				Slug:    team.Slug,
+				Role:    teams.TeamMemberRoleMember,
+			})
+			if err != nil {
+				return nil, err
+			}
+			actual.TeamMembers = append(actual.TeamMembers, teamMembersFromUsers(team.Slug, "member", members)...)
+
+			maintainers, err := teams.ListTeamMembersBySlug(ctx, teams.ListTeamMembersBySlugOptions{
+				Service: opt.TeamService,
+				Org:     opt.OrgName,
+				Slug:    team.Slug,
+				Role:    teams.TeamMemberRoleMaintainer,
+			})
+			if err != nil {
+				return nil, err
+			}
+			actual.TeamMembers = append(actual.TeamMembers, teamMembersFromUsers(team.Slug, "maintainer", maintainers)...)
+
+			repoPermissions, err := teams.ListTeamRepoPermissionsBySlug(ctx, teams.ListTeamRepoPermissionsBySlugOptions{
+				Service: opt.TeamService,
+				Org:     opt.OrgName,
+				Slug:    team.Slug,
+			})
+			if err != nil {
+				return nil, err
+			}
+			actual.TeamRepositoryPermissions = append(actual.TeamRepositoryPermissions, teamRepositoryPermissionsFromRepositories(team.Slug, repoPermissions)...)
 		}
-		actual.TeamRepositoryPermissions = append(actual.TeamRepositoryPermissions, teamRepositoryPermissionsFromRepositories(team.Slug, repoPermissions)...)
 	}
 
 	actual.Normalize()
