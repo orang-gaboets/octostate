@@ -681,6 +681,19 @@ repo-builder organization list-teams --app-id <app-id> --installation-id <instal
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organisation name
 
+#### List Pending Organization Invitations
+
+```bash
+repo-builder organization list-invitation --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+```
+
+##### Flags
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+- `--org` (required): GitHub organisation name
+
 #### Invite a User to an Organization
 
 ```bash
