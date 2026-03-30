@@ -56,6 +56,9 @@ func TestDiffCmdSuccessNoDrift(t *testing.T) {
 		if opt.Snapshot != snapshot {
 			t.Fatal("unexpected snapshot pointer")
 		}
+		if opt.ResolvedInviteUserIDsByUsername != nil {
+			t.Fatalf("expected ResolvedInviteUserIDsByUsername to be nil, got %#v", opt.ResolvedInviteUserIDsByUsername)
+		}
 		return want, nil
 	}
 
