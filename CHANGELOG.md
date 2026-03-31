@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.12.0](https://github.com/orang-gaboets/repo-builder/compare/v0.11.0...v0.12.0) (2026-03-31)
+
+
+### Features
+
+* **organization:** add pending invitation list command ([#87](https://github.com/orang-gaboets/repo-builder/issues/87)) ([4bcba62](https://github.com/orang-gaboets/repo-builder/commit/4bcba62d89be7315ef330de171312fae8ebedc05))
+
 ## [0.11.0](https://github.com/orang-gaboets/repo-builder/compare/v0.10.0...v0.11.0) (2026-03-30)
 
 
