@@ -86,38 +86,13 @@ func ApplyConfigCmd() *cobra.Command {
 	return cmd
 }
 
-type applyPreview struct {
-	Organization      string              `json:"organization"`
-	PlanSummary       gitopsplan.Summary  `json:"plan_summary"`
-	ExecutableActions []gitopsplan.Action `json:"executable_actions"`
-	SkippedActions    []gitopsplan.Action `json:"skipped_actions"`
-}
-
-func (p *applyPreview) Normalize() {
-	if p == nil {
-		return
-	}
-	if p.ExecutableActions == nil {
-		p.ExecutableActions = []gitopsplan.Action{}
-	}
-	if p.SkippedActions == nil {
-		p.SkippedActions = []gitopsplan.Action{}
-	}
-	for i := range p.ExecutableActions {
-		p.ExecutableActions[i].Normalize()
-	}
-	for i := range p.SkippedActions {
-		p.SkippedActions[i].Normalize()
-	}
-}
-
 func applyConfig(
 	ctx context.Context,
 	token string,
 	appID, installationID int64,
 	appKeyPath, configDir string,
 	dryRun bool,
-) (*gitopsapply.Result, *applyPreview, error) {
+) (*gitopsapply.Result, *planPreview, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
 		return nil, nil, err
@@ -178,19 +153,4 @@ func applyConfig(
 	}
 	result.Normalize()
 	return result, nil, nil
-}
-
-func previewFromPlan(report *gitopsplan.Report) *applyPreview {
-	preview := &applyPreview{
-		Organization: strings.TrimSpace(report.Organization),
-		PlanSummary:  report.Summary,
-	}
-	for _, action := range report.Actions {
-		if action.Executable {
-			preview.ExecutableActions = append(preview.ExecutableActions, action)
-			continue
-		}
-		preview.SkippedActions = append(preview.SkippedActions, action)
-	}
-	return preview
 }

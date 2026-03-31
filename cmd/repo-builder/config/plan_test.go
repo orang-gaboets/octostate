@@ -83,10 +83,12 @@ func TestPlanConfigCmdSuccess(t *testing.T) {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
 
-	got := decodePlanReport(t, out.Bytes())
+	got := decodePlanPreview(t, out.Bytes())
 	got.Normalize()
-	if !reflect.DeepEqual(got, *want) {
-		t.Fatalf("unexpected plan report:\n got %#v\nwant %#v", got, *want)
+	wantPreview := previewFromPlan(want)
+	wantPreview.Normalize()
+	if !reflect.DeepEqual(got, *wantPreview) {
+		t.Fatalf("unexpected plan preview:\n got %#v\nwant %#v", got, *wantPreview)
 	}
 }
 
@@ -130,10 +132,12 @@ func TestPlanConfigCmdSuccessNoOpReport(t *testing.T) {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
 
-	got := decodePlanReport(t, out.Bytes())
+	got := decodePlanPreview(t, out.Bytes())
 	got.Normalize()
-	if !reflect.DeepEqual(got, *want) {
-		t.Fatalf("unexpected no-op plan report:\n got %#v\nwant %#v", got, *want)
+	wantPreview := previewFromPlan(want)
+	wantPreview.Normalize()
+	if !reflect.DeepEqual(got, *wantPreview) {
+		t.Fatalf("unexpected no-op plan preview:\n got %#v\nwant %#v", got, *wantPreview)
 	}
 }
 
@@ -406,12 +410,12 @@ func restorePlanHooks(t *testing.T) {
 	})
 }
 
-func decodePlanReport(t *testing.T, payload []byte) gitopsplan.Report {
+func decodePlanPreview(t *testing.T, payload []byte) planPreview {
 	t.Helper()
 
-	var report gitopsplan.Report
-	if err := json.Unmarshal(payload, &report); err != nil {
-		t.Fatalf("decode JSON report: %v; payload=%q", err, string(payload))
+	var preview planPreview
+	if err := json.Unmarshal(payload, &preview); err != nil {
+		t.Fatalf("decode JSON preview: %v; payload=%q", err, string(payload))
 	}
-	return report
+	return preview
 }

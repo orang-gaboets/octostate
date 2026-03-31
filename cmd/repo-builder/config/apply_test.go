@@ -162,7 +162,7 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	if envelope.Status != string(cmdoutput.OperationResultStatusDryRun) {
 		t.Fatalf("unexpected status: got %q want %q", envelope.Status, cmdoutput.OperationResultStatusDryRun)
 	}
-	var got applyPreview
+	var got planPreview
 	decodeApplyData(t, envelope.Data, &got)
 	got.Normalize()
 	want := previewFromPlan(report)
