@@ -34,6 +34,9 @@ func (p *planPreview) Normalize() {
 }
 
 func previewFromPlan(report *gitopsplan.Report) *planPreview {
+	if report == nil {
+		return &planPreview{}
+	}
 	preview := &planPreview{
 		Organization: strings.TrimSpace(report.Organization),
 		PlanSummary:  report.Summary,

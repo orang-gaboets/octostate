@@ -139,6 +139,26 @@ func TestPlanConfigCmdSuccessNoOpReport(t *testing.T) {
 	if !reflect.DeepEqual(got, *wantPreview) {
 		t.Fatalf("unexpected no-op plan preview:\n got %#v\nwant %#v", got, *wantPreview)
 	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw plan preview: %v", err)
+	}
+	if _, ok := raw["summary"]; ok {
+		t.Fatalf("did not expect summary key in payload: %s", out.String())
+	}
+	if _, ok := raw["actions"]; ok {
+		t.Fatalf("did not expect actions key in payload: %s", out.String())
+	}
+	if _, ok := raw["plan_summary"]; !ok {
+		t.Fatalf("expected plan_summary key in payload: %s", out.String())
+	}
+	if _, ok := raw["executable_actions"]; !ok {
+		t.Fatalf("expected executable_actions key in payload: %s", out.String())
+	}
+	if _, ok := raw["skipped_actions"]; !ok {
+		t.Fatalf("expected skipped_actions key in payload: %s", out.String())
+	}
 }
 
 func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
@@ -215,6 +235,24 @@ func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
 	}
 	if _, ok := raw["plan_summary"]; !ok {
 		t.Fatalf("expected plan_summary key in payload: %s", out.String())
+	}
+}
+
+func TestPreviewFromPlanNilReportReturnsEmptyPreview(t *testing.T) {
+	got := previewFromPlan(nil)
+	if got == nil {
+		t.Fatal("expected non-nil preview")
+		return
+	}
+	got.Normalize()
+	if got.Organization != "" {
+		t.Fatalf("expected empty organization, got %q", got.Organization)
+	}
+	if len(got.ExecutableActions) != 0 {
+		t.Fatalf("expected no executable actions, got %#v", got.ExecutableActions)
+	}
+	if len(got.SkippedActions) != 0 {
+		t.Fatalf("expected no skipped actions, got %#v", got.SkippedActions)
 	}
 }
 
