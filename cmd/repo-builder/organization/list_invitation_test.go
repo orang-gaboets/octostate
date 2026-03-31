@@ -44,6 +44,25 @@ func TestListOrgInvitationsCmdNoRequiredFlags(t *testing.T) {
 	}
 }
 
+func TestListOrgInvitationsCmdUsesPluralNameAndSingularAlias(t *testing.T) {
+	c := organizationcmd.ListOrgInvitationsCmd(nil)
+
+	if c.Use != "list-invitations" {
+		t.Fatalf("expected primary command %q, got %q", "list-invitations", c.Use)
+	}
+
+	foundSingularAlias := false
+	for _, alias := range c.Aliases {
+		if alias == "list-invitation" {
+			foundSingularAlias = true
+			break
+		}
+	}
+	if !foundSingularAlias {
+		t.Fatalf("expected singular alias in %#v", c.Aliases)
+	}
+}
+
 func TestListOrgInvitationsCmdAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := organizationcmd.ListOrgInvitationsCmd(nil)
@@ -171,5 +190,23 @@ func TestListOrgInvitationsCmdWritesJSONToStdout(t *testing.T) {
 	}
 	if got[0]["CreatedAt"] != createdAt.Format(time.RFC3339) {
 		t.Fatalf("expected created_at %q, got %#v", createdAt.Format(time.RFC3339), got[0]["CreatedAt"])
+	}
+}
+
+func TestListOrgInvitationsCmdSingularAliasExecutes(t *testing.T) {
+	svc := &stubListInvitationService{}
+	c := organizationcmd.NewOrganizationCmd(svc, nil, nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"list-invitation", "--org", "o"})
+
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !svc.listPendingCalled {
+		t.Fatal("expected list pending invitations call")
+	}
+	if svc.createCalled {
+		t.Fatal("did not expect mutating invitation call")
 	}
 }
