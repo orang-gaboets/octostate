@@ -56,6 +56,7 @@ func PlanConfigCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			report.Normalize()
 			preview := previewFromPlan(report)
 			preview.Normalize()
 			return cmdoutput.PrintJSON(cmd, preview)
