@@ -684,7 +684,7 @@ repo-builder organization list-teams --app-id <app-id> --installation-id <instal
 #### List Pending Organization Invitations
 
 ```bash
-repo-builder organization list-invitation --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+repo-builder organization list-invitations --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
 ```
 
 ##### Flags
