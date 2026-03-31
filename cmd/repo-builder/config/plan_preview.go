@@ -25,21 +25,20 @@ func (p *planPreview) Normalize() {
 	if p.SkippedActions == nil {
 		p.SkippedActions = []gitopsplan.Action{}
 	}
-	for i := range p.ExecutableActions {
-		p.ExecutableActions[i].Normalize()
-	}
-	for i := range p.SkippedActions {
-		p.SkippedActions[i].Normalize()
-	}
 }
 
 func previewFromPlan(report *gitopsplan.Report) *planPreview {
 	if report == nil {
-		return &planPreview{}
+		return &planPreview{
+			ExecutableActions: []gitopsplan.Action{},
+			SkippedActions:    []gitopsplan.Action{},
+		}
 	}
 	preview := &planPreview{
-		Organization: strings.TrimSpace(report.Organization),
-		PlanSummary:  report.Summary,
+		Organization:      strings.TrimSpace(report.Organization),
+		PlanSummary:       report.Summary,
+		ExecutableActions: []gitopsplan.Action{},
+		SkippedActions:    []gitopsplan.Action{},
 	}
 	for _, action := range report.Actions {
 		if action.Executable {

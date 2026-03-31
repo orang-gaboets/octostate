@@ -205,17 +205,22 @@ func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
 
 	cmd := PlanConfigCmd()
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
 	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 
 	got := decodePlanPreview(t, out.Bytes())
-	got.Normalize()
+	normalizePlanPreviewForCompare(&got)
 	want := previewFromPlan(report)
-	want.Normalize()
+	normalizePlanPreviewForCompare(want)
 	if !reflect.DeepEqual(got, *want) {
 		t.Fatalf("unexpected split plan preview:\n got %#v\nwant %#v", got, *want)
 	}
@@ -532,5 +537,19 @@ func decodePlanPreview(t *testing.T, payload []byte) planPreview {
 	if err := json.Unmarshal(payload, &preview); err != nil {
 		t.Fatalf("decode JSON preview: %v; payload=%q", err, string(payload))
 	}
+	normalizePlanPreviewForCompare(&preview)
 	return preview
+}
+
+func normalizePlanPreviewForCompare(preview *planPreview) {
+	if preview == nil {
+		return
+	}
+	preview.Normalize()
+	for i := range preview.ExecutableActions {
+		preview.ExecutableActions[i].Normalize()
+	}
+	for i := range preview.SkippedActions {
+		preview.SkippedActions[i].Normalize()
+	}
 }

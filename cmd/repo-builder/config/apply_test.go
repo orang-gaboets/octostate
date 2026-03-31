@@ -164,9 +164,9 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	}
 	var got planPreview
 	decodeApplyData(t, envelope.Data, &got)
-	got.Normalize()
+	normalizePlanPreviewForCompare(&got)
 	want := previewFromPlan(report)
-	want.Normalize()
+	normalizePlanPreviewForCompare(want)
 	if !reflect.DeepEqual(got, *want) {
 		t.Fatalf("unexpected dry-run preview:\n got %#v\nwant %#v", got, *want)
 	}
