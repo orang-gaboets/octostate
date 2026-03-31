@@ -439,7 +439,7 @@ Behavior:
 - Does not mutate GitHub state
 - Repository optional fields are only diffed when they are explicitly declared in config
 
-Plan report fields:
+Plan preview fields:
 - `organization`
 - `plan_summary`
 - `executable_actions`
