@@ -29,24 +29,6 @@ func Get(ctx context.Context, option GetOptions) (*github.Organization, error) {
 	return org, nil
 }
 
-// InviteUser invites a user to an organization by their user ID.
-func InviteUser(ctx context.Context, option InviteUserOptions) error {
-	if err := option.Validate(); err != nil {
-		return err
-	}
-
-	createInvitationOptions := CreateInvitationOptions{
-		Service: option.Service,
-		OrgName: option.OrgName,
-		UserID:  &option.UserID,
-	}
-	err := CreateInvitation(ctx, createInvitationOptions)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // CreateInvitation creates an organization invitation by user ID or email.
 func CreateInvitation(ctx context.Context, option CreateInvitationOptions) error {
 	if err := option.Validate(); err != nil {

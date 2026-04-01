@@ -24,27 +24,6 @@ func (opt *GetOptions) Validate() error {
 	return nil
 }
 
-// InviteUserOptions defines the options for inviting a user to an organization.
-type InviteUserOptions struct {
-	Service Service
-	OrgName string
-	UserID  int64
-}
-
-// Validate checks if the InviteUserOptions are valid.
-func (opt *InviteUserOptions) Validate() error {
-	if opt.Service == nil {
-		return github.ErrNilService
-	}
-	if opt.OrgName == "" {
-		return github.ErrMissingRequiredField
-	}
-	if opt.UserID <= 0 {
-		return fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
-	}
-	return nil
-}
-
 // CreateInvitationOptions defines the options for creating an organization invitation.
 type CreateInvitationOptions struct {
 	Service Service
