@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -719,6 +720,120 @@ invites: []
 	}}
 	if !reflect.DeepEqual(report.Actions, want) {
 		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
+	}
+}
+
+func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
+	t.Parallel()
+
+	phaseResults, err := runPhases(context.Background(), diffPhaseConcurrency, []actionPhase{
+		func(context.Context) ([]Action, error) {
+			time.Sleep(40 * time.Millisecond)
+			return []Action{{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "repositories"}}, nil
+		},
+		func(context.Context) ([]Action, error) {
+			time.Sleep(5 * time.Millisecond)
+			return []Action{{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "teams"}}, nil
+		},
+		func(context.Context) ([]Action, error) {
+			time.Sleep(30 * time.Millisecond)
+			return []Action{{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationCreate, ResourceID: "organization-members"}}, nil
+		},
+		func(context.Context) ([]Action, error) {
+			time.Sleep(10 * time.Millisecond)
+			return []Action{{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "invites"}}, nil
+		},
+		func(context.Context) ([]Action, error) {
+			time.Sleep(20 * time.Millisecond)
+			return []Action{{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "team-members"}}, nil
+		},
+		func(context.Context) ([]Action, error) {
+			time.Sleep(15 * time.Millisecond)
+			return []Action{{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "team-repository-permissions"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("runPhases returned error: %v", err)
+	}
+
+	actions := flattenPhaseResults(phaseResults)
+	wantResourceTypes := []ActionResourceType{
+		ActionResourceTypeRepository,
+		ActionResourceTypeTeam,
+		ActionResourceTypeOrganizationMember,
+		ActionResourceTypeInvite,
+		ActionResourceTypeTeamMember,
+		ActionResourceTypeTeamRepositoryPermission,
+	}
+	if len(actions) != len(wantResourceTypes) {
+		t.Fatalf("unexpected action count: got %d want %d", len(actions), len(wantResourceTypes))
+	}
+
+	gotResourceTypes := make([]ActionResourceType, 0, len(actions))
+	for _, action := range actions {
+		gotResourceTypes = append(gotResourceTypes, action.ResourceType)
+	}
+	if !reflect.DeepEqual(gotResourceTypes, wantResourceTypes) {
+		t.Fatalf("unexpected action order: got %#v want %#v", gotResourceTypes, wantResourceTypes)
+	}
+}
+
+func TestBuildActionsConcurrentMatchesSequential(t *testing.T) {
+	t.Parallel()
+
+	builder := benchmarkBuilder()
+
+	want, err := builder.buildActionsWithLimit(1)
+	if err != nil {
+		t.Fatalf("buildActionsWithLimit returned error: %v", err)
+	}
+
+	got, err := builder.buildActions()
+	if err != nil {
+		t.Fatalf("buildActions returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected action set:\n got %#v\nwant %#v", got, want)
+	}
+}
+
+func TestBuildActionsInviteErrorMatchesSequential(t *testing.T) {
+	t.Parallel()
+
+	builder := builder{
+		desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		actual: state.OrganizationState{
+			Organization: "orang-gaboets",
+		},
+		resolvedInviteUserIDsByUsername: map[string]int64{
+			"alice": 99,
+		},
+	}
+
+	_, sequentialErr := builder.buildActionsWithLimit(1)
+	if sequentialErr == nil {
+		t.Fatal("expected sequential buildActionsWithLimit to fail")
+	}
+
+	_, concurrentErr := builder.buildActions()
+	if concurrentErr == nil {
+		t.Fatal("expected concurrent buildActions to fail")
+	}
+
+	if !errors.Is(concurrentErr, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected concurrent error: got %v want %v", concurrentErr, githubpkg.ErrInvalidFieldValue)
+	}
+	if concurrentErr.Error() != sequentialErr.Error() {
+		t.Fatalf("unexpected concurrent error text: got %q want %q", concurrentErr.Error(), sequentialErr.Error())
 	}
 }
 
