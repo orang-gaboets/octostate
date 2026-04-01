@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.15.0](https://github.com/orang-gaboets/repo-builder/compare/v0.14.0...v0.15.0) (2026-04-01)
+
+
+### Features
+
+* **audit:** parallelize invite username resolution ([#97](https://github.com/orang-gaboets/repo-builder/issues/97)) ([f0f8536](https://github.com/orang-gaboets/repo-builder/commit/f0f85367a47fb7b9076cbdff0bd9f68df729d8bc))
+
 ## [0.14.0](https://github.com/orang-gaboets/repo-builder/compare/v0.13.0...v0.14.0) (2026-04-01)
 
 
