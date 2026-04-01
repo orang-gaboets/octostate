@@ -742,6 +742,68 @@ func TestBuildRepositoryTopicsTreatDuplicatesAsSetEquivalent(t *testing.T) {
 	}
 }
 
+func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
+	t.Parallel()
+
+	actions, err := (planner{
+		ctx: context.Background(),
+		desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{Username: presentString("invite-user")},
+			},
+			Repositories: []config.RepositorySpec{
+				{
+					Owner:      "orang-gaboets",
+					Name:       "repo-builder",
+					Visibility: "private",
+				},
+			},
+			Teams: []config.TeamSpec{
+				{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Members: []config.TeamMemberSpec{
+						{Username: "alice", Role: "member"},
+					},
+					Repositories: []config.TeamRepositorySpec{
+						{Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+					},
+				},
+			},
+		},
+		actual:         &state.OrganizationState{Organization: "orang-gaboets"},
+		userLoginsByID: map[int64]string{},
+	}).buildActions()
+	if err != nil {
+		t.Fatalf("buildActions returned error: %v", err)
+	}
+
+	wantResourceTypes := []ActionResourceType{
+		ActionResourceTypeRepository,
+		ActionResourceTypeTeam,
+		ActionResourceTypeOrganizationMember,
+		ActionResourceTypeInvite,
+		ActionResourceTypeTeamMember,
+		ActionResourceTypeTeamRepositoryPermission,
+	}
+	if len(actions) != len(wantResourceTypes) {
+		t.Fatalf("unexpected action count: got %d want %d", len(actions), len(wantResourceTypes))
+	}
+
+	gotResourceTypes := make([]ActionResourceType, 0, len(actions))
+	for _, action := range actions {
+		gotResourceTypes = append(gotResourceTypes, action.ResourceType)
+	}
+	if !reflect.DeepEqual(gotResourceTypes, wantResourceTypes) {
+		t.Fatalf("unexpected action order: got %#v want %#v", gotResourceTypes, wantResourceTypes)
+	}
+}
+
 func TestBuildInviteSatisfiedByExistingMember(t *testing.T) {
 	t.Parallel()
 

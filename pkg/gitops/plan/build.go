@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
+
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	ghusers "github.com/orang-gaboets/repo-builder/pkg/github/users"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
@@ -58,16 +60,11 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 		Organization: strings.TrimSpace(opt.Desired.Organization),
 	}
 
-	var err error
-	report.Actions = append(report.Actions, planner.planRepositories()...)
-	report.Actions = append(report.Actions, planner.planTeams()...)
-	report.Actions = append(report.Actions, planner.planOrganizationMembers()...)
-	report.Actions, err = planner.appendInviteActions(report.Actions)
+	actions, err := planner.buildActions()
 	if err != nil {
 		return nil, err
 	}
-	report.Actions = append(report.Actions, planner.planTeamMembers()...)
-	report.Actions = append(report.Actions, planner.planTeamRepositoryPermissions()...)
+	report.Actions = append(report.Actions, actions...)
 	report.Normalize()
 	return report, nil
 }
@@ -78,4 +75,74 @@ type planner struct {
 	actual         *state.OrganizationState
 	userService    ghusers.Service
 	userLoginsByID map[int64]string
+}
+
+const planPhaseConcurrency = 6
+
+type planBuildResult struct {
+	repositoryActions               []Action
+	teamActions                     []Action
+	organizationMemberActions       []Action
+	inviteActions                   []Action
+	teamMemberActions               []Action
+	teamRepositoryPermissionActions []Action
+}
+
+func (p planner) buildActions() ([]Action, error) {
+	g, groupCtx := errgroup.WithContext(p.ctx)
+	g.SetLimit(planPhaseConcurrency)
+
+	result := planBuildResult{}
+
+	g.Go(func() error {
+		result.repositoryActions = p.planRepositories()
+		return nil
+	})
+	g.Go(func() error {
+		result.teamActions = p.planTeams()
+		return nil
+	})
+	g.Go(func() error {
+		result.organizationMemberActions = p.planOrganizationMembers()
+		return nil
+	})
+	g.Go(func() error {
+		invitePlanner := p
+		invitePlanner.ctx = groupCtx
+
+		inviteActions, err := invitePlanner.appendInviteActions(nil)
+		if err != nil {
+			return err
+		}
+		result.inviteActions = inviteActions
+		return nil
+	})
+	g.Go(func() error {
+		result.teamMemberActions = p.planTeamMembers()
+		return nil
+	})
+	g.Go(func() error {
+		result.teamRepositoryPermissionActions = p.planTeamRepositoryPermissions()
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	actions := make([]Action, 0,
+		len(result.repositoryActions)+
+			len(result.teamActions)+
+			len(result.organizationMemberActions)+
+			len(result.inviteActions)+
+			len(result.teamMemberActions)+
+			len(result.teamRepositoryPermissionActions),
+	)
+	actions = append(actions, result.repositoryActions...)
+	actions = append(actions, result.teamActions...)
+	actions = append(actions, result.organizationMemberActions...)
+	actions = append(actions, result.inviteActions...)
+	actions = append(actions, result.teamMemberActions...)
+	actions = append(actions, result.teamRepositoryPermissionActions...)
+	return actions, nil
 }
