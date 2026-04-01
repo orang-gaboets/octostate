@@ -123,6 +123,28 @@ func TestInviteCmdWithBothUsernameAndUserID(t *testing.T) {
 	}
 }
 
+func TestInviteCmdWithNonPositiveUserID(t *testing.T) {
+	auth.PrepareClient(t)
+
+	tests := []struct {
+		name   string
+		userID string
+	}{
+		{name: "zero", userID: "0"},
+		{name: "negative", userID: "-1"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := organizationcmd.InviteCmd(nil, nil)
+			c.SetArgs([]string{"--token", "t", "--org", "o", "--id", tc.userID})
+			if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
+				t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+			}
+		})
+	}
+}
+
 func TestInviteCmdWithInvalidFlags(t *testing.T) {
 	auth.PrepareClient(t)
 	c := organizationcmd.InviteCmd(nil, nil)
