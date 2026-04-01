@@ -313,6 +313,148 @@ func TestCollectTeamStateBoundsPerTeamDetailFanOut(t *testing.T) {
 	}
 }
 
+func TestCollectOrganizationReturnsFirstTopLevelErrorInLegacyOrder(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+	membersErr := errors.New("members failed")
+	reposErr := errors.New("repositories failed")
+	release := make(chan struct{})
+
+	orgSvc := &organizationServiceStub{
+		listMembersFunc: func(_ context.Context, org string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListMembers: got %q want %q", org, orgName)
+			}
+			if opts == nil {
+				t.Fatal("expected member list options")
+			}
+			<-release
+			if opts.Role == "admin" {
+				return nil, nil, membersErr
+			}
+			return []*gh.User{}, &gh.Response{}, nil
+		},
+	}
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, org string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListByOrg: got %q want %q", org, orgName)
+			}
+			<-release
+			return nil, nil, reposErr
+		},
+	}
+
+	close(release)
+
+	_, err := collectOrganizationWithLimits(context.Background(), CollectOrganizationOptions{
+		OrgName:             orgName,
+		OrganizationService: orgSvc,
+		RepositoryService:   repoSvc,
+	}, collectOrganizationBehavior{
+		includeMembers:      true,
+		includeRepositories: true,
+	}, collectorConcurrencyLimits{
+		topLevel:        2,
+		memberRoles:     1,
+		invitationTeams: 1,
+		teamDetails:     1,
+	})
+	if !errors.Is(err, membersErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, membersErr)
+	}
+}
+
+func TestCollectPendingInvitationsReturnsFirstInvitationErrorByInputOrder(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+	firstErr := errors.New("first invitation failed")
+	secondErr := errors.New("second invitation failed")
+	release := make(chan struct{})
+
+	orgSvc := &organizationServiceStub{
+		listPendingOrgInvitationsFunc: func(_ context.Context, org string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListPendingOrgInvitations: got %q want %q", org, orgName)
+			}
+			return []*gh.Invitation{
+				{ID: githubpkg.Ptr(int64(1)), Login: githubpkg.Ptr("alpha"), TeamCount: githubpkg.Ptr(1)},
+				{ID: githubpkg.Ptr(int64(2)), Login: githubpkg.Ptr("beta"), TeamCount: githubpkg.Ptr(1)},
+			}, &gh.Response{}, nil
+		},
+		listOrgInvitationTeamsFunc: func(_ context.Context, org, invitationID string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListOrgInvitationTeams: got %q want %q", org, orgName)
+			}
+			<-release
+			if invitationID == "1" {
+				return nil, nil, firstErr
+			}
+			return nil, nil, secondErr
+		},
+	}
+
+	close(release)
+
+	_, err := collectPendingInvitations(context.Background(), CollectOrganizationOptions{
+		OrgName:             orgName,
+		OrganizationService: orgSvc,
+	}, collectorConcurrencyLimits{invitationTeams: 2})
+	if !errors.Is(err, firstErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, firstErr)
+	}
+}
+
+func TestCollectTeamStateReturnsMemberErrorBeforeMaintainerAndRepoErrors(t *testing.T) {
+	t.Parallel()
+
+	const orgName = "orang-gaboets"
+	memberErr := errors.New("member read failed")
+	maintainerErr := errors.New("maintainer read failed")
+	repoErr := errors.New("repo permission read failed")
+	release := make(chan struct{})
+
+	teamSvc := &teamServiceStub{
+		listTeamsFunc: func(_ context.Context, org string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			if org != orgName {
+				t.Fatalf("unexpected org in ListTeams: got %q want %q", org, orgName)
+			}
+			return []*gh.Team{
+				{Slug: githubpkg.Ptr("platform"), Name: githubpkg.Ptr("Platform"), Organization: &gh.Organization{Login: githubpkg.Ptr(orgName)}},
+			}, &gh.Response{}, nil
+		},
+		listTeamMembersBySlugFunc: func(_ context.Context, org, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+			if org != orgName || slug != "platform" {
+				t.Fatalf("unexpected team member query: org=%q slug=%q", org, slug)
+			}
+			<-release
+			if opts.Role == "member" {
+				return nil, nil, memberErr
+			}
+			return nil, nil, maintainerErr
+		},
+		listTeamReposBySlugFunc: func(_ context.Context, org, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+			if org != orgName || slug != "platform" {
+				t.Fatalf("unexpected team repo query: org=%q slug=%q", org, slug)
+			}
+			<-release
+			return nil, nil, repoErr
+		},
+	}
+
+	close(release)
+
+	_, _, _, err := collectTeamState(context.Background(), CollectOrganizationOptions{
+		OrgName:     orgName,
+		TeamService: teamSvc,
+	}, collectorConcurrencyLimits{teamDetails: 3})
+	if !errors.Is(err, memberErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, memberErr)
+	}
+}
+
 func TestCollectOrganizationCancelsSiblingReadsOnError(t *testing.T) {
 	t.Parallel()
 
