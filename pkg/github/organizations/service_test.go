@@ -244,22 +244,23 @@ func (m *mockService) ListOrgInvitationTeams(_ context.Context, org, invitationI
 	}, &gh.Response{NextPage: 2}, nil
 }
 
-// Test InviteUser functionality
+// Test invitation functionality
 
-func TestInviteUserSuccess(t *testing.T) {
+func TestCreateInvitationByUserID(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,
 		createOrgInvErr:    nil,
 	}
+	userID := *existingUser.ID
 
-	opts := InviteUserOptions{
+	opts := CreateInvitationOptions{
 		Service: mockSvc,
 		OrgName: *existingOrg.Name,
-		UserID:  *existingUser.ID,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
+	err := CreateInvitation(ctx, opts)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -269,8 +270,8 @@ func TestInviteUserSuccess(t *testing.T) {
 	if mockSvc.orgName != *existingOrg.Name {
 		t.Fatalf("expected organization name %s, got %s", *existingOrg.Name, mockSvc.orgName)
 	}
-	if mockSvc.invitedUserID != *existingUser.ID {
-		t.Fatalf("expected invited user ID %d, got %d", *existingUser.ID, mockSvc.invitedUserID)
+	if mockSvc.invitedUserID != userID {
+		t.Fatalf("expected invited user ID %d, got %d", userID, mockSvc.invitedUserID)
 	}
 }
 
@@ -439,20 +440,21 @@ func TestSetMembershipRejectsInvalidRole(t *testing.T) {
 	}
 }
 
-func TestInviteUserNonExistingOrg(t *testing.T) {
+func TestCreateInvitationNonExistingOrg(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,
 		createOrgInvErr:    nil,
 	}
+	userID := *existingUser.ID
 
-	opts := InviteUserOptions{
+	opts := CreateInvitationOptions{
 		Service: mockSvc,
 		OrgName: *nonExistingOrg.Name,
-		UserID:  *existingUser.ID,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
+	err := CreateInvitation(ctx, opts)
 	if !errors.Is(err, github.ErrNotFound) {
 		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
@@ -461,20 +463,21 @@ func TestInviteUserNonExistingOrg(t *testing.T) {
 	}
 }
 
-func TestInviteUserNonExistingUser(t *testing.T) {
+func TestCreateInvitationNonExistingUser(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,
 		createOrgInvErr:    nil,
 	}
+	userID := *nonExistingUser.ID
 
-	opts := InviteUserOptions{
+	opts := CreateInvitationOptions{
 		Service: mockSvc,
 		OrgName: *existingOrg.Name,
-		UserID:  *nonExistingUser.ID,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
+	err := CreateInvitation(ctx, opts)
 	if !errors.Is(err, github.ErrNotFound) {
 		t.Fatalf("expected error %v, got %v", github.ErrNotFound, err)
 	}
@@ -483,20 +486,21 @@ func TestInviteUserNonExistingUser(t *testing.T) {
 	}
 }
 
-func TestInviteUserEmptyOrgName(t *testing.T) {
+func TestCreateInvitationEmptyOrgName(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,
 		createOrgInvErr:    nil,
 	}
+	userID := *existingUser.ID
 
-	opts := InviteUserOptions{
+	opts := CreateInvitationOptions{
 		Service: mockSvc,
 		OrgName: "",
-		UserID:  *existingUser.ID,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
+	err := CreateInvitation(ctx, opts)
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
 	}
@@ -505,56 +509,59 @@ func TestInviteUserEmptyOrgName(t *testing.T) {
 	}
 }
 
-func TestInviteUserInvalidUserID(t *testing.T) {
+func TestCreateInvitationInvalidUserID(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,
 		createOrgInvErr:    nil,
 	}
+	userID := int64(-1)
 
-	opts := InviteUserOptions{
+	opts := CreateInvitationOptions{
 		Service: mockSvc,
 		OrgName: *existingOrg.Name,
-		UserID:  -1,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	err := CreateInvitation(ctx, opts)
+	if !errors.Is(err, github.ErrInvalidFieldValue) {
+		t.Fatalf("expected error %v, got %v", github.ErrInvalidFieldValue, err)
 	}
 	if mockSvc.createOrgInvCalled {
 		t.Fatal("expected CreateOrgInvitation to not be called, but it was")
 	}
 }
 
-func TestInviteUserNilService(t *testing.T) {
-	opts := InviteUserOptions{
+func TestCreateInvitationNilService(t *testing.T) {
+	userID := *existingUser.ID
+	opts := CreateInvitationOptions{
 		Service: nil,
 		OrgName: *existingOrg.Name,
-		UserID:  *existingUser.ID,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
+	err := CreateInvitation(ctx, opts)
 	if !errors.Is(err, github.ErrNilService) {
 		t.Fatalf("expected error %v, got %v", github.ErrNilService, err)
 	}
 }
 
-func TestInviteUserWithServiceError(t *testing.T) {
+func TestCreateInvitationWithServiceError(t *testing.T) {
 	mockSvc := &mockService{
 		createOrgInvCalled: false,
 		createOrgInvErr:    errors.New("service error"),
 	}
+	userID := *existingUser.ID
 
-	opts := InviteUserOptions{
+	opts := CreateInvitationOptions{
 		Service: mockSvc,
 		OrgName: *existingOrg.Name,
-		UserID:  *existingUser.ID,
+		UserID:  &userID,
 	}
 
 	ctx := context.Background()
-	err := InviteUser(ctx, opts)
+	err := CreateInvitation(ctx, opts)
 	if !errors.Is(err, mockSvc.createOrgInvErr) {
 		t.Fatalf("expected error %v, got %v", mockSvc.createOrgInvErr, err)
 	}
