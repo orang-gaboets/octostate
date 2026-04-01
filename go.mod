@@ -1,12 +1,13 @@
 module github.com/orang-gaboets/repo-builder
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/google/go-github/v55 v55.0.0
 	github.com/spf13/cobra v1.9.1
 	golang.org/x/oauth2 v0.11.0
+	golang.org/x/sync v0.19.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
