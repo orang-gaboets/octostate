@@ -2,7 +2,10 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
 
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
@@ -13,6 +16,10 @@ import (
 
 // CollectOrganizationOptions defines the services required to collect one
 // organization's actual state from GitHub.
+//
+// Injected services must be safe for concurrent read calls. The collector uses
+// bounded fan-out across top-level GitHub reads and nested member / invitation /
+// team detail reads.
 type CollectOrganizationOptions struct {
 	OrgName             string
 	OrganizationService organizations.Service
@@ -25,6 +32,26 @@ type collectOrganizationBehavior struct {
 	includePendingInvitations bool
 	includeRepositories       bool
 	includeTeams              bool
+}
+
+type collectorConcurrencyLimits struct {
+	topLevel        int
+	memberRoles     int
+	invitationTeams int
+	teamDetails     int
+}
+
+type collectedTeamDetails struct {
+	members         []state.TeamMember
+	maintainers     []state.TeamMember
+	repositoryPerms []state.TeamRepositoryPermission
+}
+
+var defaultCollectorConcurrencyLimits = collectorConcurrencyLimits{
+	topLevel:        4,
+	memberRoles:     2,
+	invitationTeams: 8,
+	teamDetails:     8,
 }
 
 // Validate checks if the CollectOrganizationOptions are valid for the full
@@ -93,133 +120,127 @@ func collectOrganization(
 	opt CollectOrganizationOptions,
 	behavior collectOrganizationBehavior,
 ) (*state.OrganizationState, error) {
+	return collectOrganizationWithLimits(ctx, opt, behavior, defaultCollectorConcurrencyLimits)
+}
+
+func collectOrganizationWithLimits(
+	ctx context.Context,
+	opt CollectOrganizationOptions,
+	behavior collectOrganizationBehavior,
+	limits collectorConcurrencyLimits,
+) (*state.OrganizationState, error) {
 	if err := opt.validateForBehavior(behavior); err != nil {
 		return nil, err
 	}
 
-	actual := &state.OrganizationState{
-		Organization: opt.OrgName,
-	}
+	actual := &state.OrganizationState{Organization: opt.OrgName}
+	var (
+		members            []state.OrganizationMember
+		pendingInvitations []state.PendingInvitation
+		repositories       []state.Repository
+		collectedTeams     []state.Team
+		teamMembers        []state.TeamMember
+		teamRepoPerms      []state.TeamRepositoryPermission
+	)
+
+	tasks := make([]orderedTask, 0, 4)
 
 	if behavior.includeMembers {
-		members, err := collectOrganizationMembers(ctx, opt)
-		if err != nil {
-			return nil, err
-		}
-		actual.Members = members
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			collected, err := collectOrganizationMembers(groupCtx, opt, limits)
+			if err != nil {
+				return err
+			}
+			members = collected
+			return nil
+		})
 	}
 
 	if behavior.includePendingInvitations {
-		invitations, err := organizations.ListPendingInvitations(ctx, organizations.ListPendingInvitationsOptions{
-			Service: opt.OrganizationService,
-			OrgName: opt.OrgName,
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			collected, err := collectPendingInvitations(groupCtx, opt, limits)
+			if err != nil {
+				return err
+			}
+			pendingInvitations = collected
+			return nil
 		})
-		if err != nil {
-			return nil, err
-		}
-		actual.PendingInvitations = make([]state.PendingInvitation, 0, len(invitations))
-		for _, invitation := range invitations {
-			if invitation == nil {
-				continue
-			}
-
-			pendingInvitation := pendingInvitationFromOrganizationInvitation(invitation)
-			if shouldLoadInvitationTeams(invitation) {
-				invitationTeams, err := organizations.ListInvitationTeams(ctx, organizations.ListInvitationTeamsOptions{
-					Service:      opt.OrganizationService,
-					OrgName:      opt.OrgName,
-					InvitationID: *invitation.ID,
-				})
-				if err != nil {
-					return nil, err
-				}
-				pendingInvitation.TeamSlugs = teamSlugsFromTeams(invitationTeams)
-			}
-			actual.PendingInvitations = append(actual.PendingInvitations, pendingInvitation)
-		}
 	}
 
 	if behavior.includeRepositories {
-		repositories, err := repos.ListOrgRepos(ctx, repos.ListOrgReposOptions{
-			Service: opt.RepositoryService,
-			Org:     opt.OrgName,
-			Type:    repos.RepoTypeAll,
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			collected, err := repos.ListOrgRepos(groupCtx, repos.ListOrgReposOptions{
+				Service: opt.RepositoryService,
+				Org:     opt.OrgName,
+				Type:    repos.RepoTypeAll,
+			})
+			if err != nil {
+				return err
+			}
+			repositories = repositoriesFromRepositories(collected)
+			return nil
 		})
-		if err != nil {
-			return nil, err
-		}
-		actual.Repositories = repositoriesFromRepositories(repositories)
 	}
 
 	if behavior.includeTeams {
-		collectedTeams, err := teams.ListTeams(ctx, teams.ListTeamsOptions{
-			Service: opt.TeamService,
-			Org:     opt.OrgName,
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			teamsState, membersState, repoPermsState, err := collectTeamState(groupCtx, opt, limits)
+			if err != nil {
+				return err
+			}
+			collectedTeams = teamsState
+			teamMembers = membersState
+			teamRepoPerms = repoPermsState
+			return nil
 		})
-		if err != nil {
-			return nil, err
-		}
-		actual.Teams = teamsFromTeams(collectedTeams)
-
-		for _, team := range collectedTeams {
-			if team == nil || team.Slug == "" {
-				continue
-			}
-
-			members, err := teams.ListTeamMembersBySlug(ctx, teams.ListTeamMembersBySlugOptions{
-				Service: opt.TeamService,
-				Org:     opt.OrgName,
-				Slug:    team.Slug,
-				Role:    teams.TeamMemberRoleMember,
-			})
-			if err != nil {
-				return nil, err
-			}
-			actual.TeamMembers = append(actual.TeamMembers, teamMembersFromUsers(team.Slug, "member", members)...)
-
-			maintainers, err := teams.ListTeamMembersBySlug(ctx, teams.ListTeamMembersBySlugOptions{
-				Service: opt.TeamService,
-				Org:     opt.OrgName,
-				Slug:    team.Slug,
-				Role:    teams.TeamMemberRoleMaintainer,
-			})
-			if err != nil {
-				return nil, err
-			}
-			actual.TeamMembers = append(actual.TeamMembers, teamMembersFromUsers(team.Slug, "maintainer", maintainers)...)
-
-			repoPermissions, err := teams.ListTeamRepoPermissionsBySlug(ctx, teams.ListTeamRepoPermissionsBySlugOptions{
-				Service: opt.TeamService,
-				Org:     opt.OrgName,
-				Slug:    team.Slug,
-			})
-			if err != nil {
-				return nil, err
-			}
-			actual.TeamRepositoryPermissions = append(actual.TeamRepositoryPermissions, teamRepositoryPermissionsFromRepositories(team.Slug, repoPermissions)...)
-		}
 	}
 
+	if err := runOrderedTasks(ctx, limits.topLevel, tasks); err != nil {
+		return nil, err
+	}
+
+	actual.Members = members
+	actual.PendingInvitations = pendingInvitations
+	actual.Repositories = repositories
+	actual.Teams = collectedTeams
+	actual.TeamMembers = teamMembers
+	actual.TeamRepositoryPermissions = teamRepoPerms
 	actual.Normalize()
 	return actual, nil
 }
 
-func collectOrganizationMembers(ctx context.Context, opt CollectOrganizationOptions) ([]state.OrganizationMember, error) {
-	admins, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
-		Service: opt.OrganizationService,
-		OrgName: opt.OrgName,
-		Role:    organizations.MemberRoleAdmin,
-	})
-	if err != nil {
-		return nil, err
+func collectOrganizationMembers(ctx context.Context, opt CollectOrganizationOptions, limits collectorConcurrencyLimits) ([]state.OrganizationMember, error) {
+	var admins []*githubpkg.User
+	var members []*githubpkg.User
+
+	tasks := []orderedTask{
+		func(groupCtx context.Context) error {
+			collected, err := organizations.ListMembers(groupCtx, organizations.ListMembersOptions{
+				Service: opt.OrganizationService,
+				OrgName: opt.OrgName,
+				Role:    organizations.MemberRoleAdmin,
+			})
+			if err != nil {
+				return err
+			}
+			admins = collected
+			return nil
+		},
+		func(groupCtx context.Context) error {
+			collected, err := organizations.ListMembers(groupCtx, organizations.ListMembersOptions{
+				Service: opt.OrganizationService,
+				OrgName: opt.OrgName,
+				Role:    organizations.MemberRoleMember,
+			})
+			if err != nil {
+				return err
+			}
+			members = collected
+			return nil
+		},
 	}
 
-	members, err := organizations.ListMembers(ctx, organizations.ListMembersOptions{
-		Service: opt.OrganizationService,
-		OrgName: opt.OrgName,
-		Role:    organizations.MemberRoleMember,
-	})
-	if err != nil {
+	if err := runOrderedTasks(ctx, limits.memberRoles, tasks); err != nil {
 		return nil, err
 	}
 
@@ -228,6 +249,199 @@ func collectOrganizationMembers(ctx context.Context, opt CollectOrganizationOpti
 		organizationMembersFromUsers(members, string(organizations.MemberRoleMember))...,
 	)
 	return dedupeOrganizationMembers(collected), nil
+}
+
+func collectPendingInvitations(ctx context.Context, opt CollectOrganizationOptions, limits collectorConcurrencyLimits) ([]state.PendingInvitation, error) {
+	invitations, err := organizations.ListPendingInvitations(ctx, organizations.ListPendingInvitationsOptions{
+		Service: opt.OrganizationService,
+		OrgName: opt.OrgName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	pendingByIndex := make([]state.PendingInvitation, len(invitations))
+	keepByIndex := make([]bool, len(invitations))
+	tasks := make([]orderedTask, 0, len(invitations))
+
+	for i, invitation := range invitations {
+		if invitation == nil {
+			continue
+		}
+
+		pendingByIndex[i] = pendingInvitationFromOrganizationInvitation(invitation)
+		keepByIndex[i] = true
+		if !shouldLoadInvitationTeams(invitation) {
+			continue
+		}
+
+		index := i
+		invitationID := *invitation.ID
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			invitationTeams, err := organizations.ListInvitationTeams(groupCtx, organizations.ListInvitationTeamsOptions{
+				Service:      opt.OrganizationService,
+				OrgName:      opt.OrgName,
+				InvitationID: invitationID,
+			})
+			if err != nil {
+				return err
+			}
+			pendingByIndex[index].TeamSlugs = teamSlugsFromTeams(invitationTeams)
+			return nil
+		})
+	}
+
+	if err := runOrderedTasks(ctx, limits.invitationTeams, tasks); err != nil {
+		return nil, err
+	}
+
+	pendingInvitations := make([]state.PendingInvitation, 0, len(invitations))
+	for i := range pendingByIndex {
+		if !keepByIndex[i] {
+			continue
+		}
+		pendingInvitations = append(pendingInvitations, pendingByIndex[i])
+	}
+	return pendingInvitations, nil
+}
+
+func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limits collectorConcurrencyLimits) ([]state.Team, []state.TeamMember, []state.TeamRepositoryPermission, error) {
+	collectedTeams, err := teams.ListTeams(ctx, teams.ListTeamsOptions{
+		Service: opt.TeamService,
+		Org:     opt.OrgName,
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	teamDetails := make([]collectedTeamDetails, len(collectedTeams))
+	tasks := make([]orderedTask, 0, len(collectedTeams)*3)
+
+	for i, team := range collectedTeams {
+		if team == nil || team.Slug == "" {
+			continue
+		}
+
+		index := i
+		teamSlug := team.Slug
+
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			members, err := teams.ListTeamMembersBySlug(groupCtx, teams.ListTeamMembersBySlugOptions{
+				Service: opt.TeamService,
+				Org:     opt.OrgName,
+				Slug:    teamSlug,
+				Role:    teams.TeamMemberRoleMember,
+			})
+			if err != nil {
+				return err
+			}
+			teamDetails[index].members = teamMembersFromUsers(teamSlug, "member", members)
+			return nil
+		})
+
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			maintainers, err := teams.ListTeamMembersBySlug(groupCtx, teams.ListTeamMembersBySlugOptions{
+				Service: opt.TeamService,
+				Org:     opt.OrgName,
+				Slug:    teamSlug,
+				Role:    teams.TeamMemberRoleMaintainer,
+			})
+			if err != nil {
+				return err
+			}
+			teamDetails[index].maintainers = teamMembersFromUsers(teamSlug, "maintainer", maintainers)
+			return nil
+		})
+
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			repoPermissions, err := teams.ListTeamRepoPermissionsBySlug(groupCtx, teams.ListTeamRepoPermissionsBySlugOptions{
+				Service: opt.TeamService,
+				Org:     opt.OrgName,
+				Slug:    teamSlug,
+			})
+			if err != nil {
+				return err
+			}
+			teamDetails[index].repositoryPerms = teamRepositoryPermissionsFromRepositories(teamSlug, repoPermissions)
+			return nil
+		})
+	}
+
+	if err := runOrderedTasks(ctx, limits.teamDetails, tasks); err != nil {
+		return nil, nil, nil, err
+	}
+
+	teamsState := teamsFromTeams(collectedTeams)
+	membersState := make([]state.TeamMember, 0)
+	repoPermissionsState := make([]state.TeamRepositoryPermission, 0)
+	for i := range teamDetails {
+		membersState = append(membersState, teamDetails[i].members...)
+		membersState = append(membersState, teamDetails[i].maintainers...)
+		repoPermissionsState = append(repoPermissionsState, teamDetails[i].repositoryPerms...)
+	}
+
+	return teamsState, membersState, repoPermissionsState, nil
+}
+
+type orderedTask func(context.Context) error
+
+func runOrderedTasks(ctx context.Context, limit int, tasks []orderedTask) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	g, groupCtx := errgroup.WithContext(runCtx)
+	g.SetLimit(normalizeConcurrencyLimit(limit))
+	errs := make([]error, len(tasks))
+
+	for i, task := range tasks {
+		if task == nil {
+			continue
+		}
+
+		index := i
+		run := task
+		g.Go(func() error {
+			err := run(groupCtx)
+			switch {
+			case err == nil:
+				return nil
+			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				if runCtx.Err() != nil || groupCtx.Err() != nil {
+					return nil
+				}
+				errs[index] = err
+				cancel()
+				return nil
+			default:
+				errs[index] = err
+				cancel()
+				return nil
+			}
+		})
+	}
+
+	_ = g.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normalizeConcurrencyLimit(limit int) int {
+	if limit <= 0 {
+		return 1
+	}
+	return limit
 }
 
 func organizationMembersFromUsers(users []*githubpkg.User, role string) []state.OrganizationMember {

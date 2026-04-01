@@ -433,7 +433,7 @@ repo-builder config plan --config-dir ./config --token <token>
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
-- Collects current GitHub actual state using the GitOps collector layer
+- Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds a deterministic, read-only reconciliation plan
 - Prints a Terraform-style split JSON preview to stdout
 - Does not mutate GitHub state
@@ -477,7 +477,7 @@ repo-builder config apply --config-dir ./config --token <token>
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
-- Collects current GitHub actual state using the GitOps collector layer
+- Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--dry-run` prints the same split executable/skipped view as `config plan`
   without performing writes
@@ -539,7 +539,7 @@ repo-builder audit pull --config-dir ./config --state-dir ./state --token <token
 
 Behavior:
 - Loads `<config-dir>/organization.yaml` to determine the target organization
-- Collects current GitHub actual state using the GitOps collector layer
+- Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Writes a stable JSON snapshot to:
   - `<state-dir>/actual/snapshot.json`
 - Prints a structured success result to stdout
@@ -1079,6 +1079,11 @@ Implemented:
 - `repo-builder audit pull` — snapshot GitHub into `state/actual/snapshot.json`
 - `repo-builder config apply` — reconcile GitHub to match config/ for supported create/update actions
 - `repo-builder audit diff` — compare desired config against the stored snapshot offline
+- bounded-concurrency live reads for GitOps collectors and planner phases
 
-Planned:
-- bounded-concurrency collection for GitOps collectors
+GitOps live-read concurrency:
+- top-level collector fan-out: `4`
+- organization member role reads: `2`
+- invitation team lookups: `8`
+- per-team member / maintainer / repo-permission reads: `8`
+- results are normalized after collection so JSON output, snapshots, and plan ordering stay deterministic

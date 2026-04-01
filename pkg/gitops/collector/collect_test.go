@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
+	"sync"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -88,6 +90,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 
 	const orgName = "orang-gaboets"
 
+	var mu sync.Mutex
 	var invitationTeamCalls []string
 	var orgMemberRoleCalls []string
 	orgSvc := &organizationServiceStub{
@@ -99,7 +102,9 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 				t.Fatal("expected member list options")
 				return nil, nil, nil
 			}
+			mu.Lock()
 			orgMemberRoleCalls = append(orgMemberRoleCalls, opts.Role)
+			mu.Unlock()
 			switch opts.Role {
 			case "admin":
 				return []*gh.User{
@@ -148,7 +153,9 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 			if org != orgName {
 				t.Fatalf("unexpected org in ListOrgInvitationTeams: got %q want %q", org, orgName)
 			}
+			mu.Lock()
 			invitationTeamCalls = append(invitationTeamCalls, invitationID)
+			mu.Unlock()
 			switch invitationID {
 			case "9":
 				return []*gh.Team{
@@ -241,7 +248,9 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 				t.Fatal("expected member list options")
 				return nil, nil, nil
 			}
+			mu.Lock()
 			teamRoleCalls[slug] = append(teamRoleCalls[slug], opts.Role)
+			mu.Unlock()
 
 			switch slug {
 			case "admins":
@@ -334,19 +343,28 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 		t.Fatalf("unexpected organization state:\n got %#v\nwant %#v", actual, want)
 	}
 
+	mu.Lock()
 	wantRoleCalls := map[string][]string{
-		"admins":   {"member", "maintainer"},
-		"platform": {"member", "maintainer"},
+		"admins":   {"maintainer", "member"},
+		"platform": {"maintainer", "member"},
+	}
+	for slug := range teamRoleCalls {
+		slices.Sort(teamRoleCalls[slug])
 	}
 	if !reflect.DeepEqual(teamRoleCalls, wantRoleCalls) {
+		mu.Unlock()
 		t.Fatalf("unexpected team member role calls: got %#v want %#v", teamRoleCalls, wantRoleCalls)
 	}
+	slices.Sort(orgMemberRoleCalls)
 	if !reflect.DeepEqual(orgMemberRoleCalls, []string{"admin", "member"}) {
+		mu.Unlock()
 		t.Fatalf("unexpected organization member role calls: got %#v want %#v", orgMemberRoleCalls, []string{"admin", "member"})
 	}
 	if !reflect.DeepEqual(invitationTeamCalls, []string{"9"}) {
+		mu.Unlock()
 		t.Fatalf("unexpected invitation team calls: got %#v want %#v", invitationTeamCalls, []string{"9"})
 	}
+	mu.Unlock()
 }
 
 func TestCollectOrganizationReturnsInvitationTeamError(t *testing.T) {
@@ -374,15 +392,13 @@ func TestCollectOrganizationReturnsInvitationTeamError(t *testing.T) {
 
 	repoSvc := &repositoryServiceStub{
 		listByOrgFunc: func(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
-			t.Fatal("ListByOrg should not be called after invitation team error")
-			return nil, nil, nil
+			return nil, &gh.Response{}, nil
 		},
 	}
 
 	teamSvc := &teamServiceStub{
 		listTeamsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
-			t.Fatal("ListTeams should not be called after invitation team error")
-			return nil, nil, nil
+			return nil, &gh.Response{}, nil
 		},
 	}
 
@@ -436,14 +452,16 @@ func TestCollectOrganizationReturnsTeamMemberError(t *testing.T) {
 			if slug != "platform" {
 				t.Fatalf("unexpected slug: got %q want %q", slug, "platform")
 			}
-			if opts == nil || opts.Role != "member" {
-				t.Fatalf("unexpected team member options: %#v", opts)
+			if opts == nil {
+				t.Fatal("expected team member options")
 			}
-			return nil, nil, wantErr
+			if opts.Role == "member" {
+				return nil, nil, wantErr
+			}
+			return []*gh.User{}, &gh.Response{}, nil
 		},
 		listTeamReposBySlugFunc: func(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
-			t.Fatal("ListTeamReposBySlug should not be called after team member error")
-			return nil, nil, nil
+			return []*gh.Repository{}, &gh.Response{}, nil
 		},
 	}
 
@@ -462,6 +480,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 	t.Parallel()
 
 	const orgName = "orang-gaboets"
+	var mu sync.Mutex
 	var orgMemberRoleCalls []string
 
 	orgSvc := &organizationServiceStub{
@@ -473,7 +492,9 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 				t.Fatal("expected member list options")
 				return nil, nil, nil
 			}
+			mu.Lock()
 			orgMemberRoleCalls = append(orgMemberRoleCalls, opts.Role)
+			mu.Unlock()
 			switch opts.Role {
 			case "admin":
 				return []*gh.User{}, &gh.Response{}, nil
@@ -599,9 +620,13 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 	if !reflect.DeepEqual(actual, want) {
 		t.Fatalf("unexpected bootstrap organization state:\n got %#v\nwant %#v", actual, want)
 	}
+	mu.Lock()
+	slices.Sort(orgMemberRoleCalls)
 	if !reflect.DeepEqual(orgMemberRoleCalls, []string{"admin", "member"}) {
+		mu.Unlock()
 		t.Fatalf("unexpected bootstrap organization member role calls: got %#v want %#v", orgMemberRoleCalls, []string{"admin", "member"})
 	}
+	mu.Unlock()
 }
 
 func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
