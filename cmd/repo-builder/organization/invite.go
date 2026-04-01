@@ -105,12 +105,12 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 				orgSvc = client.Organizations()
 			}
 
-			opts := organizations.InviteUserOptions{
+			opts := organizations.CreateInvitationOptions{
 				Service: orgSvc,
 				OrgName: trimmedOrg,
-				UserID:  userID,
+				UserID:  &userID,
 			}
-			if err := organizations.InviteUser(cmd.Context(), opts); err != nil {
+			if err := organizations.CreateInvitation(cmd.Context(), opts); err != nil {
 				return err
 			}
 
