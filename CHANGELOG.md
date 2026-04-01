@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.14.0](https://github.com/orang-gaboets/repo-builder/compare/v0.13.0...v0.14.0) (2026-04-01)
+
+
+### Features
+
+* **gitops:** add bounded concurrency to collectors and plan phases ([#92](https://github.com/orang-gaboets/repo-builder/issues/92)) ([5c08dbb](https://github.com/orang-gaboets/repo-builder/commit/5c08dbb10a0b728b63cb22b7e6b6874668939daf))
+
 ## [0.13.0](https://github.com/orang-gaboets/repo-builder/compare/v0.12.0...v0.13.0) (2026-04-01)
 
 
