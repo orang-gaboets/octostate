@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +40,65 @@ func (s userServiceStub) GetByID(ctx context.Context, id int64) (*gh.User, *gh.R
 		return s.getByIDFunc(ctx, id)
 	}
 	return &gh.User{}, &gh.Response{}, nil
+}
+
+type auditConcurrencyTracker struct {
+	mu      sync.Mutex
+	current int
+	max     int
+}
+
+func (t *auditConcurrencyTracker) Start() func() {
+	t.mu.Lock()
+	t.current++
+	if t.current > t.max {
+		t.max = t.current
+	}
+	t.mu.Unlock()
+
+	return func() {
+		t.mu.Lock()
+		t.current--
+		t.mu.Unlock()
+	}
+}
+
+func (t *auditConcurrencyTracker) Snapshot() (current, maxSeen int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.current, t.max
+}
+
+func waitForAuditTrackerMaxAtLeast(t *testing.T, tracker *auditConcurrencyTracker, want int) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_, maxSeen := tracker.Snapshot()
+		if maxSeen >= want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	current, maxSeen := tracker.Snapshot()
+	t.Fatalf("timed out waiting for max concurrency >= %d; current=%d max=%d", want, current, maxSeen)
+}
+
+func waitForAuditSignals(t *testing.T, ch <-chan string, count int) []string {
+	t.Helper()
+
+	values := make([]string, 0, count)
+	deadline := time.After(2 * time.Second)
+	for len(values) < count {
+		select {
+		case value := <-ch:
+			values = append(values, value)
+		case <-deadline:
+			t.Fatalf("timed out waiting for %d signals; got %#v", count, values)
+		}
+	}
+	return values
 }
 
 func TestPullCmdSuccess(t *testing.T) {
@@ -147,7 +209,7 @@ func TestPullCmdPersistsResolvedInviteUserIDsForPendingInvitations(t *testing.T)
 			UsersService: userServiceStub{
 				getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
 					if username != "octocat" {
-						t.Fatalf("unexpected username lookup: %q", username)
+						return nil, nil, fmt.Errorf("unexpected username lookup: %q", username)
 					}
 					return &gh.User{Login: github.Ptr("octocat"), ID: github.Ptr(int64(99))}, &gh.Response{}, nil
 				},
@@ -215,6 +277,195 @@ func TestResolveInviteUserIDsByUsernameRejectsNilUser(t *testing.T) {
 	}
 	if resolved != nil {
 		t.Fatalf("expected nil resolved map on error, got %#v", resolved)
+	}
+}
+
+func TestResolveInviteUserIDsByUsernameDedupesMixedCaseUsernames(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu      sync.Mutex
+		lookups []string
+	)
+
+	resolved, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			mu.Lock()
+			lookups = append(lookups, username)
+			mu.Unlock()
+
+			switch username {
+			case "octocat":
+				return &gh.User{Login: github.Ptr("octocat"), ID: github.Ptr(int64(99))}, &gh.Response{}, nil
+			case "beta":
+				return &gh.User{Login: github.Ptr("beta"), ID: github.Ptr(int64(7))}, &gh.Response{}, nil
+			default:
+				return nil, nil, fmt.Errorf("unexpected username lookup: %q", username)
+			}
+		},
+	}, []state.PendingInvitation{
+		{Username: "  OctoCat  "},
+		{Username: "octocat"},
+		{Username: ""},
+		{Username: "BETA"},
+		{Username: "beta"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(resolved, map[string]int64{"beta": 7, "octocat": 99}) {
+		t.Fatalf("unexpected resolved map: %#v", resolved)
+	}
+
+	slices.Sort(lookups)
+	if !reflect.DeepEqual(lookups, []string{"beta", "octocat"}) {
+		t.Fatalf("unexpected lookups: %#v", lookups)
+	}
+}
+
+func TestResolveInviteUserIDsByUsernameReturnsEmptyMapWhenNoUsernames(t *testing.T) {
+	t.Parallel()
+
+	resolved, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{}, []state.PendingInvitation{
+		{Username: ""},
+		{Username: "   "},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved == nil {
+		t.Fatal("expected non-nil resolved map")
+	}
+	if len(resolved) != 0 {
+		t.Fatalf("expected empty resolved map, got %#v", resolved)
+	}
+}
+
+func TestResolveInviteUserIDsByUsernameBoundsConcurrency(t *testing.T) {
+	t.Parallel()
+
+	const invitationCount = 20
+
+	tracker := &auditConcurrencyTracker{}
+	release := make(chan struct{})
+	invitations := make([]state.PendingInvitation, 0, invitationCount)
+	for i := 0; i < invitationCount; i++ {
+		invitations = append(invitations, state.PendingInvitation{
+			Username: strings.ToLower("User" + string(rune('A'+i))),
+		})
+	}
+
+	resultCh := make(chan map[string]int64, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resolved, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{
+			getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+				done := tracker.Start()
+				defer done()
+				<-release
+				return &gh.User{Login: github.Ptr(username), ID: github.Ptr(int64(len(username)))}, &gh.Response{}, nil
+			},
+		}, invitations)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- resolved
+	}()
+
+	waitForAuditTrackerMaxAtLeast(t, tracker, auditInviteUserLookupConcurrency)
+	close(release)
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("unexpected error: %v", err)
+	case resolved := <-resultCh:
+		if len(resolved) != invitationCount {
+			t.Fatalf("unexpected resolved size: got %d want %d", len(resolved), invitationCount)
+		}
+	}
+
+	_, maxSeen := tracker.Snapshot()
+	if maxSeen > auditInviteUserLookupConcurrency {
+		t.Fatalf("expected max concurrency <= %d, got %d", auditInviteUserLookupConcurrency, maxSeen)
+	}
+}
+
+func TestResolveInviteUserIDsByUsernameReturnsFirstErrorByUniqueUsernameOrder(t *testing.T) {
+	t.Parallel()
+
+	firstErr := errors.New("first lookup failed")
+	secondErr := errors.New("second lookup failed")
+
+	_, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			switch username {
+			case "alpha":
+				time.Sleep(20 * time.Millisecond)
+				return nil, nil, firstErr
+			case "beta":
+				return nil, nil, secondErr
+			default:
+				return nil, nil, fmt.Errorf("unexpected username lookup: %q", username)
+			}
+		},
+	}, []state.PendingInvitation{
+		{Username: "alpha"},
+		{Username: "beta"},
+	})
+	if !errors.Is(err, firstErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, firstErr)
+	}
+}
+
+func TestResolveInviteUserIDsByUsernameCancelsSiblingLookupsOnError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("lookup failed")
+	started := make(chan string, 2)
+	canceled := make(chan string, 1)
+	releaseFailure := make(chan struct{})
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := resolveInviteUserIDsByUsername(context.Background(), userServiceStub{
+			getFunc: func(ctx context.Context, username string) (*gh.User, *gh.Response, error) {
+				started <- username
+				switch username {
+				case "alpha":
+					<-releaseFailure
+					return nil, nil, wantErr
+				case "beta":
+					<-ctx.Done()
+					canceled <- username
+					return nil, nil, ctx.Err()
+				default:
+					return nil, nil, fmt.Errorf("unexpected username lookup: %q", username)
+				}
+			},
+		}, []state.PendingInvitation{
+			{Username: "alpha"},
+			{Username: "beta"},
+		})
+		errCh <- err
+	}()
+
+	gotStarted := waitForAuditSignals(t, started, 2)
+	slices.Sort(gotStarted)
+	if !reflect.DeepEqual(gotStarted, []string{"alpha", "beta"}) {
+		t.Fatalf("unexpected started lookups: %#v", gotStarted)
+	}
+
+	close(releaseFailure)
+
+	err := <-errCh
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
+	}
+
+	gotCanceled := waitForAuditSignals(t, canceled, 1)
+	if !reflect.DeepEqual(gotCanceled, []string{"beta"}) {
+		t.Fatalf("unexpected canceled lookups: %#v", gotCanceled)
 	}
 }
 
