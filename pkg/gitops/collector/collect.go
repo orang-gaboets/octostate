@@ -410,6 +410,11 @@ func runOrderedTasks(ctx context.Context, limit int, tasks []orderedTask) error 
 			case err == nil:
 				return nil
 			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+				if runCtx.Err() != nil || groupCtx.Err() != nil {
+					return nil
+				}
+				errs[index] = err
+				cancel()
 				return nil
 			default:
 				errs[index] = err
