@@ -10,6 +10,7 @@ import (
 
 	"github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/auth"
 	cmdoutput "github.com/orang-gaboets/repo-builder/cmd/repo-builder/internal/output"
+	"github.com/orang-gaboets/repo-builder/internal/orderedtasks"
 	"github.com/orang-gaboets/repo-builder/pkg/github"
 	ghusers "github.com/orang-gaboets/repo-builder/pkg/github/users"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/collector"
@@ -27,6 +28,8 @@ var (
 	nowAuditSnapshotTime      = time.Now
 	resolveAuditInviteUserIDs = resolveInviteUserIDsByUsername
 )
+
+const auditInviteUserLookupConcurrency = 8
 
 // PullCmd creates the audit pull command.
 func PullCmd() *cobra.Command {
@@ -152,35 +155,62 @@ func resolveInviteUserIDsByUsername(
 	service ghusers.Service,
 	invitations []state.PendingInvitation,
 ) (map[string]int64, error) {
-	resolved := make(map[string]int64)
+	usernames := uniqueInviteUsernames(invitations)
+	resolved := make(map[string]int64, len(usernames))
+	if len(usernames) == 0 {
+		return resolved, nil
+	}
 
+	resolvedIDs := make([]int64, len(usernames))
+	tasks := make([]orderedtasks.Task, 0, len(usernames))
+	for i, username := range usernames {
+		index := i
+		login := username
+		tasks = append(tasks, func(groupCtx context.Context) error {
+			user, err := ghusers.GetUserByUsername(groupCtx, ghusers.GetUserByUsernameOptions{
+				Service:  service,
+				Username: login,
+			})
+			if err != nil {
+				return fmt.Errorf("resolve snapshot invite username %q: %w", login, err)
+			}
+			if user == nil {
+				return fmt.Errorf("resolve snapshot invite username %q: missing user: %w", login, github.ErrInvalidFieldValue)
+			}
+			userID := derefInt64(user.ID)
+			if userID <= 0 {
+				return fmt.Errorf("resolve snapshot invite username %q: missing user id: %w", login, github.ErrInvalidFieldValue)
+			}
+			resolvedIDs[index] = userID
+			return nil
+		})
+	}
+
+	if err := orderedtasks.Run(ctx, auditInviteUserLookupConcurrency, tasks); err != nil {
+		return nil, err
+	}
+
+	for i, username := range usernames {
+		resolved[username] = resolvedIDs[i]
+	}
+	return resolved, nil
+}
+
+func uniqueInviteUsernames(invitations []state.PendingInvitation) []string {
+	usernames := make([]string, 0, len(invitations))
+	seen := make(map[string]struct{}, len(invitations))
 	for _, invitation := range invitations {
 		username := strings.ToLower(strings.TrimSpace(invitation.Username))
 		if username == "" {
 			continue
 		}
-		if _, ok := resolved[username]; ok {
+		if _, ok := seen[username]; ok {
 			continue
 		}
-
-		user, err := ghusers.GetUserByUsername(ctx, ghusers.GetUserByUsernameOptions{
-			Service:  service,
-			Username: username,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("resolve snapshot invite username %q: %w", username, err)
-		}
-		if user == nil {
-			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user: %w", username, github.ErrInvalidFieldValue)
-		}
-		userID := derefInt64(user.ID)
-		if userID <= 0 {
-			return nil, fmt.Errorf("resolve snapshot invite username %q: missing user id: %w", username, github.ErrInvalidFieldValue)
-		}
-		resolved[username] = userID
+		seen[username] = struct{}{}
+		usernames = append(usernames, username)
 	}
-
-	return resolved, nil
+	return usernames
 }
 
 func derefInt64(value *int64) int64 {
