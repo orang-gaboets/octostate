@@ -435,21 +435,23 @@ Behavior:
 - Runs semantic validation before contacting GitHub
 - Collects current GitHub actual state using the GitOps collector layer
 - Builds a deterministic, read-only reconciliation plan
-- Prints the JSON plan report to stdout
+- Prints a Terraform-style split JSON preview to stdout
 - Does not mutate GitHub state
 - Repository optional fields are only diffed when they are explicitly declared in config
 
-Plan report fields:
+Plan preview fields:
 - `organization`
-- `summary`
-- `actions`
+- `plan_summary`
+- `executable_actions`
+- `skipped_actions`
 
 Action behavior:
-- Executable actions represent supported changes that a later `config apply`
-  command can carry out, such as `create` and `update`
-- Non-executable actions represent live drift that is detected but not yet
+- `executable_actions` contains the supported changes that a later
+  `config apply` command can carry out, such as `create` and `update`
+- `skipped_actions` contains unsupported live drift that is detected but not
   automatically reconciled, such as `delete` and `remove`
-- Action ordering is deterministic so CI output and PR comments stay stable
+- Both arrays keep deterministic action ordering so CI output and PR comments
+  stay stable
 
 Example use:
 
@@ -477,7 +479,8 @@ Behavior:
 - Runs semantic validation before contacting GitHub
 - Collects current GitHub actual state using the GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
-- `--dry-run` prints the executable actions and skipped live drift without performing writes
+- `--dry-run` prints the same split executable/skipped view as `config plan`
+  without performing writes
 - Live apply executes only supported executable `create` / `update` actions
 - Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
 - Repository creation currently requires `template.owner` and `template.name`

@@ -83,10 +83,12 @@ func TestPlanConfigCmdSuccess(t *testing.T) {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
 
-	got := decodePlanReport(t, out.Bytes())
+	got := decodePlanPreview(t, out.Bytes())
 	got.Normalize()
-	if !reflect.DeepEqual(got, *want) {
-		t.Fatalf("unexpected plan report:\n got %#v\nwant %#v", got, *want)
+	wantPreview := previewFromPlan(want)
+	wantPreview.Normalize()
+	if !reflect.DeepEqual(got, *wantPreview) {
+		t.Fatalf("unexpected plan preview:\n got %#v\nwant %#v", got, *wantPreview)
 	}
 }
 
@@ -130,10 +132,132 @@ func TestPlanConfigCmdSuccessNoOpReport(t *testing.T) {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
 
-	got := decodePlanReport(t, out.Bytes())
+	got := decodePlanPreview(t, out.Bytes())
 	got.Normalize()
+	wantPreview := previewFromPlan(want)
+	wantPreview.Normalize()
+	if !reflect.DeepEqual(got, *wantPreview) {
+		t.Fatalf("unexpected no-op plan preview:\n got %#v\nwant %#v", got, *wantPreview)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw plan preview: %v", err)
+	}
+	if _, ok := raw["summary"]; ok {
+		t.Fatalf("did not expect summary key in payload: %s", out.String())
+	}
+	if _, ok := raw["actions"]; ok {
+		t.Fatalf("did not expect actions key in payload: %s", out.String())
+	}
+	if _, ok := raw["plan_summary"]; !ok {
+		t.Fatalf("expected plan_summary key in payload: %s", out.String())
+	}
+	if _, ok := raw["executable_actions"]; !ok {
+		t.Fatalf("expected executable_actions key in payload: %s", out.String())
+	}
+	if _, ok := raw["skipped_actions"]; !ok {
+		t.Fatalf("expected skipped_actions key in payload: %s", out.String())
+	}
+}
+
+func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
+	restorePlanHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	report := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   "orang-gaboets/repo-builder",
+				Executable:   true,
+				Message:      "create repository orang-gaboets/repo-builder",
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeam,
+				Operation:    gitopsplan.ActionOperationDelete,
+				ResourceID:   "legacy-team",
+				Executable:   false,
+				Message:      "team legacy-team exists in live state but is not declared in desired config",
+			},
+		},
+	}
+	report.Normalize()
+
+	loadPlanConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return cfg, nil
+	}
+	validatePlanConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newPlanClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectPlanState = func(_ context.Context, _ collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return actual, nil
+	}
+	buildPlanReport = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) {
+		return report, nil
+	}
+
+	cmd := PlanConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+
+	got := decodePlanPreview(t, out.Bytes())
+	normalizePlanPreviewForCompare(&got)
+	want := previewFromPlan(report)
+	normalizePlanPreviewForCompare(want)
 	if !reflect.DeepEqual(got, *want) {
-		t.Fatalf("unexpected no-op plan report:\n got %#v\nwant %#v", got, *want)
+		t.Fatalf("unexpected split plan preview:\n got %#v\nwant %#v", got, *want)
+	}
+	if got.PlanSummary != report.Summary {
+		t.Fatalf("unexpected plan summary: got %#v want %#v", got.PlanSummary, report.Summary)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw plan preview: %v", err)
+	}
+	if _, ok := raw["actions"]; ok {
+		t.Fatalf("did not expect actions key in payload: %s", out.String())
+	}
+	if _, ok := raw["summary"]; ok {
+		t.Fatalf("did not expect summary key in payload: %s", out.String())
+	}
+	if _, ok := raw["plan_summary"]; !ok {
+		t.Fatalf("expected plan_summary key in payload: %s", out.String())
+	}
+}
+
+func TestPreviewFromPlanNilReportReturnsEmptyPreview(t *testing.T) {
+	got := previewFromPlan(nil)
+	if got == nil {
+		t.Fatal("expected non-nil preview")
+		return
+	}
+	got.Normalize()
+	if got.Organization != "" {
+		t.Fatalf("expected empty organization, got %q", got.Organization)
+	}
+	if len(got.ExecutableActions) != 0 {
+		t.Fatalf("expected no executable actions, got %#v", got.ExecutableActions)
+	}
+	if len(got.SkippedActions) != 0 {
+		t.Fatalf("expected no skipped actions, got %#v", got.SkippedActions)
 	}
 }
 
@@ -406,12 +530,26 @@ func restorePlanHooks(t *testing.T) {
 	})
 }
 
-func decodePlanReport(t *testing.T, payload []byte) gitopsplan.Report {
+func decodePlanPreview(t *testing.T, payload []byte) planPreview {
 	t.Helper()
 
-	var report gitopsplan.Report
-	if err := json.Unmarshal(payload, &report); err != nil {
-		t.Fatalf("decode JSON report: %v; payload=%q", err, string(payload))
+	var preview planPreview
+	if err := json.Unmarshal(payload, &preview); err != nil {
+		t.Fatalf("decode JSON preview: %v; payload=%q", err, string(payload))
 	}
-	return report
+	normalizePlanPreviewForCompare(&preview)
+	return preview
+}
+
+func normalizePlanPreviewForCompare(preview *planPreview) {
+	if preview == nil {
+		return
+	}
+	preview.Normalize()
+	for i := range preview.ExecutableActions {
+		preview.ExecutableActions[i].Normalize()
+	}
+	for i := range preview.SkippedActions {
+		preview.SkippedActions[i].Normalize()
+	}
 }
