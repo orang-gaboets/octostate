@@ -455,22 +455,6 @@ func TestCollectTeamStateReturnsMemberErrorBeforeMaintainerAndRepoErrors(t *test
 	}
 }
 
-func TestRunOrderedTasksTreatsUnexpectedContextErrorAsFailure(t *testing.T) {
-	t.Parallel()
-
-	err := runOrderedTasks(context.Background(), 2, []orderedTask{
-		func(context.Context) error {
-			return context.Canceled
-		},
-		func(context.Context) error {
-			return nil
-		},
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("unexpected error: got %v want %v", err, context.Canceled)
-	}
-}
-
 func TestCollectOrganizationCancelsSiblingReadsOnError(t *testing.T) {
 	t.Parallel()
 

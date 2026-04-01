@@ -2,11 +2,9 @@ package collector
 
 import (
 	"context"
-	"errors"
 	"strings"
 
-	"golang.org/x/sync/errgroup"
-
+	"github.com/orang-gaboets/repo-builder/internal/orderedtasks"
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
@@ -143,7 +141,7 @@ func collectOrganizationWithLimits(
 		teamRepoPerms      []state.TeamRepositoryPermission
 	)
 
-	tasks := make([]orderedTask, 0, 4)
+	tasks := make([]orderedtasks.Task, 0, 4)
 
 	if behavior.includeMembers {
 		tasks = append(tasks, func(groupCtx context.Context) error {
@@ -195,7 +193,7 @@ func collectOrganizationWithLimits(
 		})
 	}
 
-	if err := runOrderedTasks(ctx, limits.topLevel, tasks); err != nil {
+	if err := orderedtasks.Run(ctx, limits.topLevel, tasks); err != nil {
 		return nil, err
 	}
 
@@ -213,7 +211,7 @@ func collectOrganizationMembers(ctx context.Context, opt CollectOrganizationOpti
 	var admins []*githubpkg.User
 	var members []*githubpkg.User
 
-	tasks := []orderedTask{
+	tasks := []orderedtasks.Task{
 		func(groupCtx context.Context) error {
 			collected, err := organizations.ListMembers(groupCtx, organizations.ListMembersOptions{
 				Service: opt.OrganizationService,
@@ -240,7 +238,7 @@ func collectOrganizationMembers(ctx context.Context, opt CollectOrganizationOpti
 		},
 	}
 
-	if err := runOrderedTasks(ctx, limits.memberRoles, tasks); err != nil {
+	if err := orderedtasks.Run(ctx, limits.memberRoles, tasks); err != nil {
 		return nil, err
 	}
 
@@ -262,7 +260,7 @@ func collectPendingInvitations(ctx context.Context, opt CollectOrganizationOptio
 
 	pendingByIndex := make([]state.PendingInvitation, len(invitations))
 	keepByIndex := make([]bool, len(invitations))
-	tasks := make([]orderedTask, 0, len(invitations))
+	tasks := make([]orderedtasks.Task, 0, len(invitations))
 
 	for i, invitation := range invitations {
 		if invitation == nil {
@@ -291,7 +289,7 @@ func collectPendingInvitations(ctx context.Context, opt CollectOrganizationOptio
 		})
 	}
 
-	if err := runOrderedTasks(ctx, limits.invitationTeams, tasks); err != nil {
+	if err := orderedtasks.Run(ctx, limits.invitationTeams, tasks); err != nil {
 		return nil, err
 	}
 
@@ -315,7 +313,7 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 	}
 
 	teamDetails := make([]collectedTeamDetails, len(collectedTeams))
-	tasks := make([]orderedTask, 0, len(collectedTeams)*3)
+	tasks := make([]orderedtasks.Task, 0, len(collectedTeams)*3)
 
 	for i, team := range collectedTeams {
 		if team == nil || team.Slug == "" {
@@ -367,7 +365,7 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 		})
 	}
 
-	if err := runOrderedTasks(ctx, limits.teamDetails, tasks); err != nil {
+	if err := orderedtasks.Run(ctx, limits.teamDetails, tasks); err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -381,67 +379,6 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 	}
 
 	return teamsState, membersState, repoPermissionsState, nil
-}
-
-type orderedTask func(context.Context) error
-
-func runOrderedTasks(ctx context.Context, limit int, tasks []orderedTask) error {
-	if len(tasks) == 0 {
-		return nil
-	}
-
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	g, groupCtx := errgroup.WithContext(runCtx)
-	g.SetLimit(normalizeConcurrencyLimit(limit))
-	errs := make([]error, len(tasks))
-
-	for i, task := range tasks {
-		if task == nil {
-			continue
-		}
-
-		index := i
-		run := task
-		g.Go(func() error {
-			err := run(groupCtx)
-			switch {
-			case err == nil:
-				return nil
-			case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-				if runCtx.Err() != nil || groupCtx.Err() != nil {
-					return nil
-				}
-				errs[index] = err
-				cancel()
-				return nil
-			default:
-				errs[index] = err
-				cancel()
-				return nil
-			}
-		})
-	}
-
-	_ = g.Wait()
-	for _, err := range errs {
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func normalizeConcurrencyLimit(limit int) int {
-	if limit <= 0 {
-		return 1
-	}
-	return limit
 }
 
 func organizationMembersFromUsers(users []*githubpkg.User, role string) []state.OrganizationMember {
