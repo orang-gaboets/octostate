@@ -726,32 +726,62 @@ invites: []
 func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 	t.Parallel()
 
-	phaseResults, err := runPhases(context.Background(), diffPhaseConcurrency, []actionPhase{
-		func(context.Context) ([]Action, error) {
-			time.Sleep(40 * time.Millisecond)
-			return []Action{{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "repositories"}}, nil
-		},
-		func(context.Context) ([]Action, error) {
-			time.Sleep(5 * time.Millisecond)
-			return []Action{{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "teams"}}, nil
-		},
-		func(context.Context) ([]Action, error) {
-			time.Sleep(30 * time.Millisecond)
-			return []Action{{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationCreate, ResourceID: "organization-members"}}, nil
-		},
-		func(context.Context) ([]Action, error) {
-			time.Sleep(10 * time.Millisecond)
-			return []Action{{ResourceType: ActionResourceTypeInvite, Operation: ActionOperationCreate, ResourceID: "invites"}}, nil
-		},
-		func(context.Context) ([]Action, error) {
-			time.Sleep(20 * time.Millisecond)
-			return []Action{{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "team-members"}}, nil
-		},
-		func(context.Context) ([]Action, error) {
-			time.Sleep(15 * time.Millisecond)
-			return []Action{{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "team-repository-permissions"}}, nil
-		},
-	})
+	releases := make([]chan struct{}, 6)
+	for i := range releases {
+		releases[i] = make(chan struct{})
+	}
+
+	started := make(chan int, len(releases))
+	buildPhase := func(index int, resourceType ActionResourceType, resourceID string) actionPhase {
+		return func(ctx context.Context) ([]Action, error) {
+			started <- index
+			select {
+			case <-releases[index]:
+				return []Action{{
+					ResourceType: resourceType,
+					Operation:    ActionOperationCreate,
+					ResourceID:   resourceID,
+				}}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
+
+	resultCh := make(chan [][]Action, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		phaseResults, err := runPhases(context.Background(), diffPhaseConcurrency, []actionPhase{
+			buildPhase(0, ActionResourceTypeRepository, "repositories"),
+			buildPhase(1, ActionResourceTypeTeam, "teams"),
+			buildPhase(2, ActionResourceTypeOrganizationMember, "organization-members"),
+			buildPhase(3, ActionResourceTypeInvite, "invites"),
+			buildPhase(4, ActionResourceTypeTeamMember, "team-members"),
+			buildPhase(5, ActionResourceTypeTeamRepositoryPermission, "team-repository-permissions"),
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- phaseResults
+	}()
+
+	seen := make(map[int]struct{}, len(releases))
+	for len(seen) < len(releases) {
+		seen[<-started] = struct{}{}
+	}
+	for _, index := range []int{1, 3, 5, 4, 2, 0} {
+		close(releases[index])
+	}
+
+	var (
+		phaseResults [][]Action
+		err          error
+	)
+	select {
+	case phaseResults = <-resultCh:
+	case err = <-errCh:
+	}
 	if err != nil {
 		t.Fatalf("runPhases returned error: %v", err)
 	}
