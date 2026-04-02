@@ -7,6 +7,9 @@ All primitive commands require GitHub authentication. Supply exactly one of:
 - `--token`
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
+The command examples in this page intentionally show GitHub App auth directly so
+that the non-token path stays visible in the reference.
+
 This reference uses canonical command names. Common aliases such as `org`,
 `repo create`, `team delete`, and `team get` also work.
 

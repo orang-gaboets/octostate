@@ -13,6 +13,10 @@ Authentication rules:
   - `--token`
   - `--app-id`, `--installation-id`, and `--app-key-path`
 
+Examples below mostly use `$GITHUB_TOKEN` for brevity, but the same live
+commands also support GitHub App authentication with `--app-id`,
+`--installation-id`, and `--app-key-path`.
+
 ## `repo-builder config validate`
 
 Validate desired-state configuration.

@@ -37,6 +37,10 @@ All commands that talk to GitHub require exactly one auth method:
 - `--token`
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
+Most examples use `$GITHUB_TOKEN` for brevity, but every live command can also
+use GitHub App authentication with `--app-id`, `--installation-id`, and
+`--app-key-path`.
+
 `repo-builder config validate` and `repo-builder audit diff` are offline once
 their required files are present.
 

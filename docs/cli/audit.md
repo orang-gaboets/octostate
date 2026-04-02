@@ -9,6 +9,10 @@ Authentication rules:
 - `repo-builder audit pull` requires GitHub auth.
 - `repo-builder audit diff` is fully offline once the snapshot exists.
 
+Examples below use `$GITHUB_TOKEN` where a live read is required, but
+`audit pull` also supports GitHub App authentication with `--app-id`,
+`--installation-id`, and `--app-key-path`.
+
 ## `repo-builder audit pull`
 
 Pull an actual-state snapshot from live GitHub.
