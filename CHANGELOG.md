@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [0.16.0](https://github.com/orang-gaboets/repo-builder/compare/v0.15.0...v0.16.0) (2026-04-02)
+
+
+### Features
+
+* **diff:** parallelize offline audit diff build phases ([#99](https://github.com/orang-gaboets/repo-builder/issues/99)) ([78a799c](https://github.com/orang-gaboets/repo-builder/commit/78a799cf60c736f032e870b37be0010e2beafdd2))
+
 ## [0.15.0](https://github.com/orang-gaboets/repo-builder/compare/v0.14.0...v0.15.0) (2026-04-01)
 
 
