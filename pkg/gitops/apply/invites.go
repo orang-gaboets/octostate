@@ -89,12 +89,14 @@ func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action) error 
 	resolvedUserIDs := make([]int64, len(targets))
 	tasks := make([]orderedtasks.Task, 0, len(targets))
 	for i, target := range targets {
+		index := i
+		inviteTarget := target
 		tasks = append(tasks, func(ctx context.Context) error {
-			userID, err := e.lookupInviteUserID(ctx, target.username)
+			userID, err := e.lookupInviteUserID(ctx, inviteTarget.username)
 			if err != nil {
-				return fmt.Errorf("create invite %s: %w", target.resourceID, err)
+				return fmt.Errorf("create invite %s: %w", inviteTarget.resourceID, err)
 			}
-			resolvedUserIDs[i] = userID
+			resolvedUserIDs[index] = userID
 			return nil
 		})
 	}
