@@ -32,6 +32,10 @@ func teamSlugKey(slug string) string {
 	return strings.ToLower(strings.TrimSpace(slug))
 }
 
+func inviteUsernameKey(username string) string {
+	return strings.ToLower(strings.TrimSpace(username))
+}
+
 func desiredInviteResourceID(invite config.InviteSpec) (string, error) {
 	usernamePresent := invite.Username.Present && !invite.Username.Null
 	emailPresent := invite.Email.Present && !invite.Email.Null

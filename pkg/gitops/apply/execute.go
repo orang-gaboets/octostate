@@ -17,6 +17,10 @@ import (
 
 // Options defines the inputs and GitHub service dependencies required to apply
 // one planner report.
+//
+// UserService must be safe for concurrent read calls. Apply pre-resolves
+// username-based invite targets with bounded concurrent lookups before
+// sequential invitation writes begin.
 type Options struct {
 	Desired             config.OrganizationConfig
 	Actual              *state.OrganizationState
@@ -123,6 +127,14 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 			continue
 		}
 
+		if action.ResourceType == gitopsplan.ActionResourceTypeInvite &&
+			action.Operation == gitopsplan.ActionOperationCreate &&
+			!executor.inviteUsersResolved {
+			if err := executor.preResolveInviteUsernames(opt.Plan.Actions[index:]); err != nil {
+				return nil, err
+			}
+		}
+
 		if err := executor.executeAction(action); err != nil {
 			return nil, err
 		}
@@ -135,36 +147,39 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 }
 
 type executor struct {
-	ctx                 context.Context
-	organization        string
-	organizationService organizations.Service
-	repositoryService   repos.Service
-	teamService         teams.Service
-	userService         ghusers.Service
-	teamIDs             map[string]int64
-	desiredRepositories map[string]config.RepositorySpec
-	desiredTeams        map[string]config.TeamSpec
-	desiredOrgMembers   map[string]config.OrganizationMemberSpec
-	desiredMembers      map[string]config.TeamMemberSpec
-	desiredPermissions  map[string]config.TeamRepositorySpec
-	desiredInvites      map[string]config.InviteSpec
+	ctx                   context.Context
+	organization          string
+	organizationService   organizations.Service
+	repositoryService     repos.Service
+	teamService           teams.Service
+	userService           ghusers.Service
+	teamIDs               map[string]int64
+	resolvedInviteUserIDs map[string]int64
+	inviteUsersResolved   bool
+	desiredRepositories   map[string]config.RepositorySpec
+	desiredTeams          map[string]config.TeamSpec
+	desiredOrgMembers     map[string]config.OrganizationMemberSpec
+	desiredMembers        map[string]config.TeamMemberSpec
+	desiredPermissions    map[string]config.TeamRepositorySpec
+	desiredInvites        map[string]config.InviteSpec
 }
 
 func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 	exec := &executor{
-		ctx:                 ctx,
-		organization:        strings.TrimSpace(opt.Desired.Organization),
-		organizationService: opt.OrganizationService,
-		repositoryService:   opt.RepositoryService,
-		teamService:         opt.TeamService,
-		userService:         opt.UserService,
-		teamIDs:             make(map[string]int64, len(opt.Actual.Teams)),
-		desiredRepositories: make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
-		desiredTeams:        make(map[string]config.TeamSpec, len(opt.Desired.Teams)),
-		desiredOrgMembers:   make(map[string]config.OrganizationMemberSpec, len(opt.Desired.Members)),
-		desiredMembers:      map[string]config.TeamMemberSpec{},
-		desiredPermissions:  map[string]config.TeamRepositorySpec{},
-		desiredInvites:      map[string]config.InviteSpec{},
+		ctx:                   ctx,
+		organization:          strings.TrimSpace(opt.Desired.Organization),
+		organizationService:   opt.OrganizationService,
+		repositoryService:     opt.RepositoryService,
+		teamService:           opt.TeamService,
+		userService:           opt.UserService,
+		teamIDs:               make(map[string]int64, len(opt.Actual.Teams)),
+		resolvedInviteUserIDs: map[string]int64{},
+		desiredRepositories:   make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
+		desiredTeams:          make(map[string]config.TeamSpec, len(opt.Desired.Teams)),
+		desiredOrgMembers:     make(map[string]config.OrganizationMemberSpec, len(opt.Desired.Members)),
+		desiredMembers:        map[string]config.TeamMemberSpec{},
+		desiredPermissions:    map[string]config.TeamRepositorySpec{},
+		desiredInvites:        map[string]config.InviteSpec{},
 	}
 
 	for _, team := range opt.Actual.Teams {

@@ -5,7 +5,10 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	gh "github.com/google/go-github/v55/github"
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
@@ -794,6 +797,12 @@ func TestExecuteInviteCreateByUserIDAndEmail(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var captured *gh.CreateOrgInvitationOptions
+			userSvc := &testUserService{
+				getFunc: func(context.Context, string) (*gh.User, *gh.Response, error) {
+					t.Fatal("username lookup should not run for email or user_id invites")
+					return nil, nil, nil
+				},
+			}
 			orgSvc := &testOrganizationService{
 				createOrgInvitationFunc: func(_ context.Context, _ string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
 					captured = opts
@@ -815,7 +824,7 @@ func TestExecuteInviteCreateByUserIDAndEmail(t *testing.T) {
 			_, err = Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
 				Organization: "orang-gaboets",
 				Invites:      []config.InviteSpec{tt.invite},
-			}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc)))
+			}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -834,6 +843,264 @@ func TestExecuteInviteCreateByUserIDAndEmail(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExecuteInviteUsernamePreResolutionStartsAtFirstInviteBoundary(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		events []string
+	)
+	recordEvent := func(event string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	}
+
+	userSvc := &testUserService{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			recordEvent("lookup:" + username)
+			return &gh.User{ID: githubpkg.Ptr(int64(42))}, nil, nil
+		},
+	}
+	orgSvc := &testOrganizationService{
+		editOrgMembershipFunc: func(context.Context, string, string, *gh.Membership) (*gh.Membership, *gh.Response, error) {
+			recordEvent("member")
+			return &gh.Membership{}, nil, nil
+		},
+		createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			recordEvent("invite")
+			return &gh.Invitation{}, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
+		Invites: []config.InviteSpec{inviteByUsername("octocat", "direct_member")},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: organizationMemberResourceID("alice"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "username:octocat", Executable: true},
+	}}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantEvents := []string{"member", "lookup:octocat", "invite"}
+	if !reflect.DeepEqual(events, wantEvents) {
+		t.Fatalf("unexpected event order:\n got %#v\nwant %#v", events, wantEvents)
+	}
+}
+
+func TestExecuteInviteUsernamePreResolutionCachesAndBoundsConcurrency(t *testing.T) {
+	usernames := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa"}
+	desiredInvites := make([]config.InviteSpec, 0, len(usernames)+1)
+	actions := make([]gitopsplan.Action, 0, len(usernames)+1)
+	userIDs := make(map[string]int64, len(usernames))
+	for i, username := range usernames {
+		invite := inviteByUsername(username, "direct_member")
+		desiredInvites = append(desiredInvites, invite)
+		resourceID, err := desiredInviteResourceID(invite)
+		if err != nil {
+			t.Fatalf("unexpected resource ID error: %v", err)
+		}
+		actions = append(actions, gitopsplan.Action{
+			ResourceType: gitopsplan.ActionResourceTypeInvite,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   resourceID,
+			Executable:   true,
+		})
+		userIDs[inviteUsernameKey(username)] = int64(i + 1)
+	}
+
+	duplicate := inviteByUsername(" Alpha ", "direct_member")
+	duplicateResourceID, err := desiredInviteResourceID(duplicate)
+	if err != nil {
+		t.Fatalf("unexpected duplicate resource ID error: %v", err)
+	}
+	desiredInvites = append(desiredInvites, duplicate)
+	actions = append(actions, gitopsplan.Action{
+		ResourceType: gitopsplan.ActionResourceTypeInvite,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   duplicateResourceID,
+		Executable:   true,
+	})
+
+	var (
+		lookupCalls     atomic.Int64
+		currentLookups  atomic.Int64
+		maxLookups      atomic.Int64
+		invitationCalls atomic.Int64
+	)
+	started := make(chan struct{}, len(usernames))
+	release := make(chan struct{})
+
+	userSvc := &testUserService{
+		getFunc: func(ctx context.Context, username string) (*gh.User, *gh.Response, error) {
+			lookupCalls.Add(1)
+			current := currentLookups.Add(1)
+			updateAtomicMax(&maxLookups, current)
+			defer currentLookups.Add(-1)
+
+			started <- struct{}{}
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			}
+
+			userID := userIDs[inviteUsernameKey(username)]
+			return &gh.User{ID: githubpkg.Ptr(userID)}, nil, nil
+		},
+	}
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(_ context.Context, _ string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			if opts == nil || opts.InviteeID == nil || *opts.InviteeID <= 0 {
+				t.Fatalf("unexpected invitation options: %#v", opts)
+			}
+			invitationCalls.Add(1)
+			return &gh.Invitation{}, nil, nil
+		},
+	}
+
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: actions}
+	plan.Normalize()
+
+	done := make(chan error, 1)
+	go func() {
+		_, execErr := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Invites:      desiredInvites,
+		}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+		done <- execErr
+	}()
+
+	waitForSignals(t, started, inviteUsernameResolutionConcurrency, "concurrent username lookups to start")
+	if got := maxLookups.Load(); got > inviteUsernameResolutionConcurrency {
+		t.Fatalf("unexpected concurrent username lookups: got %d want <= %d", got, inviteUsernameResolutionConcurrency)
+	}
+
+	close(release)
+
+	if err := waitForError(t, done, "execute to finish"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got, want := lookupCalls.Load(), int64(len(usernames)); got != want {
+		t.Fatalf("unexpected username lookup count: got %d want %d", got, want)
+	}
+	if got, want := invitationCalls.Load(), int64(len(desiredInvites)); got != want {
+		t.Fatalf("unexpected invitation count: got %d want %d", got, want)
+	}
+	if got := maxLookups.Load(); got == 0 || got > inviteUsernameResolutionConcurrency {
+		t.Fatalf("unexpected maximum concurrent username lookups: %d", got)
+	}
+}
+
+func TestExecuteInviteUsernamePreResolutionReturnsFirstSeenLookupError(t *testing.T) {
+	firstErr := errors.New("first lookup failed")
+	secondErr := errors.New("second lookup failed")
+	firstReady := make(chan struct{})
+	releaseFirst := make(chan struct{})
+
+	userSvc := &testUserService{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			switch inviteUsernameKey(username) {
+			case "first":
+				close(firstReady)
+				<-releaseFirst
+				return nil, nil, firstErr
+			case "second":
+				<-firstReady
+				close(releaseFirst)
+				return nil, nil, secondErr
+			default:
+				return nil, nil, errors.New("unexpected username")
+			}
+		},
+	}
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			t.Fatal("invite creation should not run after pre-resolution failure")
+			return nil, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []config.InviteSpec{
+			inviteByUsername("first", "direct_member"),
+			inviteByUsername("second", "direct_member"),
+		},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "username:first", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "username:second", Executable: true},
+	}}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	if !errors.Is(err, firstErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, firstErr)
+	}
+	if !strings.Contains(err.Error(), "create invite username:first") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteInviteUsernamePreResolutionCancelsSiblingLookups(t *testing.T) {
+	wantErr := errors.New("lookup failed")
+	secondStarted := make(chan struct{})
+	secondCanceled := make(chan struct{})
+
+	userSvc := &testUserService{
+		getFunc: func(ctx context.Context, username string) (*gh.User, *gh.Response, error) {
+			switch inviteUsernameKey(username) {
+			case "first":
+				<-secondStarted
+				return nil, nil, wantErr
+			case "second":
+				close(secondStarted)
+				<-ctx.Done()
+				close(secondCanceled)
+				return nil, nil, ctx.Err()
+			default:
+				return nil, nil, errors.New("unexpected username")
+			}
+		},
+	}
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			t.Fatal("invite creation should not run when pre-resolution fails")
+			return nil, nil, nil
+		},
+	}
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []config.InviteSpec{
+			inviteByUsername("first", "direct_member"),
+			inviteByUsername("second", "direct_member"),
+		},
+	}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "username:first", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "username:second", Executable: true},
+	}}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
+	}
+
+	waitForSignal(t, secondCanceled, "sibling lookup cancellation")
 }
 
 func TestExecuteTeamUpdateClearsParent(t *testing.T) {
@@ -1402,4 +1669,61 @@ func (m *testUserService) GetByID(ctx context.Context, id int64) (*gh.User, *gh.
 		return m.getByIDFunc(ctx, id)
 	}
 	return &gh.User{}, nil, nil
+}
+
+func updateAtomicMax(target *atomic.Int64, candidate int64) {
+	for {
+		current := target.Load()
+		if candidate <= current {
+			return
+		}
+		if target.CompareAndSwap(current, candidate) {
+			return
+		}
+	}
+}
+
+const concurrencyTestTimeout = 2 * time.Second
+
+func waitForSignals(t *testing.T, ch <-chan struct{}, count int, description string) {
+	t.Helper()
+
+	timer := time.NewTimer(concurrencyTestTimeout)
+	defer timer.Stop()
+
+	for range count {
+		select {
+		case <-ch:
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s", description)
+		}
+	}
+}
+
+func waitForSignal(t *testing.T, ch <-chan struct{}, description string) {
+	t.Helper()
+
+	timer := time.NewTimer(concurrencyTestTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-ch:
+	case <-timer.C:
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func waitForError(t *testing.T, ch <-chan error, description string) error {
+	t.Helper()
+
+	timer := time.NewTimer(concurrencyTestTimeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-ch:
+		return err
+	case <-timer.C:
+		t.Fatalf("timed out waiting for %s", description)
+		return nil
+	}
 }

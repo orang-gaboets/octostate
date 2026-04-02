@@ -1,15 +1,25 @@
 package apply
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/orang-gaboets/repo-builder/internal/orderedtasks"
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
 	ghusers "github.com/orang-gaboets/repo-builder/pkg/github/users"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
 	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
 )
+
+const inviteUsernameResolutionConcurrency = 8
+
+type inviteUsernameTarget struct {
+	key        string
+	username   string
+	resourceID string
+}
 
 func (e *executor) executeInviteAction(action gitopsplan.Action) error {
 	if action.Operation != gitopsplan.ActionOperationCreate {
@@ -46,18 +56,11 @@ func (e *executor) createInvitationOptions(invite config.InviteSpec) (organizati
 
 	switch {
 	case invite.Username.Present && !invite.Username.Null:
-		username := strings.TrimSpace(invite.Username.Value)
-		user, err := ghusers.GetUserByUsername(e.ctx, ghusers.GetUserByUsernameOptions{
-			Service:  e.userService,
-			Username: username,
-		})
+		userID, err := e.resolveInviteUserID(strings.TrimSpace(invite.Username.Value))
 		if err != nil {
 			return organizations.CreateInvitationOptions{}, err
 		}
-		if user == nil || user.ID == nil || *user.ID <= 0 {
-			return organizations.CreateInvitationOptions{}, fmt.Errorf("resolved invite username %q without a valid user ID: %w", username, githubpkg.ErrInvalidFieldValue)
-		}
-		options.UserID = user.ID
+		options.UserID = githubpkg.Ptr(userID)
 	case invite.Email.Present && !invite.Email.Null:
 		options.Email = strings.TrimSpace(invite.Email.Value)
 	case invite.UserID.Present && !invite.UserID.Null:
@@ -68,6 +71,107 @@ func (e *executor) createInvitationOptions(invite config.InviteSpec) (organizati
 	}
 
 	return options, nil
+}
+
+// Invite username pre-resolution uses concurrent read-only user lookups; the
+// surrounding apply loop still performs GitHub write operations sequentially.
+func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action) error {
+	if e.inviteUsersResolved {
+		return nil
+	}
+	e.inviteUsersResolved = true
+
+	targets := e.collectInviteUsernameTargets(actions)
+	if len(targets) == 0 {
+		return nil
+	}
+
+	resolvedUserIDs := make([]int64, len(targets))
+	tasks := make([]orderedtasks.Task, 0, len(targets))
+	for i, target := range targets {
+		index := i
+		inviteTarget := target
+		tasks = append(tasks, func(ctx context.Context) error {
+			userID, err := e.lookupInviteUserID(ctx, inviteTarget.username)
+			if err != nil {
+				return fmt.Errorf("create invite %s: %w", inviteTarget.resourceID, err)
+			}
+			resolvedUserIDs[index] = userID
+			return nil
+		})
+	}
+
+	if err := orderedtasks.Run(e.ctx, inviteUsernameResolutionConcurrency, tasks); err != nil {
+		return err
+	}
+
+	for i, target := range targets {
+		e.resolvedInviteUserIDs[target.key] = resolvedUserIDs[i]
+	}
+	return nil
+}
+
+func (e *executor) collectInviteUsernameTargets(actions []gitopsplan.Action) []inviteUsernameTarget {
+	seen := make(map[string]struct{}, len(actions))
+	targets := make([]inviteUsernameTarget, 0, len(actions))
+
+	for _, action := range actions {
+		if !action.Executable ||
+			action.ResourceType != gitopsplan.ActionResourceTypeInvite ||
+			action.Operation != gitopsplan.ActionOperationCreate {
+			continue
+		}
+
+		invite, ok := e.desiredInvites[action.ResourceID]
+		if !ok || !invite.Username.Present || invite.Username.Null {
+			continue
+		}
+
+		username := strings.TrimSpace(invite.Username.Value)
+		key := inviteUsernameKey(username)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		targets = append(targets, inviteUsernameTarget{
+			key:        key,
+			username:   username,
+			resourceID: action.ResourceID,
+		})
+	}
+
+	return targets
+}
+
+func (e *executor) resolveInviteUserID(username string) (int64, error) {
+	key := inviteUsernameKey(username)
+	if userID, ok := e.resolvedInviteUserIDs[key]; ok && userID > 0 {
+		return userID, nil
+	}
+
+	userID, err := e.lookupInviteUserID(e.ctx, strings.TrimSpace(username))
+	if err != nil {
+		return 0, err
+	}
+	e.resolvedInviteUserIDs[key] = userID
+	return userID, nil
+}
+
+func (e *executor) lookupInviteUserID(ctx context.Context, username string) (int64, error) {
+	user, err := ghusers.GetUserByUsername(ctx, ghusers.GetUserByUsernameOptions{
+		Service:  e.userService,
+		Username: username,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if user == nil || user.ID == nil || *user.ID <= 0 {
+		return 0, fmt.Errorf("resolved invite username %q without a valid user ID: %w", username, githubpkg.ErrInvalidFieldValue)
+	}
+	return *user.ID, nil
 }
 
 func (e *executor) resolveInvitationTeamIDs(teamSlugs []string) ([]int64, error) {
