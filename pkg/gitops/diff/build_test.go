@@ -726,6 +726,8 @@ invites: []
 func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 	t.Parallel()
 
+	const waitTimeout = 5 * time.Second
+
 	releases := make([]chan struct{}, 6)
 	for i := range releases {
 		releases[i] = make(chan struct{})
@@ -748,17 +750,21 @@ func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 		}
 	}
 
+	phases := []actionPhase{
+		buildPhase(0, ActionResourceTypeRepository, "repositories"),
+		buildPhase(1, ActionResourceTypeTeam, "teams"),
+		buildPhase(2, ActionResourceTypeOrganizationMember, "organization-members"),
+		buildPhase(3, ActionResourceTypeInvite, "invites"),
+		buildPhase(4, ActionResourceTypeTeamMember, "team-members"),
+		buildPhase(5, ActionResourceTypeTeamRepositoryPermission, "team-repository-permissions"),
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	resultCh := make(chan [][]Action, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		phaseResults, err := runPhases(context.Background(), diffPhaseConcurrency, []actionPhase{
-			buildPhase(0, ActionResourceTypeRepository, "repositories"),
-			buildPhase(1, ActionResourceTypeTeam, "teams"),
-			buildPhase(2, ActionResourceTypeOrganizationMember, "organization-members"),
-			buildPhase(3, ActionResourceTypeInvite, "invites"),
-			buildPhase(4, ActionResourceTypeTeamMember, "team-members"),
-			buildPhase(5, ActionResourceTypeTeamRepositoryPermission, "team-repository-permissions"),
-		})
+		phaseResults, err := runPhases(runCtx, len(phases), phases)
 		if err != nil {
 			errCh <- err
 			return
@@ -766,9 +772,17 @@ func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 		resultCh <- phaseResults
 	}()
 
+	startTimeout := time.NewTimer(waitTimeout)
+	defer startTimeout.Stop()
 	seen := make(map[int]struct{}, len(releases))
 	for len(seen) < len(releases) {
-		seen[<-started] = struct{}{}
+		select {
+		case index := <-started:
+			seen[index] = struct{}{}
+		case <-startTimeout.C:
+			cancel()
+			t.Fatal("timed out waiting for all phase goroutines to start")
+		}
 	}
 	for _, index := range []int{1, 3, 5, 4, 2, 0} {
 		close(releases[index])
@@ -778,9 +792,14 @@ func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 		phaseResults [][]Action
 		err          error
 	)
+	resultTimeout := time.NewTimer(waitTimeout)
+	defer resultTimeout.Stop()
 	select {
 	case phaseResults = <-resultCh:
 	case err = <-errCh:
+	case <-resultTimeout.C:
+		cancel()
+		t.Fatal("timed out waiting for phase results")
 	}
 	if err != nil {
 		t.Fatalf("runPhases returned error: %v", err)
