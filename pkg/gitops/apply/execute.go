@@ -17,6 +17,10 @@ import (
 
 // Options defines the inputs and GitHub service dependencies required to apply
 // one planner report.
+//
+// UserService must be safe for concurrent read calls. Apply pre-resolves
+// username-based invite targets with bounded concurrent lookups before
+// sequential invitation writes begin.
 type Options struct {
 	Desired             config.OrganizationConfig
 	Actual              *state.OrganizationState

@@ -16,8 +16,9 @@ import (
 const inviteUsernameResolutionConcurrency = 8
 
 type inviteUsernameTarget struct {
-	key      string
-	username string
+	key        string
+	username   string
+	resourceID string
 }
 
 func (e *executor) executeInviteAction(action gitopsplan.Action) error {
@@ -91,7 +92,7 @@ func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action) error 
 		tasks = append(tasks, func(ctx context.Context) error {
 			userID, err := e.lookupInviteUserID(ctx, target.username)
 			if err != nil {
-				return err
+				return fmt.Errorf("create invite %s: %w", target.resourceID, err)
 			}
 			resolvedUserIDs[i] = userID
 			return nil
@@ -134,8 +135,9 @@ func (e *executor) collectInviteUsernameTargets(actions []gitopsplan.Action) []i
 		}
 		seen[key] = struct{}{}
 		targets = append(targets, inviteUsernameTarget{
-			key:      key,
-			username: username,
+			key:        key,
+			username:   username,
+			resourceID: action.ResourceID,
 		})
 	}
 

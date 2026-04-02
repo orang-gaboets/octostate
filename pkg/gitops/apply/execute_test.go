@@ -1060,6 +1060,9 @@ func TestExecuteInviteUsernamePreResolutionReturnsFirstSeenLookupError(t *testin
 	if !errors.Is(err, firstErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, firstErr)
 	}
+	if !strings.Contains(err.Error(), "create invite username:first") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
 }
 
 func TestExecuteInviteUsernamePreResolutionCancelsSiblingLookups(t *testing.T) {
