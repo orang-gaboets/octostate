@@ -126,26 +126,34 @@ func flattenPhaseResults(phaseResults [][]Action) []Action {
 	return actions
 }
 
+func actionsPhase(run func() []Action) actionPhase {
+	return func(ctx context.Context) ([]Action, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return run(), nil
+	}
+}
+
+func erroringActionsPhase(run func() ([]Action, error)) actionPhase {
+	return func(ctx context.Context) ([]Action, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return run()
+	}
+}
+
 func (b builder) phases() []actionPhase {
 	return []actionPhase{
-		func(context.Context) ([]Action, error) {
-			return b.planRepositories(), nil
-		},
-		func(context.Context) ([]Action, error) {
-			return b.planTeams(), nil
-		},
-		func(context.Context) ([]Action, error) {
-			return b.planOrganizationMembers(), nil
-		},
-		func(context.Context) ([]Action, error) {
+		actionsPhase(b.planRepositories),
+		actionsPhase(b.planTeams),
+		actionsPhase(b.planOrganizationMembers),
+		erroringActionsPhase(func() ([]Action, error) {
 			return b.appendInviteActions(nil)
-		},
-		func(context.Context) ([]Action, error) {
-			return b.planTeamMembers(), nil
-		},
-		func(context.Context) ([]Action, error) {
-			return b.planTeamRepositoryPermissions(), nil
-		},
+		}),
+		actionsPhase(b.planTeamMembers),
+		actionsPhase(b.planTeamRepositoryPermissions),
 	}
 }
 

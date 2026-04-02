@@ -728,7 +728,19 @@ func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 
 	const waitTimeout = 5 * time.Second
 
-	releases := make([]chan struct{}, 6)
+	phaseDefinitions := []struct {
+		resourceType ActionResourceType
+		resourceID   string
+	}{
+		{resourceType: ActionResourceTypeRepository, resourceID: "repositories"},
+		{resourceType: ActionResourceTypeTeam, resourceID: "teams"},
+		{resourceType: ActionResourceTypeOrganizationMember, resourceID: "organization-members"},
+		{resourceType: ActionResourceTypeInvite, resourceID: "invites"},
+		{resourceType: ActionResourceTypeTeamMember, resourceID: "team-members"},
+		{resourceType: ActionResourceTypeTeamRepositoryPermission, resourceID: "team-repository-permissions"},
+	}
+
+	releases := make([]chan struct{}, len(phaseDefinitions))
 	for i := range releases {
 		releases[i] = make(chan struct{})
 	}
@@ -750,13 +762,9 @@ func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 		}
 	}
 
-	phases := []actionPhase{
-		buildPhase(0, ActionResourceTypeRepository, "repositories"),
-		buildPhase(1, ActionResourceTypeTeam, "teams"),
-		buildPhase(2, ActionResourceTypeOrganizationMember, "organization-members"),
-		buildPhase(3, ActionResourceTypeInvite, "invites"),
-		buildPhase(4, ActionResourceTypeTeamMember, "team-members"),
-		buildPhase(5, ActionResourceTypeTeamRepositoryPermission, "team-repository-permissions"),
+	phases := make([]actionPhase, 0, len(phaseDefinitions))
+	for index, phaseDefinition := range phaseDefinitions {
+		phases = append(phases, buildPhase(index, phaseDefinition.resourceType, phaseDefinition.resourceID))
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
