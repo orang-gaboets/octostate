@@ -981,26 +981,15 @@ func TestExecuteInviteUsernamePreResolutionCachesAndBoundsConcurrency(t *testing
 		done <- execErr
 	}()
 
-	for i := 0; i < inviteUsernameResolutionConcurrency; i++ {
-		select {
-		case <-started:
-		case <-time.After(time.Second):
-			t.Fatal("timed out waiting for concurrent username lookups to start")
-		}
-	}
+	waitForSignals(t, started, inviteUsernameResolutionConcurrency, "concurrent username lookups to start")
 	if got := maxLookups.Load(); got > inviteUsernameResolutionConcurrency {
 		t.Fatalf("unexpected concurrent username lookups: got %d want <= %d", got, inviteUsernameResolutionConcurrency)
 	}
 
 	close(release)
 
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for execute to finish")
+	if err := waitForError(t, done, "execute to finish"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if got, want := lookupCalls.Load(), int64(len(usernames)); got != want {
@@ -1111,11 +1100,7 @@ func TestExecuteInviteUsernamePreResolutionCancelsSiblingLookups(t *testing.T) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
 
-	select {
-	case <-secondCanceled:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for sibling lookup cancellation")
-	}
+	waitForSignal(t, secondCanceled, "sibling lookup cancellation")
 }
 
 func TestExecuteTeamUpdateClearsParent(t *testing.T) {
@@ -1695,5 +1680,50 @@ func updateAtomicMax(target *atomic.Int64, candidate int64) {
 		if target.CompareAndSwap(current, candidate) {
 			return
 		}
+	}
+}
+
+const concurrencyTestTimeout = 2 * time.Second
+
+func waitForSignals(t *testing.T, ch <-chan struct{}, count int, description string) {
+	t.Helper()
+
+	timer := time.NewTimer(concurrencyTestTimeout)
+	defer timer.Stop()
+
+	for range count {
+		select {
+		case <-ch:
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s", description)
+		}
+	}
+}
+
+func waitForSignal(t *testing.T, ch <-chan struct{}, description string) {
+	t.Helper()
+
+	timer := time.NewTimer(concurrencyTestTimeout)
+	defer timer.Stop()
+
+	select {
+	case <-ch:
+	case <-timer.C:
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func waitForError(t *testing.T, ch <-chan error, description string) error {
+	t.Helper()
+
+	timer := time.NewTimer(concurrencyTestTimeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-ch:
+		return err
+	case <-timer.C:
+		t.Fatalf("timed out waiting for %s", description)
+		return nil
 	}
 }
