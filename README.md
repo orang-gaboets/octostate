@@ -125,6 +125,7 @@ workflow orchestration around when `validate`, `plan`, `apply`, `pull`, and
 
 ### GitOps
 - [GitOps overview](docs/gitops/overview.md)
+- [GitOps architecture](docs/gitops/architecture.md)
 - [Control-repo integration](docs/gitops/control-repo-integration.md)
 
 ### Maintainers

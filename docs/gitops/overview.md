@@ -199,3 +199,9 @@ A good working model is:
 - `plan` and `diff` explain the gap
 - `apply` executes the supported part of the live gap
 - snapshots make offline drift workflows possible
+
+
+## Related Docs
+
+- [GitOps architecture](./architecture.md)
+- [Control-repo integration](./control-repo-integration.md)

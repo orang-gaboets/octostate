@@ -108,5 +108,6 @@ When integrating this CLI into automation, it helps to assume:
 ## Related Docs
 
 - [GitOps Overview](./overview.md)
+- [GitOps Architecture](./architecture.md)
 - [Config Commands](../cli/config.md)
 - [Audit Commands](../cli/audit.md)
