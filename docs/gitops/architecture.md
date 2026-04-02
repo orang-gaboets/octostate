@@ -11,23 +11,23 @@ commands move data through the engine.
 
 ```mermaid
 flowchart LR
-    A["config/organization.yaml"] --> B["pkg/gitops/config\nload + normalize"]
+    A["config/organization.yaml"] --> B["pkg/gitops/config<br/>load + normalize"]
     B --> C["semantic validation"]
 
-    C --> D["pkg/gitops/collector\nlive GitHub reads"]
-    C --> E["pkg/gitops/snapshot\nstate/actual/snapshot.json"]
+    C --> D["pkg/gitops/collector<br/>live GitHub reads"]
+    C --> E["pkg/gitops/snapshot<br/>state/actual/snapshot.json"]
 
-    D --> F["pkg/gitops/state\nnormalized OrganizationState"]
+    D --> F["pkg/gitops/state<br/>normalized OrganizationState"]
     E --> F
 
-    F --> G["pkg/gitops/plan\nlive reconciliation report"]
-    F --> H["pkg/gitops/diff\noffline drift report"]
+    F --> G["pkg/gitops/plan<br/>live reconciliation report"]
+    F --> H["pkg/gitops/diff<br/>offline drift report"]
 
     G --> I["config plan JSON"]
-    G --> J["pkg/gitops/apply\nexecute supported create/update actions"]
+    G --> J["pkg/gitops/apply<br/>execute supported create/update actions"]
     J --> K["config apply JSON"]
 
-    D --> L["audit pull\nwrite snapshot.json"]
+    D --> L["audit pull<br/>write snapshot.json"]
     H --> M["audit diff JSON"]
 ```
 
