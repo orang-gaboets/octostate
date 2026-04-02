@@ -158,14 +158,12 @@ func runPhases(ctx context.Context, limit int, phases []actionPhase) ([][]Action
 			continue
 		}
 
-		index := i
-		run := phase
 		tasks = append(tasks, func(ctx context.Context) error {
-			actions, err := run(ctx)
+			actions, err := phase(ctx)
 			if err != nil {
 				return err
 			}
-			results[index] = actions
+			results[i] = actions
 			return nil
 		})
 	}
