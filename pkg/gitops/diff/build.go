@@ -1,9 +1,11 @@
 package diff
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/orang-gaboets/repo-builder/internal/orderedtasks"
 	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
 	"github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
@@ -81,15 +83,10 @@ func Build(opt Options) (*Report, error) {
 		SnapshotPulledAt: opt.Snapshot.PulledAt.UTC(),
 	}
 
-	report.Actions = append(report.Actions, builder.planRepositories()...)
-	report.Actions = append(report.Actions, builder.planTeams()...)
-	report.Actions = append(report.Actions, builder.planOrganizationMembers()...)
-	report.Actions, err = builder.appendInviteActions(report.Actions)
+	report.Actions, err = builder.buildActions()
 	if err != nil {
 		return nil, err
 	}
-	report.Actions = append(report.Actions, builder.planTeamMembers()...)
-	report.Actions = append(report.Actions, builder.planTeamRepositoryPermissions()...)
 	report.Normalize()
 	return report, nil
 }
@@ -98,6 +95,91 @@ type builder struct {
 	desired                         config.OrganizationConfig
 	actual                          state.OrganizationState
 	resolvedInviteUserIDsByUsername map[string]int64
+}
+
+const diffPhaseConcurrency = 6
+
+type actionPhase func(context.Context) ([]Action, error)
+
+func (b builder) buildActions() ([]Action, error) {
+	return b.buildActionsWithLimit(diffPhaseConcurrency)
+}
+
+func (b builder) buildActionsWithLimit(limit int) ([]Action, error) {
+	phaseResults, err := runPhases(context.Background(), limit, b.phases())
+	if err != nil {
+		return nil, err
+	}
+	return flattenPhaseResults(phaseResults), nil
+}
+
+func flattenPhaseResults(phaseResults [][]Action) []Action {
+	totalActions := 0
+	for _, actions := range phaseResults {
+		totalActions += len(actions)
+	}
+
+	actions := make([]Action, 0, totalActions)
+	for _, phaseActions := range phaseResults {
+		actions = append(actions, phaseActions...)
+	}
+	return actions
+}
+
+func actionsPhase(run func() []Action) actionPhase {
+	return func(ctx context.Context) ([]Action, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return run(), nil
+	}
+}
+
+func erroringActionsPhase(run func() ([]Action, error)) actionPhase {
+	return func(ctx context.Context) ([]Action, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return run()
+	}
+}
+
+func (b builder) phases() []actionPhase {
+	return []actionPhase{
+		actionsPhase(b.planRepositories),
+		actionsPhase(b.planTeams),
+		actionsPhase(b.planOrganizationMembers),
+		erroringActionsPhase(func() ([]Action, error) {
+			return b.appendInviteActions(nil)
+		}),
+		actionsPhase(b.planTeamMembers),
+		actionsPhase(b.planTeamRepositoryPermissions),
+	}
+}
+
+func runPhases(ctx context.Context, limit int, phases []actionPhase) ([][]Action, error) {
+	results := make([][]Action, len(phases))
+	tasks := make([]orderedtasks.Task, 0, len(phases))
+
+	for i, phase := range phases {
+		if phase == nil {
+			continue
+		}
+
+		tasks = append(tasks, func(ctx context.Context) error {
+			actions, err := phase(ctx)
+			if err != nil {
+				return err
+			}
+			results[i] = actions
+			return nil
+		})
+	}
+
+	if err := orderedtasks.Run(ctx, limit, tasks); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func organizationStateFromSnapshot(actual *snapshot.ActualSnapshot) state.OrganizationState {

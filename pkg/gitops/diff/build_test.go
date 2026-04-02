@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -719,6 +720,177 @@ invites: []
 	}}
 	if !reflect.DeepEqual(report.Actions, want) {
 		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
+	}
+}
+
+func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
+	t.Parallel()
+
+	const waitTimeout = 5 * time.Second
+
+	phaseDefinitions := []struct {
+		resourceType ActionResourceType
+		resourceID   string
+	}{
+		{resourceType: ActionResourceTypeRepository, resourceID: "repositories"},
+		{resourceType: ActionResourceTypeTeam, resourceID: "teams"},
+		{resourceType: ActionResourceTypeOrganizationMember, resourceID: "organization-members"},
+		{resourceType: ActionResourceTypeInvite, resourceID: "invites"},
+		{resourceType: ActionResourceTypeTeamMember, resourceID: "team-members"},
+		{resourceType: ActionResourceTypeTeamRepositoryPermission, resourceID: "team-repository-permissions"},
+	}
+
+	releases := make([]chan struct{}, len(phaseDefinitions))
+	for i := range releases {
+		releases[i] = make(chan struct{})
+	}
+
+	started := make(chan int, len(releases))
+	buildPhase := func(index int, resourceType ActionResourceType, resourceID string) actionPhase {
+		return func(ctx context.Context) ([]Action, error) {
+			started <- index
+			select {
+			case <-releases[index]:
+				return []Action{{
+					ResourceType: resourceType,
+					Operation:    ActionOperationCreate,
+					ResourceID:   resourceID,
+				}}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
+
+	phases := make([]actionPhase, 0, len(phaseDefinitions))
+	for index, phaseDefinition := range phaseDefinitions {
+		phases = append(phases, buildPhase(index, phaseDefinition.resourceType, phaseDefinition.resourceID))
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resultCh := make(chan [][]Action, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		phaseResults, err := runPhases(runCtx, len(phases), phases)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- phaseResults
+	}()
+
+	startTimeout := time.NewTimer(waitTimeout)
+	defer startTimeout.Stop()
+	seen := make(map[int]struct{}, len(releases))
+	for len(seen) < len(releases) {
+		select {
+		case index := <-started:
+			seen[index] = struct{}{}
+		case <-startTimeout.C:
+			cancel()
+			t.Fatal("timed out waiting for all phase goroutines to start")
+		}
+	}
+	for _, index := range []int{1, 3, 5, 4, 2, 0} {
+		close(releases[index])
+	}
+
+	var (
+		phaseResults [][]Action
+		err          error
+	)
+	resultTimeout := time.NewTimer(waitTimeout)
+	defer resultTimeout.Stop()
+	select {
+	case phaseResults = <-resultCh:
+	case err = <-errCh:
+	case <-resultTimeout.C:
+		cancel()
+		t.Fatal("timed out waiting for phase results")
+	}
+	if err != nil {
+		t.Fatalf("runPhases returned error: %v", err)
+	}
+
+	actions := flattenPhaseResults(phaseResults)
+	wantResourceTypes := []ActionResourceType{
+		ActionResourceTypeRepository,
+		ActionResourceTypeTeam,
+		ActionResourceTypeOrganizationMember,
+		ActionResourceTypeInvite,
+		ActionResourceTypeTeamMember,
+		ActionResourceTypeTeamRepositoryPermission,
+	}
+	if len(actions) != len(wantResourceTypes) {
+		t.Fatalf("unexpected action count: got %d want %d", len(actions), len(wantResourceTypes))
+	}
+
+	gotResourceTypes := make([]ActionResourceType, 0, len(actions))
+	for _, action := range actions {
+		gotResourceTypes = append(gotResourceTypes, action.ResourceType)
+	}
+	if !reflect.DeepEqual(gotResourceTypes, wantResourceTypes) {
+		t.Fatalf("unexpected action order: got %#v want %#v", gotResourceTypes, wantResourceTypes)
+	}
+}
+
+func TestBuildActionsConcurrentMatchesSequential(t *testing.T) {
+	t.Parallel()
+
+	builder := largeFixtureBuilder()
+
+	want, err := builder.buildActionsWithLimit(1)
+	if err != nil {
+		t.Fatalf("buildActionsWithLimit returned error: %v", err)
+	}
+
+	got, err := builder.buildActions()
+	if err != nil {
+		t.Fatalf("buildActions returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected action set:\n got %#v\nwant %#v", got, want)
+	}
+}
+
+func TestBuildActionsInviteErrorMatchesSequential(t *testing.T) {
+	t.Parallel()
+
+	builder := builder{
+		desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Members: []config.OrganizationMemberSpec{
+				{Username: "alice", Role: "member"},
+			},
+			Invites: []config.InviteSpec{
+				{UserID: presentInt64(99)},
+			},
+		},
+		actual: state.OrganizationState{
+			Organization: "orang-gaboets",
+		},
+		resolvedInviteUserIDsByUsername: map[string]int64{
+			"alice": 99,
+		},
+	}
+
+	_, sequentialErr := builder.buildActionsWithLimit(1)
+	if sequentialErr == nil {
+		t.Fatal("expected sequential buildActionsWithLimit to fail")
+	}
+
+	_, concurrentErr := builder.buildActions()
+	if concurrentErr == nil {
+		t.Fatal("expected concurrent buildActions to fail")
+	}
+
+	if !errors.Is(concurrentErr, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected concurrent error: got %v want %v", concurrentErr, githubpkg.ErrInvalidFieldValue)
+	}
+	if concurrentErr.Error() != sequentialErr.Error() {
+		t.Fatalf("unexpected concurrent error text: got %q want %q", concurrentErr.Error(), sequentialErr.Error())
 	}
 }
 
