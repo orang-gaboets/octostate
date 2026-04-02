@@ -9,7 +9,7 @@ import (
 )
 
 func BenchmarkBuildActionsConcurrency(b *testing.B) {
-	builder := benchmarkBuilder()
+	builder := largeFixtureBuilder()
 
 	benchmark := func(b *testing.B, limit int) {
 		b.Helper()
@@ -30,7 +30,7 @@ func BenchmarkBuildActionsConcurrency(b *testing.B) {
 	})
 }
 
-func benchmarkBuilder() builder {
+func largeFixtureBuilder() builder {
 	const organization = "orang-gaboets"
 	const memberCount = 120
 	const teamCount = 30

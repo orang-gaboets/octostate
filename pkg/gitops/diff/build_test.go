@@ -811,7 +811,7 @@ func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 func TestBuildActionsConcurrentMatchesSequential(t *testing.T) {
 	t.Parallel()
 
-	builder := benchmarkBuilder()
+	builder := largeFixtureBuilder()
 
 	want, err := builder.buildActionsWithLimit(1)
 	if err != nil {
