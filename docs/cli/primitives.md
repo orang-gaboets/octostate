@@ -29,7 +29,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 
 ### `repo-builder organization list-repos`
 
@@ -42,7 +42,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--type` (optional): Type of repositories to list (default is `all`)
 
 ### `repo-builder organization list-members`
@@ -56,7 +56,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--role` (optional): Role of members to list (default is `all`)
 
 ### `repo-builder organization list-teams`
@@ -70,7 +70,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 
 ### `repo-builder organization list-invitations`
 
@@ -83,7 +83,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 
 ### `repo-builder organization invite`
 
@@ -96,7 +96,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--id` (required unless `--username` is provided): GitHub user ID to invite
 - `--username` (required unless `--id` is provided): GitHub username to invite
 - `--dry-run` (optional): Preview the invitation request without creating it (username lookups are skipped in dry-run mode)
@@ -114,7 +114,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 
 ### `repo-builder repo create-from-template`
@@ -128,7 +128,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--template-org` (optional): Organisation that owns the template repository (defaults to `--org`)
 - `--template-name` (required): Name of the template repository
 - `--name` (required): New repository name
@@ -149,7 +149,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
 - `--dry-run` (optional): Preview repository deletion without deleting it
@@ -165,7 +165,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--desc` (optional): Repository description
 - `--homepage` (optional): Repository homepage URL
@@ -188,7 +188,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to add
 - `--dry-run` (optional): Preview topic additions without updating the repository
@@ -204,7 +204,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 
 ### `repo-builder topic replace`
@@ -218,7 +218,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to set
 - `--dry-run` (optional): Preview topic replacement without updating the repository
@@ -236,7 +236,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--name` (required): Team name
 - `--desc` (optional): Team description
 - `--secret` (optional): Create a secret team (default is false)
@@ -254,7 +254,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--name` (optional): New team name
 - `--desc` (optional): New team description (pass an empty string to clear)
@@ -266,7 +266,7 @@ Flags:
 ### `repo-builder team delete-by-slug`
 
 ```bash
-repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name> (--yes | --dry-run)
+repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> (--yes | --dry-run)
 ```
 
 Flags:
@@ -274,7 +274,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
 - `--dry-run` (optional): Preview team deletion without deleting the team
@@ -282,7 +282,7 @@ Flags:
 ### `repo-builder team get-by-slug`
 
 ```bash
-repo-builder team get-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-name>
+repo-builder team get-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>
 ```
 
 Flags:
@@ -290,7 +290,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 
 ### `repo-builder team members list`
@@ -304,7 +304,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--role` (optional): Team member role filter (`all`, `member`, or `maintainer`; default is `all`)
 
@@ -319,7 +319,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--username` (required): GitHub username to add/update in the team
 - `--role` (optional): Team membership role (`member` or `maintainer`; default is `member`)
@@ -336,7 +336,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--username` (required): GitHub username to remove from the team
 - `--dry-run` (optional): Preview the membership removal without calling GitHub
@@ -352,7 +352,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 
 ### `repo-builder team repo permissions add`
@@ -366,7 +366,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
 - `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
@@ -384,7 +384,7 @@ Flags:
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
-- `--org` (required): GitHub organisation name
+- `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
 - `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
