@@ -258,7 +258,7 @@ Flags:
 - `--slug` (required): Team slug (URL-friendly name)
 - `--name` (optional): New team name
 - `--desc` (optional): New team description (pass an empty string to clear)
-- `--secret` (optional): Set privacy to secret (`true`) or visible (`false`) when provided
+- `--secret` (optional): Set privacy to secret (`true`) or closed (`false`) when provided
 - `--parent` (optional): Parent team slug to assign
 - `--clear-parent` (optional): Remove the parent team relationship
 - `--dry-run` (optional): Preview team edits without updating the team
