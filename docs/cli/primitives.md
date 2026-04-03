@@ -129,7 +129,7 @@ Flags:
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organization name
-- `--template-org` (optional): Organisation that owns the template repository (defaults to `--org`)
+- `--template-org` (optional): Organization that owns the template repository (defaults to `--org`)
 - `--template-name` (required): Name of the template repository
 - `--name` (required): New repository name
 - `--desc` (optional): Repository description
