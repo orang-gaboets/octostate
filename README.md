@@ -106,7 +106,7 @@ repo-builder audit diff --config-dir ./config --state-dir ./state --fail-on-drif
 ```
 
 If you are starting from existing live GitHub state, `config sync-from-live`
-can generate or update `organization.yaml` for bootstrap, adopt, or
+can generate or update `config/organization.yaml` for bootstrap, adopt, or
 materialize flows.
 
 ## Engine vs Control Repo

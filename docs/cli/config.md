@@ -1,7 +1,7 @@
 # Config Commands
 
-The `config` command group drives the live GitOps workflow against
-`organization.yaml`.
+The `config` command group drives the live GitOps workflow against an
+`organization.yaml` desired-state file, typically `config/organization.yaml`.
 
 Use these commands when you want to validate desired state, generate or update
 that desired state from live GitHub, preview reconciliation, or apply the

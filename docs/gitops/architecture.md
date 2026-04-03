@@ -34,7 +34,7 @@ flowchart LR
 ## Package Ownership
 
 ### `pkg/gitops/config`
-- Loads `organization.yaml`
+- Loads `config/organization.yaml`
 - Uses strict YAML decoding
 - Applies safe load-time normalization
 - Leaves semantic validation as a separate step
@@ -83,7 +83,7 @@ Current collector concurrency limits:
 ## Command Workflows
 
 ### `repo-builder config plan`
-1. Load and normalize `organization.yaml`
+1. Load and normalize `config/organization.yaml`
 2. Validate desired state semantically
 3. Collect live GitHub state through `collector`
 4. Build the reconciliation report through `plan`

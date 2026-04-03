@@ -1,11 +1,11 @@
 # GitOps Overview
 
 `repo-builder` ships a GitOps engine for managing a GitHub organization from a
-single desired-state file, `organization.yaml`.
+single desired-state file, typically `config/organization.yaml`.
 
 At a high level, the engine has five responsibilities:
 
-1. Load desired state from `organization.yaml`
+1. Load desired state from `config/organization.yaml`
 2. Read actual state from either live GitHub APIs or a stored snapshot
 3. Compare desired state to actual state
 4. Produce deterministic machine-readable reports
@@ -18,7 +18,7 @@ organization-specific approval workflow or automation policy around that engine.
 
 The main GitOps flow looks like this:
 
-1. Load and normalize desired config from `organization.yaml`
+1. Load and normalize desired config from `config/organization.yaml`
 2. Validate that config semantically
 3. Build actual organization state:
    - from live GitHub for `config plan`, `config apply`, and `audit pull`
@@ -30,7 +30,7 @@ The main GitOps flow looks like this:
 ## Main Packages
 
 - `pkg/gitops/config`
-  - Defines the desired-state schema loaded from `organization.yaml`
+  - Defines the desired-state schema loaded from `config/organization.yaml`
   - Performs strict decoding and load-time normalization
   - Separates loading from semantic validation
 - `pkg/gitops/state`
@@ -52,7 +52,7 @@ The main GitOps flow looks like this:
 - `pkg/gitops/syncfromlive`
   - Builds desired-state proposals from live GitHub state for bootstrap, adopt, and materialize flows
 
-## Desired State: `organization.yaml`
+## Desired State: `config/organization.yaml`
 
 The desired-state model centers on one canonical file:
 
@@ -90,7 +90,7 @@ Semantics:
 - explicit `null`: invalid
 
 This is why plan, diff, and apply only reconcile those fields when they were
-explicitly declared in `organization.yaml`.
+explicitly declared in `config/organization.yaml`.
 
 ## Actual State and Determinism
 
@@ -164,7 +164,7 @@ reported back as skipped state rather than being executed.
 state/actual/snapshot.json
 ```
 
-`audit diff` then compares `organization.yaml` against that stored snapshot
+`audit diff` then compares `config/organization.yaml` against that stored snapshot
 without calling GitHub APIs.
 
 This offline path is useful for:
@@ -175,7 +175,7 @@ This offline path is useful for:
 ## Command Meanings
 
 - `repo-builder config validate`
-  - Validate `organization.yaml` offline
+  - Validate `config/organization.yaml` offline
 - `repo-builder config sync-from-live --mode bootstrap`
   - Generate a baseline desired config from live GitHub state
 - `repo-builder config sync-from-live --mode adopt`
@@ -194,7 +194,7 @@ This offline path is useful for:
 ## Mental Model
 
 A good working model is:
-- `organization.yaml` is the desired contract
+- `config/organization.yaml` is the desired contract
 - live GitHub or `snapshot.json` is the actual state source
 - `plan` and `diff` explain the gap
 - `apply` executes the supported part of the live gap

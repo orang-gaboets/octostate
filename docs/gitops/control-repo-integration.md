@@ -35,7 +35,7 @@ config/
   organization.yaml
 ```
 
-The control repo should treat `organization.yaml` as the source of truth for
+The control repo should treat `config/organization.yaml` as the source of truth for
 supported GitOps state such as:
 - members
 - invites

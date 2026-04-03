@@ -1,7 +1,7 @@
 # Primitive Commands
 
 These commands operate directly on GitHub resources instead of going through
-`organization.yaml`.
+the desired-state file (`config/organization.yaml` in the common layout).
 
 All primitive commands require GitHub authentication. Supply exactly one of:
 - `--token`
