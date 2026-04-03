@@ -54,10 +54,12 @@ also work.
 Use `--verbose` (or `-v`) to enable diagnostic logs on stderr while keeping
 command results on stdout.
 
-Command results are written to stdout as JSON:
+Most command results are written to stdout as JSON:
 - query/list/get commands return resource payloads
 - mutating commands return an operation envelope with `status`, `message`, and
   `data`
+- documented exceptions may use a different stdout format; for example,
+  `config sync-from-live` outputs YAML by default unless `--write` is used
 
 Example mutating output:
 

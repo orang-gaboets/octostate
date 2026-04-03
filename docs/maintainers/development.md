@@ -78,6 +78,7 @@ go test ./... -cover -coverprofile=coverage.out
 
 When developing or reviewing commands, remember:
 - diagnostic logs belong on stderr
-- command results belong on stdout as JSON
+- command results belong on stdout, with JSON as the default for most commands
+- documented exceptions may use a different stdout format; for example, `repo-builder config sync-from-live` outputs YAML by default unless `--write` is used
 - query/list/get commands return resource payloads
 - mutating commands return an operation envelope with `status`, `message`, and `data`
