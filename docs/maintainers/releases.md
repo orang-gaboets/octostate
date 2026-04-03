@@ -5,9 +5,11 @@ and the [`release-please-action`](https://github.com/googleapis/release-please-a
 to automate release PRs, changelog updates, Git tags, and GitHub Releases from
 Conventional Commits on `main`.
 
-Version updates for this project are performed by `release-please` using a
-GitHub App installation token rather than a user-owned personal access token.
-Release state is anchored explicitly in:
+Version updates for this project are performed by `release-please`,
+preferably using a GitHub App installation token rather than a
+user-owned personal access token. If app credentials are not configured,
+the workflow falls back to `GITHUB_TOKEN`. Release state is anchored
+explicitly in:
 - `release-please-config.json`
 - `.release-please-manifest.json`
 
