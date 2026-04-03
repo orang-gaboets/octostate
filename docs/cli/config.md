@@ -1,0 +1,337 @@
+# Config Commands
+
+The `config` command group drives the live GitOps workflow against an
+`organization.yaml` desired-state file, typically `config/organization.yaml`.
+
+Use these commands when you want to validate desired state, generate or update
+that desired state from live GitHub, preview reconciliation, or apply the
+supported portion of the plan.
+
+Authentication rules:
+- `repo-builder config validate` is fully offline and does not require GitHub auth.
+- The other `config` commands require exactly one auth method:
+  - `--token`
+  - `--app-id`, `--installation-id`, and `--app-key-path`
+
+Examples below mostly use `$GITHUB_TOKEN` for brevity, but the same live
+commands also support GitHub App authentication with `--app-id`,
+`--installation-id`, and `--app-key-path`.
+
+## `repo-builder config validate`
+
+Validate desired-state configuration.
+
+```bash
+repo-builder config validate --config-dir ./config
+```
+
+Flags:
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Uses strict YAML decoding (unknown fields are rejected)
+- Runs semantic validation (duplicates, enum checks, references, parent cycles, invite identity rules)
+- Prints a JSON validation report to stdout
+- Does not call GitHub APIs (fully offline)
+
+Invite rules:
+- Each invite must declare exactly one of `username`, `email`, or `user_id`
+- Declaring more than one identity field is invalid
+- Declaring none of the identity fields is invalid
+- Declared `username` values must be valid GitHub usernames
+- Declared `email` values must be valid email addresses
+- Declared `user_id` values must be greater than zero
+- Declared empty or whitespace-only `username` / `email` values are rejected
+- Explicit `null` is rejected for `username`, `email`, and `user_id`
+
+Repository field rules:
+- `visibility` and `topics` are exact-reconcile fields
+- `template.owner` and `template.name` remain create-time inputs for repository creation
+- `description`, `homepage`, `allow_forking`, `archived`, and `is_template` are presence-aware optional fields
+- If one of those optional repository fields is omitted, GitOps leaves it unmanaged
+- Explicit empty strings for `description` or `homepage` clear those fields
+- Boolean repository fields are only managed when explicitly set to `true` or `false`
+- Explicit `null` is rejected for `description`, `homepage`, `allow_forking`, `archived`, and `is_template`
+- `allow_forking` is still ignored for private repositories
+
+Exit codes:
+- `0`: valid configuration
+- `2`: configuration loaded, but semantic validation failed
+- `1`: load/decode/runtime failure (for example missing file or malformed YAML)
+
+Example `organization.yaml`:
+
+```yaml
+organization: orang-gaboets
+members:
+  - username: alice
+    role: member
+
+invites:
+  - username: octocat
+    role: direct_member
+    team_slugs:
+      - platform
+
+repositories:
+  - name: repo-builder
+    visibility: private
+    template:
+      owner: orang-gaboets
+      name: repo-template
+
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    members:
+      - username: alice
+        role: maintainer
+    repositories:
+      - name: repo-builder
+        permission: push
+```
+
+## `repo-builder config sync-from-live`
+
+Build or update desired state from live GitHub.
+
+### Bootstrap desired-state config from live GitHub state
+
+```bash
+repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
+repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
+```
+
+Flags:
+- `--mode` (required): Sync mode to run (`bootstrap`, `adopt`, or `materialize`)
+- `--org` (required): GitHub organization to read from live state
+- `--config-dir` (required): Path to the config directory containing or receiving `organization.yaml`
+- `--write`: Write the generated `organization.yaml` into `--config-dir` instead of printing YAML to stdout
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Collects live GitHub organization state required for bootstrap generation
+- Builds a canonical `organization.yaml` proposal from:
+  - organization members
+  - repositories
+  - teams
+  - team memberships
+  - team repository permissions
+- Prints the generated YAML to stdout by default
+- Validates the generated config before printing or writing it
+- With `--write`, writes `<config-dir>/organization.yaml`
+
+Bootstrap rules:
+- Pending invites are excluded by default
+- Top-level `members:` are emitted for collected durable organization membership
+- Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
+- `allow_forking` is omitted for private repositories
+- Direct organization members outside teams are represented through top-level `members:`
+
+Write behavior:
+- `--write` fails if `<config-dir>/organization.yaml` already exists
+- Writes are atomic: the file is written to a temp file, hard-linked into place at `<config-dir>/organization.yaml`, and then the temp file is removed
+- Existing-target checks happen before GitHub authentication and live collection
+
+Example print-to-stdout use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+Example write use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+```
+
+### Adopt supported live state into an existing desired config
+
+```bash
+repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
+repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
+```
+
+Behavior:
+- Loads and validates the existing `<config-dir>/organization.yaml` before contacting GitHub
+- Collects live GitHub organization state required for adoption generation
+- Merges supported live state back into config for:
+  - top-level `members`
+  - repositories
+  - teams
+  - team memberships
+  - team repository permissions
+- Preserves existing invites that are still transitional; removes invites already satisfied by live org membership
+- Preserves existing config-only declarations; `adopt` does not auto-remove config that is missing from live state
+- Prints the adopted YAML to stdout by default
+- Validates the merged config before printing or writing it
+- With `--write`, atomically replaces `<config-dir>/organization.yaml`
+
+Adopt rules:
+- Pending invites are excluded by default
+- Top-level durable org membership is adopted into `members:`
+- Presence-aware repository fields are only updated from live when they are already explicitly managed in config
+- Newly adopted repositories leave presence-aware repository fields unmanaged; add those fields manually to `organization.yaml` if you want them explicit today
+- Existing config order is preserved where possible; newly adopted entries append deterministically
+
+Example print-to-stdout use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+Example write use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+```
+
+### Materialize unmanaged repository fields in an existing desired config
+
+```bash
+repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
+repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
+```
+
+Behavior:
+- Loads and validates the existing `<config-dir>/organization.yaml` before contacting GitHub
+- Collects only the live GitHub organization identity and repositories required for materialization
+- Fills currently unmanaged optional repository fields from live state for already-declared repositories only
+- Preserves `organization`, `members`, `invites`, `teams`, repository order, and already-managed repository fields
+- Does not adopt live-only repositories or remove config-only declarations
+- Prints the materialized YAML to stdout by default
+- Validates the merged config before printing or writing it
+- With `--write`, atomically replaces `<config-dir>/organization.yaml`
+
+Materialize rules:
+- Only these repository fields are materialized:
+  - `description`
+  - `homepage`
+  - `allow_forking`
+  - `archived`
+  - `is_template`
+- Empty live string values become explicit managed empty-string clears
+- Boolean live values, including `false`, become explicit managed booleans
+- `allow_forking` is not materialized for desired private repositories
+- If a repository is not yet declared in config, adopt it first and then materialize optional fields afterward
+
+Example print-to-stdout use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+Example write use:
+
+```bash
+go run ./cmd/repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+```
+
+## `repo-builder config plan`
+
+Preview the live reconciliation plan.
+
+```bash
+repo-builder config plan --config-dir ./config --token <token>
+```
+
+Flags:
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Runs semantic validation before contacting GitHub
+- Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
+- Builds a deterministic, read-only reconciliation plan
+- Prints a Terraform-style split JSON preview to stdout
+- Does not mutate GitHub state
+- Repository optional fields are only diffed when they are explicitly declared in config
+
+Plan preview fields:
+- `organization`
+- `plan_summary`
+- `executable_actions`
+- `skipped_actions`
+
+Action behavior:
+- `executable_actions` contains the supported changes that a later `config apply` command can carry out, such as `create` and `update`
+- `skipped_actions` contains unsupported live drift that is detected but not automatically reconciled, such as `delete` and `remove`
+- Both arrays keep deterministic action ordering so CI output and PR comments stay stable
+
+Example use:
+
+```bash
+go run ./cmd/repo-builder config plan --config-dir ./config --token "$GITHUB_TOKEN"
+```
+
+## `repo-builder config apply`
+
+Apply supported reconciliation changes.
+
+```bash
+repo-builder config apply --config-dir ./config --token <token> --dry-run
+repo-builder config apply --config-dir ./config --token <token>
+```
+
+Flags:
+- `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
+- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--app-id`: GitHub App ID (required if using GitHub App authentication)
+- `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
+- `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
+
+Behavior:
+- Loads `<config-dir>/organization.yaml`
+- Runs semantic validation before contacting GitHub
+- Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
+- Builds the deterministic reconciliation plan used by `config apply`
+- `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes
+- Live apply executes only supported executable `create` / `update` actions
+- Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
+- Repository creation currently requires `template.owner` and `template.name`
+- Omitted optional repository fields are left unmanaged during apply
+- Explicit empty `description` / `homepage` values are applied as clears
+- Explicit boolean repository values are only applied when declared in config
+
+Dry-run output fields:
+- `status`
+- `message`
+- `data.organization`
+- `data.plan_summary`
+- `data.executable_actions`
+- `data.skipped_actions`
+
+Live apply output fields:
+- `status`
+- `message`
+- `data.organization`
+- `data.plan_summary`
+- `data.executed_actions`
+- `data.skipped_actions`
+
+Exit codes:
+- `0`: apply or dry-run completed successfully
+- `2`: configuration loaded, but semantic validation failed
+- `1`: load/auth/collection/planning/apply failure
+
+Example dry-run:
+
+```bash
+go run ./cmd/repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
+```
+
+Example live apply:
+
+```bash
+go run ./cmd/repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN"
+```

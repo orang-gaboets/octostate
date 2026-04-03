@@ -155,7 +155,7 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
 	cmd.Flags().StringVar(&name, "name", "", "New team name")
 	cmd.Flags().StringVar(&desc, "desc", "", "New team description")
-	cmd.Flags().BoolVar(&secret, "secret", false, "Set team privacy to secret when true, visible when false")
+	cmd.Flags().BoolVar(&secret, "secret", false, "Set team privacy to secret when true, closed when false")
 	cmd.Flags().StringVar(&parent, "parent", "", "Parent team slug to assign (optional)")
 	cmd.Flags().BoolVar(&clearParent, "clear-parent", false, "Remove the parent team relationship")
 	safety.AddDryRunFlag(cmd, &dryRun)

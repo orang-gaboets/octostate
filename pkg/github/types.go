@@ -135,7 +135,7 @@ type TeamPrivacy string
 var (
 	// TeamPrivacySecret indicates a secret team.
 	TeamPrivacySecret TeamPrivacy = "secret"
-	// TeamPrivacyClosed indicates a visible team.
+	// TeamPrivacyClosed indicates a closed team (GitHub's non-secret team privacy mode).
 	TeamPrivacyClosed TeamPrivacy = "closed"
 )
 
