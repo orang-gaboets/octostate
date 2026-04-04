@@ -1,6 +1,6 @@
 # GitOps Overview
 
-`repo-builder` ships a GitOps engine for managing a GitHub organization from a
+`octostate` ships a GitOps engine for managing a GitHub organization from a
 single desired-state file, typically `config/organization.yaml`.
 
 At a high level, the engine has five responsibilities:
@@ -174,21 +174,21 @@ This offline path is useful for:
 
 ## Command Meanings
 
-- `repo-builder config validate`
+- `octostate config validate`
   - Validate `config/organization.yaml` offline
-- `repo-builder config sync-from-live --mode bootstrap`
+- `octostate config sync-from-live --mode bootstrap`
   - Generate a baseline desired config from live GitHub state
-- `repo-builder config sync-from-live --mode adopt`
+- `octostate config sync-from-live --mode adopt`
   - Merge supported live state back into an existing desired config
-- `repo-builder config sync-from-live --mode materialize`
+- `octostate config sync-from-live --mode materialize`
   - Fill unmanaged optional repository fields from live state for already-declared repositories
-- `repo-builder config plan`
+- `octostate config plan`
   - Preview deterministic reconciliation actions from desired vs live state
-- `repo-builder config apply`
+- `octostate config apply`
   - Reconcile GitHub to match desired config for supported create/update actions
-- `repo-builder audit pull`
+- `octostate audit pull`
   - Snapshot live GitHub state into `state/actual/snapshot.json`
-- `repo-builder audit diff`
+- `octostate audit diff`
   - Compare desired config against the stored snapshot offline
 
 ## Mental Model

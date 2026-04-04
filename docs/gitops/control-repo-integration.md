@@ -5,12 +5,12 @@ repository should own the organization-specific automation, review process,
 and policy around that engine.
 
 This page documents the engine-facing integration contract only: what a
-control repo is expected to provide, what `repo-builder` reads and writes, and
+control repo is expected to provide, what `octostate` reads and writes, and
 when the main GitOps commands are intended to run.
 
 ## Boundary
 
-`repo-builder` owns:
+`octostate` owns:
 - the CLI
 - the desired-state schema
 - validation, planning, apply, snapshot, and offline diff behavior
@@ -68,18 +68,18 @@ but that storage policy belongs to the control repo, not this engine.
 
 A typical integration sequence is:
 
-1. `repo-builder config validate`
+1. `octostate config validate`
    - Run on every desired-state change
    - Catches schema and semantic issues before any live GitHub calls
-2. `repo-builder config plan`
+2. `octostate config plan`
    - Run when you want a live reconciliation preview for review
    - Uses live GitHub state and produces deterministic executable/skipped actions
-3. `repo-builder config apply`
+3. `octostate config apply`
    - Run after the desired-state change is accepted
    - Executes only supported create/update actions against live GitHub
-4. `repo-builder audit pull`
+4. `octostate audit pull`
    - Run when you want to refresh the stored actual-state snapshot
-5. `repo-builder audit diff`
+5. `octostate audit diff`
    - Run when you want offline drift detection against the stored snapshot
 
 ## Example Layout

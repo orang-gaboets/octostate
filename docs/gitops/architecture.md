@@ -82,27 +82,27 @@ Current collector concurrency limits:
 
 ## Command Workflows
 
-### `repo-builder config plan`
+### `octostate config plan`
 1. Load and normalize `config/organization.yaml`
 2. Validate desired state semantically
 3. Collect live GitHub state through `collector`
 4. Build the reconciliation report through `plan`
 5. Normalize the final report and print JSON
 
-### `repo-builder config apply`
+### `octostate config apply`
 1. Load and validate desired state
 2. Collect live GitHub state
 3. Build the reconciliation report
 4. Execute supported `create` / `update` actions through `apply`
 5. Print executed and skipped actions as JSON
 
-### `repo-builder audit pull`
+### `octostate audit pull`
 1. Load desired state to determine the target organization
 2. Collect live GitHub state
 3. Normalize and persist `state/actual/snapshot.json`
 4. Print the snapshot write result
 
-### `repo-builder audit diff`
+### `octostate audit diff`
 1. Load desired state
 2. Load the stored snapshot
 3. Compare desired vs stored actual state through `diff`
