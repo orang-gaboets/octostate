@@ -1,6 +1,7 @@
 // Package config provides GitOps configuration commands for octostate.
 //
-// The commands in this package operate on local desired-state files and do not
-// require GitHub API access. They focus on validating configuration contracts
-// and reporting machine-readable results for CI workflows.
+// These commands operate on local desired-state files. Some commands, such as
+// `config validate`, are fully offline, while others, such as `config plan`,
+// `config apply`, and `config sync-from-live`, read or reconcile live GitHub
+// state and therefore require GitHub API access and authentication.
 package config
