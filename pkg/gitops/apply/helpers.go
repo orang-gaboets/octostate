@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 func repositoryResourceID(owner, name string) string {

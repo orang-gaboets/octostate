@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestNewActualSnapshotNormalizesAndClones(t *testing.T) {
@@ -22,7 +22,7 @@ func TestNewActualSnapshotNormalizesAndClones(t *testing.T) {
 			{Username: "zoe", TeamSlugs: []string{"writers", "admins"}},
 		},
 		Repositories: []state.Repository{
-			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{"zeta", "alpha"}},
+			{Name: "octostate", Owner: "orang-gaboets", Topics: []string{"zeta", "alpha"}},
 		},
 		Teams: []state.Team{
 			{ID: 2, Slug: "zeta"},
@@ -84,7 +84,7 @@ func TestNewActualSnapshotPreservesEmptyNestedSlices(t *testing.T) {
 			{Username: "zoe", TeamSlugs: []string{}},
 		},
 		Repositories: []state.Repository{
-			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{}},
+			{Name: "octostate", Owner: "orang-gaboets", Topics: []string{}},
 		},
 	})
 
@@ -286,7 +286,7 @@ func TestReadActualSuccess(t *testing.T) {
 			{Username: "zoe", TeamSlugs: []string{"writers", "admins"}},
 		},
 		Repositories: []state.Repository{
-			{Name: "repo-builder", Owner: "orang-gaboets", Topics: []string{"zeta", "alpha"}},
+			{Name: "octostate", Owner: "orang-gaboets", Topics: []string{"zeta", "alpha"}},
 		},
 	})
 

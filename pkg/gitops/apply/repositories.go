@@ -3,11 +3,11 @@ package apply
 import (
 	"fmt"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
-	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/pkg/github/topics"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 )
 
 func (e *executor) executeRepositoryAction(action gitopsplan.Action) error {

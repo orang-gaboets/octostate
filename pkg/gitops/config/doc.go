@@ -1,5 +1,5 @@
 // Package config loads the desired-state configuration used by the
-// repo-builder GitOps engine.
+// octostate GitOps engine.
 //
 // The package reads the canonical organization configuration file from a
 // configuration directory, decodes it strictly so unsupported fields fail

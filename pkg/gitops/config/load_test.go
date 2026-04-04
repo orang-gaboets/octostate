@@ -70,17 +70,17 @@ func TestLoadDir(t *testing.T) {
 
 				wantRepos := []RepositorySpec{{
 					Owner:        "orang-gaboets",
-					Name:         "repo-builder",
+					Name:         "octostate",
 					Template:     TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
 					Visibility:   "private",
 					Description:  "GitHub organization operations CLI",
-					Homepage:     "https://github.com/orang-gaboets/repo-builder",
+					Homepage:     "https://github.com/orang-gaboets/octostate",
 					Topics:       []string{"go", "gitops"},
 					AllowForking: false,
 					Archived:     false,
 					IsTemplate:   false,
 					description:  optionalString("GitHub organization operations CLI"),
-					homepage:     optionalString("https://github.com/orang-gaboets/repo-builder"),
+					homepage:     optionalString("https://github.com/orang-gaboets/octostate"),
 					allowForking: optionalBool(false),
 					archived:     optionalBool(false),
 					isTemplate:   optionalBool(false),
@@ -100,7 +100,7 @@ func TestLoadDir(t *testing.T) {
 					}},
 					Repositories: []TeamRepositorySpec{{
 						Owner:      "orang-gaboets",
-						Name:       "repo-builder",
+						Name:       "octostate",
 						Permission: "push",
 					}},
 				}}
@@ -311,7 +311,7 @@ func TestLoadDirRepositoryOptionalFieldsPresenceIsPreserved(t *testing.T) {
 	writeTestOrganizationYAML(t, configDir, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     description: "   "
     homepage: ""
@@ -361,7 +361,7 @@ func TestLoadDirRepositoryOptionalNullsArePreserved(t *testing.T) {
 	writeTestOrganizationYAML(t, configDir, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     description: null
     homepage: null
@@ -405,7 +405,7 @@ func TestLoadDirRejectsUnknownRepositoryField(t *testing.T) {
 	writeTestOrganizationYAML(t, configDir, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     unsupported: true
 teams: []
@@ -428,7 +428,7 @@ func TestLoadDirRejectsUnknownRepositoryTemplateField(t *testing.T) {
 	writeTestOrganizationYAML(t, configDir, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     template:
       owner: orang-gaboets

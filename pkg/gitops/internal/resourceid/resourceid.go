@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 // RepositoryID returns the canonical repository resource ID.

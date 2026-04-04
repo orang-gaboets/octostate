@@ -1,5 +1,5 @@
 // Package state defines the in-memory actual-state model used by the
-// repo-builder GitOps engine.
+// octostate GitOps engine.
 //
 // The package represents the GitHub organization state collected from live
 // APIs and normalized for deterministic planning, audit, and snapshot

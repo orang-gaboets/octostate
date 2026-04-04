@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	gh "github.com/google/go-github/v55/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github"
-	ghlogging "github.com/orang-gaboets/repo-builder/pkg/github/logging"
+	"github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 )
 
 // Get retrieves an organization by its name.

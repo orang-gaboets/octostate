@@ -6,9 +6,9 @@ import (
 
 	gh "github.com/google/go-github/v55/github"
 
-	"github.com/orang-gaboets/repo-builder/pkg/github"
-	ghlogging "github.com/orang-gaboets/repo-builder/pkg/github/logging"
-	"github.com/orang-gaboets/repo-builder/pkg/github/topics"
+	"github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
+	"github.com/orang-gaboets/octostate/pkg/github/topics"
 )
 
 // CreateFromTemplate creates a repository from a template and optionally sets topics.

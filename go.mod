@@ -1,4 +1,4 @@
-module github.com/orang-gaboets/repo-builder
+module github.com/orang-gaboets/octostate
 
 go 1.24.0
 

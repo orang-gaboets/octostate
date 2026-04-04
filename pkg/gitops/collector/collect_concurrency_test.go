@@ -11,8 +11,8 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v55/github"
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 type concurrencyTracker struct {
@@ -742,7 +742,7 @@ func BenchmarkCollectOrganizationConcurrency(b *testing.B) {
 		repoSvc := &repositoryServiceStub{
 			listByOrgFunc: func(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
 				time.Sleep(callDelay)
-				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("repo-builder"), Visibility: githubpkg.Ptr("private")}}, &gh.Response{}, nil
+				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("octostate"), Visibility: githubpkg.Ptr("private")}}, &gh.Response{}, nil
 			},
 		}
 		teamSvc := &teamServiceStub{

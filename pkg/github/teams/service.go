@@ -6,8 +6,8 @@ import (
 
 	gh "github.com/google/go-github/v55/github"
 
-	"github.com/orang-gaboets/repo-builder/pkg/github"
-	ghlogging "github.com/orang-gaboets/repo-builder/pkg/github/logging"
+	"github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 )
 
 // CreateTeam creates a new team in the specified organization.

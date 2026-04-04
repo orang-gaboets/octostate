@@ -68,7 +68,7 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 			{TeamSlug: "admins", Username: "alpha", Role: "maintainer"},
 		},
 		TeamRepositoryPermissions: []TeamRepositoryPermission{
-			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
 			{TeamSlug: "admins", Owner: "orang-gaboets", Name: "repo-admin", Permission: "admin"},
 		},
 	}
@@ -117,7 +117,7 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 
 	wantPermissions := []TeamRepositoryPermission{
 		{TeamSlug: "admins", Owner: "orang-gaboets", Name: "repo-admin", Permission: "admin"},
-		{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+		{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
 	}
 	if !reflect.DeepEqual(actual.TeamRepositoryPermissions, wantPermissions) {
 		t.Fatalf("unexpected team repository permissions: got %#v want %#v", actual.TeamRepositoryPermissions, wantPermissions)
@@ -129,7 +129,7 @@ func TestOrganizationStateJSONUsesSnapshotFieldNames(t *testing.T) {
 
 	payload, err := json.Marshal(OrganizationState{
 		TeamRepositoryPermissions: []TeamRepositoryPermission{
-			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
 		},
 	})
 	if err != nil {

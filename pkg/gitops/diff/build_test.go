@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/testconfig"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/snapshot"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/testconfig"
+	"github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestOptionsValidate(t *testing.T) {
@@ -214,10 +214,10 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 		Repositories: []state.Repository{
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "private",
 				Description:  "CLI",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"go", "gitops"},
 				AllowForking: false,
 				Archived:     false,
@@ -231,7 +231,7 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 			{TeamSlug: "platform", Username: "alice", Role: "member"},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
-			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
 		},
 	}
 
@@ -248,10 +248,10 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 			Repositories: []config.RepositorySpec{
 				{
 					Owner:        "orang-gaboets",
-					Name:         "repo-builder",
+					Name:         "octostate",
 					Visibility:   "private",
 					Description:  "CLI",
-					Homepage:     "https://example.com/repo-builder",
+					Homepage:     "https://example.com/octostate",
 					Topics:       []string{"gitops", "go"},
 					AllowForking: false,
 					Archived:     false,
@@ -268,7 +268,7 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 						{Username: "alice", Role: "member"},
 					},
 					Repositories: []config.TeamRepositorySpec{
-						{Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+						{Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
 					},
 				},
 			},
@@ -336,7 +336,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-old", Permission: "pull"},
-			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"},
+			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
 		},
 	}
 
@@ -370,7 +370,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 					Name:         "existing-repo",
 					Visibility:   "private",
 					Description:  "New desc",
-					Homepage:     "https://example.com/repo-builder",
+					Homepage:     "https://example.com/octostate",
 					Topics:       []string{"go", "gitops"},
 					AllowForking: false,
 					Archived:     true,
@@ -388,7 +388,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 						{Username: "charlie", Role: "member"},
 					},
 					Repositories: []config.TeamRepositorySpec{
-						{Owner: "orang-gaboets", Name: "repo-builder", Permission: "admin"},
+						{Owner: "orang-gaboets", Name: "octostate", Permission: "admin"},
 						{Owner: "orang-gaboets", Name: "repo-extra", Permission: "push"},
 					},
 				},
@@ -423,7 +423,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		},
 		Actions: []Action{
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: false, Message: "repository orang-gaboets/new-repo cannot be created because template configuration is missing", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/repo-builder"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
+			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/octostate"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: "orang-gaboets/orphan-repo", Executable: false, Message: "repository orang-gaboets/orphan-repo exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform New"}, {Field: "privacy", From: "closed", To: "secret"}}},
@@ -439,7 +439,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/repo-builder", Executable: true, Message: "update team repository permission platform/orang-gaboets/repo-builder", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: true, Message: "update team repository permission platform/orang-gaboets/octostate", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationRemove, ResourceID: "platform/orang-gaboets/repo-old", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-old exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 		},
 	}
@@ -580,10 +580,10 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 		Repositories: []state.Repository{
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "private",
 				Description:  "CLI",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
 				AllowForking: true,
 				Archived:     false,
@@ -595,10 +595,10 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     description: "CLI"
-    homepage: "https://example.com/repo-builder"
+    homepage: "https://example.com/octostate"
     topics: [gitops]
     allow_forking: false
     archived: false
@@ -627,10 +627,10 @@ func TestBuildRepositoryOmittedOptionalFieldsProduceNoDiff(t *testing.T) {
 		Repositories: []state.Repository{
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "public",
 				Description:  "CLI",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
 				AllowForking: true,
 				Archived:     true,
@@ -642,7 +642,7 @@ func TestBuildRepositoryOmittedOptionalFieldsProduceNoDiff(t *testing.T) {
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: public
     topics: [gitops]
 teams: []
@@ -669,10 +669,10 @@ func TestBuildRepositoryExplicitOptionalZeroValuesProduceDiff(t *testing.T) {
 		Repositories: []state.Repository{
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "public",
 				Description:  "CLI",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
 				AllowForking: true,
 				Archived:     true,
@@ -684,7 +684,7 @@ func TestBuildRepositoryExplicitOptionalZeroValuesProduceDiff(t *testing.T) {
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: public
     description: ""
     homepage: ""
@@ -707,14 +707,14 @@ invites: []
 	want := []Action{{
 		ResourceType: ActionResourceTypeRepository,
 		Operation:    ActionOperationUpdate,
-		ResourceID:   "orang-gaboets/repo-builder",
+		ResourceID:   "orang-gaboets/octostate",
 		Executable:   true,
-		Message:      "update repository orang-gaboets/repo-builder",
+		Message:      "update repository orang-gaboets/octostate",
 		Changes: []FieldChange{
 			{Field: "allow_forking", From: true, To: false},
 			{Field: "archived", From: true, To: false},
 			{Field: "description", From: "CLI", To: ""},
-			{Field: "homepage", From: "https://example.com/repo-builder", To: ""},
+			{Field: "homepage", From: "https://example.com/octostate", To: ""},
 			{Field: "is_template", From: true, To: false},
 		},
 	}}

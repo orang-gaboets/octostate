@@ -3,7 +3,7 @@ package syncfromlive
 import (
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestBootstrapOwner(t *testing.T) {
@@ -26,10 +26,10 @@ func TestBootstrapRepositoriesMaterializesManagedFields(t *testing.T) {
 	got := bootstrapRepositories("orang-gaboets", []state.Repository{
 		{
 			Owner:        " orang-gaboets ",
-			Name:         " repo-builder ",
+			Name:         " octostate ",
 			Visibility:   " private ",
 			Description:  "GitOps CLI",
-			Homepage:     "https://example.com/repo-builder",
+			Homepage:     "https://example.com/octostate",
 			Topics:       []string{"gitops", "go"},
 			AllowForking: true,
 			Archived:     true,
@@ -53,7 +53,7 @@ func TestBootstrapRepositoriesMaterializesManagedFields(t *testing.T) {
 	}
 
 	privateRepo := got[0]
-	if privateRepo.Owner != "" || privateRepo.Name != "repo-builder" || privateRepo.Visibility != "private" {
+	if privateRepo.Owner != "" || privateRepo.Name != "octostate" || privateRepo.Visibility != "private" {
 		t.Fatalf("unexpected private repo bootstrap result: %#v", privateRepo)
 	}
 	if _, managed := privateRepo.ManagedAllowForking(); managed {

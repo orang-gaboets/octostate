@@ -3,7 +3,7 @@ package syncfromlive
 import (
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestCloneOrganizationStateNil(t *testing.T) {
@@ -27,7 +27,7 @@ func TestCloneOrganizationStateNormalizesAndDeepClones(t *testing.T) {
 			{Username: "octocat", TeamSlugs: []string{"beta", "alpha"}},
 		},
 		Repositories: []state.Repository{
-			{Name: "repo-builder", Topics: []string{"zeta", "alpha"}},
+			{Name: "octostate", Topics: []string{"zeta", "alpha"}},
 		},
 	}
 
