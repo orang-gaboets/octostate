@@ -88,9 +88,7 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 				write,
 			)
 			if err != nil {
-				if code, ok := exitcode.Code(err); ok && code == validateExitCodeInvalidConfig {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
-				}
+				printInvalidConfigError(cmd, err)
 				return err
 			}
 			if write {

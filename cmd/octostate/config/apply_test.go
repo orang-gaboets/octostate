@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
@@ -200,7 +201,7 @@ func TestApplyConfigCmdLoadFailurePropagatesWithoutAuth(t *testing.T) {
 	}
 }
 
-func TestApplyConfigCmdInvalidConfigReturnsTypedExit(t *testing.T) {
+func TestApplyConfigCmdInvalidConfigPrintsStderrAndReturnsTypedExit(t *testing.T) {
 	restoreApplyHooks(t)
 
 	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
@@ -228,8 +229,11 @@ func TestApplyConfigCmdInvalidConfigReturnsTypedExit(t *testing.T) {
 	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
 		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
 	}
-	if out.Len() != 0 || errBuf.Len() != 0 {
-		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: configuration is invalid; run `octostate config validate`") {
+		t.Fatalf("expected invalid config error on stderr, got %q", got)
 	}
 }
 

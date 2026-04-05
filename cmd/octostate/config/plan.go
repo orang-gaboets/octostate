@@ -54,6 +54,7 @@ func PlanConfigCmd() *cobra.Command {
 				configDir,
 			)
 			if err != nil {
+				printInvalidConfigError(cmd, err)
 				return err
 			}
 			report.Normalize()

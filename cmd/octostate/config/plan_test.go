@@ -320,7 +320,7 @@ func TestPlanConfigCmdLoadFailurePropagatesWithoutAuth(t *testing.T) {
 	}
 }
 
-func TestPlanConfigCmdInvalidConfigReturnsErrorWithoutStderr(t *testing.T) {
+func TestPlanConfigCmdInvalidConfigPrintsStderrAndReturnsTypedExit(t *testing.T) {
 	restorePlanHooks(t)
 
 	loadPlanConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
@@ -354,8 +354,8 @@ func TestPlanConfigCmdInvalidConfigReturnsErrorWithoutStderr(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("expected no stdout output, got %q", out.String())
 	}
-	if errBuf.Len() != 0 {
-		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	if got := errBuf.String(); !strings.Contains(got, "Error: configuration is invalid; run `octostate config validate`") {
+		t.Fatalf("expected invalid config error on stderr, got %q", got)
 	}
 }
 

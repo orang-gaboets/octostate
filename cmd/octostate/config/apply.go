@@ -60,6 +60,7 @@ func ApplyConfigCmd() *cobra.Command {
 				dryRun,
 			)
 			if err != nil {
+				printInvalidConfigError(cmd, err)
 				return err
 			}
 			if dryRun {
