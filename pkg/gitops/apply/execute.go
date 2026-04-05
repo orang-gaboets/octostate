@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"strings"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
-	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
-	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
-	ghusers "github.com/orang-gaboets/repo-builder/pkg/github/users"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 // Options defines the inputs and GitHub service dependencies required to apply

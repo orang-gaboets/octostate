@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/orang-gaboets/repo-builder/internal/orderedtasks"
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
-	"github.com/orang-gaboets/repo-builder/pkg/github/repos"
-	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/internal/orderedtasks"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 // CollectOrganizationOptions defines the services required to collect one

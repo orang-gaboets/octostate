@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestBuildBootstrapConfigRejectsInvalidInput(t *testing.T) {
@@ -60,7 +60,7 @@ func TestBuildBootstrapConfigRejectsUnknownTeamRelationships(t *testing.T) {
 			Organization: "orang-gaboets",
 			Teams:        []state.Team{},
 			TeamRepositoryPermissions: []state.TeamRepositoryPermission{
-				{TeamSlug: "platform", Name: "repo-builder", Permission: "push"},
+				{TeamSlug: "platform", Name: "octostate", Permission: "push"},
 			},
 		},
 	})
@@ -139,10 +139,10 @@ func canonicalBootstrapActualState() *state.OrganizationState {
 			},
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "private",
 				Description:  "GitOps CLI",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops", "go"},
 				AllowForking: true,
 				Archived:     true,
@@ -171,7 +171,7 @@ func canonicalBootstrapActualState() *state.OrganizationState {
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "platform-infra", Owner: "shared-platform", Name: "shared-repo", Permission: "pull"},
-			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-builder", Permission: "admin"},
+			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "admin"},
 		},
 	}
 }
@@ -216,8 +216,8 @@ func assertBootstrapRepositories(t *testing.T, repositories []config.RepositoryS
 	if repoBuilder.Owner != "" {
 		t.Fatalf("expected org-owned repository owner to be omitted, got %#v", repoBuilder.Owner)
 	}
-	if repoBuilder.Name != "repo-builder" || repoBuilder.Visibility != "private" {
-		t.Fatalf("unexpected repo-builder bootstrap result: %#v", repoBuilder)
+	if repoBuilder.Name != "octostate" || repoBuilder.Visibility != "private" {
+		t.Fatalf("unexpected octostate bootstrap result: %#v", repoBuilder)
 	}
 	if repoBuilder.Topics == nil || len(repoBuilder.Topics) != 2 || repoBuilder.Topics[0] != "gitops" || repoBuilder.Topics[1] != "go" {
 		t.Fatalf("expected sorted topics, got %#v", repoBuilder.Topics)
@@ -225,7 +225,7 @@ func assertBootstrapRepositories(t *testing.T, repositories []config.RepositoryS
 	if description, managed := repoBuilder.ManagedDescription(); !managed || description != "GitOps CLI" {
 		t.Fatalf("expected managed description, got value=%q managed=%v", description, managed)
 	}
-	if homepage, managed := repoBuilder.ManagedHomepage(); !managed || homepage != "https://example.com/repo-builder" {
+	if homepage, managed := repoBuilder.ManagedHomepage(); !managed || homepage != "https://example.com/octostate" {
 		t.Fatalf("expected managed homepage, got value=%q managed=%v", homepage, managed)
 	}
 	if _, managed := repoBuilder.ManagedAllowForking(); managed {

@@ -1,6 +1,6 @@
-# repo-builder
+# octostate
 
-`repo-builder` is a GitHub organization operations CLI and GitOps engine.
+`octostate` is a GitHub organization operations CLI and GitOps engine.
 
 It provides two main layers:
 - **API primitives** for direct GitHub operations on organizations,
@@ -28,7 +28,7 @@ Shipped command groups:
 ## Installation
 
 ```bash
-go install github.com/orang-gaboets/repo-builder/cmd/repo-builder@latest
+go install github.com/orang-gaboets/octostate/cmd/octostate@latest
 ```
 
 ## Authentication
@@ -41,7 +41,7 @@ Most examples use `$GITHUB_TOKEN` for brevity, but every live command can also
 use GitHub App authentication with `--app-id`, `--installation-id`, and
 `--app-key-path`.
 
-`repo-builder config validate` and `repo-builder audit diff` are offline once
+`octostate config validate` and `octostate audit diff` are offline once
 their required files are present.
 
 ## CLI Basics
@@ -78,7 +78,7 @@ Errors and diagnostics (including `--verbose` logs) are written to stderr.
 
 ## GitOps Quickstart
 
-If you are using `repo-builder` as a GitOps engine, the normal flow is:
+If you are using `octostate` as a GitOps engine, the normal flow is:
 
 1. Start with `config/organization.yaml`
 2. Validate it
@@ -90,19 +90,19 @@ Example flow:
 
 ```bash
 # Validate desired state offline
-repo-builder config validate --config-dir ./config
+octostate config validate --config-dir ./config
 
 # Preview live reconciliation
-repo-builder config plan --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 
 # Apply supported create/update actions
-repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
 
 # Refresh the stored actual-state snapshot
-repo-builder audit pull --config-dir ./config --state-dir ./state --token "$GITHUB_TOKEN"
+octostate audit pull --config-dir ./config --state-dir ./state --token "$GITHUB_TOKEN"
 
 # Compare desired state against the stored snapshot offline
-repo-builder audit diff --config-dir ./config --state-dir ./state --fail-on-drift
+octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 ```
 
 If you are starting from existing live GitHub state, `config sync-from-live`

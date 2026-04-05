@@ -48,7 +48,7 @@ func TestValidateDuplicateRepositoriesCaseInsensitive(t *testing.T) {
 	cfg := validOrganizationConfig()
 	cfg.Repositories = append(cfg.Repositories, RepositorySpec{
 		Owner:      "ORANG-GABOETS",
-		Name:       "REPO-BUILDER",
+		Name:       "OCTOSTATE",
 		Visibility: "private",
 	})
 
@@ -441,7 +441,7 @@ func TestValidateDuplicateTeamRepositories(t *testing.T) {
 
 	cfg := validOrganizationConfig()
 	cfg.Teams[0].Repositories = append(cfg.Teams[0].Repositories, TeamRepositorySpec{
-		Name:       "repo-builder",
+		Name:       "octostate",
 		Permission: "pull",
 	})
 
@@ -455,7 +455,7 @@ func TestValidateDuplicateTeamRepositoriesCaseInsensitive(t *testing.T) {
 	cfg := validOrganizationConfig()
 	cfg.Teams[0].Repositories = append(cfg.Teams[0].Repositories, TeamRepositorySpec{
 		Owner:      "ORANG-GABOETS",
-		Name:       "REPO-BUILDER",
+		Name:       "OCTOSTATE",
 		Permission: "pull",
 	})
 
@@ -517,7 +517,7 @@ func TestValidateRepositoryOptionalFieldsOmittedAreValid(t *testing.T) {
 	cfg := validOrganizationConfig()
 	cfg.Repositories[0] = RepositorySpec{
 		Owner:      "orang-gaboets",
-		Name:       "repo-builder",
+		Name:       "octostate",
 		Template:   TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
 		Visibility: "private",
 		Topics:     []string{"go", "gitops"},
@@ -597,15 +597,15 @@ func TestValidateSlugNameMismatch(t *testing.T) {
 func validOrganizationConfig() OrganizationConfig {
 	repo := RepositorySpec{
 		Owner:       "orang-gaboets",
-		Name:        "repo-builder",
+		Name:        "octostate",
 		Template:    TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"},
 		Visibility:  "private",
 		Description: "GitHub organization operations CLI",
-		Homepage:    "https://github.com/orang-gaboets/repo-builder",
+		Homepage:    "https://github.com/orang-gaboets/octostate",
 		Topics:      []string{"go", "gitops"},
 	}
 	repo.description = optionalString("GitHub organization operations CLI")
-	repo.homepage = optionalString("https://github.com/orang-gaboets/repo-builder")
+	repo.homepage = optionalString("https://github.com/orang-gaboets/octostate")
 	repo.allowForking = optionalBool(false)
 	repo.archived = optionalBool(false)
 	repo.isTemplate = optionalBool(false)
@@ -632,7 +632,7 @@ func validOrganizationConfig() OrganizationConfig {
 				Role:     "maintainer",
 			}},
 			Repositories: []TeamRepositorySpec{{
-				Name:       "repo-builder",
+				Name:       "octostate",
 				Permission: "push",
 			}},
 		}},

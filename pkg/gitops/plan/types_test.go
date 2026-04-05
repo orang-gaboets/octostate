@@ -47,14 +47,14 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 			{
 				ResourceType: ActionResourceTypeTeamRepositoryPermission,
 				Operation:    ActionOperationRemove,
-				ResourceID:   "platform/orang-gaboets/repo-builder",
+				ResourceID:   "platform/orang-gaboets/octostate",
 				Executable:   false,
 				Message:      "remove extra team repo permission",
 			},
 			{
 				ResourceType: ActionResourceTypeRepository,
 				Operation:    ActionOperationUpdate,
-				ResourceID:   "orang-gaboets/repo-builder",
+				ResourceID:   "orang-gaboets/octostate",
 				Executable:   true,
 				Message:      "update repository settings",
 				Changes: []FieldChange{
@@ -103,7 +103,7 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 		{
 			ResourceType: ActionResourceTypeRepository,
 			Operation:    ActionOperationUpdate,
-			ResourceID:   "orang-gaboets/repo-builder",
+			ResourceID:   "orang-gaboets/octostate",
 			Executable:   true,
 			Message:      "update repository settings",
 			Changes: []FieldChange{
@@ -132,7 +132,7 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 		{
 			ResourceType: ActionResourceTypeTeamRepositoryPermission,
 			Operation:    ActionOperationRemove,
-			ResourceID:   "platform/orang-gaboets/repo-builder",
+			ResourceID:   "platform/orang-gaboets/octostate",
 			Executable:   false,
 			Message:      "remove extra team repo permission",
 			Changes:      []FieldChange{},
@@ -166,7 +166,7 @@ func TestReportJSONUsesStableFieldNames(t *testing.T) {
 			{
 				ResourceType: ActionResourceTypeTeamRepositoryPermission,
 				Operation:    ActionOperationCreate,
-				ResourceID:   "platform/orang-gaboets/repo-builder",
+				ResourceID:   "platform/orang-gaboets/octostate",
 				Executable:   true,
 				Message:      "create permission",
 			},

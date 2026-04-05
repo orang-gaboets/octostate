@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 )
 
 type (

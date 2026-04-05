@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestBootstrapOrganizationMembersBuildsStableMembersWithRoles(t *testing.T) {

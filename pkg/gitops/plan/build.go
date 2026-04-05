@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	ghusers "github.com/orang-gaboets/repo-builder/pkg/github/users"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 // Options defines the desired and actual state inputs required to build one

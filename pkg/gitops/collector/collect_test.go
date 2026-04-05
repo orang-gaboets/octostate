@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestCollectOrganizationOptionsValidate(t *testing.T) {
@@ -185,10 +185,10 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 			return []*gh.Repository{
 				{
 					Owner:        &gh.User{Login: githubpkg.Ptr(orgName)},
-					Name:         githubpkg.Ptr("repo-builder"),
+					Name:         githubpkg.Ptr("octostate"),
 					Visibility:   githubpkg.Ptr("private"),
 					Description:  githubpkg.Ptr("CLI"),
-					Homepage:     githubpkg.Ptr("https://example.com/repo-builder"),
+					Homepage:     githubpkg.Ptr("https://example.com/octostate"),
 					Topics:       []string{"gitops", "go"},
 					AllowForking: githubpkg.Ptr(false),
 					Archived:     githubpkg.Ptr(false),
@@ -289,7 +289,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 				return []*gh.Repository{
 					{
 						Owner:       &gh.User{Login: githubpkg.Ptr(orgName)},
-						Name:        githubpkg.Ptr("repo-builder"),
+						Name:        githubpkg.Ptr("octostate"),
 						Permissions: map[string]bool{"pull": true, "push": true},
 					},
 				}, &gh.Response{}, nil
@@ -322,7 +322,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 		},
 		Repositories: []state.Repository{
 			{Owner: orgName, Name: "alpha", Visibility: "public", Description: "Alpha repo", Homepage: "", Topics: []string{}, AllowForking: true, Archived: false, IsTemplate: true},
-			{Owner: orgName, Name: "repo-builder", Visibility: "private", Description: "CLI", Homepage: "https://example.com/repo-builder", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
+			{Owner: orgName, Name: "octostate", Visibility: "private", Description: "CLI", Homepage: "https://example.com/octostate", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
 		},
 		Teams: []state.Team{
 			{ID: 1, Slug: "admins", Name: "Admins", Description: "Admin team", Privacy: "secret", ParentSlug: ""},
@@ -335,7 +335,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "admins", Owner: orgName, Name: "repo-admin", Permission: "admin"},
-			{TeamSlug: "platform", Owner: orgName, Name: "repo-builder", Permission: "push"},
+			{TeamSlug: "platform", Owner: orgName, Name: "octostate", Permission: "push"},
 		},
 	}
 
@@ -530,10 +530,10 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 			return []*gh.Repository{
 				{
 					Owner:        &gh.User{Login: githubpkg.Ptr(orgName)},
-					Name:         githubpkg.Ptr("repo-builder"),
+					Name:         githubpkg.Ptr("octostate"),
 					Visibility:   githubpkg.Ptr("private"),
 					Description:  githubpkg.Ptr("CLI"),
-					Homepage:     githubpkg.Ptr("https://example.com/repo-builder"),
+					Homepage:     githubpkg.Ptr("https://example.com/octostate"),
 					Topics:       []string{"gitops", "go"},
 					AllowForking: githubpkg.Ptr(false),
 					Archived:     githubpkg.Ptr(false),
@@ -580,7 +580,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 			return []*gh.Repository{
 				{
 					Owner:       &gh.User{Login: githubpkg.Ptr(orgName)},
-					Name:        githubpkg.Ptr("repo-builder"),
+					Name:        githubpkg.Ptr("octostate"),
 					Permissions: map[string]bool{"pull": true, "push": true},
 				},
 			}, &gh.Response{}, nil
@@ -604,7 +604,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 		},
 		PendingInvitations: []state.PendingInvitation{},
 		Repositories: []state.Repository{
-			{Owner: orgName, Name: "repo-builder", Visibility: "private", Description: "CLI", Homepage: "https://example.com/repo-builder", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
+			{Owner: orgName, Name: "octostate", Visibility: "private", Description: "CLI", Homepage: "https://example.com/octostate", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
 		},
 		Teams: []state.Team{
 			{ID: 1, Slug: "platform", Name: "Platform", Description: "Platform engineering", Privacy: "closed", ParentSlug: ""},
@@ -613,7 +613,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 			{TeamSlug: "platform", Username: "alice", Role: "member"},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
-			{TeamSlug: "platform", Owner: orgName, Name: "repo-builder", Permission: "push"},
+			{TeamSlug: "platform", Owner: orgName, Name: "octostate", Permission: "push"},
 		},
 	}
 
@@ -657,10 +657,10 @@ func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
 			return []*gh.Repository{
 				{
 					Owner:        &gh.User{Login: githubpkg.Ptr(orgName)},
-					Name:         githubpkg.Ptr("repo-builder"),
+					Name:         githubpkg.Ptr("octostate"),
 					Visibility:   githubpkg.Ptr("private"),
 					Description:  githubpkg.Ptr("CLI"),
-					Homepage:     githubpkg.Ptr("https://example.com/repo-builder"),
+					Homepage:     githubpkg.Ptr("https://example.com/octostate"),
 					Topics:       []string{"gitops", "go"},
 					AllowForking: githubpkg.Ptr(false),
 					Archived:     githubpkg.Ptr(false),
@@ -700,7 +700,7 @@ func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
 		Members:            []state.OrganizationMember{},
 		PendingInvitations: []state.PendingInvitation{},
 		Repositories: []state.Repository{
-			{Owner: orgName, Name: "repo-builder", Visibility: "private", Description: "CLI", Homepage: "https://example.com/repo-builder", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
+			{Owner: orgName, Name: "octostate", Visibility: "private", Description: "CLI", Homepage: "https://example.com/octostate", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
 		},
 		Teams:                     []state.Team{},
 		TeamMembers:               []state.TeamMember{},
@@ -725,7 +725,7 @@ func TestCollectOrganizationForMaterializeAllowsUnusedServicesToBeNil(t *testing
 			return []*gh.Repository{
 				{
 					Owner:      &gh.User{Login: githubpkg.Ptr(orgName)},
-					Name:       githubpkg.Ptr("repo-builder"),
+					Name:       githubpkg.Ptr("octostate"),
 					Visibility: githubpkg.Ptr("private"),
 				},
 			}, &gh.Response{}, nil
@@ -743,7 +743,7 @@ func TestCollectOrganizationForMaterializeAllowsUnusedServicesToBeNil(t *testing
 	if actual.Organization != orgName {
 		t.Fatalf("unexpected organization %q", actual.Organization)
 	}
-	if len(actual.Repositories) != 1 || actual.Repositories[0].Name != "repo-builder" {
+	if len(actual.Repositories) != 1 || actual.Repositories[0].Name != "octostate" {
 		t.Fatalf("unexpected repositories %#v", actual.Repositories)
 	}
 }

@@ -3,8 +3,8 @@ package syncfromlive
 import (
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestBootstrapTeamMembersGroupsByNormalizedSlug(t *testing.T) {
@@ -30,13 +30,13 @@ func TestBootstrapTeamRepositoryPermissionsGroupsByNormalizedSlug(t *testing.T) 
 	got, err := bootstrapTeamRepositoryPermissions(
 		"orang-gaboets",
 		[]state.Team{{Slug: "platform"}},
-		[]state.TeamRepositoryPermission{{TeamSlug: " Platform ", Owner: " orang-gaboets ", Name: " repo-builder ", Permission: " push "}},
+		[]state.TeamRepositoryPermission{{TeamSlug: " Platform ", Owner: " orang-gaboets ", Name: " octostate ", Permission: " push "}},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := []config.TeamRepositorySpec{{Name: "repo-builder", Permission: "push"}}
+	want := []config.TeamRepositorySpec{{Name: "octostate", Permission: "push"}}
 	if len(got["platform"]) != 1 || got["platform"][0] != want[0] {
 		t.Fatalf("unexpected grouped team repository permissions: %#v", got)
 	}

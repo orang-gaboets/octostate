@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github/teams"
-	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 )
 
 func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, result *Result) error {

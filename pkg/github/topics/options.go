@@ -3,7 +3,7 @@ package topics
 import (
 	"fmt"
 
-	"github.com/orang-gaboets/repo-builder/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
 // ListAllTopicsOptions defines the options for listing all topics of a repository.

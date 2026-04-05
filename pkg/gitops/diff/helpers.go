@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/resourceid"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/resourceid"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func repositoryID(owner, name string) string {

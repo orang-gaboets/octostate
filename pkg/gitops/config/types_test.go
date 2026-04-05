@@ -50,7 +50,7 @@ func TestRepositorySpecManagedOptionFallbackAndNullBehavior(t *testing.T) {
 
 	repo := RepositorySpec{
 		Description:  "GitOps CLI",
-		Homepage:     "https://example.com/repo-builder",
+		Homepage:     "https://example.com/octostate",
 		AllowForking: true,
 		Archived:     true,
 		IsTemplate:   true,
@@ -59,7 +59,7 @@ func TestRepositorySpecManagedOptionFallbackAndNullBehavior(t *testing.T) {
 	if value, managed := repo.ManagedDescription(); !managed || value != "GitOps CLI" {
 		t.Fatalf("expected fallback managed description, got value=%q managed=%v", value, managed)
 	}
-	if value, managed := repo.ManagedHomepage(); !managed || value != "https://example.com/repo-builder" {
+	if value, managed := repo.ManagedHomepage(); !managed || value != "https://example.com/octostate" {
 		t.Fatalf("expected fallback managed homepage, got value=%q managed=%v", value, managed)
 	}
 	if value, managed := repo.ManagedAllowForking(); !managed || !value {

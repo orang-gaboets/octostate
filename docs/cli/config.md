@@ -8,7 +8,7 @@ that desired state from live GitHub, preview reconciliation, or apply the
 supported portion of the plan.
 
 Authentication rules:
-- `repo-builder config validate` is fully offline and does not require GitHub auth.
+- `octostate config validate` is fully offline and does not require GitHub auth.
 - The other `config` commands require exactly one auth method:
   - `--token`
   - `--app-id`, `--installation-id`, and `--app-key-path`
@@ -17,12 +17,12 @@ Examples below mostly use `$GITHUB_TOKEN` for brevity, but the same live
 commands also support GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
 
-## `repo-builder config validate`
+## `octostate config validate`
 
 Validate desired-state configuration.
 
 ```bash
-repo-builder config validate --config-dir ./config
+octostate config validate --config-dir ./config
 ```
 
 Flags:
@@ -75,7 +75,7 @@ invites:
       - platform
 
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     template:
       owner: orang-gaboets
@@ -89,19 +89,19 @@ teams:
       - username: alice
         role: maintainer
     repositories:
-      - name: repo-builder
+      - name: octostate
         permission: push
 ```
 
-## `repo-builder config sync-from-live`
+## `octostate config sync-from-live`
 
 Build or update desired state from live GitHub.
 
 ### Bootstrap desired-state config from live GitHub state
 
 ```bash
-repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
-repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
 ```
 
 Flags:
@@ -141,20 +141,20 @@ Write behavior:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+go run ./cmd/octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/repo-builder config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+go run ./cmd/octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ### Adopt supported live state into an existing desired config
 
 ```bash
-repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
-repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
 ```
 
 Behavior:
@@ -182,20 +182,20 @@ Adopt rules:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+go run ./cmd/octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/repo-builder config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+go run ./cmd/octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ### Materialize unmanaged repository fields in an existing desired config
 
 ```bash
-repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
-repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
 ```
 
 Behavior:
@@ -223,21 +223,21 @@ Materialize rules:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+go run ./cmd/octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/repo-builder config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+go run ./cmd/octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
-## `repo-builder config plan`
+## `octostate config plan`
 
 Preview the live reconciliation plan.
 
 ```bash
-repo-builder config plan --config-dir ./config --token <token>
+octostate config plan --config-dir ./config --token <token>
 ```
 
 Flags:
@@ -270,16 +270,16 @@ Action behavior:
 Example use:
 
 ```bash
-go run ./cmd/repo-builder config plan --config-dir ./config --token "$GITHUB_TOKEN"
+go run ./cmd/octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
-## `repo-builder config apply`
+## `octostate config apply`
 
 Apply supported reconciliation changes.
 
 ```bash
-repo-builder config apply --config-dir ./config --token <token> --dry-run
-repo-builder config apply --config-dir ./config --token <token>
+octostate config apply --config-dir ./config --token <token> --dry-run
+octostate config apply --config-dir ./config --token <token>
 ```
 
 Flags:
@@ -327,11 +327,11 @@ Exit codes:
 Example dry-run:
 
 ```bash
-go run ./cmd/repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
+go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
 ```
 
 Example live apply:
 
 ```bash
-go run ./cmd/repo-builder config apply --config-dir ./config --token "$GITHUB_TOKEN"
+go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
 ```

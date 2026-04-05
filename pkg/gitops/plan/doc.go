@@ -1,5 +1,5 @@
 // Package plan defines the structured reconciliation plan model used by the
-// repo-builder GitOps engine.
+// octostate GitOps engine.
 //
 // The package owns the machine-readable report, summary, and action types that
 // later planning, apply, and audit workflows share. It keeps plan output

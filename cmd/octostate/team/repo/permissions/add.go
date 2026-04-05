@@ -1,0 +1,135 @@
+package permissions
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
+	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github/teams"
+)
+
+// AddCmd creates a command to grant a team permission on a repository.
+func AddCmd(svc teams.Service) *cobra.Command {
+	var (
+		token          string
+		appID          int64
+		installationID int64
+		appKeyPath     string
+		org            string
+		slug           string
+		repoOrg        string
+		repo           string
+		permission     string
+		dryRun         bool
+	)
+
+	cmd := &cobra.Command{
+		Use:     "add",
+		Aliases: []string{"grant", "set"},
+		Short:   "Grant repository permission to a GitHub team",
+		Long:    "Grant or update a GitHub team's permission on a repository.",
+		Example: `
+			octostate team repo permissions add --token <token> --org <org-name> --slug <team-slug> --repo <repo-name> --permission push
+			octostate team repo permissions add --token <token> --org <org-name> --slug <team-slug> --repo-org <repo-org> --repo <repo-name> --permission maintain --dry-run
+			octostate team repo permissions add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug> --repo <repo-name> --permission pull`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx := cmd.Context()
+
+			trimmedOrg := strings.TrimSpace(org)
+			trimmedSlug := strings.TrimSpace(slug)
+			trimmedRepoOrg := strings.TrimSpace(repoOrg)
+			trimmedRepo := strings.TrimSpace(repo)
+			trimmedPermission := strings.TrimSpace(permission)
+
+			if trimmedRepoOrg == "" {
+				trimmedRepoOrg = trimmedOrg
+			}
+			if trimmedRepo == "" {
+				return fmt.Errorf("repo name cannot be empty: %w", github.ErrMissingRequiredField)
+			}
+			if !teams.TeamRepoPermission(trimmedPermission).IsValid() {
+				return github.ErrInvalidFieldValue
+			}
+
+			if dryRun {
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would grant team %s/%s permission %s on repository %s/%s",
+						trimmedOrg,
+						trimmedSlug,
+						trimmedPermission,
+						trimmedRepoOrg,
+						trimmedRepo,
+					),
+					map[string]any{
+						"organization": trimmedOrg,
+						"slug":         trimmedSlug,
+						"repo_owner":   trimmedRepoOrg,
+						"repo_name":    trimmedRepo,
+						"permission":   trimmedPermission,
+					},
+				)
+			}
+
+			service := svc
+			if service == nil {
+				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
+				if err != nil {
+					return err
+				}
+				service = client.Teams()
+			}
+
+			opts := teams.AddTeamRepoPermissionBySlugOptions{
+				Service:    service,
+				Org:        trimmedOrg,
+				Slug:       trimmedSlug,
+				RepoOwner:  trimmedRepoOrg,
+				RepoName:   trimmedRepo,
+				Permission: teams.TeamRepoPermission(trimmedPermission),
+			}
+
+			if err := teams.AddTeamRepoPermissionBySlug(ctx, opts); err != nil {
+				return err
+			}
+
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf(
+					"Granted team %s/%s permission %s on repository %s/%s",
+					trimmedOrg,
+					trimmedSlug,
+					trimmedPermission,
+					trimmedRepoOrg,
+					trimmedRepo,
+				),
+				map[string]any{
+					"organization": trimmedOrg,
+					"slug":         trimmedSlug,
+					"repo_owner":   trimmedRepoOrg,
+					"repo_name":    trimmedRepo,
+					"permission":   trimmedPermission,
+				},
+			)
+		},
+	}
+
+	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
+
+	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
+	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
+	cmd.Flags().StringVar(&repoOrg, "repo-org", "", "Owner organization of the target repository (defaults to --org)")
+	cmd.Flags().StringVar(&repo, "repo", "", "Repository name")
+	cmd.Flags().StringVar(&permission, "permission", string(teams.TeamRepoPermissionPull), "Permission to grant: pull, push, admin, maintain, triage")
+	safety.AddDryRunFlag(cmd, &dryRun)
+
+	github.MarkRequiredFlags(cmd, "org", "slug", "repo")
+
+	return cmd
+}

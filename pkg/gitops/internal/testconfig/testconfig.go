@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // LoadDesiredConfig writes one organization.yaml fixture and loads it through

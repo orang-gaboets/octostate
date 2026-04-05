@@ -60,13 +60,13 @@ func TestEncodeYAMLValidRoundTrip(t *testing.T) {
 		"    team_slugs:",
 		"      - platform",
 		"repositories:",
-		"  - name: repo-builder",
+		"  - name: octostate",
 		"    template:",
 		"      owner: orang-gaboets",
 		"      name: repo-template",
 		"    visibility: private",
 		"    description: GitHub organization operations CLI",
-		"    homepage: https://github.com/orang-gaboets/repo-builder",
+		"    homepage: https://github.com/orang-gaboets/octostate",
 		"    topics:",
 		"      - go",
 		"      - gitops",
@@ -82,7 +82,7 @@ func TestEncodeYAMLValidRoundTrip(t *testing.T) {
 		"      - username: alice",
 		"        role: maintainer",
 		"    repositories:",
-		"      - name: repo-builder",
+		"      - name: octostate",
 		"        permission: push",
 		"",
 	}, "\n")
@@ -107,7 +107,7 @@ func TestEncodeYAMLPreservesExplicitNullOptionals(t *testing.T) {
 			Role:     "direct_member",
 		}},
 		Repositories: []RepositorySpec{{
-			Name:         "repo-builder",
+			Name:         "octostate",
 			Visibility:   "private",
 			description:  nullOptionalString(),
 			homepage:     nullOptionalString(),
@@ -205,7 +205,7 @@ func TestEncodeYAMLOmitsOrgOwnersAndEmptyNestedSections(t *testing.T) {
 		}},
 		Repositories: []RepositorySpec{{
 			Owner:      "orang-gaboets",
-			Name:       "repo-builder",
+			Name:       "octostate",
 			Visibility: "private",
 			Template: TemplateSpec{
 				Owner: "orang-gaboets",
@@ -248,7 +248,7 @@ func TestEncodeYAMLIncludesExplicitOptionalsAndExternalOwners(t *testing.T) {
 		Invites:      []InviteSpec{},
 		Repositories: []RepositorySpec{{
 			Owner:        "shared-platform",
-			Name:         "repo-builder",
+			Name:         "octostate",
 			Visibility:   "public",
 			Description:  "",
 			Homepage:     "",
@@ -269,7 +269,7 @@ func TestEncodeYAMLIncludesExplicitOptionalsAndExternalOwners(t *testing.T) {
 			Privacy: "closed",
 			Repositories: []TeamRepositorySpec{{
 				Owner:      "shared-platform",
-				Name:       "repo-builder",
+				Name:       "octostate",
 				Permission: "push",
 			}},
 		}},
@@ -344,10 +344,10 @@ func TestEncodeYAMLProgrammaticRepositoryFallbacks(t *testing.T) {
 		Organization: "orang-gaboets",
 		Invites:      []InviteSpec{},
 		Repositories: []RepositorySpec{{
-			Name:         "repo-builder",
+			Name:         "octostate",
 			Visibility:   "public",
 			Description:  "GitOps CLI",
-			Homepage:     "https://example.com/repo-builder",
+			Homepage:     "https://example.com/octostate",
 			AllowForking: true,
 			Archived:     true,
 			IsTemplate:   true,
@@ -364,7 +364,7 @@ func TestEncodeYAMLProgrammaticRepositoryFallbacks(t *testing.T) {
 	text := string(got)
 	for _, expected := range []string{
 		"description: GitOps CLI",
-		"homepage: https://example.com/repo-builder",
+		"homepage: https://example.com/octostate",
 		"allow_forking: true",
 		"archived: true",
 		"is_template: true",
@@ -379,7 +379,7 @@ func TestEncodeYAMLProgrammaticRepositoryFallbacks(t *testing.T) {
 	if value, managed := repo.ManagedDescription(); !managed || value != "GitOps CLI" {
 		t.Fatalf("expected round-tripped fallback description, got value=%q managed=%v", value, managed)
 	}
-	if value, managed := repo.ManagedHomepage(); !managed || value != "https://example.com/repo-builder" {
+	if value, managed := repo.ManagedHomepage(); !managed || value != "https://example.com/octostate" {
 		t.Fatalf("expected round-tripped fallback homepage, got value=%q managed=%v", value, managed)
 	}
 	if value, managed := repo.ManagedAllowForking(); !managed || !value {

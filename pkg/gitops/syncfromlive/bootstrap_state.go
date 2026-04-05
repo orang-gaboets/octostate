@@ -3,7 +3,7 @@ package syncfromlive
 import (
 	"strings"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func cloneOrganizationState(actual *state.OrganizationState) state.OrganizationState {

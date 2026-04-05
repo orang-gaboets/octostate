@@ -11,12 +11,12 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v55/github"
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github/organizations"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/internal/testconfig"
-	gitopsplan "github.com/orang-gaboets/repo-builder/pkg/gitops/plan"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/testconfig"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
@@ -164,10 +164,10 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 
 	desiredRepo := config.RepositorySpec{
 		Owner:        "orang-gaboets",
-		Name:         "repo-builder",
+		Name:         "octostate",
 		Visibility:   "private",
 		Description:  "GitOps CLI",
-		Homepage:     "https://example.com/repo-builder",
+		Homepage:     "https://example.com/octostate",
 		Topics:       []string{"gitops"},
 		AllowForking: false,
 		Archived:     false,
@@ -185,7 +185,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			Operation:    gitopsplan.ActionOperationCreate,
 			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
 			Executable:   true,
-			Message:      "create repository orang-gaboets/repo-builder",
+			Message:      "create repository orang-gaboets/octostate",
 		}},
 	}
 	plan.Normalize()
@@ -271,7 +271,7 @@ func TestExecuteRepositoryCreateOmitsUnmanagedOptionalFields(t *testing.T) {
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: private
     topics: [gitops]
     template:
@@ -288,7 +288,7 @@ invites: []
 			Operation:    gitopsplan.ActionOperationCreate,
 			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
 			Executable:   true,
-			Message:      "create repository orang-gaboets/repo-builder",
+			Message:      "create repository orang-gaboets/octostate",
 		}},
 	}
 	plan.Normalize()
@@ -336,7 +336,7 @@ func TestExecuteRepositoryCreateManagedZeroValuesAreApplied(t *testing.T) {
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: public
     description: ""
     homepage: ""
@@ -358,7 +358,7 @@ invites: []
 			Operation:    gitopsplan.ActionOperationCreate,
 			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
 			Executable:   true,
-			Message:      "create repository orang-gaboets/repo-builder",
+			Message:      "create repository orang-gaboets/octostate",
 		}},
 	}
 	plan.Normalize()
@@ -414,7 +414,7 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 
 	desiredRepo := config.RepositorySpec{
 		Owner:  "orang-gaboets",
-		Name:   "repo-builder",
+		Name:   "octostate",
 		Topics: []string{"gitops", "go"},
 	}
 	plan := &gitopsplan.Report{
@@ -424,7 +424,7 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 			Operation:    gitopsplan.ActionOperationUpdate,
 			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
 			Executable:   true,
-			Message:      "update repository orang-gaboets/repo-builder",
+			Message:      "update repository orang-gaboets/octostate",
 			Changes: []gitopsplan.FieldChange{{
 				Field: "topics",
 			}},
@@ -465,7 +465,7 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 
 	desiredRepo := config.RepositorySpec{
 		Owner:        "orang-gaboets",
-		Name:         "repo-builder",
+		Name:         "octostate",
 		Visibility:   "private",
 		Description:  "Updated description",
 		AllowForking: false,
@@ -477,7 +477,7 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 			Operation:    gitopsplan.ActionOperationUpdate,
 			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
 			Executable:   true,
-			Message:      "update repository orang-gaboets/repo-builder",
+			Message:      "update repository orang-gaboets/octostate",
 			Changes: []gitopsplan.FieldChange{
 				{Field: "allow_forking", From: true, To: false},
 				{Field: "description", From: "", To: desiredRepo.Description},
@@ -521,7 +521,7 @@ func TestExecuteRepositoryUpdateManagedZeroValuesAreApplied(t *testing.T) {
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
-  - name: repo-builder
+  - name: octostate
     visibility: public
     description: ""
     homepage: ""
@@ -540,10 +540,10 @@ invites: []
 			Operation:    gitopsplan.ActionOperationUpdate,
 			ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
 			Executable:   true,
-			Message:      "update repository orang-gaboets/repo-builder",
+			Message:      "update repository orang-gaboets/octostate",
 			Changes: []gitopsplan.FieldChange{
 				{Field: "description", From: "CLI", To: ""},
-				{Field: "homepage", From: "https://example.com/repo-builder", To: ""},
+				{Field: "homepage", From: "https://example.com/octostate", To: ""},
 				{Field: "allow_forking", From: true, To: false},
 				{Field: "archived", From: true, To: false},
 				{Field: "is_template", From: true, To: false},
@@ -592,7 +592,7 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 
 	desiredRepo := config.RepositorySpec{
 		Owner: "orang-gaboets",
-		Name:  "repo-builder",
+		Name:  "octostate",
 	}
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
@@ -633,9 +633,9 @@ func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
 		Actions: []gitopsplan.Action{{
 			ResourceType: gitopsplan.ActionResourceTypeRepository,
 			Operation:    gitopsplan.ActionOperationCreate,
-			ResourceID:   repositoryResourceID("orang-gaboets", "repo-builder"),
+			ResourceID:   repositoryResourceID("orang-gaboets", "octostate"),
 			Executable:   true,
-			Message:      "create repository orang-gaboets/repo-builder",
+			Message:      "create repository orang-gaboets/octostate",
 		}},
 	}
 	plan.Normalize()
@@ -651,7 +651,7 @@ func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{{
 			Owner:      "orang-gaboets",
-			Name:       "repo-builder",
+			Name:       "octostate",
 			Visibility: "private",
 		}},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
@@ -1194,7 +1194,7 @@ func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 		},
 		addTeamRepoBySlugFunc: func(_ context.Context, org, slug, owner, repo string, opts *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
 			repoPermissionCalls++
-			if org != "orang-gaboets" || slug != "platform" || owner != "orang-gaboets" || repo != "repo-builder" || opts == nil || opts.Permission != "push" {
+			if org != "orang-gaboets" || slug != "platform" || owner != "orang-gaboets" || repo != "octostate" || opts == nil || opts.Permission != "push" {
 				return nil, errors.New("unexpected repo permission call")
 			}
 			return &gh.Response{}, nil
@@ -1208,14 +1208,14 @@ func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 			Name:         "Platform",
 			Privacy:      "closed",
 			Members:      []config.TeamMemberSpec{{Username: "alice", Role: "maintainer"}},
-			Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "repo-builder", Permission: "push"}},
+			Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "octostate", Permission: "push"}},
 		}},
 	}
 	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
 		{ResourceType: gitopsplan.ActionResourceTypeTeamMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamMemberResourceID("platform", "alice"), Executable: true},
 		{ResourceType: gitopsplan.ActionResourceTypeTeamMember, Operation: gitopsplan.ActionOperationUpdate, ResourceID: teamMemberResourceID("platform", "alice"), Executable: true},
-		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"), Executable: true},
-		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationUpdate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "octostate"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationUpdate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "octostate"), Executable: true},
 	}}
 	plan.Normalize()
 
@@ -1281,7 +1281,7 @@ func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T
 			Privacy: "closed",
 			Repositories: []config.TeamRepositorySpec{{
 				Owner:      "orang-gaboets",
-				Name:       "repo-builder",
+				Name:       "octostate",
 				Permission: "push",
 			}},
 		}},
@@ -1289,7 +1289,7 @@ func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T
 	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
 		ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
 		Operation:    gitopsplan.ActionOperationRemove,
-		ResourceID:   teamRepoPermissionResourceID("platform", "orang-gaboets", "repo-builder"),
+		ResourceID:   teamRepoPermissionResourceID("platform", "orang-gaboets", "octostate"),
 		Executable:   true,
 	}}}
 	plan.Normalize()
@@ -1357,7 +1357,7 @@ func TestExecuteFailsWhenExecutableTeamCreatesAreNotContiguous(t *testing.T) {
 		},
 		Repositories: []config.RepositorySpec{{
 			Owner: "orang-gaboets",
-			Name:  "repo-builder",
+			Name:  "octostate",
 			Template: config.TemplateSpec{
 				Owner: "orang-gaboets",
 				Name:  "repo-template",
@@ -1369,7 +1369,7 @@ func TestExecuteFailsWhenExecutableTeamCreatesAreNotContiguous(t *testing.T) {
 		Organization: "orang-gaboets",
 		Actions: []gitopsplan.Action{
 			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("platform"), Executable: true},
-			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "repo-builder"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "octostate"), Executable: true},
 			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("app"), Executable: true},
 		},
 	}

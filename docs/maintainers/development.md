@@ -5,8 +5,8 @@
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/orang-gaboets/repo-builder.git
-   cd repo-builder
+   git clone https://github.com/orang-gaboets/octostate.git
+   cd octostate
    ```
 
 2. Install Go 1.24 or higher:
@@ -31,17 +31,17 @@
 5. Build the project if you want a local binary:
 
    ```bash
-   go build -o bin/repo-builder ./cmd/repo-builder
+   go build -o bin/octostate ./cmd/octostate
    ```
 
 ## Common Commands
 
 ```bash
 # Build
-go build -o bin/repo-builder ./cmd/repo-builder
+go build -o bin/octostate ./cmd/octostate
 
 # Run help / smoke check
-go run ./cmd/repo-builder --help
+go run ./cmd/octostate --help
 
 # Format (check / write)
 gofmt -l .
@@ -79,6 +79,6 @@ go test ./... -cover -coverprofile=coverage.out
 When developing or reviewing commands, remember:
 - diagnostic logs belong on stderr
 - command results belong on stdout, with JSON as the default for most commands
-- documented exceptions may use a different stdout format; for example, `repo-builder config sync-from-live` outputs YAML by default unless `--write` is used
+- documented exceptions may use a different stdout format; for example, `octostate config sync-from-live` outputs YAML by default unless `--write` is used
 - query/list/get commands return resource payloads
 - mutating commands return an operation envelope with `status`, `message`, and `data`

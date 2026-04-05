@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestBuildAdoptConfigRejectsInvalidInput(t *testing.T) {
@@ -44,7 +44,7 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 		Repositories: []config.RepositorySpec{
 			func() config.RepositorySpec {
 				repo := config.RepositorySpec{
-					Name:       "repo-builder",
+					Name:       "octostate",
 					Visibility: "public",
 					Template: config.TemplateSpec{
 						Owner: "orang-gaboets",
@@ -74,7 +74,7 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 				},
 				Repositories: []config.TeamRepositorySpec{
 					{Name: "legacy-only", Permission: "push"},
-					{Name: "repo-builder", Permission: "pull"},
+					{Name: "octostate", Permission: "pull"},
 				},
 			},
 			{
@@ -96,10 +96,10 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 		Repositories: []state.Repository{
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "private",
 				Description:  "GitOps CLI",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops", "go"},
 				AllowForking: false,
 				Archived:     false,
@@ -137,7 +137,7 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 			{TeamSlug: "operations", Username: "bob", Role: "member"},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
-			{TeamSlug: "platform", Name: "repo-builder", Permission: "admin"},
+			{TeamSlug: "platform", Name: "octostate", Permission: "admin"},
 			{TeamSlug: "operations", Name: "live-only", Permission: "push"},
 		},
 	}
@@ -260,7 +260,7 @@ func assertAdoptedRepositories(t *testing.T, repositories []config.RepositorySpe
 	if description, managed := repoBuilder.ManagedDescription(); !managed || description != "GitOps CLI" {
 		t.Fatalf("expected managed description from live, got value=%q managed=%v", description, managed)
 	}
-	if homepage, managed := repoBuilder.ManagedHomepage(); !managed || homepage != "https://example.com/repo-builder" {
+	if homepage, managed := repoBuilder.ManagedHomepage(); !managed || homepage != "https://example.com/octostate" {
 		t.Fatalf("expected managed homepage from live, got value=%q managed=%v", homepage, managed)
 	}
 
@@ -316,7 +316,7 @@ func assertAdoptedTeams(t *testing.T, teams []config.TeamSpec) {
 	if platform.Repositories[0] != (config.TeamRepositorySpec{Name: "legacy-only", Permission: "push"}) {
 		t.Fatalf("expected config-only team repository to stay first, got %#v", platform.Repositories[0])
 	}
-	if platform.Repositories[1] != (config.TeamRepositorySpec{Name: "repo-builder", Permission: "admin"}) {
+	if platform.Repositories[1] != (config.TeamRepositorySpec{Name: "octostate", Permission: "admin"}) {
 		t.Fatalf("expected team repository permission to update from live, got %#v", platform.Repositories[1])
 	}
 	if len(teams[2].Members) != 1 || teams[2].Members[0] != (config.TeamMemberSpec{Username: "bob", Role: "member"}) {

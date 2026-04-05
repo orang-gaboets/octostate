@@ -3,7 +3,7 @@ package repos
 import (
 	"fmt"
 
-	"github.com/orang-gaboets/repo-builder/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
 // CreateFromTemplateOptions defines the options for creating a repository from a template.

@@ -6,19 +6,19 @@ Use these commands when you want to capture a stable JSON snapshot from live
 GitHub and later compare desired state against that snapshot offline.
 
 Authentication rules:
-- `repo-builder audit pull` requires GitHub auth.
-- `repo-builder audit diff` is fully offline once the snapshot exists.
+- `octostate audit pull` requires GitHub auth.
+- `octostate audit diff` is fully offline once the snapshot exists.
 
 Examples below use `$GITHUB_TOKEN` where a live read is required, but
 `audit pull` also supports GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
 
-## `repo-builder audit pull`
+## `octostate audit pull`
 
 Pull an actual-state snapshot from live GitHub.
 
 ```bash
-repo-builder audit pull --config-dir ./config --state-dir ./state --token <token>
+octostate audit pull --config-dir ./config --state-dir ./state --token <token>
 ```
 
 Flags:
@@ -65,17 +65,17 @@ This snapshot feeds offline GitOps workflows such as `audit diff` and can also
 support later reconciliation planning.
 
 If you are upgrading from an older snapshot format that did not record
-organization member roles, run `repo-builder audit pull` once before using
+organization member roles, run `octostate audit pull` once before using
 `audit diff` so the stored snapshot includes the current `members[].role`
 values.
 
-## `repo-builder audit diff`
+## `octostate audit diff`
 
 Diff desired state against the stored snapshot.
 
 ```bash
-repo-builder audit diff --config-dir ./config --state-dir ./state
-repo-builder audit diff --config-dir ./config --state-dir ./state --fail-on-drift
+octostate audit diff --config-dir ./config --state-dir ./state
+octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 ```
 
 Flags:
@@ -111,11 +111,11 @@ Exit codes:
 Example offline diff:
 
 ```bash
-go run ./cmd/repo-builder audit diff --config-dir ./config --state-dir ./state
+go run ./cmd/octostate audit diff --config-dir ./config --state-dir ./state
 ```
 
 Example CI-style drift gate:
 
 ```bash
-go run ./cmd/repo-builder audit diff --config-dir ./config --state-dir ./state --fail-on-drift
+go run ./cmd/octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 ```

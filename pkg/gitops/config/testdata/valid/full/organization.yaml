@@ -9,14 +9,14 @@ invites:
       - " platform "
 repositories:
   - owner: ""
-    name: " repo-builder "
+    name: " octostate "
     template:
       owner: " orang-gaboets "
       name: " repo-template "
       include_all_branches: false
     visibility: " private "
     description: " GitHub organization operations CLI "
-    homepage: " https://github.com/orang-gaboets/repo-builder "
+    homepage: " https://github.com/orang-gaboets/octostate "
     topics:
       - " go "
       - " gitops "
@@ -34,5 +34,5 @@ teams:
         role: " maintainer "
     repositories:
       - owner: ""
-        name: " repo-builder "
+        name: " octostate "
         permission: " push "

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
-	"github.com/orang-gaboets/repo-builder/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
 var (

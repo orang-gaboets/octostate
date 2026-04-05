@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	githubpkg "github.com/orang-gaboets/repo-builder/pkg/github"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 const actualSnapshotRelativePath = "actual/snapshot.json"

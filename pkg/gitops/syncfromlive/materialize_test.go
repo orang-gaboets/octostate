@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/config"
-	"github.com/orang-gaboets/repo-builder/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestBuildMaterializeConfigRejectsInvalidInput(t *testing.T) {
@@ -42,7 +42,7 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 		Repositories: []config.RepositorySpec{
 			func() config.RepositorySpec {
 				repo := config.RepositorySpec{
-					Name:       "repo-builder",
+					Name:       "octostate",
 					Visibility: "public",
 					Topics:     []string{"gitops"},
 					Template: config.TemplateSpec{
@@ -80,10 +80,10 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 		Repositories: []state.Repository{
 			{
 				Owner:        "orang-gaboets",
-				Name:         "repo-builder",
+				Name:         "octostate",
 				Visibility:   "private",
 				Description:  "Live description",
-				Homepage:     "https://example.com/repo-builder",
+				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"go", "gitops"},
 				AllowForking: false,
 				Archived:     true,
@@ -165,7 +165,7 @@ func assertMaterializedRepoBuilder(
 	if description, managed := got.ManagedDescription(); !managed || description != "Keep me" {
 		t.Fatalf("expected managed description to stay unchanged, got value=%q managed=%v", description, managed)
 	}
-	if homepage, managed := got.ManagedHomepage(); !managed || homepage != "https://example.com/repo-builder" {
+	if homepage, managed := got.ManagedHomepage(); !managed || homepage != "https://example.com/octostate" {
 		t.Fatalf("expected homepage to materialize from live, got value=%q managed=%v", homepage, managed)
 	}
 	if allowForking, managed := got.ManagedAllowForking(); !managed || allowForking {

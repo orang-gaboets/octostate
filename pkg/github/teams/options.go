@@ -3,7 +3,7 @@ package teams
 import (
 	"fmt"
 
-	"github.com/orang-gaboets/repo-builder/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
 // CreateTeamOptions defines the options for creating a new team.

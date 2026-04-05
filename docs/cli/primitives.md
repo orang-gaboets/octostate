@@ -18,10 +18,10 @@ require explicit confirmation with `--yes` unless `--dry-run` is used.
 
 ## Organization
 
-### `repo-builder organization get-by-name`
+### `octostate organization get-by-name`
 
 ```bash
-repo-builder organization get-by-name --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+octostate organization get-by-name --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
 ```
 
 Flags:
@@ -31,10 +31,10 @@ Flags:
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organization name
 
-### `repo-builder organization list-repos`
+### `octostate organization list-repos`
 
 ```bash
-repo-builder organization list-repos --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--type <all|public|private|forks|sources|member>]
+octostate organization list-repos --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--type <all|public|private|forks|sources|member>]
 ```
 
 Flags:
@@ -45,10 +45,10 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--type` (optional): Type of repositories to list (default is `all`)
 
-### `repo-builder organization list-members`
+### `octostate organization list-members`
 
 ```bash
-repo-builder organization list-members --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--role <all|admin|member>]
+octostate organization list-members --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> [--role <all|admin|member>]
 ```
 
 Flags:
@@ -59,10 +59,10 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--role` (optional): Role of members to list (default is `all`)
 
-### `repo-builder organization list-teams`
+### `octostate organization list-teams`
 
 ```bash
-repo-builder organization list-teams --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+octostate organization list-teams --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
 ```
 
 Flags:
@@ -72,10 +72,10 @@ Flags:
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organization name
 
-### `repo-builder organization list-invitations`
+### `octostate organization list-invitations`
 
 ```bash
-repo-builder organization list-invitations --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
+octostate organization list-invitations --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org>
 ```
 
 Flags:
@@ -85,10 +85,10 @@ Flags:
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organization name
 
-### `repo-builder organization invite`
+### `octostate organization invite`
 
 ```bash
-repo-builder organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--dry-run]
+octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--dry-run]
 ```
 
 Flags:
@@ -103,10 +103,10 @@ Flags:
 
 ## Repository
 
-### `repo-builder repo get`
+### `octostate repo get`
 
 ```bash
-repo-builder repo get --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
+octostate repo get --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
 ```
 
 Flags:
@@ -117,10 +117,10 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 
-### `repo-builder repo create-from-template`
+### `octostate repo create-from-template`
 
 ```bash
-repo-builder repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--dry-run]
+octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--dry-run]
 ```
 
 Flags:
@@ -138,10 +138,10 @@ Flags:
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
 - `--dry-run` (optional): Preview repository creation without creating it
 
-### `repo-builder repo delete`
+### `octostate repo delete`
 
 ```bash
-repo-builder repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> (--yes | --dry-run)
+octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> (--yes | --dry-run)
 ```
 
 Flags:
@@ -154,10 +154,10 @@ Flags:
 - `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
 - `--dry-run` (optional): Preview repository deletion without deleting it
 
-### `repo-builder repo edit`
+### `octostate repo edit`
 
 ```bash
-repo-builder repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--dry-run]
+octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--dry-run]
 ```
 
 Flags:
@@ -177,10 +177,10 @@ Flags:
 
 ## Topic
 
-### `repo-builder topic add`
+### `octostate topic add`
 
 ```bash
-repo-builder topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
+octostate topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
 ```
 
 Flags:
@@ -193,10 +193,10 @@ Flags:
 - `--topics` (required): Comma-separated list of topics to add
 - `--dry-run` (optional): Preview topic additions without updating the repository
 
-### `repo-builder topic list`
+### `octostate topic list`
 
 ```bash
-repo-builder topic list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
+octostate topic list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>
 ```
 
 Flags:
@@ -207,10 +207,10 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 
-### `repo-builder topic replace`
+### `octostate topic replace`
 
 ```bash
-repo-builder topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
+octostate topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
 ```
 
 Flags:
@@ -225,10 +225,10 @@ Flags:
 
 ## Team
 
-### `repo-builder team create`
+### `octostate team create`
 
 ```bash
-repo-builder team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>] [--dry-run]
+octostate team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>] [--dry-run]
 ```
 
 Flags:
@@ -243,10 +243,10 @@ Flags:
 - `--parent` (optional): Parent team slug (if creating a child team)
 - `--dry-run` (optional): Preview team creation without creating the team
 
-### `repo-builder team edit`
+### `octostate team edit`
 
 ```bash
-repo-builder team edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--name <new-team-name>] [--desc <description>] [--secret true|false] [--parent <parent-team-slug> | --clear-parent] [--dry-run]
+octostate team edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--name <new-team-name>] [--desc <description>] [--secret true|false] [--parent <parent-team-slug> | --clear-parent] [--dry-run]
 ```
 
 Flags:
@@ -263,10 +263,10 @@ Flags:
 - `--clear-parent` (optional): Remove the parent team relationship
 - `--dry-run` (optional): Preview team edits without updating the team
 
-### `repo-builder team delete-by-slug`
+### `octostate team delete-by-slug`
 
 ```bash
-repo-builder team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> (--yes | --dry-run)
+octostate team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> (--yes | --dry-run)
 ```
 
 Flags:
@@ -279,10 +279,10 @@ Flags:
 - `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
 - `--dry-run` (optional): Preview team deletion without deleting the team
 
-### `repo-builder team get-by-slug`
+### `octostate team get-by-slug`
 
 ```bash
-repo-builder team get-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>
+octostate team get-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>
 ```
 
 Flags:
@@ -293,10 +293,10 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 
-### `repo-builder team members list`
+### `octostate team members list`
 
 ```bash
-repo-builder team members list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--role <all|member|maintainer>]
+octostate team members list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--role <all|member|maintainer>]
 ```
 
 Flags:
@@ -308,10 +308,10 @@ Flags:
 - `--slug` (required): Team slug (URL-friendly name)
 - `--role` (optional): Team member role filter (`all`, `member`, or `maintainer`; default is `all`)
 
-### `repo-builder team members add`
+### `octostate team members add`
 
 ```bash
-repo-builder team members add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--role <member|maintainer>] [--dry-run]
+octostate team members add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--role <member|maintainer>] [--dry-run]
 ```
 
 Flags:
@@ -325,10 +325,10 @@ Flags:
 - `--role` (optional): Team membership role (`member` or `maintainer`; default is `member`)
 - `--dry-run` (optional): Preview the membership change without calling GitHub
 
-### `repo-builder team members remove`
+### `octostate team members remove`
 
 ```bash
-repo-builder team members remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--dry-run]
+octostate team members remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--dry-run]
 ```
 
 Flags:
@@ -341,10 +341,10 @@ Flags:
 - `--username` (required): GitHub username to remove from the team
 - `--dry-run` (optional): Preview the membership removal without calling GitHub
 
-### `repo-builder team repo permissions list`
+### `octostate team repo permissions list`
 
 ```bash
-repo-builder team repo permissions list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>
+octostate team repo permissions list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>
 ```
 
 Flags:
@@ -355,10 +355,10 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 
-### `repo-builder team repo permissions add`
+### `octostate team repo permissions add`
 
 ```bash
-repo-builder team repo permissions add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--permission <pull|push|admin|maintain|triage>] [--dry-run]
+octostate team repo permissions add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--permission <pull|push|admin|maintain|triage>] [--dry-run]
 ```
 
 Flags:
@@ -373,10 +373,10 @@ Flags:
 - `--permission` (optional): Permission to grant (`pull`, `push`, `admin`, `maintain`, `triage`; default is `pull`)
 - `--dry-run` (optional): Preview the permission change without calling GitHub
 
-### `repo-builder team repo permissions remove`
+### `octostate team repo permissions remove`
 
 ```bash
-repo-builder team repo permissions remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--dry-run]
+octostate team repo permissions remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--dry-run]
 ```
 
 Flags:
@@ -392,10 +392,10 @@ Flags:
 
 ## User
 
-### `repo-builder user get-by-id`
+### `octostate user get-by-id`
 
 ```bash
-repo-builder user get-by-id --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --id <user-id>
+octostate user get-by-id --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --id <user-id>
 ```
 
 Flags:
@@ -405,10 +405,10 @@ Flags:
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--id` (required): User ID
 
-### `repo-builder user get-by-username`
+### `octostate user get-by-username`
 
 ```bash
-repo-builder user get-by-username --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --username <username>
+octostate user get-by-username --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --username <username>
 ```
 
 Flags:
