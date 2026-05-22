@@ -137,6 +137,7 @@ workflow orchestration around when `validate`, `plan`, `apply`, `pull`, and
 ### Maintainers
 - [Development](docs/maintainers/development.md)
 - [Releases](docs/maintainers/releases.md)
+- [v1.0.0 readiness](docs/maintainers/v1.0.0-readiness.md)
 
 ## License
 

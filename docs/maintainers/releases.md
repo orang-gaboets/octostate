@@ -27,6 +27,10 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+For a major release or first stable release, keep the human validation checklist
+and supporting evidence in [`v1.0.0-readiness.md`](v1.0.0-readiness.md) before
+intentionally merging a releasable breaking change onto `main`.
+
 ## Auto-merge
 
 This repository also uses `.github/workflows/automerge-release-please.yml` to
