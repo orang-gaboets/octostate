@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.0.0](https://github.com/orang-gaboets/octostate/compare/v0.17.0...v1.0.0) (2026-05-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* validate v1.0.0 readiness ([#108](https://github.com/orang-gaboets/octostate/issues/108))
+
+### Features
+
+* validate v1.0.0 readiness ([#108](https://github.com/orang-gaboets/octostate/issues/108)) ([71242ad](https://github.com/orang-gaboets/octostate/commit/71242adf3e8a8884571d3896f6555748a8df0da7))
+
 ## [0.17.0](https://github.com/orang-gaboets/octostate/compare/v0.16.0...v0.17.0) (2026-04-02)
 
 
