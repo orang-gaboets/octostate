@@ -10,7 +10,11 @@ Please do not report suspected security vulnerabilities through public GitHub
 issues.
 
 Report vulnerabilities through GitHub private vulnerability reporting for this
-repository. Include as much of the following information as possible:
+repository when the feature is available. If the "Report a vulnerability" button
+is unavailable, contact the maintainer privately using the contact details on
+their GitHub profile.
+
+Include as much of the following information as possible:
 
 - the affected `octostate` version or commit
 - reproduction steps or a proof of concept
