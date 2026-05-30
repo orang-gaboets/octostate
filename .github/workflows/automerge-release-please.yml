@@ -71,7 +71,21 @@ jobs:
           deadline=$(( $(date +%s) + timeout_seconds ))
 
           while true; do
-            checks_json="$(gh pr checks "$PR_URL" --json name,bucket,workflow)"
+            checks_stderr="$(mktemp)"
+            checks_status=0
+            # gh returns non-zero while checks are pending or failed, but still emits JSON.
+            checks_json="$(gh pr checks "$PR_URL" --json name,bucket,workflow 2>"$checks_stderr")" || checks_status=$?
+            if ! jq -e 'type == "array"' <<<"$checks_json" >/dev/null; then
+              echo "gh pr checks did not return valid check JSON." >&2
+              cat "$checks_stderr" >&2
+              rm -f "$checks_stderr"
+              if [ "$checks_status" -eq 0 ]; then
+                checks_status=1
+              fi
+              exit "$checks_status"
+            fi
+            rm -f "$checks_stderr"
+
             relevant_checks_json="$(jq --arg workflow "$WORKFLOW_NAME" '[.[] | select(.workflow != $workflow)]' <<<"$checks_json")"
             relevant_check_count="$(jq 'length' <<<"$relevant_checks_json")"
 
