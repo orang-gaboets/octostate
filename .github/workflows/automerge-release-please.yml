@@ -8,8 +8,15 @@ on:
       - synchronize
       - ready_for_review
 
+concurrency:
+  group: release-please-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
 
 jobs:
   auto-merge:
@@ -40,10 +47,80 @@ jobs:
           echo "RELEASE_PLEASE_APP_ID and RELEASE_PLEASE_APP_PRIVATE_KEY must be configured for release PR auto-merge." >&2
           exit 1
 
-      - name: Enable auto-merge for this app's release-please PR
-        if: ${{ github.event.pull_request.user.login == format('{0}[bot]', steps.app-token.outputs.app-slug) }}
+      - name: Verify release-please PR author
+        env:
+          EXPECTED_AUTHOR: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
+          ACTUAL_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$ACTUAL_AUTHOR" != "$EXPECTED_AUTHOR" ]; then
+            echo "Expected release PR author $EXPECTED_AUTHOR, got $ACTUAL_AUTHOR" >&2
+            exit 1
+          fi
+
+      - name: Wait for release checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+
+          timeout_seconds=1800
+          poll_interval_seconds=10
+          deadline=$(( $(date +%s) + timeout_seconds ))
+
+          while true; do
+            checks_json="$(gh pr checks "$PR_URL" --json name,bucket,workflow)"
+            relevant_checks_json="$(jq --arg workflow "$WORKFLOW_NAME" '[.[] | select(.workflow != $workflow)]' <<<"$checks_json")"
+            relevant_check_count="$(jq 'length' <<<"$relevant_checks_json")"
+
+            missing_required_workflows=""
+            for required_workflow in CI CodeQL; do
+              if ! jq -e --arg workflow "$required_workflow" 'any(.[]; .workflow == $workflow)' <<<"$relevant_checks_json" >/dev/null; then
+                missing_required_workflows="${missing_required_workflows}${required_workflow}"$'\n'
+              fi
+            done
+
+            if [ "$relevant_check_count" -eq 0 ] || [ -n "$missing_required_workflows" ]; then
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "Timed out waiting for required release checks to start." >&2
+                printf '%s' "$missing_required_workflows" >&2
+                exit 1
+              fi
+
+              echo "Waiting for required release checks to start:"
+              printf '%s' "$missing_required_workflows"
+              sleep "$poll_interval_seconds"
+              continue
+            fi
+
+            failed_checks="$(jq -r '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | .[].name' <<<"$relevant_checks_json")"
+            if [ -n "$failed_checks" ]; then
+              echo "Release checks failed:" >&2
+              printf '%s\n' "$failed_checks" >&2
+              exit 1
+            fi
+
+            pending_checks="$(jq -r '[.[] | select(.bucket == "pending")] | .[].name' <<<"$relevant_checks_json")"
+            if [ -z "$pending_checks" ]; then
+              break
+            fi
+
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "Timed out waiting for release checks to complete." >&2
+              printf '%s\n' "$pending_checks" >&2
+              exit 1
+            fi
+
+            echo "Waiting for release checks to complete:"
+            printf '%s\n' "$pending_checks"
+            sleep "$poll_interval_seconds"
+          done
+
+      - name: Merge release-please PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: gh pr merge --auto --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+        run: gh pr merge --admin --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
