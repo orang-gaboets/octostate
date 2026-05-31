@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.0.1](https://github.com/orang-gaboets/octostate/compare/v1.0.0...v1.0.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **ci:** merge release-please PRs after checks pass ([#120](https://github.com/orang-gaboets/octostate/issues/120)) ([af4a054](https://github.com/orang-gaboets/octostate/commit/af4a054b5e9a60cc61e9f212d9166795d58ee104))
+* **deps:** resolve Go security alerts ([#117](https://github.com/orang-gaboets/octostate/issues/117)) ([f26022a](https://github.com/orang-gaboets/octostate/commit/f26022a772536a827830296c41f20d49f3f0fdfe))
+
 ## [1.0.0](https://github.com/orang-gaboets/octostate/compare/v0.17.0...v1.0.0) (2026-05-22)
 
 
