@@ -82,6 +82,14 @@ jobs:
             # gh returns non-zero while checks are pending or failed, but still emits JSON.
             checks_json="$(gh pr checks "$PR_URL" --json name,bucket,workflow 2>"$checks_stderr")" || checks_status=$?
             if ! jq -e 'type == "array"' <<<"$checks_json" >/dev/null; then
+              if grep -Eiq 'no checks? (reported|found)' "$checks_stderr" && [ "$(date +%s)" -lt "$deadline" ]; then
+                echo "Waiting for release checks to be reported:"
+                cat "$checks_stderr"
+                rm -f "$checks_stderr"
+                sleep "$poll_interval_seconds"
+                continue
+              fi
+
               echo "gh pr checks did not return valid check JSON." >&2
               cat "$checks_stderr" >&2
               rm -f "$checks_stderr"

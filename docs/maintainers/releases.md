@@ -43,3 +43,8 @@ release checks pass.
 - The workflow waits for the `CI` and `CodeQL` release checks to complete before merging
 - Human-authored PRs are intentionally ignored
 - The workflow uses the configured GitHub App token to merge the release PR directly
+
+The configured GitHub App must be able to bypass the `main` branch ruleset for
+pull requests. Keep the release-please app in the `main-protection` ruleset
+bypass list before relying on this workflow; otherwise the direct merge can
+still fail with `REVIEW_REQUIRED`.
