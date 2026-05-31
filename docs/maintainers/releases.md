@@ -31,12 +31,20 @@ For a major release or first stable release, keep the human validation checklist
 and supporting evidence in [`v1.0.0-readiness.md`](v1.0.0-readiness.md) before
 intentionally merging a releasable breaking change onto `main`.
 
-## Auto-merge
+## Release PR Merge
 
 This repository also uses `.github/workflows/automerge-release-please.yml` to
-enable auto-merge for `release-please` PRs created by the configured GitHub
-App.
+merge `release-please` PRs created by the configured GitHub App after the
+release checks pass.
 
 - The workflow only targets same-repository PRs into `main`
 - The workflow only targets release branches created by `release-please` (`release-please--branches--*`)
+- The workflow requires both the PR author and triggering event sender to be the configured GitHub App bot
+- The workflow waits for the `CI` and `CodeQL` release checks to complete before merging
 - Human-authored PRs are intentionally ignored
+- The workflow uses the configured GitHub App token to merge the release PR directly
+
+The configured GitHub App must be able to bypass the `main` branch ruleset for
+pull requests. Keep the release-please app in the `main-protection` ruleset
+bypass list before relying on this workflow; otherwise the direct merge can
+still fail with `REVIEW_REQUIRED`.
