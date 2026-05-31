@@ -39,6 +39,7 @@ release checks pass.
 
 - The workflow only targets same-repository PRs into `main`
 - The workflow only targets release branches created by `release-please` (`release-please--branches--*`)
+- The workflow requires both the PR author and triggering event sender to be the configured GitHub App bot
 - The workflow waits for the `CI` and `CodeQL` release checks to complete before merging
 - Human-authored PRs are intentionally ignored
 - The workflow uses the configured GitHub App token to merge the release PR directly

@@ -47,13 +47,19 @@ jobs:
           echo "RELEASE_PLEASE_APP_ID and RELEASE_PLEASE_APP_PRIVATE_KEY must be configured for release PR auto-merge." >&2
           exit 1
 
-      - name: Verify release-please PR author
+      - name: Verify release-please PR actor
         env:
-          EXPECTED_AUTHOR: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
-          ACTUAL_AUTHOR: ${{ github.event.pull_request.user.login }}
+          EXPECTED_BOT: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          EVENT_SENDER: ${{ github.event.sender.login }}
         run: |
-          if [ "$ACTUAL_AUTHOR" != "$EXPECTED_AUTHOR" ]; then
-            echo "Expected release PR author $EXPECTED_AUTHOR, got $ACTUAL_AUTHOR" >&2
+          if [ "$PR_AUTHOR" != "$EXPECTED_BOT" ]; then
+            echo "Expected release PR author $EXPECTED_BOT, got $PR_AUTHOR" >&2
+            exit 1
+          fi
+
+          if [ "$EVENT_SENDER" != "$EXPECTED_BOT" ]; then
+            echo "Expected release PR event sender $EXPECTED_BOT, got $EVENT_SENDER" >&2
             exit 1
           fi
 
