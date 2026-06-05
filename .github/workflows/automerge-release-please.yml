@@ -8,9 +8,9 @@ on:
       - synchronize
 
 concurrency:
-  # Keep approval-triggering events in one bucket, but let unrelated label noise
-  # run separately so it does not cancel an in-flight release approval.
-  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'labeled' && github.event.label.name != 'release: ready' && 'other-label' || 'approval' }}"
+  # Keep approval-triggering events in one bucket. Bot cleanup events and
+  # unrelated label noise run separately so they do not cancel approval runs.
+  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'unlabeled' && github.event.sender.type == 'Bot' && 'bot-cleanup' || github.event.action == 'labeled' && github.event.label.name != 'release: ready' && 'other-label' || 'approval' }}"
   cancel-in-progress: true
 
 permissions:
