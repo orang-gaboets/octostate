@@ -8,9 +8,9 @@ on:
       - synchronize
 
 concurrency:
-  # Keep approval-triggering events in one bucket. Bot cleanup events and
-  # unrelated label noise run separately so they do not cancel approval runs.
-  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'unlabeled' && github.event.sender.type == 'Bot' && 'bot-cleanup' || github.event.action == 'labeled' && github.event.label.name != 'release: ready' && 'other-label' || 'approval' }}"
+  # Only release-ready approval events share the cancellation bucket.
+  # Unrelated label noise and bot cleanup events run separately.
+  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && 'approval' || github.event.label.name == 'release: ready' && github.event.action == 'labeled' && 'approval' || github.event.label.name == 'release: ready' && github.event.action == 'unlabeled' && github.event.sender.type != 'Bot' && 'approval' || github.event.label.name == 'release: ready' && github.event.action == 'unlabeled' && 'bot-cleanup' || github.event.action == 'labeled' && 'other-label' || 'other-unlabel' }}"
   cancel-in-progress: true
 
 permissions:
@@ -99,13 +99,15 @@ jobs:
                 exit 0
               fi
 
-              if [ "$EVENT_SENDER" = "$EXPECTED_BOT" ]; then
-                echo "Expected a human release approver, got bot sender $EVENT_SENDER" >&2
-                exit 1
+              authorized=false
+              if [ "$EVENT_SENDER" != "$EXPECTED_BOT" ]; then
+                team_state="$(gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM/memberships/$EVENT_SENDER" --jq '.state' 2>/dev/null || true)"
+                if [ "$team_state" = "active" ]; then
+                  authorized=true
+                fi
               fi
 
-              team_state="$(gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM/memberships/$EVENT_SENDER" --jq '.state' 2>/dev/null || true)"
-              if [ "$team_state" != "active" ]; then
+              if [ "$authorized" != true ]; then
                 echo "release: ready was applied by @$EVENT_SENDER, but only active members of @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM may approve release auto-merge." >&2
                 label_removed=false
                 if gh pr edit "$PR_URL" --remove-label "$RELEASE_READY_LABEL"; then
