@@ -45,6 +45,7 @@ jobs:
           app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-issues: write
           permission-pull-requests: write
           permission-members: read
 
@@ -106,8 +107,26 @@ jobs:
               team_state="$(gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM/memberships/$EVENT_SENDER" --jq '.state' 2>/dev/null || true)"
               if [ "$team_state" != "active" ]; then
                 echo "release: ready was applied by @$EVENT_SENDER, but only active members of @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM may approve release auto-merge." >&2
-                if ! gh pr edit "$PR_URL" --remove-label "$RELEASE_READY_LABEL"; then
+                label_removed=false
+                if gh pr edit "$PR_URL" --remove-label "$RELEASE_READY_LABEL"; then
+                  label_removed=true
+                else
                   echo "Failed to remove unauthorized $RELEASE_READY_LABEL label from PR #$PR_NUMBER." >&2
+                fi
+
+                if [ "$label_removed" = true ]; then
+                  comment_status="The label was removed automatically and this PR was not merged."
+                else
+                  comment_status="This PR was not merged. The workflow also failed to remove the label automatically, so a maintainer should remove it manually."
+                fi
+
+                printf -v comment_body '%s\n\n%s\n\n%s\n' \
+                  "\`$RELEASE_READY_LABEL\` was applied by @$EVENT_SENDER, but only active members of \`@$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM\` may approve release auto-merge." \
+                  "$comment_status" \
+                  "An authorized Octostate Publisher should review the release PR and re-apply \`$RELEASE_READY_LABEL\` if it is ready to publish."
+
+                if ! gh pr comment "$PR_URL" --body "$comment_body"; then
+                  echo "Failed to post unauthorized approval comment on PR #$PR_NUMBER." >&2
                 fi
                 exit 1
               fi

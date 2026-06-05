@@ -29,6 +29,8 @@ current anchored version.
 
 The release-please GitHub App installation also needs to be configured with
 `Members: read` so the release approval workflow can verify the approver team.
+It also needs `Issues: write` so unauthorized approval attempts can leave a PR
+comment from the app bot.
 
 For a major release or first stable release, keep the human validation checklist
 and supporting evidence in [`v1.0.0-readiness.md`](v1.0.0-readiness.md) before
@@ -47,6 +49,7 @@ an authorized maintainer.
 - The workflow verifies the PR author is the configured GitHub App bot
 - The workflow verifies the label actor against the `octostate-publishers` team
 - Unauthorized `release: ready` labels are removed automatically
+- Unauthorized approval attempts leave a PR comment from the release-please app bot
 - If `release-please` updates the PR head after approval, the stale `release: ready` label is removed and must be re-applied
 - The workflow waits for the `CI` and `CodeQL` release checks to complete before merging
 - The workflow uses the configured GitHub App token to merge the release PR directly
@@ -55,6 +58,7 @@ an authorized maintainer.
 The configured GitHub App must be able to:
 
 - bypass the `main` branch ruleset for pull requests
+- write issues so it can leave PR comments for unauthorized approval attempts
 - write pull requests so it can merge the release PR and remove labels
 
 Keep the release-please app in the `main-protection` ruleset bypass list before
@@ -65,7 +69,11 @@ relying on this workflow; otherwise the direct merge can still fail with
 
 If `release: ready` is applied by someone who is not in
 `@orang-gaboets/octostate-publishers`, the workflow removes the label and fails
-before merge.
+before merge. It also leaves a PR comment explaining why the approval was
+rejected and what an authorized publisher should do next.
+
+The workflow does not leave comments when removing stale approvals after
+`release-please` updates the PR, to avoid noisy release PR timelines.
 
 If the release-please app cannot verify team membership, confirm that the app
 installation has `Members: read` and that the `octostate-publishers` team
