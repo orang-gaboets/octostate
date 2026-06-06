@@ -101,10 +101,33 @@ jobs:
 
               authorized=false
               if [ "$EVENT_SENDER" != "$EXPECTED_BOT" ]; then
-                team_state="$(gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM/memberships/$EVENT_SENDER" --jq '.state' 2>/dev/null || true)"
-                if [ "$team_state" = "active" ]; then
-                  authorized=true
+                team_stderr="$(mktemp)"
+                team_status=0
+                gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM" --jq '.slug' > /dev/null 2>"$team_stderr" || team_status=$?
+                if [ "$team_status" -ne 0 ]; then
+                  echo "Failed to verify release approver team @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM." >&2
+                  echo "Confirm the team slug is correct and the release-please app has Members: read." >&2
+                  cat "$team_stderr" >&2
+                  rm -f "$team_stderr"
+                  exit 1
                 fi
+                rm -f "$team_stderr"
+
+                membership_stderr="$(mktemp)"
+                membership_status=0
+                team_state="$(gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM/memberships/$EVENT_SENDER" --jq '.state' 2>"$membership_stderr")" || membership_status=$?
+                if [ "$membership_status" -eq 0 ] && [ "$team_state" = "active" ]; then
+                  authorized=true
+                elif [ "$membership_status" -ne 0 ]; then
+                  if ! grep -q "(HTTP 404)" "$membership_stderr"; then
+                    echo "Failed to verify whether @$EVENT_SENDER is a release approver." >&2
+                    echo "Leaving $RELEASE_READY_LABEL in place; confirm the app token can read organization members and retry." >&2
+                    cat "$membership_stderr" >&2
+                    rm -f "$membership_stderr"
+                    exit 1
+                  fi
+                fi
+                rm -f "$membership_stderr"
               fi
 
               if [ "$authorized" != true ]; then

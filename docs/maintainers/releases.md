@@ -77,4 +77,5 @@ The workflow does not leave comments when removing stale approvals after
 
 If the release-please app cannot verify team membership, confirm that the app
 installation has `Members: read` and that the `octostate-publishers` team
-exists.
+exists. Configuration or GitHub API failures fail closed without removing the
+`release: ready` label, so maintainers can retry after fixing the setup.
