@@ -30,7 +30,8 @@ current anchored version.
 The release-please GitHub App installation also needs to be configured with
 `Members: read` so the release approval workflow can verify the approver team.
 It also needs `Issues: write` so unauthorized approval attempts can leave a PR
-comment from the app bot.
+comment from the app bot, plus `Checks: read` and `Commit statuses: read` so
+the app bot can wait for required release checks before merging.
 
 For a major release or first stable release, keep the human validation checklist
 and supporting evidence in [`v1.0.0-readiness.md`](v1.0.0-readiness.md) before
@@ -58,6 +59,7 @@ an authorized maintainer.
 The configured GitHub App must be able to:
 
 - bypass the `main` branch ruleset for pull requests
+- read checks and commit statuses so it can wait for required release checks
 - write issues so it can leave PR comments for unauthorized approval attempts
 - write pull requests so it can merge the release PR and remove labels
 

@@ -45,8 +45,10 @@ jobs:
           app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-checks: read
           permission-issues: write
           permission-pull-requests: write
+          permission-statuses: read
           permission-members: read
 
       - name: Fail if app credentials are unavailable
@@ -177,7 +179,7 @@ jobs:
         if: ${{ steps.release-approval.outputs.should_merge == 'true' }}
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           WORKFLOW_NAME: ${{ github.workflow }}
         run: |
