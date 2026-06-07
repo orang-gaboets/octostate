@@ -27,6 +27,22 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+The release-please GitHub App installation also needs these permissions for the
+release approval workflow:
+
+- `Contents: write` so the app bot can update repository contents through PR
+  merge operations
+- `Pull requests: write` so the app bot can merge release PRs
+- `Issues: write` so the app bot can remove approval labels and leave PR
+  comments
+- `Checks: read` and `Commit statuses: read` so the app bot can wait for
+  required release checks before merging
+- `Members: read` so the app bot can verify the approver team
+
+Unlike the release-please workflow above, the release approval auto-merge
+workflow requires this GitHub App token and fails closed if the token cannot be
+created.
+
 For a major release or first stable release, keep the human validation checklist
 and supporting evidence in [`v1.0.0-readiness.md`](v1.0.0-readiness.md) before
 intentionally merging a releasable breaking change onto `main`.
@@ -34,17 +50,49 @@ intentionally merging a releasable breaking change onto `main`.
 ## Release PR Merge
 
 This repository also uses `.github/workflows/automerge-release-please.yml` to
-merge `release-please` PRs created by the configured GitHub App after the
-release checks pass.
+merge `release-please` PRs after an explicit approval label has been applied by
+an authorized maintainer.
 
+- The approval label is `release: ready`
+- Only active members of `@orang-gaboets/octostate-publishers` may apply that label to approve a release
 - The workflow only targets same-repository PRs into `main`
 - The workflow only targets release branches created by `release-please` (`release-please--branches--*`)
-- The workflow requires both the PR author and triggering event sender to be the configured GitHub App bot
+- The workflow verifies the PR author is the configured GitHub App bot
+- The workflow verifies the label actor against the `octostate-publishers` team
+- Unauthorized `release: ready` labels are removed automatically
+- Unauthorized approval attempts leave a PR comment from the release-please app bot
+- If `release-please` updates the PR head after approval, the stale `release: ready` label is removed and must be re-applied
 - The workflow waits for the `CI` and `CodeQL` release checks to complete before merging
-- Human-authored PRs are intentionally ignored
 - The workflow uses the configured GitHub App token to merge the release PR directly
+- Human-authored PRs are intentionally ignored
 
-The configured GitHub App must be able to bypass the `main` branch ruleset for
-pull requests. Keep the release-please app in the `main-protection` ruleset
-bypass list before relying on this workflow; otherwise the direct merge can
-still fail with `REVIEW_REQUIRED`.
+If the approval label ever changes, set the repository Actions variable
+`RELEASE_READY_LABEL` to the new label name so runtime checks and workflow
+concurrency cancellation use the same value.
+
+The configured GitHub App must be able to:
+
+- bypass the `main` branch ruleset for pull requests
+- read checks and commit statuses so it can wait for required release checks
+- read organization members so it can verify the release approver team
+- write contents and pull requests so it can merge release PRs
+- write issues so it can remove approval labels and leave PR comments
+
+Keep the release-please app in the `main-protection` ruleset bypass list before
+relying on this workflow; otherwise the direct merge can still fail with
+`REVIEW_REQUIRED`.
+
+## Release Approval Recovery
+
+If `release: ready` is applied by someone who is not in
+`@orang-gaboets/octostate-publishers`, the workflow removes the label and fails
+before merge. It also leaves a PR comment explaining why the approval was
+rejected and what an authorized publisher should do next.
+
+The workflow does not leave comments when removing stale approvals after
+`release-please` updates the PR, to avoid noisy release PR timelines.
+
+If the release-please app cannot verify team membership, confirm that the app
+installation has `Members: read` and that the `octostate-publishers` team
+exists. Configuration or GitHub API failures fail closed without removing the
+`release: ready` label, so maintainers can retry after fixing the setup.
