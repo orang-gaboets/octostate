@@ -85,14 +85,16 @@ relying on this workflow; otherwise the direct merge can still fail with
 ## Release Approval Recovery
 
 If `release: ready` is applied by someone who is not in
-`@orang-gaboets/octostate-publishers`, the workflow removes the label and fails
-before merge. It also leaves a PR comment explaining why the approval was
-rejected and what an authorized publisher should do next.
+[@orang-gaboets/octostate-publishers](https://github.com/orgs/orang-gaboets/teams/octostate-publishers),
+the workflow removes the label and fails before merge. It also leaves a PR
+comment explaining why the approval was rejected and what an authorized
+publisher should do next.
 
 The workflow does not leave comments when removing stale approvals after
 `release-please` updates the PR, to avoid noisy release PR timelines.
 
 If the release-please app cannot verify team membership, confirm that the app
-installation has `Members: read` and that the `octostate-publishers` team
-exists. Configuration or GitHub API failures fail closed without removing the
-`release: ready` label, so maintainers can retry after fixing the setup.
+installation has `Members: read` and that the
+[`octostate-publishers`](https://github.com/orgs/orang-gaboets/teams/octostate-publishers)
+team exists. Configuration or GitHub API failures fail closed without removing
+the `release: ready` label, so maintainers can retry after fixing the setup.
