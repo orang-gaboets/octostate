@@ -27,11 +27,18 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
-The release-please GitHub App installation also needs to be configured with
-`Members: read` so the release approval workflow can verify the approver team.
-It also needs `Issues: write` so unauthorized approval attempts can leave a PR
-comment from the app bot, plus `Checks: read` and `Commit statuses: read` so
-the app bot can wait for required release checks before merging.
+The release-please GitHub App installation also needs these permissions for the
+release approval workflow:
+
+- `Contents: write` so the app bot can update repository contents through PR
+  merge operations
+- `Pull requests: write` so the app bot can merge release PRs
+- `Issues: write` so the app bot can remove approval labels and leave PR
+  comments
+- `Checks: read` and `Commit statuses: read` so the app bot can wait for
+  required release checks before merging
+- `Members: read` so the app bot can verify the approver team
+
 Unlike the release-please workflow above, the release approval auto-merge
 workflow requires this GitHub App token and fails closed if the token cannot be
 created.
@@ -67,8 +74,8 @@ The configured GitHub App must be able to:
 
 - bypass the `main` branch ruleset for pull requests
 - read checks and commit statuses so it can wait for required release checks
-- write issues so it can leave PR comments for unauthorized approval attempts
-- write pull requests so it can merge the release PR and remove labels
+- write contents and pull requests so it can merge release PRs
+- write issues so it can remove approval labels and leave PR comments
 
 Keep the release-please app in the `main-protection` ruleset bypass list before
 relying on this workflow; otherwise the direct merge can still fail with
