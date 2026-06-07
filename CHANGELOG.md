@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [2.0.0](https://github.com/orang-gaboets/octostate/compare/v1.0.2...v2.0.0) (2026-06-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* validate v1.0.0 readiness ([#108](https://github.com/orang-gaboets/octostate/issues/108))
+
+### Features
+
+* **apply:** pre-resolve invite usernames before sequential execution ([#101](https://github.com/orang-gaboets/octostate/issues/101)) ([79d1ec1](https://github.com/orang-gaboets/octostate/commit/79d1ec112b97bf3d4af40b4787aa3f2745cb84e5))
+* **audit:** parallelize invite username resolution ([#97](https://github.com/orang-gaboets/octostate/issues/97)) ([f0f8536](https://github.com/orang-gaboets/octostate/commit/f0f85367a47fb7b9076cbdff0bd9f68df729d8bc))
+* **config:** add sync-from-live adopt mode ([#82](https://github.com/orang-gaboets/octostate/issues/82)) ([db70738](https://github.com/orang-gaboets/octostate/commit/db70738f81dd3d78d6b8b93f0818fb4c47b8b585))
+* **config:** add sync-from-live materialize mode ([#84](https://github.com/orang-gaboets/octostate/issues/84)) ([b28aad2](https://github.com/orang-gaboets/octostate/commit/b28aad27b78b1b8a699ad31788c57de0f2f91dc0))
+* **config:** split config plan output into executable and skipped actions ([#89](https://github.com/orang-gaboets/octostate/issues/89)) ([ad1e1aa](https://github.com/orang-gaboets/octostate/commit/ad1e1aaea4461ac39cc478c95353f63c33385e0f))
+* **diff:** parallelize offline audit diff build phases ([#99](https://github.com/orang-gaboets/octostate/issues/99)) ([78a799c](https://github.com/orang-gaboets/octostate/commit/78a799cf60c736f032e870b37be0010e2beafdd2))
+* **gitops:** add bounded concurrency to collectors and plan phases ([#92](https://github.com/orang-gaboets/octostate/issues/92)) ([5c08dbb](https://github.com/orang-gaboets/octostate/commit/5c08dbb10a0b728b63cb22b7e6b6874668939daf))
+* **gitops:** add first-class organization membership ([#80](https://github.com/orang-gaboets/octostate/issues/80)) ([ed97c63](https://github.com/orang-gaboets/octostate/commit/ed97c6374327b4e47317fe589a5447c1b38f2bcd))
+* **organization:** add pending invitation list command ([#87](https://github.com/orang-gaboets/octostate/issues/87)) ([4bcba62](https://github.com/orang-gaboets/octostate/commit/4bcba62d89be7315ef330de171312fae8ebedc05))
+* validate v1.0.0 readiness ([#108](https://github.com/orang-gaboets/octostate/issues/108)) ([71242ad](https://github.com/orang-gaboets/octostate/commit/71242adf3e8a8884571d3896f6555748a8df0da7))
+
+
+### Bug Fixes
+
+* **ci:** gate release-please auto-merge on publisher approval ([#125](https://github.com/orang-gaboets/octostate/issues/125)) ([3e42cec](https://github.com/orang-gaboets/octostate/commit/3e42cecd22f2e9dfe81d75318dbb06111ca8dccd))
+* **ci:** merge release-please PRs after checks pass ([#120](https://github.com/orang-gaboets/octostate/issues/120)) ([af4a054](https://github.com/orang-gaboets/octostate/commit/af4a054b5e9a60cc61e9f212d9166795d58ee104))
+* **deps:** resolve Go security alerts ([#117](https://github.com/orang-gaboets/octostate/issues/117)) ([f26022a](https://github.com/orang-gaboets/octostate/commit/f26022a772536a827830296c41f20d49f3f0fdfe))
+
 ## [1.0.2](https://github.com/orang-gaboets/octostate/compare/v1.0.1...v1.0.2) (2026-06-07)
 
 
