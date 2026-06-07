@@ -148,7 +148,7 @@ jobs:
                 fi
 
                 printf -v comment_body '%s\n\n%s\n\n%s\n' \
-                  "\`$RELEASE_READY_LABEL\` was applied by @$EVENT_SENDER, but only active members of \`@$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM\` may approve release auto-merge." \
+                  "\`$RELEASE_READY_LABEL\` was applied by @$EVENT_SENDER, but only active members of [@$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM](https://github.com/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM) may approve release auto-merge." \
                   "$comment_status" \
                   "An authorized Octostate Publisher should review the release PR and re-apply \`$RELEASE_READY_LABEL\` if it is ready to publish."
 
