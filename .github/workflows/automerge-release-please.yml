@@ -133,7 +133,7 @@ jobs:
               fi
 
               if [ "$authorized" != true ]; then
-                echo "release: ready was applied by @$EVENT_SENDER, but only active members of @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM may approve release auto-merge." >&2
+                echo "$RELEASE_READY_LABEL was applied by @$EVENT_SENDER, but only active members of @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM may approve release auto-merge." >&2
                 label_removed=false
                 if gh pr edit "$PR_URL" --remove-label "$RELEASE_READY_LABEL"; then
                   label_removed=true
