@@ -74,6 +74,7 @@ The configured GitHub App must be able to:
 
 - bypass the `main` branch ruleset for pull requests
 - read checks and commit statuses so it can wait for required release checks
+- read organization members so it can verify the release approver team
 - write contents and pull requests so it can merge release PRs
 - write issues so it can remove approval labels and leave PR comments
 
