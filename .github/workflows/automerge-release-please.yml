@@ -10,7 +10,7 @@ on:
 concurrency:
   # Only release-ready approval events share the cancellation bucket.
   # Unrelated label noise and bot cleanup events run separately.
-  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && 'approval' || github.event.label.name == 'release: ready' && github.event.action == 'labeled' && 'approval' || github.event.label.name == 'release: ready' && github.event.action == 'unlabeled' && github.event.sender.type != 'Bot' && 'approval' || github.event.label.name == 'release: ready' && github.event.action == 'unlabeled' && 'bot-cleanup' || github.event.action == 'labeled' && 'other-label' || 'other-unlabel' }}"
+  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'labeled' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'unlabeled' && github.event.sender.type != 'Bot' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'unlabeled' && 'bot-cleanup' || github.event.action == 'labeled' && 'other-label' || 'other-unlabel' }}"
   cancel-in-progress: true
 
 permissions:
@@ -22,7 +22,7 @@ permissions:
 env:
   RELEASE_APPROVER_ORG: orang-gaboets
   RELEASE_APPROVER_TEAM: octostate-publishers
-  RELEASE_READY_LABEL: "release: ready"
+  RELEASE_READY_LABEL: "${{ vars.RELEASE_READY_LABEL || 'release: ready' }}"
 
 jobs:
   auto-merge:

@@ -59,6 +59,10 @@ an authorized maintainer.
 - The workflow uses the configured GitHub App token to merge the release PR directly
 - Human-authored PRs are intentionally ignored
 
+If the approval label ever changes, set the repository Actions variable
+`RELEASE_READY_LABEL` to the new label name so runtime checks and workflow
+concurrency cancellation use the same value.
+
 The configured GitHub App must be able to:
 
 - bypass the `main` branch ruleset for pull requests
