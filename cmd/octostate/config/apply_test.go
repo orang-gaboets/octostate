@@ -173,6 +173,97 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	}
 }
 
+func TestApplyConfigCmdCheckSkipsExecution(t *testing.T) {
+	restoreApplyHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	report := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: "orang-gaboets/octostate", Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationDelete, ResourceID: "legacy-team", Executable: false},
+		},
+	}
+	report.Normalize()
+	check := &gitopsapply.CheckResult{
+		Organization:   "orang-gaboets",
+		PlanSummary:    report.Summary,
+		CheckedActions: []gitopsplan.Action{report.Actions[0]},
+		SkippedActions: []gitopsplan.Action{report.Actions[1]},
+	}
+	check.Normalize()
+
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return actual, nil
+	}
+	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return report, nil }
+	checkApply = func(context.Context, gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+		return check, nil
+	}
+	executeApply = func(context.Context, gitopsapply.Options) (*gitopsapply.Result, error) {
+		t.Fatal("executeApply should not be called during check")
+		return nil, nil
+	}
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+
+	envelope := decodeApplyEnvelope(t, out.Bytes())
+	if envelope.Status != string(cmdoutput.OperationResultStatusCheck) {
+		t.Fatalf("unexpected status: got %q want %q", envelope.Status, cmdoutput.OperationResultStatusCheck)
+	}
+	var got gitopsapply.CheckResult
+	decodeApplyData(t, envelope.Data, &got)
+	got.Normalize()
+	if !reflect.DeepEqual(got, *check) {
+		t.Fatalf("unexpected check result:\n got %#v\nwant %#v", got, *check)
+	}
+}
+
+func TestApplyConfigCmdRejectsCheckAndDryRunTogether(t *testing.T) {
+	restoreApplyHooks(t)
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check", "--dry-run"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected conflicting flag error")
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "cannot use --check and --dry-run together") {
+		t.Fatalf("expected conflicting flag error on stderr, got %q", got)
+	}
+}
+
 func TestApplyConfigCmdLoadFailurePropagatesWithoutAuth(t *testing.T) {
 	restoreApplyHooks(t)
 
@@ -381,7 +472,7 @@ func TestApplyConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 		return nil, nil
 	}
 
-	_, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", false)
+	_, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply)
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -395,6 +486,7 @@ func restoreApplyHooks(t *testing.T) {
 	oldNewClient := newApplyClient
 	oldCollect := collectApplyState
 	oldBuild := buildApplyPlan
+	oldCheck := checkApply
 	oldExecute := executeApply
 
 	t.Cleanup(func() {
@@ -403,6 +495,7 @@ func restoreApplyHooks(t *testing.T) {
 		newApplyClient = oldNewClient
 		collectApplyState = oldCollect
 		buildApplyPlan = oldBuild
+		checkApply = oldCheck
 		executeApply = oldExecute
 	})
 }

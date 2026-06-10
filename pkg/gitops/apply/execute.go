@@ -162,9 +162,11 @@ type executor struct {
 	desiredMembers        map[string]config.TeamMemberSpec
 	desiredPermissions    map[string]config.TeamRepositorySpec
 	desiredInvites        map[string]config.InviteSpec
+	syntheticTeamID       int64
 }
 
 func newExecutor(ctx context.Context, opt Options) (*executor, error) {
+	nextSyntheticTeamID := int64(1)
 	exec := &executor{
 		ctx:                   ctx,
 		organization:          strings.TrimSpace(opt.Desired.Organization),
@@ -180,6 +182,7 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 		desiredMembers:        map[string]config.TeamMemberSpec{},
 		desiredPermissions:    map[string]config.TeamRepositorySpec{},
 		desiredInvites:        map[string]config.InviteSpec{},
+		syntheticTeamID:       nextSyntheticTeamID,
 	}
 
 	for _, team := range opt.Actual.Teams {
@@ -187,6 +190,9 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 			continue
 		}
 		exec.teamIDs[teamSlugKey(team.Slug)] = team.ID
+		if team.ID >= exec.syntheticTeamID {
+			exec.syntheticTeamID = team.ID + 1
+		}
 	}
 
 	for _, repository := range opt.Desired.Repositories {

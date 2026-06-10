@@ -25,7 +25,16 @@ var (
 	newApplyClient      = auth.NewClient
 	collectApplyState   = collector.CollectOrganization
 	buildApplyPlan      = gitopsplan.Build
+	checkApply          = gitopsapply.Check
 	executeApply        = gitopsapply.Execute
+)
+
+type applyRunMode int
+
+const (
+	applyRunModeApply applyRunMode = iota
+	applyRunModeDryRun
+	applyRunModeCheck
 )
 
 // ApplyConfigCmd creates the config apply command.
@@ -36,49 +45,74 @@ func ApplyConfigCmd() *cobra.Command {
 		installationID int64
 		appKeyPath     string
 		configDir      string
+		check          bool
 		dryRun         bool
 	)
 
 	cmd := &cobra.Command{
 		Use:           "apply",
-		Short:         "Apply GitOps reconciliation changes",
-		Long:          "Load desired GitOps configuration, collect live GitHub state, build a reconciliation plan, and execute the supported create and update actions.",
+		Short:         "Apply or preflight GitOps reconciliation changes",
+		Long:          "Load desired GitOps configuration, collect live GitHub state, build a reconciliation plan, preflight the supported create and update actions, and execute them when not running in check or dry-run mode.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
+			octostate config apply --token <token> --config-dir ./config --check
 			octostate config apply --token <token> --config-dir ./config --dry-run
 			octostate config apply --token <token> --config-dir ./config
 			octostate config apply --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			result, preview, err := applyConfig(
+			if check && dryRun {
+				err := exitcode.New(validateExitCodeInvalidConfig, errors.New("cannot use --check and --dry-run together"))
+				printInvalidConfigError(cmd, err)
+				return err
+			}
+
+			mode := applyRunModeApply
+			switch {
+			case check:
+				mode = applyRunModeCheck
+			case dryRun:
+				mode = applyRunModeDryRun
+			}
+
+			result, preview, checkResult, err := applyConfig(
 				cmd.Context(),
 				token,
 				appID,
 				installationID,
 				appKeyPath,
 				configDir,
-				dryRun,
+				mode,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
 				return err
 			}
-			if dryRun {
+			switch mode {
+			case applyRunModeCheck:
+				return cmdoutput.PrintCheck(
+					cmd,
+					fmt.Sprintf("checked %d GitOps reconciliation action(s)", checkResult.PlanSummary.ExecutableActions),
+					checkResult,
+				)
+			case applyRunModeDryRun:
 				return cmdoutput.PrintDryRun(
 					cmd,
 					fmt.Sprintf("would apply %d GitOps reconciliation action(s)", preview.PlanSummary.ExecutableActions),
 					preview,
 				)
+			default:
+				return cmdoutput.PrintSuccess(
+					cmd,
+					fmt.Sprintf("applied %d GitOps reconciliation action(s)", len(result.Executed)),
+					result,
+				)
 			}
-			return cmdoutput.PrintSuccess(
-				cmd,
-				fmt.Sprintf("applied %d GitOps reconciliation action(s)", len(result.Executed)),
-				result,
-			)
 		},
 	}
 
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
+	cmd.Flags().BoolVar(&check, "check", false, "Run apply preflight checks without mutating GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
@@ -92,26 +126,26 @@ func applyConfig(
 	token string,
 	appID, installationID int64,
 	appKeyPath, configDir string,
-	dryRun bool,
-) (*gitopsapply.Result, *planPreview, error) {
+	mode applyRunMode,
+) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	validation := validateApplyConfig(cfg)
 	if !validation.Valid {
-		return nil, nil, exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `octostate config validate`"))
+		return nil, nil, nil, exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `octostate config validate`"))
 	}
 
 	organization := strings.TrimSpace(cfg.Organization)
 	if organization == "" {
-		return nil, nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+		return nil, nil, nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
 	}
 
 	client, err := newApplyClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	actual, err := collectApplyState(ctx, collector.CollectOrganizationOptions{
@@ -121,7 +155,7 @@ func applyConfig(
 		TeamService:         client.Teams(),
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	report, err := buildApplyPlan(ctx, gitopsplan.Options{
@@ -130,28 +164,44 @@ func applyConfig(
 		UserService: client.Users(),
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	report.Normalize()
 
-	if dryRun {
+	switch mode {
+	case applyRunModeCheck:
+		checkResult, err := checkApply(ctx, gitopsapply.Options{
+			Desired:             cfg,
+			Actual:              actual,
+			Plan:                report,
+			OrganizationService: client.Organizations(),
+			RepositoryService:   client.Repositories(),
+			TeamService:         client.Teams(),
+			UserService:         client.Users(),
+		})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		checkResult.Normalize()
+		return nil, nil, checkResult, nil
+	case applyRunModeDryRun:
 		preview := previewFromPlan(report)
 		preview.Normalize()
-		return nil, preview, nil
+		return nil, preview, nil, nil
+	default:
+		result, err := executeApply(ctx, gitopsapply.Options{
+			Desired:             cfg,
+			Actual:              actual,
+			Plan:                report,
+			OrganizationService: client.Organizations(),
+			RepositoryService:   client.Repositories(),
+			TeamService:         client.Teams(),
+			UserService:         client.Users(),
+		})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		result.Normalize()
+		return result, nil, nil, nil
 	}
-
-	result, err := executeApply(ctx, gitopsapply.Options{
-		Desired:             cfg,
-		Actual:              actual,
-		Plan:                report,
-		OrganizationService: client.Organizations(),
-		RepositoryService:   client.Repositories(),
-		TeamService:         client.Teams(),
-		UserService:         client.Users(),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	result.Normalize()
-	return result, nil, nil
 }
