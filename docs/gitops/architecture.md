@@ -96,6 +96,13 @@ Current collector concurrency limits:
 4. Execute supported `create` / `update` actions through `apply`
 5. Print executed and skipped actions as JSON
 
+### `octostate config apply --check`
+1. Load and validate desired state
+2. Collect live GitHub state
+3. Build the reconciliation report
+4. Run apply preflight validation without mutating GitHub
+5. Print the preflight result as JSON
+
 ### `octostate audit pull`
 1. Load desired state to determine the target organization
 2. Collect live GitHub state

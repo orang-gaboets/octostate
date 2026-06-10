@@ -21,7 +21,7 @@ The main GitOps flow looks like this:
 1. Load and normalize desired config from `config/organization.yaml`
 2. Validate that config semantically
 3. Build actual organization state:
-   - from live GitHub for `config plan`, `config apply`, and `audit pull`
+   - from live GitHub for `config plan`, `config apply`, `config apply --check`, and `audit pull`
    - from `state/actual/snapshot.json` for `audit diff`
 4. Compare desired and actual state
 5. Emit a deterministic report
@@ -156,6 +156,9 @@ sort/summarize pass that defines the public plan ordering.
 `update` actions from that plan. Unsupported `delete` and `remove` drift is
 reported back as skipped state rather than being executed.
 
+`config apply --check` runs the same live read and plan build, then performs
+apply preflight validation without mutating GitHub.
+
 ## Snapshot and Offline Diff
 
 `audit pull` writes a normalized JSON snapshot to:
@@ -186,6 +189,8 @@ This offline path is useful for:
   - Preview deterministic reconciliation actions from desired vs live state
 - `octostate config apply`
   - Reconcile GitHub to match desired config for supported create/update actions
+- `octostate config apply --check`
+  - Preflight the supported apply actions without mutating GitHub
 - `octostate audit pull`
   - Snapshot live GitHub state into `state/actual/snapshot.json`
 - `octostate audit diff`

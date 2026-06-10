@@ -59,6 +59,7 @@ Current shipped behavior:
 - `audit pull` writes `state/actual/snapshot.json`
 - `audit diff` reads `state/actual/snapshot.json`
 - `config plan` and `config apply --dry-run` print deterministic JSON to stdout
+- `config apply --check` prints a preflight JSON envelope to stdout
 - `config apply` prints an apply result envelope to stdout
 
 A control repo may choose to persist additional plan, diff, or event artifacts,
@@ -77,9 +78,11 @@ A typical integration sequence is:
 3. `octostate config apply`
    - Run after the desired-state change is accepted
    - Executes only supported create/update actions against live GitHub
-4. `octostate audit pull`
+4. `octostate config apply --check`
+   - Run when you want to validate the apply path without mutating GitHub
+5. `octostate audit pull`
    - Run when you want to refresh the stored actual-state snapshot
-5. `octostate audit diff`
+6. `octostate audit diff`
    - Run when you want offline drift detection against the stored snapshot
 
 ## Example Layout
@@ -100,7 +103,7 @@ PR structure, notification model, or deployment workflow around those files.
 
 When integrating this CLI into automation, it helps to assume:
 - `config validate` is fully offline
-- `config plan`, `config apply`, and `audit pull` need GitHub authentication
+- `config plan`, `config apply`, `config apply --check`, and `audit pull` need GitHub authentication
 - `audit diff` is offline once the snapshot exists
 - plan, apply, and snapshot outputs are normalized for deterministic ordering
 - `invites` are transitional desired state; long-term membership should move to stable membership declarations once invites are accepted
