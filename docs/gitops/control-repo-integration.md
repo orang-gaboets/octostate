@@ -75,11 +75,11 @@ A typical integration sequence is:
 2. `octostate config plan`
    - Run when you want a live reconciliation preview for review
    - Uses live GitHub state and produces deterministic executable/skipped actions
-3. `octostate config apply`
+3. `octostate config apply --check`
+   - Run when you want to validate the apply path without mutating GitHub
+4. `octostate config apply`
    - Run after the desired-state change is accepted
    - Executes only supported create/update actions against live GitHub
-4. `octostate config apply --check`
-   - Run when you want to validate the apply path without mutating GitHub
 5. `octostate audit pull`
    - Run when you want to refresh the stored actual-state snapshot
 6. `octostate audit diff`
