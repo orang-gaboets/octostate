@@ -77,9 +77,10 @@ edited during normal release flow:
 - `autorelease: published`
 - `autorelease: triggered`
 
-Only close generated release PRs or delete `release-please--branches--*`
-branches during an intentional release-state repair. In normal operation,
-release-please manages that generated PR branch itself.
+Only edit `autorelease:*` labels, close generated release PRs, or delete
+`release-please--branches--*` branches during an intentional release-state
+repair. In normal operation, release-please manages those labels and generated
+PR branches itself.
 
 If the approval label ever changes, set the repository Actions variable
 `RELEASE_READY_LABEL` to the new label name so runtime checks and workflow
@@ -125,6 +126,8 @@ the release state before merging another release PR:
   using the matching changelog section as release notes
 - Remove or update any temporary `last-release-sha` override so future
   release-please runs use the latest valid release baseline
+- Remove stale release-please lifecycle labels such as `autorelease: pending`
+  and `autorelease: triggered` from the stale generated release PR
 - Close any generated release PR that was created from stale release state
 - Delete the generated `release-please--branches--*` branch after closing the
   stale release PR
