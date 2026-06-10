@@ -8,8 +8,8 @@ Conventional Commits on `main`.
 Version updates for this project are performed by `release-please`,
 preferably using a GitHub App installation token rather than a
 user-owned personal access token. If app credentials are not configured,
-the workflow falls back to `GITHUB_TOKEN`. Release state is anchored
-explicitly in:
+the workflow falls back to `GITHUB_TOKEN`. Release configuration and version
+state are tracked in:
 - `release-please-config.json`
 - `.release-please-manifest.json`
 
@@ -22,6 +22,7 @@ explicitly in:
 - If the app credentials are not configured, the workflow falls back to `GITHUB_TOKEN`
 - In repository settings, enable **Allow GitHub Actions to create and approve pull requests** so the workflow can open release PRs
 - Do not manually re-bootstrap historical releases in normal operation; update the manifest or config intentionally if release state ever needs repair
+- Do not keep `last-release-sha` configured after a good release PR has merged; it is a repair override, not normal steady-state configuration
 
 With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
@@ -66,6 +67,21 @@ an authorized maintainer.
 - The workflow uses the configured GitHub App token to merge the release PR directly
 - Human-authored PRs are intentionally ignored
 
+The `release: ready` label belongs to this repository's approval gate. The
+`autorelease:*` labels belong to `release-please` and should not be manually
+edited during normal release flow:
+
+- `autorelease: pending`
+- `autorelease: tagged`
+- `autorelease: snapshot`
+- `autorelease: published`
+- `autorelease: triggered`
+
+Only edit `autorelease:*` labels, close generated release PRs, or delete
+`release-please--branches--*` branches during an intentional release-state
+repair. In normal operation, release-please manages those labels and generated
+PR branches itself.
+
 If the approval label ever changes, set the repository Actions variable
 `RELEASE_READY_LABEL` to the new label name so runtime checks and workflow
 concurrency cancellation use the same value.
@@ -98,3 +114,22 @@ installation has `Members: read` and that the
 [`octostate-publishers`](https://github.com/orgs/orang-gaboets/teams/octostate-publishers)
 team exists. Configuration or GitHub API failures fail closed without removing
 the `release: ready` label, so maintainers can retry after fixing the setup.
+
+## Release State Repair
+
+If a release PR merges but the expected tag or GitHub Release is missing, repair
+the release state before merging another release PR:
+
+- Confirm `CHANGELOG.md` and `.release-please-manifest.json` already contain the
+  intended version
+- Create the missing GitHub Release and tag at the merged release PR commit,
+  using the matching changelog section as release notes
+- Remove or update any temporary `last-release-sha` override so future
+  release-please runs use the latest valid release baseline
+- Remove stale release-please lifecycle labels such as `autorelease: pending`
+  and `autorelease: triggered` from the stale generated release PR
+- Close any generated release PR that was created from stale release state
+- Delete the generated `release-please--branches--*` branch after closing the
+  stale release PR
+- Re-run the `Release Please` workflow manually and confirm it does not recreate
+  the stale release PR
