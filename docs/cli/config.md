@@ -298,6 +298,8 @@ Behavior:
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
+- `--check` is a best-effort preflight. It validates the supported apply executor inputs, but it is not a guaranteed GitHub transaction dry-run
+- `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, inaccessible templates, username invite resolution, or server-side write validation
 - `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes
 - `--check` and `--dry-run` are mutually exclusive
 - Live apply executes only supported executable `create` / `update` actions

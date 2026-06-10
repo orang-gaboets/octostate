@@ -159,6 +159,12 @@ reported back as skipped state rather than being executed.
 `config apply --check` runs the same live read and plan build, then performs
 apply preflight validation without mutating GitHub.
 
+This check mode is best-effort: it validates the supported apply executor inputs
+against the collected live state, but it is not a guaranteed GitHub transaction
+dry-run. A later apply can still fail because of permissions, organization
+policy, rate limits, races after collection, inaccessible templates, username
+invite resolution, or GitHub server-side write validation.
+
 ## Snapshot and Offline Diff
 
 `audit pull` writes a normalized JSON snapshot to:
