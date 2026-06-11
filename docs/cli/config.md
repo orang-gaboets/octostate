@@ -278,12 +278,14 @@ go run ./cmd/octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 Apply supported reconciliation changes.
 
 ```bash
+octostate config apply --config-dir ./config --token <token> --check
 octostate config apply --config-dir ./config --token <token> --dry-run
 octostate config apply --config-dir ./config --token <token>
 ```
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--check`: Run apply preflight validation without mutating GitHub
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
 - `--token`: GitHub personal access token (required if using PAT authentication)
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
@@ -295,13 +297,25 @@ Behavior:
 - Runs semantic validation before contacting GitHub
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
+- `--check` runs apply preflight validation against the collected actual state without mutating GitHub
+- `--check` is a best-effort preflight. It validates the supported apply executor inputs, but it is not a guaranteed GitHub transaction dry-run
+- `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, inaccessible templates, username invite resolution, or server-side write validation
 - `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes
+- `--check` and `--dry-run` are mutually exclusive
 - Live apply executes only supported executable `create` / `update` actions
 - Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
 - Repository creation currently requires `template.owner` and `template.name`
 - Omitted optional repository fields are left unmanaged during apply
 - Explicit empty `description` / `homepage` values are applied as clears
 - Explicit boolean repository values are only applied when declared in config
+
+Check output fields:
+- `status`
+- `message`
+- `data.organization`
+- `data.plan_summary`
+- `data.checked_actions`
+- `data.skipped_actions`
 
 Dry-run output fields:
 - `status`
@@ -320,9 +334,15 @@ Live apply output fields:
 - `data.skipped_actions`
 
 Exit codes:
-- `0`: apply or dry-run completed successfully
-- `2`: configuration loaded, but semantic validation failed
-- `1`: load/auth/collection/planning/apply failure
+- `0`: apply, check, or dry-run completed successfully
+- `2`: configuration semantic validation failed, or mutually exclusive apply flags were used
+- `1`: load/auth/collection/planning/check/apply failure
+
+Example check:
+
+```bash
+go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+```
 
 Example dry-run:
 

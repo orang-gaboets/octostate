@@ -96,6 +96,19 @@ Current collector concurrency limits:
 4. Execute supported `create` / `update` actions through `apply`
 5. Print executed and skipped actions as JSON
 
+### `octostate config apply --check`
+1. Load and validate desired state
+2. Collect live GitHub state
+3. Build the reconciliation report
+4. Run apply preflight validation without mutating GitHub
+5. Print the preflight result as JSON
+
+Check mode is best-effort. It validates the supported apply executor inputs
+against the collected live state, but it is not a guaranteed GitHub transaction
+dry-run and can still miss GitHub-side failures such as permission changes,
+organization policy, rate limits, races after collection, inaccessible
+templates, username invite resolution, or server-side write validation.
+
 ### `octostate audit pull`
 1. Load desired state to determine the target organization
 2. Collect live GitHub state

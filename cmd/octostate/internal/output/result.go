@@ -10,9 +10,11 @@ const (
 	OperationResultStatusSuccess OperationResultStatus = "success"
 	// OperationResultStatusDryRun indicates a dry-run command operation preview.
 	OperationResultStatusDryRun OperationResultStatus = "dry-run"
+	// OperationResultStatusCheck indicates a preflight command operation result.
+	OperationResultStatusCheck OperationResultStatus = "check"
 )
 
-// OperationResult is a structured payload for mutating command output.
+// OperationResult is a structured payload for command output.
 type OperationResult struct {
 	Status  OperationResultStatus `json:"status"`
 	Message string                `json:"message"`
@@ -37,6 +39,15 @@ func PrintSuccess(cmd *cobra.Command, message string, data any) error {
 func PrintDryRun(cmd *cobra.Command, message string, data any) error {
 	return PrintOperationResult(cmd, OperationResult{
 		Status:  OperationResultStatusDryRun,
+		Message: message,
+		Data:    data,
+	})
+}
+
+// PrintCheck writes a structured preflight result to command stdout.
+func PrintCheck(cmd *cobra.Command, message string, data any) error {
+	return PrintOperationResult(cmd, OperationResult{
+		Status:  OperationResultStatusCheck,
 		Message: message,
 		Data:    data,
 	})
