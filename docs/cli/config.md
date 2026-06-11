@@ -334,9 +334,9 @@ Live apply output fields:
 - `data.skipped_actions`
 
 Exit codes:
-- `0`: apply or dry-run completed successfully
-- `2`: configuration loaded, but semantic validation failed
-- `1`: load/auth/collection/planning/apply failure
+- `0`: apply, check, or dry-run completed successfully
+- `2`: configuration semantic validation failed, or mutually exclusive apply flags were used
+- `1`: load/auth/collection/planning/check/apply failure
 
 Example check:
 
