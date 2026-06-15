@@ -160,10 +160,12 @@ reported back as skipped state rather than being executed.
 apply preflight validation without mutating GitHub.
 
 This check mode is best-effort: it validates the supported apply executor inputs
-against the collected live state, but it is not a guaranteed GitHub transaction
-dry-run. A later apply can still fail because of permissions, organization
-policy, rate limits, races after collection, inaccessible templates, username
-invite resolution, or GitHub server-side write validation.
+against the collected live state and uses read-only GitHub probes for supported
+apply targets, but it is not a guaranteed GitHub transaction dry-run. A later
+apply can still fail because of permissions, organization policy, rate limits,
+races after collection, live state changes after preflight, unsupported
+team-member or `user_id` invite validation, or GitHub server-side write
+validation.
 
 ## Snapshot and Offline Diff
 
