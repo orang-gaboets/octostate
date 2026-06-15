@@ -3,7 +3,10 @@ package apply
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v55/github"
@@ -55,6 +58,17 @@ func TestCheckSkipsNonExecutableDriftWithoutMutations(t *testing.T) {
 			t.Fatal("repository edit should not run during check")
 			return nil, nil, nil
 		},
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			switch repositoryResourceID(owner, repo) {
+			case repositoryResourceID("orang-gaboets", "repo-template"):
+				return githubRepository("orang-gaboets", "repo-template", true), nil, nil
+			case repositoryResourceID("orang-gaboets", "octostate"):
+				return nil, nil, githubNotFoundError("repository not found")
+			default:
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+				return nil, nil, nil
+			}
+		},
 	}
 
 	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
@@ -100,6 +114,18 @@ func TestCheckPreflightsTeamCreatesAndInviteDependenciesWithoutMutations(t *test
 			t.Fatal("team creation should not run during check")
 			return nil, nil, nil
 		},
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			if org != "orang-gaboets" {
+				t.Fatalf("unexpected org %q", org)
+			}
+			switch slug {
+			case "app", "platform":
+				return nil, nil, githubNotFoundError("team not found")
+			default:
+				t.Fatalf("unexpected team lookup %q", slug)
+				return nil, nil, nil
+			}
+		},
 	}
 	orgSvc := &testOrganizationService{
 		createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
@@ -109,7 +135,7 @@ func TestCheckPreflightsTeamCreatesAndInviteDependenciesWithoutMutations(t *test
 	}
 	userSvc := &testUserService{
 		getFunc: func(context.Context, string) (*gh.User, *gh.Response, error) {
-			t.Fatal("username lookup should not run during check")
+			t.Fatal("username lookup should not run during email invite check")
 			return nil, nil, errors.New("unexpected lookup")
 		},
 	}
@@ -124,6 +150,370 @@ func TestCheckPreflightsTeamCreatesAndInviteDependenciesWithoutMutations(t *test
 	}
 	if len(result.SkippedActions) != 0 {
 		t.Fatalf("unexpected skipped actions: %#v", result.SkippedActions)
+	}
+}
+
+func TestCheckRepositoryCreateFailsWhenTemplateIsNotTemplate(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "octostate",
+			Visibility: "private",
+			Template: config.TemplateSpec{
+				Owner: "orang-gaboets",
+				Name:  "repo-template",
+			},
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID("orang-gaboets", "octostate"),
+			Executable:   true,
+		}},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			if repositoryResourceID(owner, repo) != repositoryResourceID("orang-gaboets", "repo-template") {
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			}
+			return githubRepository("orang-gaboets", "repo-template", false), nil, nil
+		},
+	}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	if err == nil {
+		t.Fatal("expected create failure")
+	}
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "template repository orang-gaboets/repo-template is not marked as a template") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
+func TestCheckRepositoryUpdateFailsWhenTargetMissing(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID("orang-gaboets", "octostate"),
+			Executable:   true,
+			Changes: []gitopsplan.FieldChange{{
+				Field: "visibility",
+				From:  "public",
+				To:    "private",
+			}},
+		}},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			if repositoryResourceID(owner, repo) != repositoryResourceID("orang-gaboets", "octostate") {
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			}
+			return nil, nil, githubNotFoundError("repository not found")
+		},
+	}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	if err == nil {
+		t.Fatal("expected update failure")
+	}
+	if !errors.Is(err, githubpkg.ErrNotFound) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckTeamUpdateFailsWhenTargetMissing(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:        "platform",
+			Name:        "Platform",
+			Privacy:     "closed",
+			Description: "Updated",
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeTeam,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   teamResourceID("platform"),
+			Executable:   true,
+			Changes: []gitopsplan.FieldChange{{
+				Field: "description",
+				From:  "",
+				To:    "Updated",
+			}},
+		}},
+	}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			if org != "orang-gaboets" || slug != "platform" {
+				t.Fatalf("unexpected team lookup %s/%s", org, slug)
+			}
+			return nil, nil, githubNotFoundError("team not found")
+		},
+	}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc)))
+	if err == nil {
+		t.Fatal("expected update failure")
+	}
+	if !errors.Is(err, githubpkg.ErrNotFound) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCheckInvitePreflightResolvesUsername(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []config.InviteSpec{
+			inviteByUsername("alice", "direct_member"),
+		},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeInvite,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   "username:alice",
+			Executable:   true,
+		}},
+	}
+	plan.Normalize()
+
+	var lookedUp bool
+	userSvc := &testUserService{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			lookedUp = true
+			if username != "alice" {
+				t.Fatalf("unexpected username %q", username)
+			}
+			return githubUser(42, "alice"), nil, nil
+		},
+	}
+	orgSvc := &testOrganizationService{
+		createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+			t.Fatal("invite creation should not run during check")
+			return nil, nil, nil
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withUserService(userSvc), withOrganizationService(orgSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !lookedUp {
+		t.Fatal("expected username lookup")
+	}
+	if got, want := len(result.CheckedActions), 1; got != want {
+		t.Fatalf("unexpected checked actions: got %d want %d", got, want)
+	}
+}
+
+func TestCheckInvitePreflightFailsWhenUsernameLookupFails(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []config.InviteSpec{
+			inviteByUsername("alice", "direct_member"),
+		},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeInvite,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   "username:alice",
+			Executable:   true,
+		}},
+	}
+	plan.Normalize()
+
+	userSvc := &testUserService{
+		getFunc: func(_ context.Context, username string) (*gh.User, *gh.Response, error) {
+			if username != "alice" {
+				t.Fatalf("unexpected username %q", username)
+			}
+			return nil, nil, githubNotFoundError("user not found")
+		},
+	}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withUserService(userSvc)))
+	if err == nil {
+		t.Fatal("expected invite failure")
+	}
+	if !errors.Is(err, githubpkg.ErrNotFound) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "username:alice") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
+func TestCheckTeamRepoPermissionAllowsSamePlanTeamAndRepositoryCreates(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "octostate",
+			Visibility: "private",
+			Template: config.TemplateSpec{
+				Owner: "orang-gaboets",
+				Name:  "repo-template",
+			},
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "orang-gaboets",
+				Name:       "octostate",
+				Permission: "push",
+			}},
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "octostate"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamResourceID("platform"), Executable: true},
+			{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "octostate"), Executable: true},
+		},
+	}
+	plan.Normalize()
+
+	var targetRepoLookups int
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			switch repositoryResourceID(owner, repo) {
+			case repositoryResourceID("orang-gaboets", "repo-template"):
+				return githubRepository("orang-gaboets", "repo-template", true), nil, nil
+			case repositoryResourceID("orang-gaboets", "octostate"):
+				targetRepoLookups++
+				return nil, nil, githubNotFoundError("repository not found")
+			default:
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+				return nil, nil, nil
+			}
+		},
+	}
+
+	var targetTeamLookups int
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			if org != "orang-gaboets" {
+				t.Fatalf("unexpected org %q", org)
+			}
+			switch slug {
+			case "platform":
+				targetTeamLookups++
+				return nil, nil, githubNotFoundError("team not found")
+			default:
+				t.Fatalf("unexpected team lookup %q", slug)
+				return nil, nil, nil
+			}
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := len(result.CheckedActions), len(plan.Actions); got != want {
+		t.Fatalf("unexpected checked action count: got %d want %d", got, want)
+	}
+	if targetRepoLookups != 1 {
+		t.Fatalf("expected exactly one target repo lookup during create preflight, got %d", targetRepoLookups)
+	}
+	if targetTeamLookups != 1 {
+		t.Fatalf("expected exactly one target team lookup during create preflight, got %d", targetTeamLookups)
+	}
+}
+
+func TestCheckTeamRepoPermissionFailsWhenLiveRepositoryMissing(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "orang-gaboets",
+				Name:       "octostate",
+				Permission: "push",
+			}},
+		}},
+	}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Teams: []state.Team{{
+			ID:   10,
+			Slug: "platform",
+			Name: "Platform",
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   teamRepoPermissionResourceID("platform", "orang-gaboets", "octostate"),
+			Executable:   true,
+		}},
+	}
+	plan.Normalize()
+
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			if org != "orang-gaboets" || slug != "platform" {
+				t.Fatalf("unexpected team lookup %s/%s", org, slug)
+			}
+			return githubTeam(10, "platform", "Platform", "orang-gaboets"), nil, nil
+		},
+	}
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			if repositoryResourceID(owner, repo) != repositoryResourceID("orang-gaboets", "octostate") {
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			}
+			return nil, nil, githubNotFoundError("repository not found")
+		},
+	}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc), withRepoService(repoSvc)))
+	if err == nil {
+		t.Fatal("expected permission failure")
+	}
+	if !errors.Is(err, githubpkg.ErrNotFound) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -147,7 +537,150 @@ func TestCheckFailsWhenCheckTeamDependenciesCannotBeResolved(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected dependency error")
 	}
-	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+	if !errors.Is(err, githubpkg.ErrNotFound) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "parent team platform") {
+		t.Fatalf("unexpected error text: %v", err)
+	}
+}
+
+func TestCheckAggregatesMultipleIndependentFailures(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{
+			{
+				Owner:      "orang-gaboets",
+				Name:       "new-repo",
+				Visibility: "private",
+				Template: config.TemplateSpec{
+					Owner: "orang-gaboets",
+					Name:  "repo-template",
+				},
+			},
+			{
+				Owner:      "orang-gaboets",
+				Name:       "existing-repo",
+				Visibility: "private",
+			},
+		},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "new-repo"), Executable: true},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "existing-repo"),
+				Executable:   true,
+				Changes: []gitopsplan.FieldChange{{
+					Field: "visibility",
+					From:  "public",
+					To:    "private",
+				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeam,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   teamResourceID("platform"),
+				Executable:   true,
+				Changes: []gitopsplan.FieldChange{{
+					Field: "description",
+					From:  "",
+					To:    "Updated",
+				}},
+			},
+		},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			switch repositoryResourceID(owner, repo) {
+			case repositoryResourceID("orang-gaboets", "repo-template"):
+				return githubRepository("orang-gaboets", "repo-template", false), nil, nil
+			case repositoryResourceID("orang-gaboets", "existing-repo"):
+				return nil, nil, githubNotFoundError("repository not found")
+			default:
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+				return nil, nil, nil
+			}
+		},
+	}
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			if org != "orang-gaboets" || slug != "platform" {
+				t.Fatalf("unexpected team lookup %s/%s", org, slug)
+			}
+			return nil, nil, githubNotFoundError("team not found")
+		},
+	}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if err == nil {
+		t.Fatal("expected aggregated failure")
+	}
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("expected invalid-field failure, got %v", err)
+	}
+	if !errors.Is(err, githubpkg.ErrNotFound) {
+		t.Fatalf("expected not-found failure, got %v", err)
+	}
+	for _, want := range []string{
+		"apply preflight failed for 3 action(s)",
+		"create repository orang-gaboets/new-repo",
+		"update repository orang-gaboets/existing-repo",
+		"update team platform",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected error to contain %q, got %v", want, err)
+		}
+	}
+}
+
+func githubRepository(owner, name string, isTemplate bool) *gh.Repository {
+	return &gh.Repository{
+		Name:       gh.String(name),
+		Owner:      &gh.User{Login: gh.String(owner)},
+		IsTemplate: gh.Bool(isTemplate),
+	}
+}
+
+func githubTeam(id int64, slug, name, org string) *gh.Team {
+	return &gh.Team{
+		ID:   gh.Int64(id),
+		Slug: gh.String(slug),
+		Name: gh.String(name),
+		Organization: &gh.Organization{
+			Login: gh.String(org),
+		},
+	}
+}
+
+func githubUser(id int64, username string) *gh.User {
+	return &gh.User{
+		ID:    gh.Int64(id),
+		Login: gh.String(username),
+	}
+}
+
+func githubNotFoundError(message string) error {
+	return githubAPIError(http.StatusNotFound, message)
+}
+
+func githubAPIError(statusCode int, message string) error {
+	return &gh.ErrorResponse{
+		Response: &http.Response{
+			StatusCode: statusCode,
+			Body:       io.NopCloser(strings.NewReader(message)),
+		},
+		Message: message,
 	}
 }
