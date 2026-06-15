@@ -154,6 +154,8 @@ type executor struct {
 	teamService           teams.Service
 	userService           ghusers.Service
 	teamIDs               map[string]int64
+	preflightCreatedTeams map[string]struct{}
+	preflightCreatedRepos map[string]struct{}
 	resolvedInviteUserIDs map[string]int64
 	inviteUsersResolved   bool
 	desiredRepositories   map[string]config.RepositorySpec
@@ -175,6 +177,8 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 		teamService:           opt.TeamService,
 		userService:           opt.UserService,
 		teamIDs:               make(map[string]int64, len(opt.Actual.Teams)),
+		preflightCreatedTeams: map[string]struct{}{},
+		preflightCreatedRepos: map[string]struct{}{},
 		resolvedInviteUserIDs: map[string]int64{},
 		desiredRepositories:   make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
 		desiredTeams:          make(map[string]config.TeamSpec, len(opt.Desired.Teams)),

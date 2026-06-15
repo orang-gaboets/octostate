@@ -2,6 +2,7 @@ package apply
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -59,6 +60,7 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 		Organization: strings.TrimSpace(opt.Desired.Organization),
 		PlanSummary:  opt.Plan.Summary,
 	}
+	failures := &preflightFailures{}
 
 	for index := 0; index < len(opt.Plan.Actions); {
 		action := opt.Plan.Actions[index]
@@ -67,10 +69,7 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 			for next < len(opt.Plan.Actions) && isTeamCreateAction(opt.Plan.Actions[next]) {
 				next++
 			}
-			if err := executor.preflightTeamCreateGroup(opt.Plan.Actions[index:next]); err != nil {
-				return nil, err
-			}
-			result.CheckedActions = append(result.CheckedActions, opt.Plan.Actions[index:next]...)
+			result.CheckedActions = append(result.CheckedActions, executor.preflightTeamCreateGroup(opt.Plan.Actions[index:next], failures)...)
 			index = next
 			continue
 		}
@@ -82,18 +81,24 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 		}
 
 		if err := executor.preflightAction(action); err != nil {
-			return nil, err
+			failures.add(action, err)
+			index++
+			continue
 		}
 		result.CheckedActions = append(result.CheckedActions, action)
 		index++
 	}
 
+	if err := failures.err(); err != nil {
+		return nil, err
+	}
 	result.Normalize()
 	return result, nil
 }
 
-func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action) error {
+func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action, failures *preflightFailures) []gitopsplan.Action {
 	pending := append([]gitopsplan.Action(nil), actions...)
+	checked := make([]gitopsplan.Action, 0, len(actions))
 	for len(pending) > 0 {
 		progress := false
 		nextPending := make([]gitopsplan.Action, 0, len(pending))
@@ -101,7 +106,8 @@ func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action) error {
 		for _, action := range pending {
 			team, ok := e.desiredTeams[action.ResourceID]
 			if !ok {
-				return fmt.Errorf("desired team %s not found: %w", action.ResourceID, github.ErrNotFound)
+				failures.add(action, fmt.Errorf("desired team %s not found: %w", action.ResourceID, github.ErrNotFound))
+				continue
 			}
 			if team.ParentSlug != "" {
 				if _, ok := e.teamIDs[teamSlugKey(team.ParentSlug)]; !ok {
@@ -110,13 +116,16 @@ func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action) error {
 				}
 			}
 			if err := e.preflightCreateTeam(action); err != nil {
-				return err
+				failures.add(action, err)
+				continue
 			}
 			slugKey := teamSlugKey(team.Slug)
 			if slugKey == "" {
 				slugKey = teamSlugKey(action.ResourceID)
 			}
 			e.teamIDs[slugKey] = e.allocateSyntheticTeamID()
+			e.markPreflightCreatedTeam(slugKey)
+			checked = append(checked, action)
 			progress = true
 		}
 
@@ -124,15 +133,22 @@ func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action) error {
 			pending = nextPending
 			continue
 		}
-
-		unresolved := make([]string, 0, len(nextPending))
-		for _, action := range nextPending {
-			unresolved = append(unresolved, action.ResourceID)
+		if len(nextPending) == 0 {
+			break
 		}
-		return fmt.Errorf("unable to preflight team create dependencies for %s: %w", strings.Join(unresolved, ", "), github.ErrInvalidFieldValue)
+
+		for _, action := range nextPending {
+			team, ok := e.desiredTeams[action.ResourceID]
+			if !ok {
+				failures.add(action, fmt.Errorf("desired team %s not found: %w", action.ResourceID, github.ErrNotFound))
+				continue
+			}
+			failures.add(action, fmt.Errorf("parent team %s was not found or could not be preflighted earlier in the same plan: %w", team.ParentSlug, github.ErrNotFound))
+		}
+		break
 	}
 
-	return nil
+	return checked
 }
 
 func (e *executor) preflightAction(action gitopsplan.Action) error {
@@ -196,6 +212,23 @@ func (e *executor) preflightRepositoryCreate(action gitopsplan.Action) error {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
 	}
 
+	templateRepository, err := e.preflightGetRepository(repository.Template.Owner, repository.Template.Name)
+	if err != nil {
+		return fmt.Errorf("create repository %s: template repository %s/%s: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, err)
+	}
+	if templateRepository == nil || !templateRepository.IsTemplate {
+		return fmt.Errorf("create repository %s: template repository %s/%s is not marked as a template: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, github.ErrInvalidFieldValue)
+	}
+
+	_, err = e.preflightGetRepository(repository.Owner, repository.Name)
+	switch {
+	case err == nil:
+		return fmt.Errorf("create repository %s: target repository %s/%s already exists: %w", action.ResourceID, repository.Owner, repository.Name, github.ErrInvalidFieldValue)
+	case !errors.Is(err, github.ErrNotFound):
+		return fmt.Errorf("create repository %s: target repository %s/%s: %w", action.ResourceID, repository.Owner, repository.Name, err)
+	}
+
+	e.markPreflightCreatedRepo(repository.Owner, repository.Name)
 	return nil
 }
 
@@ -230,6 +263,14 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 
 	if err := editOptions.Validate(); err != nil {
 		return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
+	}
+
+	liveRepository, err := e.preflightGetRepository(repository.Owner, repository.Name)
+	if err != nil {
+		return fmt.Errorf("update repository %s: target repository %s/%s: %w", action.ResourceID, repository.Owner, repository.Name, err)
+	}
+	if liveRepository == nil {
+		return fmt.Errorf("update repository %s: target repository %s/%s did not resolve to a repository: %w", action.ResourceID, repository.Owner, repository.Name, github.ErrInvalidFieldValue)
 	}
 	return nil
 }
@@ -270,6 +311,22 @@ func (e *executor) preflightCreateTeam(action gitopsplan.Action) error {
 		return fmt.Errorf("create team %s: %w", action.ResourceID, err)
 	}
 
+	targetSlug := strings.TrimSpace(team.Slug)
+	if targetSlug == "" {
+		targetSlug = strings.TrimSpace(action.ResourceID)
+	}
+	_, err = teams.GetTeamBySlug(e.ctx, teams.GetTeamBySlugOptions{
+		Service: e.teamService,
+		Org:     e.organization,
+		Slug:    targetSlug,
+	})
+	switch {
+	case err == nil:
+		return fmt.Errorf("create team %s: target team %s already exists live: %w", action.ResourceID, targetSlug, github.ErrInvalidFieldValue)
+	case !errors.Is(err, github.ErrNotFound):
+		return fmt.Errorf("create team %s: target team %s: %w", action.ResourceID, targetSlug, err)
+	}
+
 	return nil
 }
 
@@ -308,9 +365,22 @@ func (e *executor) preflightUpdateTeam(action gitopsplan.Action) error {
 		}
 	}
 
+	liveTeam, err := teams.GetTeamBySlug(e.ctx, teams.GetTeamBySlugOptions{
+		Service: e.teamService,
+		Org:     e.organization,
+		Slug:    team.Slug,
+	})
+	if err != nil {
+		return fmt.Errorf("update team %s: target team %s: %w", action.ResourceID, team.Slug, err)
+	}
+	if liveTeam == nil || liveTeam.ID <= 0 {
+		return fmt.Errorf("update team %s: target team %s did not return a valid team ID: %w", action.ResourceID, team.Slug, github.ErrInvalidFieldValue)
+	}
+	e.teamIDs[teamSlugKey(team.Slug)] = liveTeam.ID
+
 	if options.ParentTeamSlug != nil {
-		if _, ok := e.teamIDs[teamSlugKey(*options.ParentTeamSlug)]; !ok {
-			return fmt.Errorf("update team %s: parent team %s not found: %w", action.ResourceID, *options.ParentTeamSlug, github.ErrNotFound)
+		if _, err := e.preflightEnsureTeamExists(*options.ParentTeamSlug); err != nil {
+			return fmt.Errorf("update team %s: parent team %s: %w", action.ResourceID, *options.ParentTeamSlug, err)
 		}
 	}
 
@@ -358,8 +428,13 @@ func (e *executor) preflightInviteAction(action gitopsplan.Action) error {
 	if _, err := desiredInviteResourceID(invite); err != nil {
 		return fmt.Errorf("invite %s: %w", action.ResourceID, err)
 	}
+	if invite.Username.Present && !invite.Username.Null {
+		if _, err := e.preflightResolveInviteUserID(strings.TrimSpace(invite.Username.Value)); err != nil {
+			return fmt.Errorf("invite %s: %w", action.ResourceID, err)
+		}
+	}
 	if len(invite.TeamSlugs) > 0 {
-		if _, err := e.resolveInvitationTeamIDs(invite.TeamSlugs); err != nil {
+		if _, err := e.preflightResolveInvitationTeamIDs(invite.TeamSlugs); err != nil {
 			return fmt.Errorf("invite %s: %w", action.ResourceID, err)
 		}
 	}
@@ -422,8 +497,8 @@ func (e *executor) preflightTeamRepositoryPermissionAction(action gitopsplan.Act
 	if err != nil {
 		return err
 	}
-	if _, ok := e.teamIDs[teamSlugKey(teamSlug)]; !ok {
-		return fmt.Errorf("team %s not found: %w", teamSlug, github.ErrNotFound)
+	if _, err := e.preflightEnsureTeamExists(teamSlug); err != nil {
+		return fmt.Errorf("team %s not found: %w", teamSlug, err)
 	}
 
 	repoPermission := teams.TeamRepoPermission(permission.Permission)
@@ -441,6 +516,16 @@ func (e *executor) preflightTeamRepositoryPermissionAction(action gitopsplan.Act
 	}
 	if err := options.Validate(); err != nil {
 		return fmt.Errorf("team repository permission %s: %w", action.ResourceID, err)
+	}
+	if e.hasPreflightCreatedRepo(permission.Owner, permission.Name) {
+		return nil
+	}
+	liveRepository, err := e.preflightGetRepository(permission.Owner, permission.Name)
+	if err != nil {
+		return fmt.Errorf("team repository permission %s: target repository %s/%s: %w", action.ResourceID, permission.Owner, permission.Name, err)
+	}
+	if liveRepository == nil {
+		return fmt.Errorf("team repository permission %s: target repository %s/%s did not resolve to a repository: %w", action.ResourceID, permission.Owner, permission.Name, github.ErrInvalidFieldValue)
 	}
 
 	return nil
