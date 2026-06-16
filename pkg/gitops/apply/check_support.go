@@ -56,15 +56,32 @@ func (e *executor) hasPreflightCreatedRepo(owner, name string) bool {
 }
 
 func (e *executor) preflightGetRepository(owner, name string) (*github.Repository, error) {
-	return repos.Get(e.ctx, repos.GetOptions{
+	key := repositoryResourceID(owner, name)
+	if repository, ok := e.preflightLiveRepos[key]; ok {
+		return repository, nil
+	}
+
+	repository, err := repos.Get(e.ctx, repos.GetOptions{
 		Service: e.repositoryService,
 		Owner:   owner,
 		Repo:    name,
 	})
+	if err != nil {
+		return nil, err
+	}
+	e.preflightLiveRepos[key] = repository
+	return repository, nil
 }
 
 func (e *executor) preflightEnsureTeamExists(slug string) (int64, error) {
 	if e.hasPreflightCreatedTeam(slug) {
+		id, ok := e.teamIDs[teamSlugKey(slug)]
+		if !ok || id <= 0 {
+			return 0, fmt.Errorf("team %s does not have a resolvable team ID: %w", slug, github.ErrNotFound)
+		}
+		return id, nil
+	}
+	if _, ok := e.preflightVerifiedTeams[teamSlugKey(slug)]; ok {
 		id, ok := e.teamIDs[teamSlugKey(slug)]
 		if !ok || id <= 0 {
 			return 0, fmt.Errorf("team %s does not have a resolvable team ID: %w", slug, github.ErrNotFound)
@@ -84,6 +101,7 @@ func (e *executor) preflightEnsureTeamExists(slug string) (int64, error) {
 		return 0, fmt.Errorf("team %s did not return a valid team ID: %w", slug, github.ErrInvalidFieldValue)
 	}
 	e.teamIDs[teamSlugKey(slug)] = team.ID
+	e.preflightVerifiedTeams[teamSlugKey(slug)] = struct{}{}
 	return team.ID, nil
 }
 

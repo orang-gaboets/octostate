@@ -377,6 +377,7 @@ func (e *executor) preflightUpdateTeam(action gitopsplan.Action) error {
 		return fmt.Errorf("update team %s: target team %s did not return a valid team ID: %w", action.ResourceID, team.Slug, github.ErrInvalidFieldValue)
 	}
 	e.teamIDs[teamSlugKey(team.Slug)] = liveTeam.ID
+	e.preflightVerifiedTeams[teamSlugKey(team.Slug)] = struct{}{}
 
 	if options.ParentTeamSlug != nil {
 		if _, err := e.preflightEnsureTeamExists(*options.ParentTeamSlug); err != nil {

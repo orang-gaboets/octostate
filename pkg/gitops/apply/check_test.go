@@ -517,6 +517,99 @@ func TestCheckTeamRepoPermissionFailsWhenLiveRepositoryMissing(t *testing.T) {
 	}
 }
 
+func TestCheckReusesVerifiedLiveTeamsAndRepositories(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:        "platform",
+			Name:        "Platform",
+			Privacy:     "closed",
+			Description: "Updated",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "orang-gaboets",
+				Name:       "octostate",
+				Permission: "push",
+			}},
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "octostate"),
+				Executable:   true,
+				Changes: []gitopsplan.FieldChange{{
+					Field: "visibility",
+					From:  "public",
+					To:    "private",
+				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeam,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   teamResourceID("platform"),
+				Executable:   true,
+				Changes: []gitopsplan.FieldChange{{
+					Field: "description",
+					From:  "",
+					To:    "Updated",
+				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   teamRepoPermissionResourceID("platform", "orang-gaboets", "octostate"),
+				Executable:   true,
+			},
+		},
+	}
+	plan.Normalize()
+
+	var repoLookups int
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			repoLookups++
+			if repositoryResourceID(owner, repo) != repositoryResourceID("orang-gaboets", "octostate") {
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			}
+			return githubRepository("orang-gaboets", "octostate", false), nil, nil
+		},
+	}
+
+	var teamLookups int
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			teamLookups++
+			if org != "orang-gaboets" || slug != "platform" {
+				t.Fatalf("unexpected team lookup %s/%s", org, slug)
+			}
+			return githubTeam(10, "platform", "Platform", "orang-gaboets"), nil, nil
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := len(result.CheckedActions), len(plan.Actions); got != want {
+		t.Fatalf("unexpected checked action count: got %d want %d", got, want)
+	}
+	if repoLookups != 1 {
+		t.Fatalf("expected one repository lookup, got %d", repoLookups)
+	}
+	if teamLookups != 1 {
+		t.Fatalf("expected one team lookup, got %d", teamLookups)
+	}
+}
+
 func TestCheckFailsWhenCheckTeamDependenciesCannotBeResolved(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
