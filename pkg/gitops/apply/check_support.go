@@ -43,7 +43,7 @@ func (e *executor) hasPreflightCreatedTeam(slug string) bool {
 }
 
 func (e *executor) markPreflightCreatedRepo(owner, name string) {
-	key := repositoryResourceID(owner, name)
+	key := repositoryKey(owner, name)
 	if key == "/" {
 		return
 	}
@@ -51,12 +51,12 @@ func (e *executor) markPreflightCreatedRepo(owner, name string) {
 }
 
 func (e *executor) hasPreflightCreatedRepo(owner, name string) bool {
-	_, ok := e.preflightCreatedRepos[repositoryResourceID(owner, name)]
+	_, ok := e.preflightCreatedRepos[repositoryKey(owner, name)]
 	return ok
 }
 
 func (e *executor) preflightGetRepository(owner, name string) (*github.Repository, error) {
-	key := repositoryResourceID(owner, name)
+	key := repositoryKey(owner, name)
 	if repository, ok := e.preflightLiveRepos[key]; ok {
 		return repository, nil
 	}
@@ -80,7 +80,7 @@ func (e *executor) preflightTemplateRepository(owner, name string) (*github.Repo
 	}
 
 	if e.hasPreflightCreatedRepo(owner, name) {
-		desired, ok := e.desiredRepositories[key]
+		desired, ok := e.desiredRepositoriesByKey[key]
 		if !ok {
 			return nil, fmt.Errorf("desired repository %s not found: %w", key, github.ErrNotFound)
 		}

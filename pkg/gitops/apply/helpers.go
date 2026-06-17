@@ -6,10 +6,15 @@ import (
 
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/resourceid"
 )
 
 func repositoryResourceID(owner, name string) string {
-	return owner + "/" + name
+	return resourceid.RepositoryID(owner, name)
+}
+
+func repositoryKey(owner, name string) string {
+	return resourceid.RepositoryKey(owner, name)
 }
 
 func teamResourceID(slug string) string {

@@ -358,6 +358,100 @@ func TestCheckRejectsFutureSamePlanRepositoryTemplateChains(t *testing.T) {
 	}
 }
 
+func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.T) {
+	templateRepo := config.RepositorySpec{
+		Owner:      "orang-gaboets",
+		Name:       "OctoState",
+		Visibility: "private",
+		Template: config.TemplateSpec{
+			Owner: "orang-gaboets",
+			Name:  "starter-template",
+		},
+	}
+	templateRepo.SetManagedIsTemplate(true)
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{
+			templateRepo,
+			{
+				Owner:      "orang-gaboets",
+				Name:       "zzz-app",
+				Visibility: "private",
+				Template: config.TemplateSpec{
+					Owner: "orang-gaboets",
+					Name:  "octostate",
+				},
+			},
+		},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "OctoState"),
+				Executable:   true,
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-app"),
+				Executable:   true,
+			},
+		},
+	}
+	plan.Normalize()
+
+	var starterTemplateLookups int
+	var upperRepoLookups int
+	var lowerTemplateLookups int
+	var appLookups int
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			switch repositoryResourceID(owner, repo) {
+			case repositoryResourceID("orang-gaboets", "starter-template"):
+				starterTemplateLookups++
+				return githubRepository("orang-gaboets", "starter-template", true), nil, nil
+			case repositoryResourceID("orang-gaboets", "OctoState"):
+				upperRepoLookups++
+				return nil, nil, githubNotFoundError("repository not found")
+			case repositoryResourceID("orang-gaboets", "octostate"):
+				lowerTemplateLookups++
+				return nil, nil, githubNotFoundError("repository not found")
+			case repositoryResourceID("orang-gaboets", "zzz-app"):
+				appLookups++
+				return nil, nil, githubNotFoundError("repository not found")
+			default:
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+				return nil, nil, nil
+			}
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := len(result.CheckedActions), len(plan.Actions); got != want {
+		t.Fatalf("unexpected checked action count: got %d want %d", got, want)
+	}
+	if starterTemplateLookups != 1 {
+		t.Fatalf("expected exactly one live lookup for the starter template, got %d", starterTemplateLookups)
+	}
+	if upperRepoLookups != 1 {
+		t.Fatalf("expected exactly one live lookup for the mixed-case template repo target, got %d", upperRepoLookups)
+	}
+	if lowerTemplateLookups != 0 {
+		t.Fatalf("expected no live lookup for the lower-case same-plan template reference, got %d", lowerTemplateLookups)
+	}
+	if appLookups != 1 {
+		t.Fatalf("expected exactly one live lookup for the dependent repository target, got %d", appLookups)
+	}
+}
+
 func TestCheckRepositoryUpdateFailsWhenTargetMissing(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
