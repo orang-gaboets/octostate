@@ -74,7 +74,7 @@ func (e *executor) preflightGetRepository(owner, name string) (*github.Repositor
 }
 
 func (e *executor) preflightTemplateRepository(owner, name string) (*github.Repository, error) {
-	key := repositoryResourceID(owner, name)
+	key := repositoryKey(owner, name)
 	if repository, ok := e.preflightLiveRepos[key]; ok {
 		return repository, nil
 	}

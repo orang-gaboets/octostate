@@ -361,7 +361,7 @@ func TestCheckRejectsFutureSamePlanRepositoryTemplateChains(t *testing.T) {
 func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.T) {
 	templateRepo := config.RepositorySpec{
 		Owner:      "orang-gaboets",
-		Name:       "OctoState",
+		Name:       "octostate",
 		Visibility: "private",
 		Template: config.TemplateSpec{
 			Owner: "orang-gaboets",
@@ -380,7 +380,7 @@ func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.
 				Visibility: "private",
 				Template: config.TemplateSpec{
 					Owner: "orang-gaboets",
-					Name:  "octostate",
+					Name:  "OctoState",
 				},
 			},
 		},
@@ -392,7 +392,7 @@ func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "OctoState"),
+				ResourceID:   repositoryResourceID("orang-gaboets", "octostate"),
 				Executable:   true,
 			},
 			{
@@ -406,8 +406,8 @@ func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.
 	plan.Normalize()
 
 	var starterTemplateLookups int
-	var upperRepoLookups int
-	var lowerTemplateLookups int
+	var lowerRepoLookups int
+	var mixedCaseTemplateLookups int
 	var appLookups int
 	repoSvc := &testRepoService{
 		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
@@ -415,11 +415,11 @@ func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.
 			case repositoryResourceID("orang-gaboets", "starter-template"):
 				starterTemplateLookups++
 				return githubRepository("orang-gaboets", "starter-template", true), nil, nil
-			case repositoryResourceID("orang-gaboets", "OctoState"):
-				upperRepoLookups++
-				return nil, nil, githubNotFoundError("repository not found")
 			case repositoryResourceID("orang-gaboets", "octostate"):
-				lowerTemplateLookups++
+				lowerRepoLookups++
+				return nil, nil, githubNotFoundError("repository not found")
+			case repositoryResourceID("orang-gaboets", "OctoState"):
+				mixedCaseTemplateLookups++
 				return nil, nil, githubNotFoundError("repository not found")
 			case repositoryResourceID("orang-gaboets", "zzz-app"):
 				appLookups++
@@ -441,11 +441,11 @@ func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.
 	if starterTemplateLookups != 1 {
 		t.Fatalf("expected exactly one live lookup for the starter template, got %d", starterTemplateLookups)
 	}
-	if upperRepoLookups != 1 {
-		t.Fatalf("expected exactly one live lookup for the mixed-case template repo target, got %d", upperRepoLookups)
+	if lowerRepoLookups != 1 {
+		t.Fatalf("expected exactly one live lookup for the lower-case template repo target, got %d", lowerRepoLookups)
 	}
-	if lowerTemplateLookups != 0 {
-		t.Fatalf("expected no live lookup for the lower-case same-plan template reference, got %d", lowerTemplateLookups)
+	if mixedCaseTemplateLookups != 0 {
+		t.Fatalf("expected no live lookup for the mixed-case same-plan template reference, got %d", mixedCaseTemplateLookups)
 	}
 	if appLookups != 1 {
 		t.Fatalf("expected exactly one live lookup for the dependent repository target, got %d", appLookups)
