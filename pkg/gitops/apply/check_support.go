@@ -73,6 +73,28 @@ func (e *executor) preflightGetRepository(owner, name string) (*github.Repositor
 	return repository, nil
 }
 
+func (e *executor) preflightTemplateRepository(owner, name string) (*github.Repository, error) {
+	key := repositoryResourceID(owner, name)
+	if repository, ok := e.preflightLiveRepos[key]; ok {
+		return repository, nil
+	}
+
+	if e.hasPreflightCreatedRepo(owner, name) {
+		desired, ok := e.desiredRepositories[key]
+		if !ok {
+			return nil, fmt.Errorf("desired repository %s not found: %w", key, github.ErrNotFound)
+		}
+		isTemplate, managed := desired.ManagedIsTemplate()
+		return &github.Repository{
+			Owner:      owner,
+			Name:       name,
+			IsTemplate: managed && isTemplate,
+		}, nil
+	}
+
+	return e.preflightGetRepository(owner, name)
+}
+
 func (e *executor) preflightEnsureTeamExists(slug string) (int64, error) {
 	if e.hasPreflightCreatedTeam(slug) {
 		id, ok := e.teamIDs[teamSlugKey(slug)]

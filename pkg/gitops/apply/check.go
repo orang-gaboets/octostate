@@ -212,7 +212,7 @@ func (e *executor) preflightRepositoryCreate(action gitopsplan.Action) error {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
 	}
 
-	templateRepository, err := e.preflightGetRepository(repository.Template.Owner, repository.Template.Name)
+	templateRepository, err := e.preflightTemplateRepository(repository.Template.Owner, repository.Template.Name)
 	if err != nil {
 		return fmt.Errorf("create repository %s: template repository %s/%s: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, err)
 	}
