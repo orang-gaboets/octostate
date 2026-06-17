@@ -158,6 +158,7 @@ type executor struct {
 	preflightCreatedRepos  map[string]struct{}
 	preflightVerifiedTeams map[string]struct{}
 	preflightLiveRepos     map[string]*githubpkg.Repository
+	plannedCreatedRepos    map[string]struct{}
 	resolvedInviteUserIDs  map[string]int64
 	inviteUsersResolved    bool
 	desiredRepositories    map[string]config.RepositorySpec
@@ -183,6 +184,7 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 		preflightCreatedRepos:  map[string]struct{}{},
 		preflightVerifiedTeams: map[string]struct{}{},
 		preflightLiveRepos:     map[string]*githubpkg.Repository{},
+		plannedCreatedRepos:    map[string]struct{}{},
 		resolvedInviteUserIDs:  map[string]int64{},
 		desiredRepositories:    make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
 		desiredTeams:           make(map[string]config.TeamSpec, len(opt.Desired.Teams)),
@@ -205,6 +207,14 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 
 	for _, repository := range opt.Desired.Repositories {
 		exec.desiredRepositories[repositoryResourceID(repository.Owner, repository.Name)] = repository
+	}
+	for _, action := range opt.Plan.Actions {
+		if !action.Executable {
+			continue
+		}
+		if action.ResourceType == gitopsplan.ActionResourceTypeRepository && action.Operation == gitopsplan.ActionOperationCreate {
+			exec.plannedCreatedRepos[action.ResourceID] = struct{}{}
+		}
 	}
 	for _, member := range opt.Desired.Members {
 		exec.desiredOrgMembers[organizationMemberResourceID(member.Username)] = member

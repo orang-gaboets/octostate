@@ -202,7 +202,7 @@ func TestCheckRepositoryCreateFailsWhenTemplateIsNotTemplate(t *testing.T) {
 func TestCheckAllowsSamePlanRepositoryTemplateChains(t *testing.T) {
 	templateRepo := config.RepositorySpec{
 		Owner:      "orang-gaboets",
-		Name:       "aaa-template",
+		Name:       "zzz-template",
 		Visibility: "private",
 		Template: config.TemplateSpec{
 			Owner: "orang-gaboets",
@@ -214,16 +214,16 @@ func TestCheckAllowsSamePlanRepositoryTemplateChains(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{
-			templateRepo,
 			{
 				Owner:      "orang-gaboets",
-				Name:       "zzz-octostate",
+				Name:       "aaa-octostate",
 				Visibility: "private",
 				Template: config.TemplateSpec{
 					Owner: "orang-gaboets",
-					Name:  "aaa-template",
+					Name:  "zzz-template",
 				},
 			},
+			templateRepo,
 		},
 	}
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
@@ -233,13 +233,13 @@ func TestCheckAllowsSamePlanRepositoryTemplateChains(t *testing.T) {
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-template"),
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-octostate"),
 				Executable:   true,
 			},
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-octostate"),
+				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
 				Executable:   true,
 			},
 		},
@@ -255,10 +255,10 @@ func TestCheckAllowsSamePlanRepositoryTemplateChains(t *testing.T) {
 			case repositoryResourceID("orang-gaboets", "starter-template"):
 				starterTemplateLookups++
 				return githubRepository("orang-gaboets", "starter-template", true), nil, nil
-			case repositoryResourceID("orang-gaboets", "aaa-template"):
+			case repositoryResourceID("orang-gaboets", "zzz-template"):
 				repoTemplateLookups++
 				return nil, nil, githubNotFoundError("repository not found")
-			case repositoryResourceID("orang-gaboets", "zzz-octostate"):
+			case repositoryResourceID("orang-gaboets", "aaa-octostate"):
 				octostateLookups++
 				return nil, nil, githubNotFoundError("repository not found")
 			default:
@@ -279,10 +279,10 @@ func TestCheckAllowsSamePlanRepositoryTemplateChains(t *testing.T) {
 		t.Fatalf("expected exactly one live lookup for the starter template, got %d", starterTemplateLookups)
 	}
 	if repoTemplateLookups != 1 {
-		t.Fatalf("expected exactly one lookup for the same-plan template repo target, got %d", repoTemplateLookups)
+		t.Fatalf("expected exactly one live lookup for the same-plan template repo target, got %d", repoTemplateLookups)
 	}
 	if octostateLookups != 1 {
-		t.Fatalf("expected exactly one lookup for the second repository target, got %d", octostateLookups)
+		t.Fatalf("expected exactly one lookup for the first repository target, got %d", octostateLookups)
 	}
 }
 
@@ -292,7 +292,7 @@ func TestCheckRejectsSamePlanRepositoryTemplateChainsWithoutTemplateFlag(t *test
 		Repositories: []config.RepositorySpec{
 			{
 				Owner:      "orang-gaboets",
-				Name:       "aaa-template",
+				Name:       "zzz-template",
 				Visibility: "private",
 				Template: config.TemplateSpec{
 					Owner: "orang-gaboets",
@@ -301,11 +301,11 @@ func TestCheckRejectsSamePlanRepositoryTemplateChainsWithoutTemplateFlag(t *test
 			},
 			{
 				Owner:      "orang-gaboets",
-				Name:       "zzz-octostate",
+				Name:       "aaa-octostate",
 				Visibility: "private",
 				Template: config.TemplateSpec{
 					Owner: "orang-gaboets",
-					Name:  "aaa-template",
+					Name:  "zzz-template",
 				},
 			},
 		},
@@ -317,13 +317,13 @@ func TestCheckRejectsSamePlanRepositoryTemplateChainsWithoutTemplateFlag(t *test
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-template"),
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-octostate"),
 				Executable:   true,
 			},
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-octostate"),
+				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
 				Executable:   true,
 			},
 		},
@@ -335,9 +335,9 @@ func TestCheckRejectsSamePlanRepositoryTemplateChainsWithoutTemplateFlag(t *test
 			switch repositoryResourceID(owner, repo) {
 			case repositoryResourceID("orang-gaboets", "starter-template"):
 				return githubRepository("orang-gaboets", "starter-template", true), nil, nil
-			case repositoryResourceID("orang-gaboets", "aaa-template"):
+			case repositoryResourceID("orang-gaboets", "zzz-template"):
 				return nil, nil, githubNotFoundError("repository not found")
-			case repositoryResourceID("orang-gaboets", "zzz-octostate"):
+			case repositoryResourceID("orang-gaboets", "aaa-octostate"):
 				return nil, nil, githubNotFoundError("repository not found")
 			default:
 				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
@@ -353,7 +353,7 @@ func TestCheckRejectsSamePlanRepositoryTemplateChainsWithoutTemplateFlag(t *test
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "template repository orang-gaboets/aaa-template is not marked as a template") {
+	if !strings.Contains(err.Error(), "template repository orang-gaboets/zzz-template is not marked as a template") {
 		t.Fatalf("unexpected error text: %v", err)
 	}
 }

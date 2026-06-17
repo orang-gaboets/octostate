@@ -79,7 +79,7 @@ func (e *executor) preflightTemplateRepository(owner, name string) (*github.Repo
 		return repository, nil
 	}
 
-	if e.hasPreflightCreatedRepo(owner, name) {
+	if _, ok := e.plannedCreatedRepos[key]; ok {
 		desired, ok := e.desiredRepositories[key]
 		if !ok {
 			return nil, fmt.Errorf("desired repository %s not found: %w", key, github.ErrNotFound)
