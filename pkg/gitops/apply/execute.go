@@ -147,42 +147,52 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 }
 
 type executor struct {
-	ctx                   context.Context
-	organization          string
-	organizationService   organizations.Service
-	repositoryService     repos.Service
-	teamService           teams.Service
-	userService           ghusers.Service
-	teamIDs               map[string]int64
-	resolvedInviteUserIDs map[string]int64
-	inviteUsersResolved   bool
-	desiredRepositories   map[string]config.RepositorySpec
-	desiredTeams          map[string]config.TeamSpec
-	desiredOrgMembers     map[string]config.OrganizationMemberSpec
-	desiredMembers        map[string]config.TeamMemberSpec
-	desiredPermissions    map[string]config.TeamRepositorySpec
-	desiredInvites        map[string]config.InviteSpec
-	syntheticTeamID       int64
+	ctx                      context.Context
+	organization             string
+	organizationService      organizations.Service
+	repositoryService        repos.Service
+	teamService              teams.Service
+	userService              ghusers.Service
+	teamIDs                  map[string]int64
+	preflightCreatedTeams    map[string]struct{}
+	preflightCreatedRepos    map[string]struct{}
+	preflightVerifiedTeams   map[string]struct{}
+	preflightLiveRepos       map[string]*githubpkg.Repository
+	resolvedInviteUserIDs    map[string]int64
+	inviteUsersResolved      bool
+	desiredRepositories      map[string]config.RepositorySpec
+	desiredRepositoriesByKey map[string]config.RepositorySpec
+	desiredTeams             map[string]config.TeamSpec
+	desiredOrgMembers        map[string]config.OrganizationMemberSpec
+	desiredMembers           map[string]config.TeamMemberSpec
+	desiredPermissions       map[string]config.TeamRepositorySpec
+	desiredInvites           map[string]config.InviteSpec
+	syntheticTeamID          int64
 }
 
 func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 	nextSyntheticTeamID := int64(1)
 	exec := &executor{
-		ctx:                   ctx,
-		organization:          strings.TrimSpace(opt.Desired.Organization),
-		organizationService:   opt.OrganizationService,
-		repositoryService:     opt.RepositoryService,
-		teamService:           opt.TeamService,
-		userService:           opt.UserService,
-		teamIDs:               make(map[string]int64, len(opt.Actual.Teams)),
-		resolvedInviteUserIDs: map[string]int64{},
-		desiredRepositories:   make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
-		desiredTeams:          make(map[string]config.TeamSpec, len(opt.Desired.Teams)),
-		desiredOrgMembers:     make(map[string]config.OrganizationMemberSpec, len(opt.Desired.Members)),
-		desiredMembers:        map[string]config.TeamMemberSpec{},
-		desiredPermissions:    map[string]config.TeamRepositorySpec{},
-		desiredInvites:        map[string]config.InviteSpec{},
-		syntheticTeamID:       nextSyntheticTeamID,
+		ctx:                      ctx,
+		organization:             strings.TrimSpace(opt.Desired.Organization),
+		organizationService:      opt.OrganizationService,
+		repositoryService:        opt.RepositoryService,
+		teamService:              opt.TeamService,
+		userService:              opt.UserService,
+		teamIDs:                  make(map[string]int64, len(opt.Actual.Teams)),
+		preflightCreatedTeams:    map[string]struct{}{},
+		preflightCreatedRepos:    map[string]struct{}{},
+		preflightVerifiedTeams:   map[string]struct{}{},
+		preflightLiveRepos:       map[string]*githubpkg.Repository{},
+		resolvedInviteUserIDs:    map[string]int64{},
+		desiredRepositories:      make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
+		desiredRepositoriesByKey: make(map[string]config.RepositorySpec, len(opt.Desired.Repositories)),
+		desiredTeams:             make(map[string]config.TeamSpec, len(opt.Desired.Teams)),
+		desiredOrgMembers:        make(map[string]config.OrganizationMemberSpec, len(opt.Desired.Members)),
+		desiredMembers:           map[string]config.TeamMemberSpec{},
+		desiredPermissions:       map[string]config.TeamRepositorySpec{},
+		desiredInvites:           map[string]config.InviteSpec{},
+		syntheticTeamID:          nextSyntheticTeamID,
 	}
 
 	for _, team := range opt.Actual.Teams {
@@ -197,6 +207,7 @@ func newExecutor(ctx context.Context, opt Options) (*executor, error) {
 
 	for _, repository := range opt.Desired.Repositories {
 		exec.desiredRepositories[repositoryResourceID(repository.Owner, repository.Name)] = repository
+		exec.desiredRepositoriesByKey[repositoryKey(repository.Owner, repository.Name)] = repository
 	}
 	for _, member := range opt.Desired.Members {
 		exec.desiredOrgMembers[organizationMemberResourceID(member.Username)] = member

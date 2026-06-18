@@ -239,6 +239,54 @@ func TestApplyConfigCmdCheckSkipsExecution(t *testing.T) {
 	}
 }
 
+func TestApplyConfigCmdCheckFailurePropagatesWithoutSuccessOutput(t *testing.T) {
+	restoreApplyHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	report := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   "orang-gaboets/octostate",
+			Executable:   true,
+		}},
+	}
+	report.Normalize()
+	checkErr := errors.New("apply preflight failed for 2 action(s): create repository orang-gaboets/octostate: target repository orang-gaboets/octostate already exists: invalid field value")
+
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return actual, nil
+	}
+	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return report, nil }
+	checkApply = func(context.Context, gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+		return nil, checkErr
+	}
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check"})
+
+	err := cmd.Execute()
+	if !errors.Is(err, checkErr) {
+		t.Fatalf("unexpected error: got %v want %v", err, checkErr)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no command output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
 func TestApplyConfigCmdRejectsCheckAndDryRunTogether(t *testing.T) {
 	restoreApplyHooks(t)
 

@@ -104,10 +104,12 @@ Current collector concurrency limits:
 5. Print the preflight result as JSON
 
 Check mode is best-effort. It validates the supported apply executor inputs
-against the collected live state, but it is not a guaranteed GitHub transaction
-dry-run and can still miss GitHub-side failures such as permission changes,
-organization policy, rate limits, races after collection, inaccessible
-templates, username invite resolution, or server-side write validation.
+against the collected live state and adds read-only probes for supported apply
+targets, but it is not a guaranteed GitHub transaction dry-run and can still
+miss GitHub-side failures such as permission changes, organization policy, rate
+limits, races after collection, live state changes after preflight,
+unsupported team-member or `user_id` invite validation, or server-side write
+validation.
 
 ### `octostate audit pull`
 1. Load desired state to determine the target organization
