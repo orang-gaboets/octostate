@@ -65,25 +65,50 @@ Current shipped behavior:
 A control repo may choose to persist additional plan, diff, or event artifacts,
 but that storage policy belongs to the control repo, not this engine.
 
-## Recommended Command Sequence
+## Recommended PR Workflow
 
-A typical integration sequence is:
+A typical control-repo PR workflow is:
 
 1. `octostate config validate`
    - Run on every desired-state change
+   - Fully offline
    - Catches schema and semantic issues before any live GitHub calls
 2. `octostate config plan`
-   - Run when you want a live reconciliation preview for review
-   - Uses live GitHub state and produces deterministic executable/skipped actions
+   - Run on PR creation or update
+   - Uses live GitHub state
+   - Produces deterministic executable/skipped actions for review
 3. `octostate config apply --check`
-   - Run when you want to validate the apply path without mutating GitHub
-4. `octostate config apply`
-   - Run after the desired-state change is accepted
+   - Run after validation and planning, before human approval
+   - Uses live GitHub state and read-only probes
+   - Validates the supported apply path without mutating GitHub
+4. Human review
+   - Review the config diff, plan output, and check output
+   - Approve or reject the PR using the control repo's normal policy
+5. Merge to `main`
+   - The merged config becomes desired state
+6. `octostate config apply`
+   - Run after the PR is merged
    - Executes only supported create/update actions against live GitHub
-5. `octostate audit pull`
-   - Run when you want to refresh the stored actual-state snapshot
-6. `octostate audit diff`
-   - Run when you want offline drift detection against the stored snapshot
+7. `octostate audit pull`
+   - Run when the control repo wants to refresh the stored actual-state snapshot
+8. `octostate audit diff`
+   - Run when the control repo wants offline drift detection against the stored snapshot
+
+## Example CI Sequence
+
+For pull requests that change `config/organization.yaml`, a control repo can run:
+
+```bash
+octostate config validate --config-dir ./config
+octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+```
+
+After the PR is approved and merged, a post-merge workflow can run:
+
+```bash
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+```
 
 ## Example Layout
 
@@ -107,6 +132,7 @@ When integrating this CLI into automation, it helps to assume:
 - `audit diff` is offline once the snapshot exists
 - plan, apply, and snapshot outputs are normalized for deterministic ordering
 - `invites` are transitional desired state; long-term membership should move to stable membership declarations once invites are accepted
+- `config apply --check` is a preflight, not a transactional GitHub dry-run; a later apply can still fail because of permission changes, organization policy, rate limits, live state changes after preflight, unsupported validation gaps, or GitHub server-side write validation
 
 ## Related Docs
 
