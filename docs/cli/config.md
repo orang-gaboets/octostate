@@ -311,7 +311,7 @@ Behavior:
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
-- `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, team member targets, username-based invites, invitation team slugs, and team repository permission targets
+- `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, username-based invites, invitation team slugs, and team repository permission targets
 - `--check` is a best-effort preflight. It validates the supported apply executor inputs plus these live read probes, but it is not a guaranteed GitHub transaction dry-run
 - `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes or read-only preflight probes
 - `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, live state changes after preflight, or GitHub-side validation that only occurs during write-time execution

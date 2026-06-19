@@ -163,9 +163,8 @@ This check mode is best-effort: it validates the supported apply executor inputs
 against the collected live state and uses read-only GitHub probes for supported
 apply targets, but it is not a guaranteed GitHub transaction dry-run. A later
 apply can still fail because of permissions, organization policy, rate limits,
-races after collection, live state changes after preflight, unsupported
-team-member or `user_id` invite validation, or GitHub server-side write
-validation.
+races after collection, live state changes after preflight, or GitHub-side
+validation that only occurs during write-time execution.
 
 ## Snapshot and Offline Diff
 
