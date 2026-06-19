@@ -66,7 +66,7 @@ Repository field rules:
 - Boolean repository fields are only managed when explicitly set to `true` or `false`
 - Explicit `null` is rejected for `description`, `homepage`, `allow_forking`, `archived`, and `is_template`
 - `allow_forking` is still ignored for private repositories
-- Repository visibility currently supports `public` and `private`; `internal` is not part of the supported config schema yet
+- Repository visibility currently supports `public` and `private`; `internal` is rejected by validation and not supported by apply yet
 
 Exit codes:
 - `0`: valid configuration
