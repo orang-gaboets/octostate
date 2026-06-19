@@ -17,6 +17,18 @@ Examples below mostly use `$GITHUB_TOKEN` for brevity, but the same live
 commands also support GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
 
+## Command Comparison
+
+Use these commands at different points in the GitOps workflow:
+
+| Command | Live GitHub access | Mutates GitHub | Primary use |
+| --- | --- | --- | --- |
+| `octostate config validate` | No | No | Validate `organization.yaml` before any live calls |
+| `octostate config plan` | Yes | No | Build the live reconciliation preview for review |
+| `octostate config apply --dry-run` | Yes | No | Show the executable/skipped apply view without preflight probes or writes |
+| `octostate config apply --check` | Yes | No | Validate the supported apply path with read-only probes before review or merge |
+| `octostate config apply` | Yes | Yes | Execute supported create/update actions after approval |
+
 ## `octostate config validate`
 
 Validate desired-state configuration.
@@ -54,6 +66,7 @@ Repository field rules:
 - Boolean repository fields are only managed when explicitly set to `true` or `false`
 - Explicit `null` is rejected for `description`, `homepage`, `allow_forking`, `archived`, and `is_template`
 - `allow_forking` is still ignored for private repositories
+- Repository visibility currently supports `public` and `private`; `internal` is not part of the supported config schema yet
 
 Exit codes:
 - `0`: valid configuration
@@ -300,8 +313,8 @@ Behavior:
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
 - `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, username-based invites, invitation team slugs, and team repository permission targets
 - `--check` is a best-effort preflight. It validates the supported apply executor inputs plus these live read probes, but it is not a guaranteed GitHub transaction dry-run
+- `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes or read-only preflight probes
 - `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, live state changes after preflight, unsupported team-member or `user_id` invite validation, or server-side write validation
-- `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes
 - `--check` and `--dry-run` are mutually exclusive
 - Live apply executes only supported executable `create` / `update` actions
 - Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
