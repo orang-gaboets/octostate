@@ -24,6 +24,7 @@ Use these commands at different points in the GitOps workflow:
 | Command | Live GitHub access | Mutates GitHub | Primary use |
 | --- | --- | --- | --- |
 | `octostate config validate` | No | No | Validate `organization.yaml` before any live calls |
+| `octostate config sync-from-live` | Yes | No | Bootstrap, adopt, or materialize desired state from live GitHub; `--write` can save `organization.yaml` locally |
 | `octostate config plan` | Yes | No | Build the live reconciliation preview for review |
 | `octostate config apply --dry-run` | Yes | No | Show the executable/skipped apply view without preflight probes or writes |
 | `octostate config apply --check` | Yes | No | Validate the supported apply path with read-only probes before review or merge |
