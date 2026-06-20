@@ -96,6 +96,11 @@ A typical control-repo PR workflow is:
 
 ## Example CI Sequence
 
+The examples below use `$GITHUB_TOKEN` as a placeholder for a token with the
+required organization, repository, and team permissions. In some control
+repos, that may need to be a GitHub App installation token or PAT stored as a
+secret rather than the default Actions `GITHUB_TOKEN`.
+
 For pull requests that change `config/organization.yaml`, a control repo can run:
 
 ```bash
