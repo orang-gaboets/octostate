@@ -315,7 +315,7 @@ Behavior:
 - `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, username-based invites, invitation team slugs, and team repository permission targets
 - `--check` is a best-effort preflight. It validates the supported apply executor inputs plus these live read probes, but it is not a guaranteed GitHub transaction dry-run
 - `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes or read-only preflight probes
-- `--check` does not pre-resolve team-member changes or email/`user_id` invites before apply, so those can still fail during live apply
+- `--check` does not pre-resolve top-level `members:` usernames, team-member changes, or email/`user_id` invites before apply, so those can still fail during live apply
 - `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, live state changes after preflight, or other GitHub-side validation that only occurs during write-time execution
 - `--check` and `--dry-run` are mutually exclusive
 - Live apply executes only supported executable `create` / `update` actions
