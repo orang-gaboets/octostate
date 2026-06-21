@@ -272,6 +272,7 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 	if liveRepository == nil {
 		return fmt.Errorf("update repository %s: target repository %s/%s did not resolve to a repository: %w", action.ResourceID, repository.Owner, repository.Name, github.ErrInvalidFieldValue)
 	}
+	liveRepository.IsTemplate = repository.IsTemplate
 	return nil
 }
 
