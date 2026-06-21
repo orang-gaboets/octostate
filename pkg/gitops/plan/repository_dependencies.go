@@ -10,11 +10,13 @@ func repositoryCanBeCreated(repository config.RepositorySpec) bool {
 }
 
 func repositoryAvailableForTeamRepositoryPermission(owner, name string, actualRepos map[string]state.Repository, desiredRepos map[string]config.RepositorySpec) bool {
-	if _, ok := actualRepos[repositoryKey(owner, name)]; ok {
+	key := repositoryKey(owner, name)
+
+	if _, ok := actualRepos[key]; ok {
 		return true
 	}
 
-	repository, ok := desiredRepos[repositoryKey(owner, name)]
+	repository, ok := desiredRepos[key]
 	if !ok {
 		return false
 	}
