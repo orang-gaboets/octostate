@@ -152,6 +152,15 @@ func (p planner) planTeamRepositoryPermissions() []Action {
 	for _, permission := range p.actual.TeamRepositoryPermissions {
 		actualPermissions[teamRepositoryPermissionKey(permission.TeamSlug, permission.Owner, permission.Name)] = permission
 	}
+	actualRepos := make(map[string]state.Repository, len(p.actual.Repositories))
+	for _, repository := range p.actual.Repositories {
+		actualRepos[repositoryKey(repository.Owner, repository.Name)] = repository
+	}
+
+	desiredRepos := make(map[string]config.RepositorySpec, len(p.desired.Repositories))
+	for _, repository := range p.desired.Repositories {
+		desiredRepos[repositoryKey(repository.Owner, repository.Name)] = repository
+	}
 
 	desiredPermissions := make(map[string]config.TeamRepositorySpec)
 	for _, team := range p.desired.Teams {
@@ -160,24 +169,44 @@ func (p planner) planTeamRepositoryPermissions() []Action {
 			desiredPermissions[key] = permission
 			actualPermission, ok := actualPermissions[key]
 			if !ok {
+				executable := repositoryAvailableForTeamRepositoryPermission(permission.Owner, permission.Name, actualRepos, desiredRepos)
+				message := fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
+				if !executable {
+					message = fmt.Sprintf(
+						"team repository permission %s requires repository %s/%s to exist or be created earlier in the same plan",
+						teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
+						permission.Owner,
+						permission.Name,
+					)
+				}
 				actions = append(actions, Action{
 					ResourceType: ActionResourceTypeTeamRepositoryPermission,
 					Operation:    ActionOperationCreate,
 					ResourceID:   teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
-					Executable:   true,
-					Message:      fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name)),
+					Executable:   executable,
+					Message:      message,
 				})
 				continue
 			}
 			if actualPermission.Permission == permission.Permission {
 				continue
 			}
+			executable := repositoryAvailableForTeamRepositoryPermission(permission.Owner, permission.Name, actualRepos, desiredRepos)
+			message := fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
+			if !executable {
+				message = fmt.Sprintf(
+					"team repository permission %s requires repository %s/%s to exist or be created earlier in the same plan",
+					teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
+					permission.Owner,
+					permission.Name,
+				)
+			}
 			actions = append(actions, Action{
 				ResourceType: ActionResourceTypeTeamRepositoryPermission,
 				Operation:    ActionOperationUpdate,
 				ResourceID:   teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
-				Executable:   true,
-				Message:      fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name)),
+				Executable:   executable,
+				Message:      message,
 				Changes: []FieldChange{{
 					Field: "permission",
 					From:  actualPermission.Permission,
