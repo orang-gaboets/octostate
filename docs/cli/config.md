@@ -279,6 +279,7 @@ Plan preview fields:
 Action behavior:
 - `executable_actions` contains the supported changes that a later `config apply` command can carry out, such as `create` and `update`
 - `skipped_actions` contains unsupported live drift that is detected but not automatically reconciled, such as `delete` and `remove`
+- Team repository permission create/update actions are only executable when the target repository already exists or is created earlier in the same plan; otherwise they remain in `skipped_actions`
 - Both arrays keep deterministic action ordering so CI output and PR comments stay stable
 
 Example use:
@@ -313,6 +314,7 @@ Behavior:
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
 - `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, username-based invites, invitation team slugs, and team repository permission targets
+- `--check` inherits the same repository dependency gate for team repository permission targets, so a permission is only preflighted when its repository already exists or is created earlier in the same plan
 - `--check` is a best-effort preflight. It validates the supported apply executor inputs plus these live read probes, but it is not a guaranteed GitHub transaction dry-run
 - `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes or read-only preflight probes
 - `--check` does not pre-resolve top-level `members:` usernames, team-member changes, or email invites before apply; `user_id` invites can still trigger a login lookup during planning when they are matched against desired members or pending invitations, so `--check` and `--dry-run` can still fail before the live apply phase
