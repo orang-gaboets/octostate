@@ -375,6 +375,93 @@ func TestCheckAllowsRepositoryUpdateToTemplateBeforeLaterSamePlanCreate(t *testi
 	}
 }
 
+func TestCheckPreservesLiveTemplateStateForRepositoryUpdatesWithoutTemplateChanges(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{
+			{
+				Owner:      "orang-gaboets",
+				Name:       "aaa-app",
+				Visibility: "private",
+				Template: config.TemplateSpec{
+					Owner: "orang-gaboets",
+					Name:  "zzz-template",
+				},
+			},
+			{
+				Owner:       "orang-gaboets",
+				Name:        "zzz-template",
+				Visibility:  "private",
+				Description: "Updated template description",
+			},
+		},
+	}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{
+			Owner:      "orang-gaboets",
+			Name:       "zzz-template",
+			Visibility: "private",
+			IsTemplate: true,
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
+				Executable:   true,
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
+				Executable:   true,
+				Changes: []gitopsplan.FieldChange{{
+					Field: "description",
+					From:  "Old description",
+					To:    "Updated template description",
+				}},
+			},
+		},
+	}
+	plan.Normalize()
+
+	var templateLookups int
+	var targetLookups int
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			switch repositoryResourceID(owner, repo) {
+			case repositoryResourceID("orang-gaboets", "zzz-template"):
+				templateLookups++
+				return githubRepository("orang-gaboets", "zzz-template", true), nil, nil
+			case repositoryResourceID("orang-gaboets", "aaa-app"):
+				targetLookups++
+				return nil, nil, githubNotFoundError("repository not found")
+			default:
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+				return nil, nil, nil
+			}
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(result.CheckedActions, plan.Actions) {
+		t.Fatalf("unexpected checked actions: got %#v want %#v", result.CheckedActions, plan.Actions)
+	}
+	if templateLookups != 1 {
+		t.Fatalf("expected one live lookup for the template repo, got %d", templateLookups)
+	}
+	if targetLookups != 1 {
+		t.Fatalf("expected one live lookup for the dependent repository, got %d", targetLookups)
+	}
+}
+
 func TestCheckRejectsFutureSamePlanRepositoryTemplateChains(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
