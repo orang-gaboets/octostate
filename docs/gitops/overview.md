@@ -150,14 +150,19 @@ in a fixed order:
 6. team repository permissions
 
 `Report.Normalize()` stays sequential because it is the final global
-sort/summarize pass that defines the public plan ordering.
+sort/summarize pass that defines the public plan ordering. Repository updates
+sort before repository creates in that normalized ordering, which lets a
+same-plan template-state update become visible to a later repository create.
 
 `config apply` then executes only the supported executable `create` and
 `update` actions from that plan. Unsupported `delete` and `remove` drift is
 reported back as skipped state rather than being executed.
 
 `config apply --check` runs the same live read and plan build, then performs
-apply preflight validation without mutating GitHub.
+apply preflight validation without mutating GitHub. Because it consumes the
+same normalized plan as `config apply`, a repository updated to
+`is_template: true` earlier in the plan is available to later same-plan
+repository creates that use it as a template.
 
 This check mode is best-effort: it validates the supported apply executor inputs
 against the collected live state and uses read-only GitHub probes for supported
