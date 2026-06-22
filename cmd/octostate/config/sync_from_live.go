@@ -248,7 +248,7 @@ func writeSyncFromLiveConfigFile(mode, configDir string, yamlBytes []byte) (stri
 func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error) {
 	targetPath, err := ensureBootstrapConfigTargetAvailable(configDir)
 	if err != nil {
-		return "", err
+		return "", runtimePhaseError("check bootstrap config target availability", err)
 	}
 
 	if err := mkdirAllSyncFromLiveConfigDir(strings.TrimSpace(configDir), syncFromLiveConfigDirectoryMode); err != nil {

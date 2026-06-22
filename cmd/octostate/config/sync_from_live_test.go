@@ -1120,6 +1120,26 @@ func TestSyncFromLiveConfigCmdWriteFailsWhenTargetExists(t *testing.T) {
 	}
 }
 
+func TestWriteBootstrapConfigFileReturnsWrappedTargetExistsError(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	path := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	if err := os.WriteFile(path, []byte("existing\n"), 0o600); err != nil {
+		t.Fatalf("write existing bootstrap config: %v", err)
+	}
+
+	createTempSyncFromLiveFile = func(string, string) (*os.File, error) {
+		t.Fatal("createTempSyncFromLiveFile should not be called when target already exists")
+		return nil, nil
+	}
+
+	_, err := writeBootstrapConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected wrapped target exists error, got %v", err)
+	}
+}
+
 func TestSyncFromLiveConfigCmdBootstrapTargetStatFailurePropagates(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 
