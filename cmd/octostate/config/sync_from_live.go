@@ -143,7 +143,7 @@ func syncFromLiveConfig(
 	}
 	if write && mode == syncFromLiveModeBootstrap {
 		if _, err := ensureBootstrapConfigTargetAvailable(configDir); err != nil {
-			return nil, nil, err
+			return nil, nil, runtimePhaseError("check bootstrap config target availability", err)
 		}
 	}
 

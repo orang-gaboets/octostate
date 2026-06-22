@@ -1112,8 +1112,45 @@ func TestSyncFromLiveConfigCmdWriteFailsWhenTargetExists(t *testing.T) {
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("expected target exists error, got %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestSyncFromLiveConfigCmdBootstrapTargetStatFailurePropagates(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	statErr := errors.New("stat failed")
+	statSyncFromLivePath = func(string) (os.FileInfo, error) {
+		return nil, statErr
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target stat fails")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "bootstrap",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+		"--write",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") {
+		t.Fatalf("expected bootstrap target stat failure, got %v", err)
+	}
+	if !strings.Contains(err.Error(), statErr.Error()) {
+		t.Fatalf("expected wrapped stat error, got %v", err)
 	}
 	if out.Len() != 0 || errBuf.Len() != 0 {
 		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
