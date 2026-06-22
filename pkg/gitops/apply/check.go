@@ -243,6 +243,7 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 		Owner:   repository.Owner,
 		Repo:    repository.Name,
 	}
+	templateStateUpdated := false
 
 	for _, change := range action.Changes {
 		switch change.Field {
@@ -255,6 +256,9 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 				if _, err := visibilityPrivateFlag(repository.Visibility); err != nil {
 					return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 				}
+			}
+			if change.Field == "is_template" {
+				templateStateUpdated = true
 			}
 		default:
 			return fmt.Errorf("unsupported repository change field %q for %s: %w", change.Field, action.ResourceID, github.ErrInvalidFieldValue)
@@ -271,6 +275,9 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 	}
 	if liveRepository == nil {
 		return fmt.Errorf("update repository %s: target repository %s/%s did not resolve to a repository: %w", action.ResourceID, repository.Owner, repository.Name, github.ErrInvalidFieldValue)
+	}
+	if templateStateUpdated {
+		liveRepository.IsTemplate = repository.IsTemplate
 	}
 	return nil
 }

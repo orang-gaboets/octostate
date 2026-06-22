@@ -422,8 +422,8 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			RemoveActions:        3,
 		},
 		Actions: []Action{
-			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: false, Message: "repository orang-gaboets/new-repo cannot be created because template configuration is missing", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/octostate"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
+			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: false, Message: "repository orang-gaboets/new-repo cannot be created because template configuration is missing", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: "orang-gaboets/orphan-repo", Executable: false, Message: "repository orang-gaboets/orphan-repo exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform New"}, {Field: "privacy", From: "closed", To: "secret"}}},
@@ -718,6 +718,75 @@ invites: []
 			{Field: "is_template", From: true, To: false},
 		},
 	}}
+	if !reflect.DeepEqual(report.Actions, want) {
+		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
+	}
+}
+
+func TestBuildOrdersRepositoryUpdateBeforeCreateWhenTemplateStateChangesInSameSnapshotPlan(t *testing.T) {
+	t.Parallel()
+
+	templateRepo := config.RepositorySpec{
+		Owner:      "orang-gaboets",
+		Name:       "zzz-template",
+		Visibility: "private",
+	}
+	templateRepo.SetManagedIsTemplate(true)
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 25, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{
+			{
+				Owner:      "orang-gaboets",
+				Name:       "zzz-template",
+				Visibility: "private",
+				IsTemplate: false,
+			},
+		},
+	})
+
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{
+				{
+					Owner:      "orang-gaboets",
+					Name:       "aaa-app",
+					Visibility: "private",
+					Template: config.TemplateSpec{
+						Owner: "orang-gaboets",
+						Name:  "zzz-template",
+					},
+				},
+				templateRepo,
+			},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	want := []Action{
+		{
+			ResourceType: ActionResourceTypeRepository,
+			Operation:    ActionOperationUpdate,
+			ResourceID:   "orang-gaboets/zzz-template",
+			Executable:   true,
+			Message:      "update repository orang-gaboets/zzz-template",
+			Changes: []FieldChange{
+				{Field: "is_template", From: false, To: true},
+			},
+		},
+		{
+			ResourceType: ActionResourceTypeRepository,
+			Operation:    ActionOperationCreate,
+			ResourceID:   "orang-gaboets/aaa-app",
+			Executable:   true,
+			Message:      "create repository orang-gaboets/aaa-app",
+			Changes:      []FieldChange{},
+		},
+	}
 	if !reflect.DeepEqual(report.Actions, want) {
 		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
 	}

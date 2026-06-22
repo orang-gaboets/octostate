@@ -587,6 +587,96 @@ invites: []
 	}
 }
 
+func TestExecuteRepositoryUpdateToTemplateRunsBeforeLaterSamePlanCreate(t *testing.T) {
+	t.Parallel()
+
+	templateRepo := config.RepositorySpec{
+		Owner:      "orang-gaboets",
+		Name:       "zzz-template",
+		Visibility: "private",
+	}
+	templateRepo.SetManagedIsTemplate(true)
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{
+			{
+				Owner:      "orang-gaboets",
+				Name:       "aaa-app",
+				Visibility: "private",
+				Template: config.TemplateSpec{
+					Owner: "orang-gaboets",
+					Name:  "zzz-template",
+				},
+			},
+			templateRepo,
+		},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
+				Executable:   true,
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
+				Executable:   true,
+				Changes: []gitopsplan.FieldChange{{
+					Field: "is_template",
+					From:  false,
+					To:    true,
+				}},
+			},
+		},
+	}
+	plan.Normalize()
+
+	var events []string
+	repoSvc := &testRepoService{
+		editFunc: func(_ context.Context, owner, repo string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			events = append(events, "edit:"+owner+"/"+repo)
+			if owner == "orang-gaboets" && repo == "zzz-template" {
+				if repository == nil || repository.IsTemplate == nil || !*repository.IsTemplate {
+					t.Fatalf("expected template repository edit to set is_template=true, got %#v", repository)
+				}
+			}
+			return &gh.Repository{}, nil, nil
+		},
+		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			if req == nil || req.Name == nil {
+				t.Fatalf("expected repository name in create request, got %#v", req)
+			}
+			events = append(events, "create:"+templateOwner+"/"+templateRepo+"->"+*req.Name)
+			return &gh.Repository{}, nil, nil
+		},
+		replaceAllTopicsFunc: func(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+			return topics, nil, nil
+		},
+	}
+
+	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantEvents := []string{
+		"edit:orang-gaboets/zzz-template",
+		"create:orang-gaboets/zzz-template->aaa-app",
+		"edit:orang-gaboets/aaa-app",
+	}
+	if !reflect.DeepEqual(events, wantEvents) {
+		t.Fatalf("unexpected call sequence:\n got %#v\nwant %#v", events, wantEvents)
+	}
+	if !reflect.DeepEqual(result.Executed, plan.Actions) {
+		t.Fatalf("unexpected executed actions:\n got %#v\nwant %#v", result.Executed, plan.Actions)
+	}
+}
+
 func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 	t.Parallel()
 
