@@ -307,14 +307,17 @@ func TestPlanConfigCmdLoadFailurePropagatesWithoutAuth(t *testing.T) {
 			cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
 
 			err := cmd.Execute()
-			if !errors.Is(err, tt.loadErr) {
-				t.Fatalf("unexpected error: got %v want %v", err, tt.loadErr)
+			if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+				t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+			}
+			if !strings.Contains(err.Error(), "failed to load config") {
+				t.Fatalf("expected load failure message, got %v", err)
 			}
 			if out.Len() != 0 {
 				t.Fatalf("expected no stdout output, got %q", out.String())
 			}
-			if errBuf.Len() != 0 {
-				t.Fatalf("expected no stderr output, got %q", errBuf.String())
+			if got := errBuf.String(); !strings.Contains(got, "Error: failed to load config") {
+				t.Fatalf("expected load failure on stderr, got %q", got)
 			}
 		})
 	}
@@ -384,6 +387,9 @@ func TestPlanConfigCmdAuthFailurePropagates(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
+	if !strings.Contains(err.Error(), "failed to create GitHub client: auth failed") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
 	if out.Len() != 0 {
 		t.Fatalf("expected no stdout output, got %q", out.String())
 	}
@@ -424,6 +430,9 @@ func TestPlanConfigCmdCollectorFailurePropagates(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
+	if !strings.Contains(err.Error(), "failed to collect live GitHub state: collect failed") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
 	if out.Len() != 0 {
 		t.Fatalf("expected no stdout output, got %q", out.String())
 	}
@@ -462,6 +471,9 @@ func TestPlanConfigCmdBuildFailurePropagates(t *testing.T) {
 	err := cmd.Execute()
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
+	}
+	if !strings.Contains(err.Error(), "failed to build reconciliation plan: build failed") {
+		t.Fatalf("unexpected error message: %v", err)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("expected no stdout output, got %q", out.String())

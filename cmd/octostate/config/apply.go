@@ -130,7 +130,7 @@ func applyConfig(
 ) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, invalidConfigPhaseError("load config", err)
 	}
 
 	validation := validateApplyConfig(cfg)
@@ -145,7 +145,7 @@ func applyConfig(
 
 	client, err := newApplyClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, runtimePhaseError("create GitHub client", err)
 	}
 
 	actual, err := collectApplyState(ctx, collector.CollectOrganizationOptions{
@@ -155,7 +155,7 @@ func applyConfig(
 		TeamService:         client.Teams(),
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, runtimePhaseError("collect live GitHub state", err)
 	}
 
 	report, err := buildApplyPlan(ctx, gitopsplan.Options{
@@ -164,7 +164,7 @@ func applyConfig(
 		UserService: client.Users(),
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, runtimePhaseError("build reconciliation plan", err)
 	}
 	report.Normalize()
 
@@ -180,7 +180,7 @@ func applyConfig(
 			UserService:         client.Users(),
 		})
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, runtimePhaseError("run apply preflight check", err)
 		}
 		checkResult.Normalize()
 		return nil, nil, checkResult, nil
@@ -199,7 +199,7 @@ func applyConfig(
 			UserService:         client.Users(),
 		})
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, runtimePhaseError("execute apply plan", err)
 		}
 		result.Normalize()
 		return result, nil, nil, nil
