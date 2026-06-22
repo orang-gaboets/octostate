@@ -720,3 +720,43 @@ func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
 		t.Fatalf("expected no skipped actions, got %#v", checkResult.SkippedActions)
 	}
 }
+
+func TestApplyConfigCmdCheckUsesRealPlannerAndPreflight(t *testing.T) {
+	restoreApplyHooks(t)
+
+	fixture := setupApplyTemplateOrderingFixture(t)
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+
+	envelope := decodeApplyEnvelope(t, out.Bytes())
+	if envelope.Status != string(cmdoutput.OperationResultStatusCheck) {
+		t.Fatalf("unexpected status: got %q want %q", envelope.Status, cmdoutput.OperationResultStatusCheck)
+	}
+	var got gitopsapply.CheckResult
+	decodeApplyData(t, envelope.Data, &got)
+	got.Normalize()
+	if got.Organization != fixture.desired.Organization {
+		t.Fatalf("unexpected organization: got %q want %q", got.Organization, fixture.desired.Organization)
+	}
+	if got.PlanSummary.ExecutableActions != len(fixture.wantChecked) {
+		t.Fatalf("unexpected executable action count: got %d want %d", got.PlanSummary.ExecutableActions, len(fixture.wantChecked))
+	}
+	if !reflect.DeepEqual(got.CheckedActions, fixture.wantChecked) {
+		t.Fatalf("unexpected checked actions:\n got %#v\nwant %#v", got.CheckedActions, fixture.wantChecked)
+	}
+	if len(got.SkippedActions) != 0 {
+		t.Fatalf("expected no skipped actions, got %#v", got.SkippedActions)
+	}
+}
