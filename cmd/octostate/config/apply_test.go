@@ -706,18 +706,20 @@ func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
 	}
 	if checkResult == nil {
 		t.Fatal("expected check result")
+		return
 	}
-	if checkResult.Organization != fixture.desired.Organization {
-		t.Fatalf("unexpected organization: got %q want %q", checkResult.Organization, fixture.desired.Organization)
+	gotCheckResult := *checkResult
+	if gotCheckResult.Organization != fixture.desired.Organization {
+		t.Fatalf("unexpected organization: got %q want %q", gotCheckResult.Organization, fixture.desired.Organization)
 	}
-	if checkResult.PlanSummary.ExecutableActions != len(fixture.wantChecked) {
-		t.Fatalf("unexpected executable action count: got %d want %d", checkResult.PlanSummary.ExecutableActions, len(fixture.wantChecked))
+	if gotCheckResult.PlanSummary.ExecutableActions != len(fixture.wantChecked) {
+		t.Fatalf("unexpected executable action count: got %d want %d", gotCheckResult.PlanSummary.ExecutableActions, len(fixture.wantChecked))
 	}
-	if !reflect.DeepEqual(checkResult.CheckedActions, fixture.wantChecked) {
-		t.Fatalf("unexpected checked actions:\n got %#v\nwant %#v", checkResult.CheckedActions, fixture.wantChecked)
+	if !reflect.DeepEqual(gotCheckResult.CheckedActions, fixture.wantChecked) {
+		t.Fatalf("unexpected checked actions:\n got %#v\nwant %#v", gotCheckResult.CheckedActions, fixture.wantChecked)
 	}
-	if len(checkResult.SkippedActions) != 0 {
-		t.Fatalf("expected no skipped actions, got %#v", checkResult.SkippedActions)
+	if len(gotCheckResult.SkippedActions) != 0 {
+		t.Fatalf("expected no skipped actions, got %#v", gotCheckResult.SkippedActions)
 	}
 }
 
