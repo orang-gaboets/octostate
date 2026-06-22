@@ -153,6 +153,8 @@ in a fixed order:
 sort/summarize pass that defines the public plan ordering. Repository updates
 sort before repository creates in that normalized ordering, which lets a
 same-plan template-state update become visible to a later repository create.
+Repository identity is normalized the same way, so mixed-case references still
+resolve to the same planned repository key during same-plan dependency checks.
 
 `config apply` then executes only the supported executable `create` and
 `update` actions from that plan. Unsupported `delete` and `remove` drift is

@@ -63,6 +63,8 @@ Current collector concurrency limits:
   fixed order before final normalization
 - Normalizes repository actions so repository updates sort before repository
   creates, keeping same-plan template-state updates visible to later creates
+- Normalizes repository keys so mixed-case same-plan references continue to
+  resolve to the same planned repository during dependency checks
 
 ### `pkg/gitops/apply`
 - Executes the supported executable subset of the plan
@@ -113,7 +115,10 @@ limits, races after collection, live state changes after preflight, or
 GitHub-side validation that only occurs during write-time execution. Because
 `config apply --check` consumes the same normalized plan as `config apply`, a
 repository updated to `is_template: true` earlier in the same plan is visible
-to later create preflight checks that use it as a template.
+to later create preflight checks that use it as a template. The same normalized
+keying also keeps mixed-case repository references aligned across plan and
+preflight, and same-plan team repository permissions can see repositories
+created earlier in the same plan.
 
 ### `octostate audit pull`
 1. Load desired state to determine the target organization
