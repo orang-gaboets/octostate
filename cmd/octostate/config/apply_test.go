@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v55/github"
 	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
@@ -19,6 +20,24 @@ import (
 	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
+
+type applyTemplateRepoService struct {
+	internalauth.MockRepoService
+}
+
+func (s applyTemplateRepoService) Get(_ context.Context, _, repo string) (*gh.Repository, *gh.Response, error) {
+	switch repo {
+	case "zzz-template":
+		return &gh.Repository{
+			Name:       github.Ptr("zzz-template"),
+			IsTemplate: github.Ptr(false),
+		}, nil, nil
+	case "aaa-app":
+		return nil, nil, github.ErrNotFound
+	default:
+		return nil, nil, github.ErrNotFound
+	}
+}
 
 func TestApplyConfigCmdSuccess(t *testing.T) {
 	restoreApplyHooks(t)
@@ -526,6 +545,105 @@ func TestApplyConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 	}
 }
 
+type applyTemplateOrderingFixture struct {
+	desired     gitopsconfig.OrganizationConfig
+	actual      *state.OrganizationState
+	wantChecked []gitopsplan.Action
+}
+
+func setupApplyTemplateOrderingFixture(t *testing.T) applyTemplateOrderingFixture {
+	t.Helper()
+
+	templateRepo := gitopsconfig.RepositorySpec{
+		Owner:      "orang-gaboets",
+		Name:       "zzz-template",
+		Visibility: "private",
+	}
+	templateRepo.SetManagedIsTemplate(true)
+
+	desired := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []gitopsconfig.RepositorySpec{
+			{
+				Owner:      "orang-gaboets",
+				Name:       "aaa-app",
+				Visibility: "private",
+				Template: gitopsconfig.TemplateSpec{
+					Owner: "orang-gaboets",
+					Name:  "zzz-template",
+				},
+			},
+			templateRepo,
+		},
+	}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{
+			Owner:      "orang-gaboets",
+			Name:       "zzz-template",
+			Visibility: "private",
+			IsTemplate: false,
+		}},
+	}
+
+	loadApplyConfig = func(path string) (gitopsconfig.OrganizationConfig, error) {
+		if path != "./config" {
+			t.Fatalf("unexpected config path %q", path)
+		}
+		return desired, nil
+	}
+	validateApplyConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		if !reflect.DeepEqual(got, desired) {
+			t.Fatalf("unexpected config: got %#v want %#v", got, desired)
+		}
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(_ context.Context, token string, appID, installationID int64, appKeyPath string) (internalauth.Client, error) {
+		if token != "secret-token" || appID != 0 || installationID != 0 || appKeyPath != "" {
+			t.Fatalf("unexpected auth args token=%q appID=%d installationID=%d appKeyPath=%q", token, appID, installationID, appKeyPath)
+		}
+		return internalauth.MockClient{
+			OrganizationsService: internalauth.MockOrganizationService{},
+			ReposService:         applyTemplateRepoService{MockRepoService: internalauth.MockRepoService{}},
+			TeamsService:         internalauth.MockTeamsService{},
+			UsersService:         internalauth.MockUserService{},
+		}, nil
+	}
+	collectApplyState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		if opt.OrgName != desired.Organization {
+			t.Fatalf("unexpected organization %q", opt.OrgName)
+		}
+		return actual, nil
+	}
+
+	return applyTemplateOrderingFixture{
+		desired: desired,
+		actual:  actual,
+		wantChecked: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   "orang-gaboets/zzz-template",
+				Executable:   true,
+				Message:      "update repository orang-gaboets/zzz-template",
+				Changes: []gitopsplan.FieldChange{{
+					Field: "is_template",
+					From:  false,
+					To:    true,
+				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   "orang-gaboets/aaa-app",
+				Executable:   true,
+				Message:      "create repository orang-gaboets/aaa-app",
+				Changes:      []gitopsplan.FieldChange{},
+			},
+		},
+	}
+}
+
 func restoreApplyHooks(t *testing.T) {
 	t.Helper()
 
@@ -568,5 +686,37 @@ func decodeApplyData(t *testing.T, payload json.RawMessage, out any) {
 	t.Helper()
 	if err := json.Unmarshal(payload, out); err != nil {
 		t.Fatalf("decode apply data: %v; payload=%q", err, string(payload))
+	}
+}
+
+func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
+	restoreApplyHooks(t)
+
+	fixture := setupApplyTemplateOrderingFixture(t)
+
+	result, preview, checkResult, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if preview != nil {
+		t.Fatalf("expected no dry-run preview, got %#v", preview)
+	}
+	if result != nil {
+		t.Fatalf("expected no apply result, got %#v", result)
+	}
+	if checkResult == nil {
+		t.Fatal("expected check result")
+	}
+	if checkResult.Organization != fixture.desired.Organization {
+		t.Fatalf("unexpected organization: got %q want %q", checkResult.Organization, fixture.desired.Organization)
+	}
+	if checkResult.PlanSummary.ExecutableActions != len(fixture.wantChecked) {
+		t.Fatalf("unexpected executable action count: got %d want %d", checkResult.PlanSummary.ExecutableActions, len(fixture.wantChecked))
+	}
+	if !reflect.DeepEqual(checkResult.CheckedActions, fixture.wantChecked) {
+		t.Fatalf("unexpected checked actions:\n got %#v\nwant %#v", checkResult.CheckedActions, fixture.wantChecked)
+	}
+	if len(checkResult.SkippedActions) != 0 {
+		t.Fatalf("expected no skipped actions, got %#v", checkResult.SkippedActions)
 	}
 }
