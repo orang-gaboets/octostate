@@ -80,7 +80,7 @@ func planConfig(
 ) (*gitopsplan.Report, error) {
 	cfg, err := loadPlanConfig(strings.TrimSpace(configDir))
 	if err != nil {
-		return nil, err
+		return nil, invalidConfigPhaseError("load config", err)
 	}
 
 	validation := validatePlanConfig(cfg)
@@ -95,7 +95,7 @@ func planConfig(
 
 	client, err := newPlanClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
-		return nil, err
+		return nil, runtimePhaseError("create GitHub client", err)
 	}
 
 	actual, err := collectPlanState(ctx, collector.CollectOrganizationOptions{
@@ -105,12 +105,16 @@ func planConfig(
 		TeamService:         client.Teams(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, runtimePhaseError("collect live GitHub state", err)
 	}
 
-	return buildPlanReport(ctx, gitopsplan.Options{
+	report, err := buildPlanReport(ctx, gitopsplan.Options{
 		Desired:     cfg,
 		Actual:      actual,
 		UserService: client.Users(),
 	})
+	if err != nil {
+		return nil, runtimePhaseError("build reconciliation plan", err)
+	}
+	return report, nil
 }

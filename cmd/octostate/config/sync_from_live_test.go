@@ -702,14 +702,17 @@ func TestSyncFromLiveConfigCmdAdoptMissingConfigFailsBeforeAuth(t *testing.T) {
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "organization.yaml") {
-		t.Fatalf("expected missing config error, got %v", err)
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
 	}
-	if _, ok := exitcode.Code(err); ok {
-		t.Fatalf("expected plain error, got typed exit error %v", err)
+	if !strings.Contains(err.Error(), "failed to load config") {
+		t.Fatalf("expected load failure error, got %v", err)
 	}
-	if out.Len() != 0 || errBuf.Len() != 0 {
-		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: failed to load config") {
+		t.Fatalf("expected load failure on stderr, got %q", got)
 	}
 }
 
@@ -919,14 +922,17 @@ func TestSyncFromLiveConfigCmdMaterializeMissingConfigFailsBeforeAuth(t *testing
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "organization.yaml") {
-		t.Fatalf("expected missing config error, got %v", err)
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
 	}
-	if _, ok := exitcode.Code(err); ok {
-		t.Fatalf("expected plain error, got typed exit error %v", err)
+	if !strings.Contains(err.Error(), "failed to load config") {
+		t.Fatalf("expected load failure error, got %v", err)
 	}
-	if out.Len() != 0 || errBuf.Len() != 0 {
-		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: failed to load config") {
+		t.Fatalf("expected load failure on stderr, got %q", got)
 	}
 }
 
@@ -1106,8 +1112,65 @@ func TestSyncFromLiveConfigCmdWriteFailsWhenTargetExists(t *testing.T) {
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("expected target exists error, got %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
+func TestWriteBootstrapConfigFileReturnsWrappedTargetExistsError(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	path := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	if err := os.WriteFile(path, []byte("existing\n"), 0o600); err != nil {
+		t.Fatalf("write existing bootstrap config: %v", err)
+	}
+
+	createTempSyncFromLiveFile = func(string, string) (*os.File, error) {
+		t.Fatal("createTempSyncFromLiveFile should not be called when target already exists")
+		return nil, nil
+	}
+
+	_, err := writeBootstrapConfigFile(configDir, []byte("organization: orang-gaboets\n"))
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected wrapped target exists error, got %v", err)
+	}
+}
+
+func TestSyncFromLiveConfigCmdBootstrapTargetStatFailurePropagates(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	statErr := errors.New("stat failed")
+	statSyncFromLivePath = func(string) (os.FileInfo, error) {
+		return nil, statErr
+	}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target stat fails")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "bootstrap",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+		"--write",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") {
+		t.Fatalf("expected bootstrap target stat failure, got %v", err)
+	}
+	if !strings.Contains(err.Error(), statErr.Error()) {
+		t.Fatalf("expected wrapped stat error, got %v", err)
 	}
 	if out.Len() != 0 || errBuf.Len() != 0 {
 		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
@@ -1433,6 +1496,24 @@ func TestSyncFromLiveConfigCmdAuthCollectBuildEncodeFailuresPropagate(t *testing
 			err := cmd.Execute()
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("unexpected error: got %v want %v", err, tt.wantErr)
+			}
+			switch tt.name {
+			case "auth failure":
+				if !strings.Contains(err.Error(), "failed to create GitHub client: auth failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			case "collector failure":
+				if !strings.Contains(err.Error(), "failed to collect live GitHub state: collect failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			case "builder failure":
+				if !strings.Contains(err.Error(), "failed to build generated config: build failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			case "encode failure":
+				if !strings.Contains(err.Error(), "failed to encode generated config: encode failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
 			}
 			if out.Len() != 0 || errBuf.Len() != 0 {
 				t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())

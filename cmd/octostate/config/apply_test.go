@@ -351,11 +351,17 @@ func TestApplyConfigCmdLoadFailurePropagatesWithoutAuth(t *testing.T) {
 	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
 
 	err := cmd.Execute()
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
 	}
-	if out.Len() != 0 || errBuf.Len() != 0 {
-		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	if !strings.Contains(err.Error(), "failed to load config") {
+		t.Fatalf("expected load failure message, got %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: failed to load config") {
+		t.Fatalf("expected load failure on stderr, got %q", got)
 	}
 }
 
@@ -499,6 +505,24 @@ func TestApplyConfigCmdAuthCollectorBuildAndExecuteFailuresPropagate(t *testing.
 			err := cmd.Execute()
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("unexpected error: got %v want %v", err, tt.wantErr)
+			}
+			switch tt.name {
+			case "auth failure":
+				if !strings.Contains(err.Error(), "failed to create GitHub client: auth failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			case "collector failure":
+				if !strings.Contains(err.Error(), "failed to collect live GitHub state: collect failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			case "planner failure":
+				if !strings.Contains(err.Error(), "failed to build reconciliation plan: build failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
+			case "executor failure":
+				if !strings.Contains(err.Error(), "failed to execute apply plan: apply failed") {
+					t.Fatalf("unexpected error message: %v", err)
+				}
 			}
 			if out.Len() != 0 || errBuf.Len() != 0 {
 				t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())

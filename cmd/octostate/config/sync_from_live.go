@@ -143,7 +143,7 @@ func syncFromLiveConfig(
 	}
 	if write && mode == syncFromLiveModeBootstrap {
 		if _, err := ensureBootstrapConfigTargetAvailable(configDir); err != nil {
-			return nil, nil, err
+			return nil, nil, runtimePhaseError("check bootstrap config target availability", err)
 		}
 	}
 
@@ -152,7 +152,7 @@ func syncFromLiveConfig(
 	if mode == syncFromLiveModeAdopt || mode == syncFromLiveModeMaterialize {
 		desired, err = loadSyncFromLiveConfig(configDir)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, invalidConfigPhaseError("load config", err)
 		}
 		report := validateSyncFromLiveConfig(desired)
 		if !report.Valid {
@@ -171,7 +171,7 @@ func syncFromLiveConfig(
 
 	client, err := newSyncFromLiveClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, runtimePhaseError("create GitHub client", err)
 	}
 
 	collectState := collectSyncFromLiveState
@@ -186,7 +186,7 @@ func syncFromLiveConfig(
 		TeamService:         client.Teams(),
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, runtimePhaseError("collect live GitHub state", err)
 	}
 
 	var cfg gitopsconfig.OrganizationConfig
@@ -205,7 +205,7 @@ func syncFromLiveConfig(
 		})
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, runtimePhaseError("build generated config", err)
 	}
 	report := validateSyncFromLiveConfig(cfg)
 	if !report.Valid {
@@ -214,7 +214,7 @@ func syncFromLiveConfig(
 
 	yamlBytes, err := encodeSyncFromLiveConfig(cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, runtimePhaseError("encode generated config", err)
 	}
 	if !write {
 		return yamlBytes, nil, nil
@@ -222,7 +222,7 @@ func syncFromLiveConfig(
 
 	targetPath, err := writeSyncFromLiveConfigFile(mode, configDir, yamlBytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, runtimePhaseError("write generated config", err)
 	}
 
 	return nil, &syncFromLiveWriteResult{
@@ -248,7 +248,7 @@ func writeSyncFromLiveConfigFile(mode, configDir string, yamlBytes []byte) (stri
 func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error) {
 	targetPath, err := ensureBootstrapConfigTargetAvailable(configDir)
 	if err != nil {
-		return "", err
+		return "", runtimePhaseError("check bootstrap config target availability", err)
 	}
 
 	if err := mkdirAllSyncFromLiveConfigDir(strings.TrimSpace(configDir), syncFromLiveConfigDirectoryMode); err != nil {
