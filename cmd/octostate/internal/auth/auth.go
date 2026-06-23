@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	githubclient "github.com/orang-gaboets/octostate/pkg/github/client"
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
@@ -25,15 +25,25 @@ type githubClientWrapper struct {
 	*gh.Client
 }
 
+type repositoriesServiceWrapper struct {
+	*gh.RepositoriesService
+}
+
+func (s repositoriesServiceWrapper) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
+	return s.RepositoriesService.ListAllTopics(ctx, owner, repo, nil)
+}
+
 func (g githubClientWrapper) Organizations() organizations.Service { return g.Client.Organizations }
-func (g githubClientWrapper) Repositories() repos.Service          { return g.Client.Repositories }
-func (g githubClientWrapper) Teams() teams.Service                 { return g.Client.Teams }
-func (g githubClientWrapper) Users() users.Service                 { return g.Client.Users }
+func (g githubClientWrapper) Repositories() repos.Service {
+	return repositoriesServiceWrapper{g.Client.Repositories}
+}
+func (g githubClientWrapper) Teams() teams.Service { return g.Client.Teams }
+func (g githubClientWrapper) Users() users.Service { return g.Client.Users }
 
 var (
 	// originalNewPATClient is the original function to create a new GitHub client using a personal access token.
-	originalNewPATClient = func(ctx context.Context, token string) Client {
-		return githubClientWrapper{githubclient.New(ctx, token)}
+	originalNewPATClient = func(ctx context.Context, token string) (Client, error) {
+		return githubClientWrapper{githubclient.New(ctx, token)}, nil
 	}
 
 	// newPATClient is a function that creates a new GitHub client using a personal access token.
@@ -57,7 +67,7 @@ var (
 )
 
 // SetNewPATClient overrides the personal access token client constructor. Used for testing.
-func SetNewPATClient(f func(context.Context, string) Client) {
+func SetNewPATClient(f func(context.Context, string) (Client, error)) {
 	newPATClient = f
 }
 
@@ -83,7 +93,7 @@ func NewClient(ctx context.Context, token string, appID, installationID int64, a
 	case tokenProvided && appProvided:
 		return nil, github.ErrConflictingCredentials
 	case tokenProvided:
-		return newPATClient(ctx, token), nil
+		return newPATClient(ctx, token)
 	case appID != 0 && installationID != 0 && appKeyPath != "":
 		return newAppClient(appID, installationID, appKeyPath)
 	default:

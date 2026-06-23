@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"golang.org/x/oauth2"
 )
 
@@ -31,7 +31,11 @@ func New(ctx context.Context, token string, opts ...Option) *gh.Client {
 	for _, opt := range opts {
 		opt(tc)
 	}
-	return gh.NewClient(tc)
+	client, err := gh.NewClient(gh.WithHTTPClient(tc))
+	if err != nil {
+		return nil
+	}
+	return client
 }
 
 // NewApp creates a new GitHub client using the provided app ID, installation ID, and private key.
@@ -44,5 +48,9 @@ func NewApp(appID, installationID int64, pem []byte, opts ...Option) (*gh.Client
 	for _, opt := range opts {
 		opt(tc)
 	}
-	return gh.NewClient(tc), nil
+	client, err := gh.NewClient(gh.WithHTTPClient(tc))
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
 }

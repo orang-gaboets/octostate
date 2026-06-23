@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"

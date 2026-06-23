@@ -3,7 +3,7 @@ package users
 import (
 	"context"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 )
 
 // Service defines the interface for managing GitHub users.

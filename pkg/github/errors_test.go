@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 )
 
 func TestWrapError(t *testing.T) {

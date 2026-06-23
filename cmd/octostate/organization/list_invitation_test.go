@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
 	pkggithub "github.com/orang-gaboets/octostate/pkg/github"

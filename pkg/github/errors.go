@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 )
 
 // APIError represents a GitHub API error with additional context.
