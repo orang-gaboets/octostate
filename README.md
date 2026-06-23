@@ -82,7 +82,7 @@ If you are using `octostate` as a GitOps engine, the normal flow is:
 
 1. Start with `config/organization.yaml`
 2. Validate it offline
-3. Preview the live plan, including executable and skipped drift
+3. Preview the live plan, including executable actions and skipped drift
 4. Run `config apply --check` as a read-only preflight before approval
 5. Apply supported changes after approval
 6. Pull a snapshot and use offline diff where needed
@@ -93,7 +93,7 @@ Example flow:
 # Validate desired state offline
 octostate config validate --config-dir ./config
 
-# Preview live reconciliation, including executable and skipped drift
+# Preview live reconciliation, including executable actions and skipped drift
 octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 
 # Run read-only apply preflight checks before approval
