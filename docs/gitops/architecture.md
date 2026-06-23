@@ -24,11 +24,13 @@ flowchart LR
     F --> H["pkg/gitops/diff<br/>offline drift report"]
 
     G --> I["config plan JSON"]
-    G --> J["pkg/gitops/apply<br/>execute supported create/update actions"]
-    J --> K["config apply JSON"]
+    G --> J["pkg/gitops/apply<br/>preflight validation"]
+    J --> K["config apply --check JSON"]
+    G --> L["pkg/gitops/apply<br/>execute supported create/update actions"]
+    L --> M["config apply JSON"]
 
-    D --> L["audit pull<br/>write snapshot.json"]
-    H --> M["audit diff JSON"]
+    D --> N["audit pull<br/>write snapshot.json"]
+    H --> O["audit diff JSON"]
 ```
 
 ## Package Ownership
