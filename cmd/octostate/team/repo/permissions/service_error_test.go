@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	permissionscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/repo/permissions"
 )

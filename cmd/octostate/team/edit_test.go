@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	teamcmd "github.com/orang-gaboets/octostate/cmd/octostate/team"
 	"github.com/orang-gaboets/octostate/pkg/github"

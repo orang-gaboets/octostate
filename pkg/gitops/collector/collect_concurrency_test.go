@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -280,7 +280,7 @@ func TestCollectTeamStateBoundsPerTeamDetailFanOut(t *testing.T) {
 			done := tracker.Start()
 			defer done()
 			<-release
-			return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr(slug + "-repo"), Permissions: map[string]bool{"push": true}}}, &gh.Response{}, nil
+			return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr(slug + "-repo"), Permissions: &gh.RepositoryPermissions{Push: githubpkg.Ptr(true)}}}, &gh.Response{}, nil
 		},
 	}
 
@@ -642,10 +642,10 @@ func TestCollectOrganizationStableOrderingWithOutOfOrderConcurrentCompletion(t *
 			switch slug {
 			case "admins":
 				sleep(8 * time.Millisecond)
-				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("repo-a"), Permissions: map[string]bool{"admin": true}}}, &gh.Response{}, nil
+				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("repo-a"), Permissions: &gh.RepositoryPermissions{Admin: githubpkg.Ptr(true)}}}, &gh.Response{}, nil
 			case "platform":
 				sleep(1 * time.Millisecond)
-				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("repo-b"), Permissions: map[string]bool{"push": true}}}, &gh.Response{}, nil
+				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("repo-b"), Permissions: &gh.RepositoryPermissions{Push: githubpkg.Ptr(true)}}}, &gh.Response{}, nil
 			default:
 				t.Fatalf("unexpected team repo query %q", slug)
 				return nil, nil, nil
@@ -764,7 +764,7 @@ func BenchmarkCollectOrganizationConcurrency(b *testing.B) {
 			},
 			listTeamReposBySlugFunc: func(_ context.Context, _ string, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
 				time.Sleep(callDelay)
-				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr(slug + "-repo"), Permissions: map[string]bool{"push": true}}}, &gh.Response{}, nil
+				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr(slug + "-repo"), Permissions: &gh.RepositoryPermissions{Push: githubpkg.Ptr(true)}}}, &gh.Response{}, nil
 			},
 		}
 		return orgSvc, repoSvc, teamSvc

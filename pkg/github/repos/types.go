@@ -3,7 +3,7 @@ package repos
 import (
 	"context"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 )
 
 // RepoType represents the repository type filter for organization listings.

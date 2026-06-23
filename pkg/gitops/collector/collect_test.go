@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -280,17 +280,23 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 			case "admins":
 				return []*gh.Repository{
 					{
-						Owner:       &gh.User{Login: githubpkg.Ptr(orgName)},
-						Name:        githubpkg.Ptr("repo-admin"),
-						Permissions: map[string]bool{"pull": true, "admin": true},
+						Owner: &gh.User{Login: githubpkg.Ptr(orgName)},
+						Name:  githubpkg.Ptr("repo-admin"),
+						Permissions: &gh.RepositoryPermissions{
+							Pull:  githubpkg.Ptr(true),
+							Admin: githubpkg.Ptr(true),
+						},
 					},
 				}, &gh.Response{}, nil
 			case "platform":
 				return []*gh.Repository{
 					{
-						Owner:       &gh.User{Login: githubpkg.Ptr(orgName)},
-						Name:        githubpkg.Ptr("octostate"),
-						Permissions: map[string]bool{"pull": true, "push": true},
+						Owner: &gh.User{Login: githubpkg.Ptr(orgName)},
+						Name:  githubpkg.Ptr("octostate"),
+						Permissions: &gh.RepositoryPermissions{
+							Pull: githubpkg.Ptr(true),
+							Push: githubpkg.Ptr(true),
+						},
 					},
 				}, &gh.Response{}, nil
 			default:
@@ -579,9 +585,12 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 			}
 			return []*gh.Repository{
 				{
-					Owner:       &gh.User{Login: githubpkg.Ptr(orgName)},
-					Name:        githubpkg.Ptr("octostate"),
-					Permissions: map[string]bool{"pull": true, "push": true},
+					Owner: &gh.User{Login: githubpkg.Ptr(orgName)},
+					Name:  githubpkg.Ptr("octostate"),
+					Permissions: &gh.RepositoryPermissions{
+						Pull: githubpkg.Ptr(true),
+						Push: githubpkg.Ptr(true),
+					},
 				},
 			}, &gh.Response{}, nil
 		},

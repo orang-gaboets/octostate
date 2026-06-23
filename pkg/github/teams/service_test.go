@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
@@ -226,10 +226,10 @@ func (m *mockService) ListTeamReposBySlug(_ context.Context, org, slug string, _
 					Owner: &gh.User{
 						Login: github.Ptr(existingTeam.Org),
 					},
-					Permissions: map[string]bool{
-						"pull":  true,
-						"push":  false,
-						"admin": false,
+					Permissions: &gh.RepositoryPermissions{
+						Pull:  github.Ptr(true),
+						Push:  github.Ptr(false),
+						Admin: github.Ptr(false),
 					},
 				},
 			}, &gh.Response{NextPage: 2}, nil
@@ -240,10 +240,10 @@ func (m *mockService) ListTeamReposBySlug(_ context.Context, org, slug string, _
 				Owner: &gh.User{
 					Login: github.Ptr(existingTeam.Org),
 				},
-				Permissions: map[string]bool{
-					"pull":  true,
-					"push":  true,
-					"admin": false,
+				Permissions: &gh.RepositoryPermissions{
+					Pull:  github.Ptr(true),
+					Push:  github.Ptr(true),
+					Admin: github.Ptr(false),
 				},
 			},
 		}, &gh.Response{NextPage: 0}, nil
@@ -255,10 +255,10 @@ func (m *mockService) ListTeamReposBySlug(_ context.Context, org, slug string, _
 			Owner: &gh.User{
 				Login: github.Ptr(existingTeam.Org),
 			},
-			Permissions: map[string]bool{
-				"pull":  true,
-				"push":  false,
-				"admin": false,
+			Permissions: &gh.RepositoryPermissions{
+				Pull:  github.Ptr(true),
+				Push:  github.Ptr(false),
+				Admin: github.Ptr(false),
 			},
 		},
 	}, &gh.Response{NextPage: 0}, nil

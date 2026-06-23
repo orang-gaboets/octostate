@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	permissionscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/repo/permissions"
 	"github.com/orang-gaboets/octostate/pkg/github"
@@ -30,10 +30,10 @@ func (s *captureListTeamReposBySlugService) ListTeamReposBySlug(_ context.Contex
 			Owner: &gh.User{
 				Login: github.Ptr("captured-org"),
 			},
-			Permissions: map[string]bool{
-				"pull":  true,
-				"push":  false,
-				"admin": false,
+			Permissions: &gh.RepositoryPermissions{
+				Pull:  github.Ptr(true),
+				Push:  github.Ptr(false),
+				Admin: github.Ptr(false),
 			},
 		},
 	}, &gh.Response{NextPage: 0}, nil

@@ -3,7 +3,7 @@ package github
 import (
 	"time"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/spf13/cobra"
 )
 

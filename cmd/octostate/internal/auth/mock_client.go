@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
 	"github.com/orang-gaboets/octostate/pkg/github/repos"
@@ -195,13 +195,13 @@ func (MockUserService) GetByID(_ context.Context, _ int64) (*gh.User, *gh.Respon
 	return &gh.User{}, nil, nil
 }
 
-func mockNewPATClient(_ context.Context, _ string) Client {
+func mockNewPATClient(_ context.Context, _ string) (Client, error) {
 	return MockClient{
 		OrganizationsService: MockOrganizationService{},
 		ReposService:         MockRepoService{},
 		TeamsService:         MockTeamsService{},
 		UsersService:         MockUserService{},
-	}
+	}, nil
 }
 
 func mockNewAppClient(_, _ int64, _ string) (Client, error) {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 )
 
 // Repository contains the repository details.
@@ -101,9 +101,23 @@ func TeamRepositoryPermissionFromGhRepo(ghRepo *gh.Repository) *TeamRepositoryPe
 	}
 
 	owner := ghRepo.GetOwner()
-	permissions := make(map[string]bool, len(ghRepo.Permissions))
-	for key, value := range ghRepo.Permissions {
-		permissions[key] = value
+	permissions := make(map[string]bool)
+	if ghRepo.Permissions != nil {
+		if ghRepo.Permissions.Admin != nil {
+			permissions["admin"] = ghRepo.Permissions.GetAdmin()
+		}
+		if ghRepo.Permissions.Maintain != nil {
+			permissions["maintain"] = ghRepo.Permissions.GetMaintain()
+		}
+		if ghRepo.Permissions.Push != nil {
+			permissions["push"] = ghRepo.Permissions.GetPush()
+		}
+		if ghRepo.Permissions.Triage != nil {
+			permissions["triage"] = ghRepo.Permissions.GetTriage()
+		}
+		if ghRepo.Permissions.Pull != nil {
+			permissions["pull"] = ghRepo.Permissions.GetPull()
+		}
 	}
 
 	return &TeamRepositoryPermission{

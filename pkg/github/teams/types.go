@@ -3,7 +3,7 @@ package teams
 import (
 	"context"
 
-	gh "github.com/google/go-github/v55/github"
+	gh "github.com/google/go-github/v88/github"
 )
 
 // Service defines the subset of GitHub team APIs used by team commands.
