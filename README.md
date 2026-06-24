@@ -81,10 +81,11 @@ Errors and diagnostics (including `--verbose` logs) are written to stderr.
 If you are using `octostate` as a GitOps engine, the normal flow is:
 
 1. Start with `config/organization.yaml`
-2. Validate it
-3. Preview the live plan
-4. Apply supported changes when approved
-5. Pull a snapshot and use offline diff where needed
+2. Validate it offline
+3. Preview the live plan, including executable actions and skipped drift
+4. Run `config apply --check` as a read-only preflight before approval
+5. Apply supported changes after approval
+6. Pull a snapshot and use offline diff where needed
 
 Example flow:
 
@@ -92,8 +93,11 @@ Example flow:
 # Validate desired state offline
 octostate config validate --config-dir ./config
 
-# Preview live reconciliation
+# Preview live reconciliation, including executable actions and skipped drift
 octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
+
+# Run read-only apply preflight checks before approval
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
 
 # Apply supported create/update actions
 octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
@@ -104,6 +108,15 @@ octostate audit pull --config-dir ./config --state-dir ./state --token "$GITHUB_
 # Compare desired state against the stored snapshot offline
 octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 ```
+
+`config apply --check` is a best-effort preflight. It helps catch supported
+apply-path problems before approval, but it is not a transactional dry-run and
+cannot guarantee that a later live apply will succeed.
+
+For the full command behavior and workflow details, see the
+[GitOps overview](docs/gitops/overview.md), the
+[Control-repo integration](docs/gitops/control-repo-integration.md), and the
+[GitOps architecture](docs/gitops/architecture.md).
 
 If you are starting from existing live GitHub state, `config sync-from-live`
 can generate or update `config/organization.yaml` for bootstrap, adopt, or
