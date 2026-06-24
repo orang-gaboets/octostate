@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.1.0](https://github.com/orang-gaboets/octostate/compare/v1.0.2...v1.1.0) (2026-06-24)
+
+
+### Features
+
+* **config:** add apply preflight check mode ([#131](https://github.com/orang-gaboets/octostate/issues/131)) ([c07c97c](https://github.com/orang-gaboets/octostate/commit/c07c97c5245d6add6c0646cbb271fb175f55fe0e))
+* **config:** add read-only apply preflight probes ([#134](https://github.com/orang-gaboets/octostate/issues/134)) ([352aba9](https://github.com/orang-gaboets/octostate/commit/352aba9b7de524fd232bd5961ed853e4ae591597))
+
+
+### Bug Fixes
+
+* **config:** classify config runtime failures by phase ([#144](https://github.com/orang-gaboets/octostate/issues/144)) ([1092193](https://github.com/orang-gaboets/octostate/commit/10921934e813c4a71ba3b45bf96b49a6cfdc817f))
+* **gitops:** preserve template state across same-plan applies ([#143](https://github.com/orang-gaboets/octostate/issues/143)) ([7f3d8b1](https://github.com/orang-gaboets/octostate/commit/7f3d8b19ba1568170ad0515d0ef6bcaca2da10c2))
+* **plan:** gate team repo permissions on repository availability ([#142](https://github.com/orang-gaboets/octostate/issues/142)) ([67ef3b1](https://github.com/orang-gaboets/octostate/commit/67ef3b19ae9e7c8fbd1545d71104e852255a145f))
+
 ## [1.0.2](https://github.com/orang-gaboets/octostate/compare/v1.0.1...v1.0.2) (2026-06-07)
 
 
