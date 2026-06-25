@@ -8,7 +8,7 @@ repos:
       - id: go-unit-tests
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.3.1
+    rev: v2.12.2
     hooks:
       - id: golangci-lint
         args: [--timeout=5m]

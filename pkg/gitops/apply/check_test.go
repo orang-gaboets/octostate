@@ -1169,27 +1169,27 @@ func TestCheckAggregatesMultipleIndependentFailures(t *testing.T) {
 
 func githubRepository(owner, name string, isTemplate bool) *gh.Repository {
 	return &gh.Repository{
-		Name:       gh.String(name),
-		Owner:      &gh.User{Login: gh.String(owner)},
-		IsTemplate: gh.Bool(isTemplate),
+		Name:       githubpkg.Ptr(name),
+		Owner:      &gh.User{Login: githubpkg.Ptr(owner)},
+		IsTemplate: githubpkg.Ptr(isTemplate),
 	}
 }
 
 func githubTeam(id int64, slug, name, org string) *gh.Team {
 	return &gh.Team{
-		ID:   gh.Int64(id),
-		Slug: gh.String(slug),
-		Name: gh.String(name),
+		ID:   githubpkg.Ptr(id),
+		Slug: githubpkg.Ptr(slug),
+		Name: githubpkg.Ptr(name),
 		Organization: &gh.Organization{
-			Login: gh.String(org),
+			Login: githubpkg.Ptr(org),
 		},
 	}
 }
 
 func githubUser(id int64, username string) *gh.User {
 	return &gh.User{
-		ID:    gh.Int64(id),
-		Login: gh.String(username),
+		ID:    githubpkg.Ptr(id),
+		Login: githubpkg.Ptr(username),
 	}
 }
 
