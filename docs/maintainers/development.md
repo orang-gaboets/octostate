@@ -9,7 +9,7 @@
    cd octostate
    ```
 
-2. Install Go 1.24 or higher:
+2. Install Go 1.25.11 or higher:
 
    ```bash
    go version
@@ -50,6 +50,7 @@ gofmt -w <files>
 # Static checks
 go vet ./...
 golangci-lint run --timeout=5m
+go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
 
 # Tests
 go test ./...
@@ -58,7 +59,11 @@ go test ./... -cover -coverprofile=coverage.out
 # Pre-commit hooks
 pre-commit install
 pre-commit run --all-files
+pre-commit run govulncheck --hook-stage manual --all-files
 ```
+
+The `govulncheck` hook is manual so you can run it on demand without slowing
+every commit.
 
 ## Testing
 
