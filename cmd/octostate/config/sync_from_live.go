@@ -267,7 +267,7 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 	}
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
-		_ = removeSyncFromLivePath(tempPath)
+		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 	}
 
 	switch {
@@ -280,18 +280,18 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 	}
 
 	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
-		_ = removeSyncFromLivePath(tempPath)
+		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 		return "", fmt.Errorf("set bootstrap config file mode %s: %w", tempPath, err)
 	}
 
 	if err := linkSyncFromLivePath(tempPath, targetPath); err != nil {
-		_ = removeSyncFromLivePath(tempPath)
+		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 		if errors.Is(err, os.ErrExist) {
 			return "", fmt.Errorf("bootstrap config target already exists: %s", targetPath)
 		}
 		return "", fmt.Errorf("link bootstrap config %s: %w", targetPath, err)
 	}
-	_ = removeSyncFromLivePath(tempPath)
+	_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 
 	return targetPath, nil
 }
@@ -315,7 +315,7 @@ func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, 
 	}
 	closeErr := file.Close()
 	if writeErr != nil || closeErr != nil {
-		_ = removeSyncFromLivePath(tempPath)
+		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 	}
 
 	switch {
@@ -328,12 +328,12 @@ func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, 
 	}
 
 	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
-		_ = removeSyncFromLivePath(tempPath)
+		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 		return "", fmt.Errorf("set sync-from-live config file mode %s: %w", tempPath, err)
 	}
 
 	if err := renameSyncFromLivePath(tempPath, targetPath); err != nil {
-		_ = removeSyncFromLivePath(tempPath)
+		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
 		return "", fmt.Errorf("replace sync-from-live config %s: %w", targetPath, err)
 	}
 

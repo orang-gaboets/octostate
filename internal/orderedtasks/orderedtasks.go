@@ -53,7 +53,7 @@ func Run(ctx context.Context, limit int, tasks []Task) error {
 		})
 	}
 
-	_ = g.Wait()
+	_ = g.Wait() //nolint:errcheck // task errors are captured in errs and reported deterministically below
 	for _, err := range errs {
 		if err != nil {
 			return err

@@ -28,6 +28,6 @@ func run() int {
 		return code
 	}
 
-	_, _ = fmt.Fprintf(stderrFn(), "Error: %v\n", err)
+	_, _ = fmt.Fprintf(stderrFn(), "Error: %v\n", err) //nolint:errcheck // best-effort stderr write
 	return 1
 }

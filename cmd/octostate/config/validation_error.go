@@ -10,6 +10,6 @@ import (
 
 func printInvalidConfigError(cmd *cobra.Command, err error) {
 	if code, ok := exitcode.Code(err); ok && code == validateExitCodeInvalidConfig {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Error: %v\n", err) //nolint:errcheck // best-effort stderr write
 	}
 }

@@ -70,7 +70,7 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
 	}
 	defer func() {
-		_ = file.Close()
+		_ = file.Close() //nolint:errcheck // best-effort cleanup after reading the snapshot
 	}()
 
 	decoder := json.NewDecoder(file)
@@ -123,7 +123,7 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	encodeErr := enc.Encode(snapshot)
 	closeErr := file.Close()
 	if encodeErr != nil || closeErr != nil {
-		_ = os.Remove(tempPath)
+		_ = os.Remove(tempPath) //nolint:errcheck // best-effort cleanup for temp snapshot files
 	}
 
 	switch {
@@ -136,7 +136,7 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	}
 
 	if err := os.Rename(tempPath, path); err != nil {
-		_ = os.Remove(tempPath)
+		_ = os.Remove(tempPath) //nolint:errcheck // best-effort cleanup for temp snapshot files
 		return "", fmt.Errorf("replace snapshot file: %w", err)
 	}
 
