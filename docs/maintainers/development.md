@@ -36,6 +36,9 @@
 
 ## Common Commands
 
+Use these examples when working from source during development. User-facing
+CLI docs prefer the installed `octostate` binary.
+
 ```bash
 # Build
 go build -o bin/octostate ./cmd/octostate
