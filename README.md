@@ -87,6 +87,9 @@ If you are using `octostate` as a GitOps engine, the normal flow is:
 5. Apply supported changes after approval
 6. Pull a snapshot and use offline diff where needed
 
+For the field-by-field desired-state schema, see
+[Config schema](docs/gitops/config-schema.md).
+
 Example flow:
 
 ```bash
@@ -143,6 +146,7 @@ workflow orchestration around when `validate`, `plan`, `apply`, `pull`, and
 - [Primitive commands](docs/cli/primitives.md)
 
 ### GitOps
+- [Config schema](docs/gitops/config-schema.md)
 - [GitOps overview](docs/gitops/overview.md)
 - [GitOps architecture](docs/gitops/architecture.md)
 - [Control-repo integration](docs/gitops/control-repo-integration.md)
