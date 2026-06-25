@@ -51,6 +51,7 @@ gofmt -w <files>
 go vet ./...
 golangci-lint run --timeout=5m
 go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
+go test -race ./pkg/gitops/...
 
 # Tests
 go test ./...
@@ -64,6 +65,11 @@ pre-commit run govulncheck --hook-stage manual --all-files
 
 The `govulncheck` hook is manual so you can run it on demand without slowing
 every commit.
+
+The race-detector check stays scoped to `pkg/gitops/...` because that tree
+contains the bounded-concurrency collector, planner, and apply packages. That
+keeps the check focused on the code most likely to hide shared-memory races
+while avoiding a slower full-repository `-race` pass on every PR.
 
 ## Testing
 
