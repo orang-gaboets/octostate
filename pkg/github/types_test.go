@@ -115,16 +115,16 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 
 	t.Run("maps fields", func(t *testing.T) {
 		ghRepo := &gh.Repository{
-			Owner:        &gh.User{Login: gh.String(orgLogin)},
-			Name:         gh.String(repoNameRocket),
-			Private:      gh.Bool(true),
-			Visibility:   gh.String("private"),
-			Description:  gh.String(repoDescWIP),
-			Homepage:     gh.String("https://example.com/repo"),
+			Owner:        &gh.User{Login: Ptr(orgLogin)},
+			Name:         Ptr(repoNameRocket),
+			Private:      Ptr(true),
+			Visibility:   Ptr("private"),
+			Description:  Ptr(repoDescWIP),
+			Homepage:     Ptr("https://example.com/repo"),
 			Topics:       []string{topicGo, topicCI},
-			AllowForking: gh.Bool(true),
-			Archived:     gh.Bool(false),
-			IsTemplate:   gh.Bool(true),
+			AllowForking: Ptr(true),
+			Archived:     Ptr(false),
+			IsTemplate:   Ptr(true),
 		}
 		got := RepositoryFromGhRepo(ghRepo)
 		if got == nil {
@@ -143,9 +143,9 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 
 	t.Run("owner nil -> empty org", func(t *testing.T) {
 		ghRepo := &gh.Repository{
-			Name:        gh.String("lib"),
-			Private:     gh.Bool(false),
-			Description: gh.String("ok"),
+			Name:        Ptr("lib"),
+			Private:     Ptr(false),
+			Description: Ptr("ok"),
 			Owner:       nil,
 		}
 		got := RepositoryFromGhRepo(ghRepo)
@@ -157,9 +157,9 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 
 func TestRepositoriesFromGhRepos(t *testing.T) {
 	in := []*gh.Repository{
-		{Owner: &gh.User{Login: gh.String(orgLogin)}, Name: gh.String(repoNameA)},
+		{Owner: &gh.User{Login: Ptr(orgLogin)}, Name: Ptr(repoNameA)},
 		nil, // should be skipped
-		{Owner: &gh.User{Login: gh.String(orgLogin)}, Name: gh.String(repoNameB)},
+		{Owner: &gh.User{Login: Ptr(orgLogin)}, Name: Ptr(repoNameB)},
 	}
 	got := RepositoriesFromGhRepos(in)
 	if len(got) != 2 {
@@ -217,20 +217,20 @@ func TestTeamFromGhTeam(t *testing.T) {
 
 	t.Run("maps fields including parent", func(t *testing.T) {
 		parent := &gh.Team{
-			ID:          gh.Int64(idTeamParent),
-			Slug:        gh.String(teamSlugCore),
-			Name:        gh.String(teamNameCore),
-			Description: gh.String(teamDescParent),
-			Privacy:     gh.String(TeamPrivacyClosed.String()),
+			ID:          Ptr(idTeamParent),
+			Slug:        Ptr(teamSlugCore),
+			Name:        Ptr(teamNameCore),
+			Description: Ptr(teamDescParent),
+			Privacy:     Ptr(TeamPrivacyClosed.String()),
 		}
 		child := &gh.Team{
-			ID:           gh.Int64(idTeamChild),
-			Slug:         gh.String(teamSlugDevs),
-			Name:         gh.String(teamNameDevs),
-			Description:  gh.String(teamDescChild),
-			Privacy:      gh.String(TeamPrivacySecret.String()),
+			ID:           Ptr(idTeamChild),
+			Slug:         Ptr(teamSlugDevs),
+			Name:         Ptr(teamNameDevs),
+			Description:  Ptr(teamDescChild),
+			Privacy:      Ptr(TeamPrivacySecret.String()),
 			Parent:       parent,
-			Organization: &gh.Organization{Login: gh.String(orgLogin)},
+			Organization: &gh.Organization{Login: Ptr(orgLogin)},
 		}
 
 		got := TeamFromGhTeam(child)
@@ -257,9 +257,9 @@ func TestTeamFromGhTeam(t *testing.T) {
 
 func TestTeamsFromGhTeams(t *testing.T) {
 	in := []*gh.Team{
-		{ID: gh.Int64(idTeamParent), Slug: gh.String(teamSlugCore), Name: gh.String(teamNameCore), Organization: &gh.Organization{Login: gh.String(orgLogin)}},
+		{ID: Ptr(idTeamParent), Slug: Ptr(teamSlugCore), Name: Ptr(teamNameCore), Organization: &gh.Organization{Login: Ptr(orgLogin)}},
 		nil, // should be skipped
-		{ID: gh.Int64(idTeamChild), Slug: gh.String(teamSlugDevs), Name: gh.String(teamNameDevs), Organization: &gh.Organization{Login: gh.String(orgLogin)}},
+		{ID: Ptr(idTeamChild), Slug: Ptr(teamSlugDevs), Name: Ptr(teamNameDevs), Organization: &gh.Organization{Login: Ptr(orgLogin)}},
 	}
 	got := TeamsFromGhTeams(in)
 	if len(got) != 2 {
@@ -275,10 +275,10 @@ func TestUsersFromGhUsers(t *testing.T) {
 
 	in := []*gh.User{
 		{
-			ID:        gh.Int64(idUserAda),
-			Name:      gh.String(userNameFirst),
-			Email:     gh.String(userEmailFirst),
-			HTMLURL:   gh.String(userURLFirst),
+			ID:        Ptr(idUserAda),
+			Name:      Ptr(userNameFirst),
+			Email:     Ptr(userEmailFirst),
+			HTMLURL:   Ptr(userURLFirst),
 			CreatedAt: &gh.Timestamp{Time: created},
 			UpdatedAt: &gh.Timestamp{Time: created},
 		},
@@ -321,10 +321,10 @@ func TestOrganizationFromGhOrg(t *testing.T) {
 		updated := mustParseRFC3339(t, rfc3339UpdatedOrg)
 
 		ghOrg := &gh.Organization{
-			ID:          gh.Int64(idOrg),
-			Name:        gh.String("Acme Inc"),
-			Description: gh.String("best org"),
-			ReposURL:    gh.String(repoURLExample),
+			ID:          Ptr(idOrg),
+			Name:        Ptr("Acme Inc"),
+			Description: Ptr("best org"),
+			ReposURL:    Ptr(repoURLExample),
 			CreatedAt:   &gh.Timestamp{Time: created},
 			UpdatedAt:   &gh.Timestamp{Time: updated},
 		}
@@ -354,10 +354,10 @@ func TestOrganizationFromGhOrg(t *testing.T) {
 
 	t.Run("nil timestamps map to nil pointers", func(t *testing.T) {
 		ghOrg := &gh.Organization{
-			ID:          gh.Int64(1),
-			Name:        gh.String("X"),
-			Description: gh.String("Y"),
-			ReposURL:    gh.String("Z"),
+			ID:          Ptr(int64(1)),
+			Name:        Ptr("X"),
+			Description: Ptr("Y"),
+			ReposURL:    Ptr("Z"),
 			CreatedAt:   nil,
 			UpdatedAt:   nil,
 		}
@@ -396,13 +396,13 @@ func TestOrganizationInvitationFromGhInvitation(t *testing.T) {
 		created := mustParseRFC3339(t, rfc3339Invite)
 
 		ghInvitation := &gh.Invitation{
-			ID:                gh.Int64(idInvite),
-			Login:             gh.String(inviteLogin),
-			Email:             gh.String(inviteEmail),
-			Role:              gh.String(inviteRole),
+			ID:                Ptr(idInvite),
+			Login:             Ptr(inviteLogin),
+			Email:             Ptr(inviteEmail),
+			Role:              Ptr(inviteRole),
 			CreatedAt:         &gh.Timestamp{Time: created},
-			TeamCount:         gh.Int(inviteTeams),
-			InvitationTeamURL: gh.String(inviteTeamURL),
+			TeamCount:         Ptr(inviteTeams),
+			InvitationTeamURL: Ptr(inviteTeamURL),
 		}
 
 		got := OrganizationInvitationFromGhInvitation(ghInvitation)
@@ -436,9 +436,9 @@ func TestOrganizationInvitationFromGhInvitation(t *testing.T) {
 
 func TestOrganizationInvitationsFromGhInvitations(t *testing.T) {
 	in := []*gh.Invitation{
-		{ID: gh.Int64(idInvite), Login: gh.String(inviteLogin)},
+		{ID: Ptr(idInvite), Login: Ptr(inviteLogin)},
 		nil,
-		{ID: gh.Int64(idInvite + 1), Login: gh.String("second")},
+		{ID: Ptr(idInvite + 1), Login: Ptr("second")},
 	}
 
 	got := OrganizationInvitationsFromGhInvitations(in)
@@ -465,11 +465,11 @@ func TestUserFromGhUser(t *testing.T) {
 		updated := mustParseRFC3339(t, rfc3339UserGraceU)
 
 		ghUser := &gh.User{
-			Login:     gh.String(userLoginSecond),
-			ID:        gh.Int64(idUserGrace),
-			Name:      gh.String(userNameSecond),
-			Email:     gh.String(userEmailSecond),
-			HTMLURL:   gh.String(userURLSecond),
+			Login:     Ptr(userLoginSecond),
+			ID:        Ptr(idUserGrace),
+			Name:      Ptr(userNameSecond),
+			Email:     Ptr(userEmailSecond),
+			HTMLURL:   Ptr(userURLSecond),
 			CreatedAt: &gh.Timestamp{Time: created},
 			UpdatedAt: &gh.Timestamp{Time: updated},
 		}
