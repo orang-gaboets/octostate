@@ -42,13 +42,19 @@ Each invite must declare exactly one identity field:
 - `email`
 - `user_id`
 
+Other invite fields are optional:
+
+- `role`
+- `team_slugs`
+
 Supported invite roles:
 
 - `admin`
 - `direct_member`
 - `billing_manager`
 
-Invite team assignments go in `team_slugs`.
+Invite team assignments go in `team_slugs`. Each listed slug must already
+match a declared team.
 
 Validation rules:
 
