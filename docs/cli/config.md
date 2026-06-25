@@ -141,13 +141,13 @@ Write behavior:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ### Adopt supported live state into an existing desired config
@@ -182,13 +182,13 @@ Adopt rules:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ### Materialize unmanaged repository fields in an existing desired config
@@ -223,13 +223,13 @@ Materialize rules:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ## `octostate config plan`
@@ -272,7 +272,7 @@ Action behavior:
 Example use:
 
 ```bash
-go run ./cmd/octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 ## `octostate config apply`
@@ -348,17 +348,17 @@ Exit codes:
 Example check:
 
 ```bash
-go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
 ```
 
 Example dry-run:
 
 ```bash
-go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
 ```
 
 Example live apply:
 
 ```bash
-go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
 ```

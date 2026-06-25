@@ -111,11 +111,11 @@ Exit codes:
 Example offline diff:
 
 ```bash
-go run ./cmd/octostate audit diff --config-dir ./config --state-dir ./state
+octostate audit diff --config-dir ./config --state-dir ./state
 ```
 
 Example CI-style drift gate:
 
 ```bash
-go run ./cmd/octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
+octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 ```
