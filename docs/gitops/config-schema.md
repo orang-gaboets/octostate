@@ -93,6 +93,10 @@ Repository template fields are create-time inputs:
 `template.owner` and `template.name` are required together when creating a
 repository from a template.
 
+`config apply` currently creates repositories only through templates, so any
+repository that may need to be created must declare both `template.owner` and
+`template.name`.
+
 Repository reconciliation semantics:
 
 - `visibility` and `topics` are exact-reconcile fields
@@ -119,6 +123,9 @@ Common team fields:
 - `parent_slug` - optional parent team reference
 - `members` - optional list of team memberships
 - `repositories` - optional list of team repository permissions
+
+When both are declared, `slug` must match the normalized form of `name` used
+by validation.
 
 Supported team member roles:
 
