@@ -7,6 +7,9 @@ Use these commands when you want to validate desired state, generate or update
 that desired state from live GitHub, preview reconciliation, or apply the
 supported portion of the plan.
 
+For the canonical field-by-field schema, see
+[Config schema](../gitops/config-schema.md).
+
 Authentication rules:
 - `octostate config validate` is fully offline and does not require GitHub auth.
 - The other `config` commands require exactly one auth method:
@@ -48,26 +51,9 @@ Behavior:
 - Prints a JSON validation report to stdout
 - Does not call GitHub APIs (fully offline)
 
-Invite rules:
-- Each invite must declare exactly one of `username`, `email`, or `user_id`
-- Declaring more than one identity field is invalid
-- Declaring none of the identity fields is invalid
-- Declared `username` values must be valid GitHub usernames
-- Declared `email` values must be valid email addresses
-- Declared `user_id` values must be greater than zero
-- Declared empty or whitespace-only `username` / `email` values are rejected
-- Explicit `null` is rejected for `username`, `email`, and `user_id`
-
-Repository field rules:
-- `visibility` and `topics` are exact-reconcile fields
-- `template.owner` and `template.name` remain create-time inputs for repository creation
-- `description`, `homepage`, `allow_forking`, `archived`, and `is_template` are presence-aware optional fields
-- If one of those optional repository fields is omitted, GitOps leaves it unmanaged
-- Explicit empty strings for `description` or `homepage` clear those fields
-- Boolean repository fields are only managed when explicitly set to `true` or `false`
-- Explicit `null` is rejected for `description`, `homepage`, `allow_forking`, `archived`, and `is_template`
-- `allow_forking` is still ignored for private repositories
-- Repository visibility currently supports `public` and `private`; `internal` is rejected by validation and not supported by apply yet
+For the canonical schema details behind these validation rules, including
+invite identities, repository field semantics, and supported enum values, see
+[Config schema](../gitops/config-schema.md).
 
 Exit codes:
 - `0`: valid configuration
@@ -155,13 +141,13 @@ Write behavior:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ### Adopt supported live state into an existing desired config
@@ -196,13 +182,13 @@ Adopt rules:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ### Materialize unmanaged repository fields in an existing desired config
@@ -237,13 +223,13 @@ Materialize rules:
 Example print-to-stdout use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 Example write use:
 
 ```bash
-go run ./cmd/octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
 ```
 
 ## `octostate config plan`
@@ -286,7 +272,7 @@ Action behavior:
 Example use:
 
 ```bash
-go run ./cmd/octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
 ## `octostate config apply`
@@ -362,17 +348,17 @@ Exit codes:
 Example check:
 
 ```bash
-go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
 ```
 
 Example dry-run:
 
 ```bash
-go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
 ```
 
 Example live apply:
 
 ```bash
-go run ./cmd/octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
 ```

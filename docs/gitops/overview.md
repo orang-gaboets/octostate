@@ -73,24 +73,8 @@ Validation is deliberately split into two steps:
 - load: can the file be decoded and normalized?
 - validate: does the desired state make semantic sense?
 
-### Presence-Aware Repository Fields
-
-The GitOps engine treats these repository fields as presence-aware optional
-fields:
-- `description`
-- `homepage`
-- `allow_forking`
-- `archived`
-- `is_template`
-
-Semantics:
-- omitted field: unmanaged
-- explicit empty string: clear string field
-- explicit `false`: manage boolean as false
-- explicit `null`: invalid
-
-This is why plan, diff, and apply only reconcile those fields when they were
-explicitly declared in `config/organization.yaml`.
+For the field-by-field schema and validation semantics, see
+[Config schema](./config-schema.md).
 
 ## Actual State and Determinism
 
