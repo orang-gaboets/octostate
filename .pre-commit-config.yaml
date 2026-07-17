@@ -9,6 +9,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: actionlint
+        name: actionlint
+        entry: go
+        args: [run, github.com/rhysd/actionlint/cmd/actionlint@v1.7.12]
+        language: system
+        files: ^\.github/workflows/.*\.(ya?ml)$
+
       - id: govulncheck
         name: govulncheck
         entry: go
