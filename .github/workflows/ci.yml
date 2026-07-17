@@ -24,6 +24,24 @@ jobs:
           version: v2.12.2
           args: --timeout=5m
 
+  govulncheck:
+    name: Go vulnerability scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run govulncheck
+        # Catch vulnerable code paths and dependencies that tests and Dependabot can miss.
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -50,3 +68,21 @@ jobs:
 
       - name: Test
         run: go test ./... -cover -coverprofile=coverage.out
+
+  gitops-race:
+    name: GitOps race detector
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run race detector
+        # The bounded-concurrency GitOps engine is the highest-risk area for shared-memory races.
+        run: go test -race ./pkg/gitops/...
