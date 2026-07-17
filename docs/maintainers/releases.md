@@ -44,9 +44,13 @@ Unlike the release-please workflow above, the release approval auto-merge
 workflow requires this GitHub App token and fails closed if the token cannot be
 created.
 
-For a major release or first stable release, keep the human validation checklist
-and supporting evidence in [`v1.0.0-readiness.md`](v1.0.0-readiness.md) before
-intentionally merging a releasable breaking change onto `main`.
+For future release validation, use
+[`release-readiness.md`](release-readiness.md). That guide explains that patch
+releases usually need only lightweight validation, risky patch releases need
+targeted validation, meaningful minor releases should use standard readiness,
+and major releases should always use full readiness. The historical
+[`v1.0.0-readiness.md`](v1.0.0-readiness.md) file is retained as evidence for
+the first stable release.
 
 ## Release PR Merge
 
