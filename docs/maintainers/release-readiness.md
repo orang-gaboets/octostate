@@ -41,26 +41,40 @@ High-risk areas include:
 
 ### Minor releases: `vX.Y.0`
 
-Minor releases should receive a standard readiness pass when they introduce or
-materially change behavior, especially GitOps behavior, CLI behavior,
-apply/check semantics, authentication behavior, or release automation.
+Meaningful minor releases should receive the standard readiness pass below when
+they introduce or materially change behavior, especially GitOps behavior, CLI
+behavior, apply/check semantics, authentication behavior, or release
+automation.
 
 For documentation-only or very small minor releases, a lighter validation pass
 is acceptable, but that decision should be explicit.
+
+### Standard readiness
+
+The standard readiness pass should include:
+
+- CI passes
+- CodeQL and security checks pass
+- the `release-please` PR and changelog look correct
+- CLI smoke checks cover the affected command or path
+- affected offline GitOps checks pass
+- targeted live sandbox checks pass when the change touches live behavior
+- release automation checks pass
+- evidence is recorded in the relevant PR or maintainer doc
 
 ### Major releases: `vX.0.0`
 
 Major releases should always receive a full readiness pass.
 
-The readiness evidence for a major release should include:
+The full readiness pass for a major release should include everything in
+standard readiness, plus:
 
 - repository health checks
-- CLI smoke checks
-- offline GitOps checks
-- live sandbox GitOps checks
+- full offline GitOps coverage
+- full live sandbox GitOps coverage
 - `sync-from-live` checks
-- release automation checks
 - migration or breaking-change notes, when applicable
+- complete evidence recording
 
 ## Missed Readiness After Release
 
