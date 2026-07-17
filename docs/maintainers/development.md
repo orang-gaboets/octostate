@@ -15,8 +15,8 @@
    go version
    ```
 
-   The module includes a `toolchain go1.25.11` directive, so Go commands will
-   automatically prefer the patched 1.25.11 toolchain when toolchain switching
+   The module includes a `toolchain go1.25.12` directive, so Go commands will
+   automatically prefer the patched 1.25.12 toolchain when toolchain switching
    is enabled.
 
 3. Install module dependencies:
@@ -57,6 +57,7 @@ gofmt -w <files>
 # Static checks
 go vet ./...
 golangci-lint run --timeout=5m
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 ./...
 go test -race ./pkg/gitops/...
 
@@ -69,6 +70,10 @@ pre-commit install
 pre-commit run --all-files
 pre-commit run govulncheck --hook-stage manual --all-files
 ```
+
+The `actionlint` hook runs automatically for workflow files in the local
+pre-commit setup. The first `go run ...actionlint...` invocation downloads the
+tool if it is not already cached.
 
 The `govulncheck` hook is manual so you can run it on demand without slowing
 every commit.
