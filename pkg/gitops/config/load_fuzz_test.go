@@ -127,6 +127,11 @@ invites: []
 			t.Fatalf("second decode failed: %v", err)
 		}
 		normalize(&second)
+		normalized := second
+		normalize(&normalized)
+		if !reflect.DeepEqual(second, normalized) {
+			t.Fatalf("normalize not idempotent: first=%#v second=%#v", second, normalized)
+		}
 
 		if !reflect.DeepEqual(first, second) {
 			t.Fatalf("non-deterministic decode: first=%#v second=%#v", first, second)
