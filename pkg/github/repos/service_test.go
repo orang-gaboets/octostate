@@ -621,24 +621,25 @@ func TestEditAllFieldsSuccess(t *testing.T) {
 	}
 	if repo == nil {
 		t.Fatal("expected a repository, got nil")
-	}
-	if repo.GetDescription() != *opts.Description {
-		t.Errorf("expected description %s, got %s", *opts.Description, repo.GetDescription())
-	}
-	if repo.GetHomepage() != *opts.Homepage {
-		t.Errorf("expected homepage %s, got %s", *opts.Homepage, repo.GetHomepage())
-	}
-	if repo.GetPrivate() != *opts.Private {
-		t.Errorf("expected private %v, got %v", *opts.Private, repo.GetPrivate())
-	}
-	if repo.GetIsTemplate() != *opts.IsTemplate {
-		t.Errorf("expected is_template %v, got %v", *opts.IsTemplate, repo.GetIsTemplate())
-	}
-	if repo.GetArchived() != *opts.Archived {
-		t.Errorf("expected archived %v, got %v", *opts.Archived, repo.GetArchived())
-	}
-	if repo.GetAllowForking() != *opts.AllowForking {
-		t.Errorf("expected allow_forking %v, got %v", *opts.AllowForking, repo.GetAllowForking())
+	} else {
+		if repo.GetDescription() != *opts.Description {
+			t.Errorf("expected description %s, got %s", *opts.Description, repo.GetDescription())
+		}
+		if repo.GetHomepage() != *opts.Homepage {
+			t.Errorf("expected homepage %s, got %s", *opts.Homepage, repo.GetHomepage())
+		}
+		if repo.GetPrivate() != *opts.Private {
+			t.Errorf("expected private %v, got %v", *opts.Private, repo.GetPrivate())
+		}
+		if repo.GetIsTemplate() != *opts.IsTemplate {
+			t.Errorf("expected is_template %v, got %v", *opts.IsTemplate, repo.GetIsTemplate())
+		}
+		if repo.GetArchived() != *opts.Archived {
+			t.Errorf("expected archived %v, got %v", *opts.Archived, repo.GetArchived())
+		}
+		if repo.GetAllowForking() != *opts.AllowForking {
+			t.Errorf("expected allow_forking %v, got %v", *opts.AllowForking, repo.GetAllowForking())
+		}
 	}
 }
 
@@ -736,12 +737,13 @@ func TestGetSuccess(t *testing.T) {
 	}
 	if repo == nil {
 		t.Fatal("expected a repository, got nil")
-	}
-	if repo.Owner != existingRepo.Owner {
-		t.Errorf("expected owner %s, got %s", existingRepo.Owner, repo.Owner)
-	}
-	if repo.Name != existingRepo.Name {
-		t.Errorf("expected repo name %s, got %s", existingRepo.Name, repo.Name)
+	} else {
+		if repo.Owner != existingRepo.Owner {
+			t.Errorf("expected owner %s, got %s", existingRepo.Owner, repo.Owner)
+		}
+		if repo.Name != existingRepo.Name {
+			t.Errorf("expected repo name %s, got %s", existingRepo.Name, repo.Name)
+		}
 	}
 }
 
