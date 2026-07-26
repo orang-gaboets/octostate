@@ -9,6 +9,8 @@ import (
 // Run with:
 // go test ./pkg/gitops/config -run=^$ -fuzz=FuzzDecodeYAML -fuzztime=30s
 func FuzzDecodeYAML(f *testing.F) {
+	const maxYAMLSize = 1 << 20 // ponytail: keep fuzz inputs under 1 MiB; raise if configs ever need more.
+
 	f.Add([]byte("organization: orang-gaboets\n"))
 
 	fullSeed, err := EncodeYAML(validOrganizationConfig())
@@ -97,6 +99,10 @@ invites: []
 `))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > maxYAMLSize {
+			t.Skip()
+		}
+
 		var first OrganizationConfig
 		if err := decodeYAML(bytes.NewReader(data), &first); err != nil {
 			return
