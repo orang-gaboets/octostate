@@ -737,6 +737,7 @@ func TestGetSuccess(t *testing.T) {
 	}
 	if repo == nil {
 		t.Fatal("expected a repository, got nil")
+		return
 	}
 	if repo.Owner != existingRepo.Owner {
 		t.Errorf("expected owner %s, got %s", existingRepo.Owner, repo.Owner)
