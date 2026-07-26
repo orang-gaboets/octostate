@@ -15,7 +15,7 @@ func FuzzDecodeYAML(f *testing.F) {
 
 	fullSeed, err := EncodeYAML(validOrganizationConfig())
 	if err != nil {
-		panic(err)
+		f.Fatalf("encode full seed: %v", err)
 	}
 	f.Add(fullSeed)
 
