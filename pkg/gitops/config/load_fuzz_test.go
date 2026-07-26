@@ -9,7 +9,7 @@ import (
 // Run with:
 // go test ./pkg/gitops/config -run=^$ -fuzz=FuzzDecodeYAML -fuzztime=30s
 func FuzzDecodeYAML(f *testing.F) {
-	const maxYAMLSize = 1 << 20 // ponytail: keep fuzz inputs under 1 MiB; raise if configs ever need more.
+	const maxYAMLSize = 1 << 20 // Cap fuzz inputs at 1 MiB; raise if real configs ever need more.
 
 	f.Add([]byte("organization: orang-gaboets\n"))
 
