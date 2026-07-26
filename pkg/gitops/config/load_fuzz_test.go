@@ -75,6 +75,19 @@ teams: []
 	f.Add([]byte(`
 organization: orang-gaboets
 invites:
+  - username: ""
+    email: ""
+    role: direct_member
+repositories:
+  - name: octostate
+    visibility: private
+    description: ""
+    homepage: ""
+teams: []
+`))
+	f.Add([]byte(`
+organization: orang-gaboets
+invites:
   - username: [octocat]
     role: direct_member
 repositories: []
