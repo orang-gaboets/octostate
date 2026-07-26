@@ -41,9 +41,18 @@ func (g githubClientWrapper) Teams() teams.Service { return g.Client.Teams }
 func (g githubClientWrapper) Users() users.Service { return g.Client.Users }
 
 var (
+	// newPATGitHubClient is the package-local seam for constructing raw GitHub PAT clients.
+	newPATGitHubClient = func(ctx context.Context, token string) (*gh.Client, error) {
+		return githubclient.NewPAT(ctx, token)
+	}
+
 	// originalNewPATClient is the original function to create a new GitHub client using a personal access token.
 	originalNewPATClient = func(ctx context.Context, token string) (Client, error) {
-		return githubClientWrapper{githubclient.New(ctx, token)}, nil
+		c, err := newPATGitHubClient(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		return githubClientWrapper{c}, nil
 	}
 
 	// newPATClient is a function that creates a new GitHub client using a personal access token.
@@ -80,6 +89,9 @@ func SetNewAppClient(f func(int64, int64, string) (Client, error)) {
 func ResetClients() {
 	newPATClient = originalNewPATClient
 	newAppClient = originalNewAppClient
+	newPATGitHubClient = func(ctx context.Context, token string) (*gh.Client, error) {
+		return githubclient.NewPAT(ctx, token)
+	}
 }
 
 // NewClient returns an authenticated GitHub client based on the provided credentials.
