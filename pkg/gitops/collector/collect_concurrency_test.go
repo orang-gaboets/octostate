@@ -328,7 +328,6 @@ func TestCollectOrganizationReturnsFirstTopLevelErrorInLegacyOrder(t *testing.T)
 			}
 			if opts == nil {
 				t.Fatal("expected member list options")
-				return nil, nil, nil
 			}
 			<-release
 			if opts.Role == "admin" {
