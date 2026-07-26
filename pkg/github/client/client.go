@@ -23,18 +23,23 @@ func WithTimeout(d time.Duration) Option {
 	}
 }
 
-// New creates a new GitHub client using the provided OAuth token.
-func New(ctx context.Context, token string, opts ...Option) *gh.Client {
+var newGitHubClient = gh.NewClient
+
+// NewPAT creates a new GitHub client using the provided OAuth token.
+func NewPAT(ctx context.Context, token string, opts ...Option) (*gh.Client, error) {
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
 	tc.Timeout = DefaultTimeout
 	for _, opt := range opts {
 		opt(tc)
 	}
-	client, err := gh.NewClient(gh.WithHTTPClient(tc))
-	if err != nil {
-		return nil
-	}
+	return newGitHubClient(gh.WithHTTPClient(tc))
+}
+
+// New creates a new GitHub client using the provided OAuth token.
+// It is kept for backward compatibility.
+func New(ctx context.Context, token string, opts ...Option) *gh.Client {
+	client, _ := NewPAT(ctx, token, opts...)
 	return client
 }
 
