@@ -414,8 +414,8 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    11,
-			NonExecutableActions: 8,
+			ExecutableActions:    9,
+			NonExecutableActions: 10,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,
@@ -438,8 +438,8 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: false, Message: "team membership platform/charlie requires organization member charlie to exist first", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: true, Message: "update team repository permission platform/orang-gaboets/octostate", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-extra requires repository orang-gaboets/repo-extra to exist or be created earlier in the same plan", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: false, Message: "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to exist or be created earlier in the same plan", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationRemove, ResourceID: "platform/orang-gaboets/repo-old", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-old exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 		},
 	}
@@ -974,5 +974,129 @@ func presentInt64(value int64) config.OptionalInt64 {
 	return config.OptionalInt64{
 		Present: true,
 		Value:   value,
+	}
+}
+
+func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenRepositoryCanBeCreated(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Teams: []state.Team{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+		}},
+	})
+
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "ORANG-GABOETS",
+				Name:       "OctoState",
+				Visibility: "private",
+				Template: config.TemplateSpec{
+					Owner: "ORANG-GABOETS",
+					Name:  "Repo-Template",
+				},
+			}},
+			Teams: []config.TeamSpec{{
+				Slug:    "platform",
+				Name:    "Platform",
+				Privacy: "closed",
+				Repositories: []config.TeamRepositorySpec{{
+					Owner:      "orang-gaboets",
+					Name:       "octostate",
+					Permission: "push",
+				}},
+			}},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	want := []Action{
+		{
+			ResourceType: ActionResourceTypeRepository,
+			Operation:    ActionOperationCreate,
+			ResourceID:   "ORANG-GABOETS/OctoState",
+			Executable:   true,
+			Message:      "create repository ORANG-GABOETS/OctoState",
+			Changes:      []FieldChange{},
+		},
+		{
+			ResourceType: ActionResourceTypeTeamRepositoryPermission,
+			Operation:    ActionOperationCreate,
+			ResourceID:   "platform/orang-gaboets/octostate",
+			Executable:   true,
+			Message:      "create team repository permission platform/orang-gaboets/octostate",
+			Changes:      []FieldChange{},
+		},
+	}
+	if !reflect.DeepEqual(report.Actions, want) {
+		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
+	}
+	if report.Summary.ExecutableActions != 2 || report.Summary.NonExecutableActions != 0 {
+		t.Fatalf("unexpected summary: %#v", report.Summary)
+	}
+}
+
+func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenRepositoryExistsInSnapshot(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{
+			Owner:      "orang-gaboets",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []state.Team{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+		}},
+	})
+
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "orang-gaboets",
+				Name:       "octostate",
+				Visibility: "private",
+			}},
+			Teams: []config.TeamSpec{{
+				Slug:    "platform",
+				Name:    "Platform",
+				Privacy: "closed",
+				Repositories: []config.TeamRepositorySpec{{
+					Owner:      "orang-gaboets",
+					Name:       "octostate",
+					Permission: "push",
+				}},
+			}},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	want := []Action{
+		{
+			ResourceType: ActionResourceTypeTeamRepositoryPermission,
+			Operation:    ActionOperationCreate,
+			ResourceID:   "platform/orang-gaboets/octostate",
+			Executable:   true,
+			Message:      "create team repository permission platform/orang-gaboets/octostate",
+			Changes:      []FieldChange{},
+		},
+	}
+	if !reflect.DeepEqual(report.Actions, want) {
+		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
 	}
 }

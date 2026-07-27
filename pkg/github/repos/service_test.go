@@ -328,6 +328,9 @@ func TestCreateFromTemplateSuccess(t *testing.T) {
 	if !reflect.DeepEqual(mockSvc.repoTopics, uniqueTopics) {
 		t.Errorf("expected topics %v, got %v", uniqueTopics, mockSvc.repoTopics)
 	}
+	if !reflect.DeepEqual(repo.Topics, uniqueTopics) {
+		t.Errorf("expected returned repository topics %v, got %v", uniqueTopics, repo.Topics)
+	}
 }
 
 func TestCreateFromTemplateSkipTopicSync(t *testing.T) {

@@ -3,9 +3,48 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestEncodeYAMLDoesNotMutateInput(t *testing.T) {
+	t.Parallel()
+
+	buildConfig := func() OrganizationConfig {
+		return OrganizationConfig{
+			Organization: " orang-gaboets ",
+			Members: []OrganizationMemberSpec{{
+				Username: " alice ",
+				Role:     " member ",
+			}},
+			Invites: []InviteSpec{{
+				Username:  optionalString(" octocat "),
+				Role:      " direct_member ",
+				TeamSlugs: []string{" platform "},
+			}},
+			Repositories: []RepositorySpec{{
+				Owner:      "",
+				Name:       " octostate ",
+				Visibility: " private ",
+				Topics:     []string{" go "},
+			}},
+			Teams: []TeamSpec{{
+				Slug: " platform ",
+				Name: " Platform ",
+			}},
+		}
+	}
+
+	cfg := buildConfig()
+	if _, err := EncodeYAML(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(cfg, buildConfig()) {
+		t.Fatalf("EncodeYAML mutated its input:\n got %#v\nwant %#v", cfg, buildConfig())
+	}
+}
 
 func TestEncodeYAMLMinimal(t *testing.T) {
 	t.Parallel()

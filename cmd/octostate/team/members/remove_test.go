@@ -103,7 +103,11 @@ func TestRemoveTeamMemberDryRunSkipsRemoveService(t *testing.T) {
 	if svc.removeCalled {
 		t.Fatalf("expected remove team membership service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Dry run: would remove user "u" from team o/s`) {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, `Dry run: would remove user \"u\" from team o/s`) {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
@@ -117,7 +121,11 @@ func TestRemoveTeamMemberWritesSuccessToStdout(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Removed user "u" from team o/s`) {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, `Removed user \"u\" from team o/s`) {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }
@@ -140,7 +148,11 @@ func TestRemoveTeamMemberUsesProvidedService(t *testing.T) {
 	if svc.username != "u" {
 		t.Fatalf("expected trimmed username %q, got %q", "u", svc.username)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Removed user "u" from team o/s`) {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, `Removed user \"u\" from team o/s`) {
 		t.Fatalf("unexpected success output: %q", got)
 	}
 }

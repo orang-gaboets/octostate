@@ -52,38 +52,6 @@ func pendingInvitationID(invitation state.PendingInvitation) string {
 	return resourceid.PendingInvitationID(invitation)
 }
 
-func clonePendingInvitations(invitations []state.PendingInvitation) []state.PendingInvitation {
-	result := make([]state.PendingInvitation, 0, len(invitations))
-	for _, invitation := range invitations {
-		result = append(result, state.PendingInvitation{
-			ID:        invitation.ID,
-			Username:  invitation.Username,
-			Email:     invitation.Email,
-			Role:      invitation.Role,
-			TeamSlugs: append([]string{}, invitation.TeamSlugs...),
-		})
-	}
-	return result
-}
-
-func cloneRepositories(repositories []state.Repository) []state.Repository {
-	result := make([]state.Repository, 0, len(repositories))
-	for _, repository := range repositories {
-		result = append(result, state.Repository{
-			Owner:        repository.Owner,
-			Name:         repository.Name,
-			Visibility:   repository.Visibility,
-			Description:  repository.Description,
-			Homepage:     repository.Homepage,
-			Topics:       append([]string{}, repository.Topics...),
-			AllowForking: repository.AllowForking,
-			Archived:     repository.Archived,
-			IsTemplate:   repository.IsTemplate,
-		})
-	}
-	return result
-}
-
 func equalStringSets(a, b []string) bool {
 	aValues := sortedUniqueStrings(a)
 	bValues := sortedUniqueStrings(b)

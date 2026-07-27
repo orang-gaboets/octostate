@@ -190,8 +190,8 @@ func organizationStateFromSnapshot(actual *snapshot.ActualSnapshot) state.Organi
 	organization := state.OrganizationState{
 		Organization:              actual.Organization,
 		Members:                   append([]state.OrganizationMember{}, actual.Members...),
-		PendingInvitations:        clonePendingInvitations(actual.PendingInvitations),
-		Repositories:              cloneRepositories(actual.Repositories),
+		PendingInvitations:        state.ClonePendingInvitations(actual.PendingInvitations),
+		Repositories:              state.CloneRepositories(actual.Repositories),
 		Teams:                     append([]state.Team{}, actual.Teams...),
 		TeamMembers:               append([]state.TeamMember{}, actual.TeamMembers...),
 		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, actual.TeamRepositoryPermissions...),

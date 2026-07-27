@@ -594,6 +594,61 @@ func TestValidateSlugNameMismatch(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeSlugNameMismatch)
 }
 
+func TestValidateDuplicateInviteUsernamesCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites = append(cfg.Invites, InviteSpec{
+		Username: optionalString("OctoCat"),
+		Role:     "direct_member",
+	})
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "invites[1].username", ValidationIssueCodeDuplicateInvite)
+}
+
+func TestValidateDuplicateInviteEmailsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites = []InviteSpec{
+		{Email: optionalString("dev@example.com"), Role: "direct_member"},
+		{Email: optionalString("DEV@example.com"), Role: "direct_member"},
+	}
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "invites[1].email", ValidationIssueCodeDuplicateInvite)
+}
+
+func TestValidateDuplicateInviteUserIDs(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites = []InviteSpec{
+		{UserID: optionalInt64(42), Role: "direct_member"},
+		{UserID: optionalInt64(42), Role: "direct_member"},
+	}
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "invites[1].user_id", ValidationIssueCodeDuplicateInvite)
+}
+
+func TestValidateDistinctInviteIdentitiesAreValid(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Invites = []InviteSpec{
+		{Username: optionalString("octocat"), Role: "direct_member"},
+		{Email: optionalString("octocat@example.com"), Role: "direct_member"},
+		{UserID: optionalInt64(42), Role: "direct_member"},
+	}
+
+	report := Validate(cfg)
+	if !report.Valid {
+		t.Fatalf("expected distinct invite identities to be valid, got %#v", report)
+	}
+}
+
 func validOrganizationConfig() OrganizationConfig {
 	repo := RepositorySpec{
 		Owner:       "orang-gaboets",

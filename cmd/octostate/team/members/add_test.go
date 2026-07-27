@@ -119,7 +119,11 @@ func TestAddTeamMemberDryRunSkipsAddService(t *testing.T) {
 	if svc.addCalled {
 		t.Fatalf("expected add team membership service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Dry run: would add user "u" to team o/s with role maintainer`) {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, `Dry run: would add user \"u\" to team o/s with role maintainer`) {
 		t.Fatalf("unexpected dry-run output: %q", got)
 	}
 }
@@ -139,6 +143,9 @@ func TestAddTeamMemberWritesJSONToStdout(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "{") {
 		t.Fatalf("expected JSON object output, got %q", got)
+	}
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
 	}
 }
 
@@ -163,7 +170,11 @@ func TestAddTeamMemberUsesProvidedServiceAndRole(t *testing.T) {
 	if svc.role != "maintainer" {
 		t.Fatalf("expected role %q, got %q", "maintainer", svc.role)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `"Role": "maintainer"`) {
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "success"`) {
+		t.Fatalf("expected success status output, got: %q", got)
+	}
+	if !strings.Contains(got, `"Role": "maintainer"`) {
 		t.Fatalf("expected JSON output to contain membership role, got %q", got)
 	}
 }

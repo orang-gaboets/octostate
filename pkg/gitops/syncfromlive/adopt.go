@@ -45,7 +45,7 @@ func BuildAdoptConfig(opt AdoptOptions) (config.OrganizationConfig, error) {
 		return config.OrganizationConfig{}, err
 	}
 
-	desired := cloneDesiredConfig(opt.Desired)
+	desired := opt.Desired.Clone()
 	actual := cloneOrganizationState(opt.Actual)
 	organization := strings.TrimSpace(desired.Organization)
 
@@ -146,7 +146,7 @@ func adoptRepositories(
 	desired []config.RepositorySpec,
 	actual []state.Repository,
 ) []config.RepositorySpec {
-	adopted := cloneDesiredRepositories(desired)
+	adopted := config.CloneRepositorySpecs(desired)
 	indexByRepository := make(map[string]int, len(adopted))
 	for i, repository := range adopted {
 		indexByRepository[repositoryAdoptKey(organization, repository.Owner, repository.Name)] = i
@@ -211,7 +211,7 @@ func adoptTeams(
 	membersByTeam map[string][]config.TeamMemberSpec,
 	permissionsByTeam map[string][]config.TeamRepositorySpec,
 ) []config.TeamSpec {
-	adopted := cloneDesiredTeams(desired)
+	adopted := config.CloneTeamSpecs(desired)
 	indexBySlug := make(map[string]int, len(adopted))
 	for i, team := range adopted {
 		indexBySlug[teamAdoptKey(team.Slug)] = i

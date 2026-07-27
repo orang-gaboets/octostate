@@ -54,10 +54,11 @@ func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (
 				Service: option.Service,
 				Topics:  uniqueTopics,
 			}
-			_, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
+			syncedTopics, err := topics.ReplaceAllTopics(ctx, newRepoTopicsOptions)
 			if err != nil {
 				return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", option.Owner, option.Name))
 			}
+			newRepo.Topics = syncedTopics
 		}
 	}
 	return newRepo, nil

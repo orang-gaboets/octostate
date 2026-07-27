@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/repodependency"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
@@ -169,7 +170,7 @@ func (p planner) planTeamRepositoryPermissions() []Action {
 			desiredPermissions[key] = permission
 			actualPermission, ok := actualPermissions[key]
 			if !ok {
-				executable := repositoryAvailableForTeamRepositoryPermission(permission.Owner, permission.Name, actualRepos, desiredRepos)
+				executable := repodependency.RepositoryAvailable(permission.Owner, permission.Name, actualRepos, desiredRepos)
 				message := fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
 				if !executable {
 					message = fmt.Sprintf(
@@ -191,7 +192,7 @@ func (p planner) planTeamRepositoryPermissions() []Action {
 			if actualPermission.Permission == permission.Permission {
 				continue
 			}
-			executable := repositoryAvailableForTeamRepositoryPermission(permission.Owner, permission.Name, actualRepos, desiredRepos)
+			executable := repodependency.RepositoryAvailable(permission.Owner, permission.Name, actualRepos, desiredRepos)
 			message := fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
 			if !executable {
 				message = fmt.Sprintf(

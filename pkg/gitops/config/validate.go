@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/mail"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -274,6 +275,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 }
 
 func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex map[string]int, memberIndex map[string]int) {
+	identityIndex := make(map[string]int, len(invites))
 	for i, invite := range invites {
 		pathPrefix := fmt.Sprintf("invites[%d]", i)
 		usernameDeclared := invite.Username.Present
@@ -329,6 +331,33 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 				report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must not be null")
 			case userID <= 0:
 				report.addError(pathPrefix+".user_id", ValidationIssueCodeInvalidInviteIdentity, "invite user_id must be greater than zero when provided")
+			}
+		}
+
+		if usernameDeclared && !invite.Username.Null {
+			if key := strings.ToLower(strings.TrimSpace(username)); key != "" {
+				if firstIndex, ok := identityIndex["username\x00"+key]; ok {
+					report.addError(pathPrefix+".username", ValidationIssueCodeDuplicateInvite, "invite username %q duplicates invites[%d]", username, firstIndex)
+				} else {
+					identityIndex["username\x00"+key] = i
+				}
+			}
+		}
+		if emailDeclared && !invite.Email.Null {
+			if key := strings.ToLower(strings.TrimSpace(email)); key != "" {
+				if firstIndex, ok := identityIndex["email\x00"+key]; ok {
+					report.addError(pathPrefix+".email", ValidationIssueCodeDuplicateInvite, "invite email %q duplicates invites[%d]", email, firstIndex)
+				} else {
+					identityIndex["email\x00"+key] = i
+				}
+			}
+		}
+		if userIDDeclared && !invite.UserID.Null && userID > 0 {
+			key := "user_id\x00" + strconv.FormatInt(userID, 10)
+			if firstIndex, ok := identityIndex[key]; ok {
+				report.addError(pathPrefix+".user_id", ValidationIssueCodeDuplicateInvite, "invite user_id %d duplicates invites[%d]", userID, firstIndex)
+			} else {
+				identityIndex[key] = i
 			}
 		}
 

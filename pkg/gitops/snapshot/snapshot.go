@@ -35,7 +35,7 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 		actual = &state.OrganizationState{}
 	}
 
-	clone := cloneOrganizationState(actual)
+	clone := actual.Clone()
 	clone.Normalize()
 
 	return ActualSnapshot{
@@ -143,54 +143,6 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	return path, nil
 }
 
-func clonePendingInvitations(invitations []state.PendingInvitation) []state.PendingInvitation {
-	result := make([]state.PendingInvitation, 0, len(invitations))
-	for _, invitation := range invitations {
-		result = append(result, state.PendingInvitation{
-			ID:        invitation.ID,
-			Username:  invitation.Username,
-			Email:     invitation.Email,
-			Role:      invitation.Role,
-			TeamSlugs: append([]string{}, invitation.TeamSlugs...),
-		})
-	}
-	return result
-}
-
-func cloneRepositories(repositories []state.Repository) []state.Repository {
-	result := make([]state.Repository, 0, len(repositories))
-	for _, repository := range repositories {
-		result = append(result, state.Repository{
-			Owner:        repository.Owner,
-			Name:         repository.Name,
-			Visibility:   repository.Visibility,
-			Description:  repository.Description,
-			Homepage:     repository.Homepage,
-			Topics:       append([]string{}, repository.Topics...),
-			AllowForking: repository.AllowForking,
-			Archived:     repository.Archived,
-			IsTemplate:   repository.IsTemplate,
-		})
-	}
-	return result
-}
-
-func cloneOrganizationState(actual *state.OrganizationState) state.OrganizationState {
-	if actual == nil {
-		return state.OrganizationState{}
-	}
-
-	return state.OrganizationState{
-		Organization:              actual.Organization,
-		Members:                   append([]state.OrganizationMember{}, actual.Members...),
-		PendingInvitations:        clonePendingInvitations(actual.PendingInvitations),
-		Repositories:              cloneRepositories(actual.Repositories),
-		Teams:                     append([]state.Team{}, actual.Teams...),
-		TeamMembers:               append([]state.TeamMember{}, actual.TeamMembers...),
-		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, actual.TeamRepositoryPermissions...),
-	}
-}
-
 func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 	if snapshot == nil {
 		return nil
@@ -202,8 +154,8 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 	actual := state.OrganizationState{
 		Organization:              snapshot.Organization,
 		Members:                   append([]state.OrganizationMember{}, snapshot.Members...),
-		PendingInvitations:        clonePendingInvitations(snapshot.PendingInvitations),
-		Repositories:              cloneRepositories(snapshot.Repositories),
+		PendingInvitations:        state.ClonePendingInvitations(snapshot.PendingInvitations),
+		Repositories:              state.CloneRepositories(snapshot.Repositories),
 		Teams:                     append([]state.Team{}, snapshot.Teams...),
 		TeamMembers:               append([]state.TeamMember{}, snapshot.TeamMembers...),
 		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, snapshot.TeamRepositoryPermissions...),

@@ -45,7 +45,7 @@ func BuildMaterializeConfig(opt MaterializeOptions) (config.OrganizationConfig, 
 		return config.OrganizationConfig{}, err
 	}
 
-	desired := cloneDesiredConfig(opt.Desired)
+	desired := opt.Desired.Clone()
 	actual := cloneOrganizationState(opt.Actual)
 	organization := strings.TrimSpace(desired.Organization)
 
@@ -60,7 +60,7 @@ func materializeRepositories(
 	desired []config.RepositorySpec,
 	actual []state.Repository,
 ) []config.RepositorySpec {
-	materialized := cloneDesiredRepositories(desired)
+	materialized := config.CloneRepositorySpecs(desired)
 
 	actualByRepository := make(map[string]state.Repository, len(actual))
 	for _, repository := range actual {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/repodependency"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
@@ -20,7 +21,7 @@ func (p planner) planRepositories() []Action {
 		desiredRepos[key] = repository
 		actualRepository, ok := actualRepos[key]
 		if !ok {
-			executable := repositoryCanBeCreated(repository)
+			executable := repodependency.CanCreateRepository(repository)
 			message := fmt.Sprintf("create repository %s", repositoryID(repository.Owner, repository.Name))
 			if !executable {
 				message = fmt.Sprintf("repository %s cannot be created because template configuration is missing", repositoryID(repository.Owner, repository.Name))

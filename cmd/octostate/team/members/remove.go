@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
@@ -46,14 +47,20 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 			}
 
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would remove user %q from team %s/%s\n",
-					trimmedUsername,
-					trimmedOrg,
-					trimmedSlug,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would remove user %q from team %s/%s",
+						trimmedUsername,
+						trimmedOrg,
+						trimmedSlug,
+					),
+					map[string]any{
+						"organization": trimmedOrg,
+						"slug":         trimmedSlug,
+						"username":     trimmedUsername,
+					},
 				)
-				return err
 			}
 
 			service := svc
@@ -76,8 +83,15 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 				return err
 			}
 
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "Removed user %q from team %s/%s\n", trimmedUsername, trimmedOrg, trimmedSlug)
-			return err
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Removed user %q from team %s/%s", trimmedUsername, trimmedOrg, trimmedSlug),
+				map[string]any{
+					"organization": trimmedOrg,
+					"slug":         trimmedSlug,
+					"username":     trimmedUsername,
+				},
+			)
 		},
 	}
 

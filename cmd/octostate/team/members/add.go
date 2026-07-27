@@ -52,15 +52,22 @@ func AddCmd(svc teams.Service) *cobra.Command {
 			}
 
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would add user %q to team %s/%s with role %s\n",
-					trimmedUsername,
-					trimmedOrg,
-					trimmedSlug,
-					trimmedRole,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would add user %q to team %s/%s with role %s",
+						trimmedUsername,
+						trimmedOrg,
+						trimmedSlug,
+						trimmedRole,
+					),
+					map[string]any{
+						"organization": trimmedOrg,
+						"slug":         trimmedSlug,
+						"username":     trimmedUsername,
+						"role":         trimmedRole,
+					},
 				)
-				return err
 			}
 
 			service := svc
@@ -84,7 +91,17 @@ func AddCmd(svc teams.Service) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdoutput.PrintJSON(cmd, membership)
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf(
+					"Added user %q to team %s/%s with role %s",
+					trimmedUsername,
+					trimmedOrg,
+					trimmedSlug,
+					trimmedRole,
+				),
+				membership,
+			)
 		},
 	}
 
