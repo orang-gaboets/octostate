@@ -334,32 +334,7 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			}
 		}
 
-		if usernameDeclared && !invite.Username.Null {
-			if key := strings.ToLower(strings.TrimSpace(username)); key != "" {
-				if firstIndex, ok := identityIndex["username\x00"+key]; ok {
-					report.addError(pathPrefix+".username", ValidationIssueCodeDuplicateInvite, "invite username %q duplicates invites[%d]", username, firstIndex)
-				} else {
-					identityIndex["username\x00"+key] = i
-				}
-			}
-		}
-		if emailDeclared && !invite.Email.Null {
-			if key := strings.ToLower(strings.TrimSpace(email)); key != "" {
-				if firstIndex, ok := identityIndex["email\x00"+key]; ok {
-					report.addError(pathPrefix+".email", ValidationIssueCodeDuplicateInvite, "invite email %q duplicates invites[%d]", email, firstIndex)
-				} else {
-					identityIndex["email\x00"+key] = i
-				}
-			}
-		}
-		if userIDDeclared && !invite.UserID.Null && userID > 0 {
-			key := "user_id\x00" + strconv.FormatInt(userID, 10)
-			if firstIndex, ok := identityIndex[key]; ok {
-				report.addError(pathPrefix+".user_id", ValidationIssueCodeDuplicateInvite, "invite user_id %d duplicates invites[%d]", userID, firstIndex)
-			} else {
-				identityIndex[key] = i
-			}
-		}
+		validateInviteIdentityUniqueness(report, identityIndex, pathPrefix, i, invite)
 
 		if role := strings.TrimSpace(invite.Role); role != "" && !isAllowed(role, validInviteRoles) {
 			report.addError(pathPrefix+".role", ValidationIssueCodeInvalidEnum, "invite role %q is not supported", role)
@@ -374,6 +349,37 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			if _, ok := teamIndex[strings.ToLower(trimmedTeamSlug)]; !ok {
 				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeUnknownInviteTeamSlug, "invite references unknown team slug %q", trimmedTeamSlug)
 			}
+		}
+	}
+}
+
+func validateInviteIdentityUniqueness(report *ValidationReport, identityIndex map[string]int, pathPrefix string, index int, invite InviteSpec) {
+	if invite.Username.Present && !invite.Username.Null {
+		username := invite.Username.Value
+		if key := strings.ToLower(strings.TrimSpace(username)); key != "" {
+			if firstIndex, ok := identityIndex["username\x00"+key]; ok {
+				report.addError(pathPrefix+".username", ValidationIssueCodeDuplicateInvite, "invite username %q duplicates invites[%d]", username, firstIndex)
+			} else {
+				identityIndex["username\x00"+key] = index
+			}
+		}
+	}
+	if invite.Email.Present && !invite.Email.Null {
+		email := invite.Email.Value
+		if key := strings.ToLower(strings.TrimSpace(email)); key != "" {
+			if firstIndex, ok := identityIndex["email\x00"+key]; ok {
+				report.addError(pathPrefix+".email", ValidationIssueCodeDuplicateInvite, "invite email %q duplicates invites[%d]", email, firstIndex)
+			} else {
+				identityIndex["email\x00"+key] = index
+			}
+		}
+	}
+	if invite.UserID.Present && !invite.UserID.Null && invite.UserID.Value > 0 {
+		key := "user_id\x00" + strconv.FormatInt(invite.UserID.Value, 10)
+		if firstIndex, ok := identityIndex[key]; ok {
+			report.addError(pathPrefix+".user_id", ValidationIssueCodeDuplicateInvite, "invite user_id %d duplicates invites[%d]", invite.UserID.Value, firstIndex)
+		} else {
+			identityIndex[key] = index
 		}
 	}
 }
