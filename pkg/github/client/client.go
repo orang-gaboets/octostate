@@ -37,7 +37,9 @@ func NewPAT(ctx context.Context, token string, opts ...Option) (*gh.Client, erro
 }
 
 // New creates a new GitHub client using the provided OAuth token.
-// It is kept for backward compatibility.
+//
+// Deprecated: use NewPAT. New returns a nil client if construction fails
+// because its source-compatible signature cannot return the construction error.
 func New(ctx context.Context, token string, opts ...Option) *gh.Client {
 	client, _ := NewPAT(ctx, token, opts...)
 	return client
