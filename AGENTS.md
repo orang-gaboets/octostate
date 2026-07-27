@@ -26,6 +26,17 @@ orchestration around the engine.
 - Keep changes within the engine scope here; control-repo policy belongs in the
   control repository and the docs linked above.
 
+## Optional Graphify Workflow
+
+Graphify is optional. Use it when architecture exploration, dependency tracing,
+impact analysis, or whole-branch review would help.
+
+If Graphify is unavailable, fall back to normal repository inspection and the
+existing Go and Git tooling.
+
+Generated Graphify output is local working data only. Do not commit anything
+under `graphify-out/`.
+
 ## Authoritative Guidance
 
 Use the linked docs for the full contract instead of repeating policy here.

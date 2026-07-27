@@ -83,6 +83,21 @@ contains the bounded-concurrency collector, planner, and apply packages. That
 keeps the check focused on the code most likely to hide shared-memory races
 while avoiding a slower full-repository `-race` pass on every PR.
 
+## Optional Graphify
+
+Graphify is an optional local workflow for repo exploration, not a required
+development dependency.
+
+Recommended extraction flow:
+
+```bash
+graphify extract .
+```
+
+That writes the local graph into `graphify-out/`, which stays untracked. From
+there, use `graphify query`, `graphify path`, or `graphify affected` when you
+need architecture, dependency, or impact analysis.
+
 ## Testing
 
 Run the full test suite:
