@@ -1,11 +1,13 @@
 ---
 name: graphify
-description: "Use for local questions about this repository's codebase or file relationships. Prefer graphify query when graphify-out/graph.json already exists; use graphify update when files changed."
+description: "Optional for architecture exploration, dependency tracing, impact analysis, or whole-branch review in this repository. Fall back to normal repo inspection when Graphify is unavailable or stale."
 ---
 
 # Graphify
 
-Use Graphify for repository-local codebase questions and refreshes in this worktree.
+Use Graphify as an optional workflow for architecture exploration, dependency
+tracing, impact analysis, and whole-branch review in this worktree. Use normal
+repository inspection when Graphify is unavailable or unnecessary.
 
 ## Entry points
 
@@ -14,6 +16,8 @@ Use Graphify for repository-local codebase questions and refreshes in this workt
 
 ## Guidance
 
-- Prefer the existing graph in `graphify-out/graph.json` when it is present.
-- Use the update flow from this worktree when files change.
+- Prefer the existing graph in `graphify-out/graph.json` only when it is
+  current for the files you need to inspect.
+- If the graph may be stale or files changed, refresh it with `graphify update .`
+  or fall back to normal source inspection.
 - Keep the repository-local graph workflow scoped to this repo.

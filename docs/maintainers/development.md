@@ -91,7 +91,7 @@ development dependency.
 Recommended extraction flow:
 
 ```bash
-graphify extract .
+graphify extract . --code-only
 ```
 
 That writes the local graph into `graphify-out/`, which stays untracked. From

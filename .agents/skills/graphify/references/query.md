@@ -1,6 +1,8 @@
 # graphify reference: query, path, explain
 
-Load this when `graphify-out/graph.json` already exists and the user asks about this repository.
+Load this when `graphify-out/graph.json` already exists and the user needs
+architecture exploration, dependency tracing, impact analysis, or whole-branch
+review for this repository.
 
 ## Use the CLI
 
@@ -13,7 +15,9 @@ graphify explain "NODE_NAME"
 graphify affected "PATH_OR_NODE"
 ```
 
-Prefer the existing graph for repository questions. Rebuild only when the user explicitly asks for `--update`, `--cluster-only`, or a fresh scan.
+Use the existing graph only when it appears current for the files involved.
+If the graph may be stale or files changed, run `graphify update .` first or
+fall back to normal source inspection.
 
 ## Fallback
 
