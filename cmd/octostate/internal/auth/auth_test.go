@@ -27,6 +27,23 @@ func TestNewClientPATConstructorError(t *testing.T) {
 	}
 }
 
+func TestNewClientPATNilClient(t *testing.T) {
+	old := newPATGitHubClient
+	t.Cleanup(func() { newPATGitHubClient = old })
+
+	newPATGitHubClient = func(context.Context, string, ...githubclient.Option) (*gh.Client, error) {
+		return nil, nil
+	}
+
+	c, err := NewClient(context.Background(), "token", 0, 0, "")
+	if !errors.Is(err, errNilPATGitHubClient) {
+		t.Fatalf("expected %v, got %v", errNilPATGitHubClient, err)
+	}
+	if c != nil {
+		t.Fatalf("expected nil client, got %#v", c)
+	}
+}
+
 func TestNewClientPATSuccess(t *testing.T) {
 	old := newPATGitHubClient
 	t.Cleanup(func() { newPATGitHubClient = old })

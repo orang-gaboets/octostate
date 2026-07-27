@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	gh "github.com/google/go-github/v88/github"
@@ -41,6 +42,8 @@ func (g githubClientWrapper) Teams() teams.Service { return g.Client.Teams }
 func (g githubClientWrapper) Users() users.Service { return g.Client.Users }
 
 var (
+	errNilPATGitHubClient = errors.New("github PAT client construction returned nil client")
+
 	// newPATGitHubClient overrides only the raw client construction so tests can
 	// exercise originalNewPATClient's error-propagation behavior.
 	newPATGitHubClient = githubclient.NewPAT
@@ -50,6 +53,9 @@ var (
 		c, err := newPATGitHubClient(ctx, token)
 		if err != nil {
 			return nil, err
+		}
+		if c == nil {
+			return nil, errNilPATGitHubClient
 		}
 		return githubClientWrapper{c}, nil
 	}
