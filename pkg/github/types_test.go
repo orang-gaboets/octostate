@@ -129,15 +129,15 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 		got := RepositoryFromGhRepo(ghRepo)
 		if got == nil {
 			t.Fatalf("got nil")
-		} else {
-			if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private || got.Visibility != "private" ||
-				got.Description != repoDescWIP || got.Homepage != "https://example.com/repo" ||
-				!got.AllowForking || got.Archived || !got.IsTemplate {
-				t.Fatalf("unexpected mapped fields: %#v", got)
-			}
-			if len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
-				t.Fatalf("unexpected topics: %#v", got.Topics)
-			}
+			return
+		}
+		if got.Owner != orgLogin || got.Name != repoNameRocket || !got.Private || got.Visibility != "private" ||
+			got.Description != repoDescWIP || got.Homepage != "https://example.com/repo" ||
+			!got.AllowForking || got.Archived || !got.IsTemplate {
+			t.Fatalf("unexpected mapped fields: %#v", got)
+		}
+		if len(got.Topics) != 2 || got.Topics[0] != topicGo || got.Topics[1] != topicCI {
+			t.Fatalf("unexpected topics: %#v", got.Topics)
 		}
 	})
 
@@ -236,22 +236,21 @@ func TestTeamFromGhTeam(t *testing.T) {
 		got := TeamFromGhTeam(child)
 		if got == nil {
 			t.Fatalf("got nil team")
-		} else {
-			if got.ID != idTeamChild || got.Slug != teamSlugDevs || got.Name != teamNameDevs || got.Org != orgLogin {
-				t.Fatalf("unexpected id/slug/name/org: %#v", got)
-			}
-			if got.Privacy != TeamPrivacySecret {
-				t.Fatalf("expected privacy secret, got %q", got.Privacy)
-			}
-			if got.NotificationSettings != nil {
-				t.Fatalf("NotificationSettings should be nil (not mapped)")
-			}
-			if got.Repos != nil {
-				t.Fatalf("Repos should be nil (not mapped)")
-			}
-			if got.ParentTeam == nil || got.ParentTeam.Slug != teamSlugCore || got.ParentTeam.Name != teamNameCore {
-				t.Fatalf("parent not mapped correctly: %#v", got.ParentTeam)
-			}
+		}
+		if got.ID != idTeamChild || got.Slug != teamSlugDevs || got.Name != teamNameDevs || got.Org != orgLogin {
+			t.Fatalf("unexpected id/slug/name/org: %#v", got)
+		}
+		if got.Privacy != TeamPrivacySecret {
+			t.Fatalf("expected privacy secret, got %q", got.Privacy)
+		}
+		if got.NotificationSettings != nil {
+			t.Fatalf("NotificationSettings should be nil (not mapped)")
+		}
+		if got.Repos != nil {
+			t.Fatalf("Repos should be nil (not mapped)")
+		}
+		if got.ParentTeam == nil || got.ParentTeam.Slug != teamSlugCore || got.ParentTeam.Name != teamNameCore {
+			t.Fatalf("parent not mapped correctly: %#v", got.ParentTeam)
 		}
 	})
 }
@@ -332,25 +331,24 @@ func TestOrganizationFromGhOrg(t *testing.T) {
 		got := OrganizationFromGhOrg(ghOrg)
 		if got == nil {
 			t.Fatalf("got nil")
-		} else {
-			if got.ID == nil || *got.ID != idOrg {
-				t.Fatalf("unexpected ID: %#v", got.ID)
-			}
-			if got.Name == nil || *got.Name != "Acme Inc" {
-				t.Fatalf("unexpected Name: %#v", got.Name)
-			}
-			if got.Description == nil || *got.Description != "best org" {
-				t.Fatalf("unexpected Description: %#v", got.Description)
-			}
-			if got.ReposURL == nil || *got.ReposURL != repoURLExample {
-				t.Fatalf("unexpected ReposURL: %#v", got.ReposURL)
-			}
-			if got.CreatedAt == nil || !got.CreatedAt.Equal(created) {
-				t.Fatalf("CreatedAt mismatch: %#v", got.CreatedAt)
-			}
-			if got.UpdatedAt == nil || !got.UpdatedAt.Equal(updated) {
-				t.Fatalf("UpdatedAt mismatch: %#v", got.UpdatedAt)
-			}
+		}
+		if got.ID == nil || *got.ID != idOrg {
+			t.Fatalf("unexpected ID: %#v", got.ID)
+		}
+		if got.Name == nil || *got.Name != "Acme Inc" {
+			t.Fatalf("unexpected Name: %#v", got.Name)
+		}
+		if got.Description == nil || *got.Description != "best org" {
+			t.Fatalf("unexpected Description: %#v", got.Description)
+		}
+		if got.ReposURL == nil || *got.ReposURL != repoURLExample {
+			t.Fatalf("unexpected ReposURL: %#v", got.ReposURL)
+		}
+		if got.CreatedAt == nil || !got.CreatedAt.Equal(created) {
+			t.Fatalf("CreatedAt mismatch: %#v", got.CreatedAt)
+		}
+		if got.UpdatedAt == nil || !got.UpdatedAt.Equal(updated) {
+			t.Fatalf("UpdatedAt mismatch: %#v", got.UpdatedAt)
 		}
 	})
 
