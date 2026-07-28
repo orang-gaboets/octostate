@@ -8,6 +8,10 @@ orchestration around the engine.
 ## Repo Map
 
 - `README.md`: project purpose, engine boundary, and high-level command model
+- `cmd/octostate/`: CLI entry point, command wiring, and authentication
+- `pkg/github/`: GitHub API clients and resource services
+- `pkg/gitops/`: desired-state loading, planning, collection, and apply logic
+- `.github/workflows/`: CI, security, and release automation
 - `docs/gitops/overview.md`: GitOps flow and responsibility split
 - `docs/gitops/architecture.md`: package layout and command flow
 - `docs/gitops/control-repo-integration.md`: engine/control-repo boundary
