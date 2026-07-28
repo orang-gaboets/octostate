@@ -74,21 +74,7 @@ func decodeYAMLFile(path string, out any) error {
 		}
 	}
 
-	decoder := yaml.NewDecoder(file)
-	decoder.KnownFields(true)
-
-	var decodeErr error
-
-	if err := decoder.Decode(out); err != nil {
-		decodeErr = err
-	} else {
-		var extra yaml.Node
-		if err := decoder.Decode(&extra); err == nil {
-			decodeErr = fmt.Errorf("multiple YAML documents are not allowed")
-		} else if !errors.Is(err, io.EOF) {
-			decodeErr = err
-		}
-	}
+	decodeErr := decodeYAML(file, out)
 
 	closeErr := file.Close()
 	switch {
@@ -110,6 +96,24 @@ func decodeYAMLFile(path string, out any) error {
 			Path: path,
 			Err:  fmt.Errorf("close config file: %w", closeErr),
 		}
+	}
+
+	return nil
+}
+
+func decodeYAML(r io.Reader, out any) error {
+	decoder := yaml.NewDecoder(r)
+	decoder.KnownFields(true)
+
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+
+	var extra yaml.Node
+	if err := decoder.Decode(&extra); err == nil {
+		return fmt.Errorf("multiple YAML documents are not allowed")
+	} else if !errors.Is(err, io.EOF) {
+		return err
 	}
 
 	return nil

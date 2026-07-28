@@ -469,6 +469,41 @@ teams: []
 	}
 }
 
+func TestDecodeYAMLFromReader(t *testing.T) {
+	t.Parallel()
+
+	var cfg OrganizationConfig
+	err := decodeYAML(strings.NewReader("organization: orang-gaboets\n"), &cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	normalize(&cfg)
+	if cfg.Organization != "orang-gaboets" {
+		t.Fatalf("expected organization orang-gaboets, got %q", cfg.Organization)
+	}
+	if cfg.Members == nil || cfg.Invites == nil || cfg.Repositories == nil || cfg.Teams == nil {
+		t.Fatalf("expected non-nil top-level slices, got %#v", cfg)
+	}
+}
+
+func TestDecodeYAMLRejectsMultipleDocuments(t *testing.T) {
+	t.Parallel()
+
+	var cfg OrganizationConfig
+	err := decodeYAML(strings.NewReader(`
+organization: orang-gaboets
+---
+organization: other-org
+`), &cfg)
+	if err == nil {
+		t.Fatal("expected multi-document error")
+	}
+	if !strings.Contains(err.Error(), "multiple YAML documents are not allowed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func writeTestOrganizationYAML(t *testing.T, configDir, contents string) {
 	t.Helper()
 
