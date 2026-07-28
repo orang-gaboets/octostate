@@ -236,7 +236,6 @@ func TestTeamFromGhTeam(t *testing.T) {
 		got := TeamFromGhTeam(child)
 		if got == nil {
 			t.Fatalf("got nil team")
-			return
 		}
 		if got.ID != idTeamChild || got.Slug != teamSlugDevs || got.Name != teamNameDevs || got.Org != orgLogin {
 			t.Fatalf("unexpected id/slug/name/org: %#v", got)
@@ -332,7 +331,6 @@ func TestOrganizationFromGhOrg(t *testing.T) {
 		got := OrganizationFromGhOrg(ghOrg)
 		if got == nil {
 			t.Fatalf("got nil")
-			return
 		}
 		if got.ID == nil || *got.ID != idOrg {
 			t.Fatalf("unexpected ID: %#v", got.ID)
