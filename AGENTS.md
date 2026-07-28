@@ -26,10 +26,27 @@ orchestration around the engine.
 - Keep changes within the engine scope here; control-repo policy belongs in the
   control repository and the docs linked above.
 
+## Validation by Change Type
+
+Use [docs/maintainers/development.md](docs/maintainers/development.md) as the
+baseline validation guide.
+
+- Go code: run formatting, `go test ./...`, `go vet ./...`, and
+  `golangci-lint run`.
+- GitHub Actions changes: also run `actionlint`.
+- GitOps concurrency or shared-state changes: also run the scoped race-detector
+  suite from the maintainer guide.
+- Documentation-only changes: verify links, file paths, and documented commands
+  against the maintainer guide.
+
 ## Optional Graphify Workflow
 
 Graphify is optional. Use it when architecture exploration, dependency tracing,
 impact analysis, or whole-branch review would help.
+
+Small, local changes do not require Graphify. Treat Graphify results as
+navigation and analysis aids; verify important findings against the current
+source, tests, docs, and Git diff before acting on them.
 
 If Graphify is unavailable, fall back to normal repository inspection and the
 existing Go and Git tooling.

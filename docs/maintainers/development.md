@@ -88,6 +88,12 @@ while avoiding a slower full-repository `-race` pass on every PR.
 Graphify is an optional local workflow for repo exploration, not a required
 development dependency.
 
+Install the CLI first if needed:
+
+```bash
+uv tool install graphifyy
+```
+
 Recommended extraction flow:
 
 ```bash
