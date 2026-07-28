@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"os"
 
 	gh "github.com/google/go-github/v88/github"
@@ -41,9 +42,22 @@ func (g githubClientWrapper) Teams() teams.Service { return g.Client.Teams }
 func (g githubClientWrapper) Users() users.Service { return g.Client.Users }
 
 var (
+	errNilPATGitHubClient = errors.New("github PAT client construction returned nil client")
+
+	// newPATGitHubClient overrides only the raw client construction so tests can
+	// exercise originalNewPATClient's error-propagation behavior.
+	newPATGitHubClient = githubclient.NewPAT
+
 	// originalNewPATClient is the original function to create a new GitHub client using a personal access token.
 	originalNewPATClient = func(ctx context.Context, token string) (Client, error) {
-		return githubClientWrapper{githubclient.New(ctx, token)}, nil
+		c, err := newPATGitHubClient(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		if c == nil {
+			return nil, errNilPATGitHubClient
+		}
+		return githubClientWrapper{c}, nil
 	}
 
 	// newPATClient is a function that creates a new GitHub client using a personal access token.
@@ -80,6 +94,7 @@ func SetNewAppClient(f func(int64, int64, string) (Client, error)) {
 func ResetClients() {
 	newPATClient = originalNewPATClient
 	newAppClient = originalNewAppClient
+	newPATGitHubClient = githubclient.NewPAT
 }
 
 // NewClient returns an authenticated GitHub client based on the provided credentials.
