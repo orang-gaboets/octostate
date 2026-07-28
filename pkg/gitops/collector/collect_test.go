@@ -460,6 +460,7 @@ func TestCollectOrganizationReturnsTeamMemberError(t *testing.T) {
 			}
 			if opts == nil {
 				t.Fatal("expected team member options")
+				return nil, nil, nil
 			}
 			if opts.Role == "member" {
 				return nil, nil, wantErr
