@@ -9,6 +9,16 @@ Use Graphify as an optional workflow for architecture exploration, dependency
 tracing, impact analysis, and whole-branch review in this worktree. Use normal
 repository inspection when Graphify is unavailable or unnecessary.
 
+## First-Time Setup
+
+If `graphify-out/graph.json` does not exist yet, follow the maintainer guide
+to install Graphify and build the initial graph:
+
+```bash
+uv tool install graphifyy
+graphify extract . --code-only
+```
+
 ## Entry points
 
 - `references/query.md` for questions against an existing graph

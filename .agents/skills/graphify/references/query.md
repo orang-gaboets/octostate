@@ -2,7 +2,8 @@
 
 Load this when `graphify-out/graph.json` already exists and the user needs
 architecture exploration, dependency tracing, impact analysis, or whole-branch
-review for this repository.
+review for this repository. If the graph does not exist yet, build it first
+with the maintainer guide's `graphify extract . --code-only` setup.
 
 ## Use the CLI
 
@@ -21,4 +22,6 @@ fall back to normal source inspection.
 
 ## Fallback
 
-If the CLI is unavailable, load `graphify-out/graph.json` and traverse it directly with the local graph tooling. Use the saved graph only when it contains the nodes and edges needed to answer the question.
+If the CLI is unavailable, use normal repository inspection and the existing Go
+and Git tooling. Use the saved graph only when it contains the nodes and edges
+needed to answer the question.
