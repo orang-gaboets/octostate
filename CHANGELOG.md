@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.1.1](https://github.com/orang-gaboets/octostate/compare/v1.1.0...v1.1.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* propagate PAT GitHub client construction errors ([#168](https://github.com/orang-gaboets/octostate/issues/168)) ([5f1050c](https://github.com/orang-gaboets/octostate/commit/5f1050c06a7a1ea6e8a44bee50c4180180ac8743))
+
 ## [1.1.0](https://github.com/orang-gaboets/octostate/compare/v1.0.2...v1.1.0) (2026-06-24)
 
 
