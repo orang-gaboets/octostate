@@ -94,6 +94,8 @@ Install the CLI first if needed:
 uv tool install graphifyy
 ```
 
+The PyPI distribution is `graphifyy`; it installs the `graphify` CLI.
+
 Recommended extraction flow:
 
 ```bash
