@@ -83,6 +83,29 @@ contains the bounded-concurrency collector, planner, and apply packages. That
 keeps the check focused on the code most likely to hide shared-memory races
 while avoiding a slower full-repository `-race` pass on every PR.
 
+## Optional Graphify
+
+Graphify is an optional local workflow for repo exploration, not a required
+development dependency.
+
+Install the CLI first if needed:
+
+```bash
+uv tool install graphifyy
+```
+
+The PyPI distribution is `graphifyy`; it installs the `graphify` CLI.
+
+Recommended extraction flow:
+
+```bash
+graphify extract . --code-only
+```
+
+That writes the local graph into `graphify-out/`, which stays untracked. From
+there, use `graphify query`, `graphify path`, or `graphify affected` when you
+need architecture, dependency, or impact analysis.
+
 ## Testing
 
 Run the full test suite:
