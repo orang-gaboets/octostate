@@ -33,6 +33,13 @@ func TestApplyToConfigFileSuccess(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("unexpected rewritten config:\n%s\nwant:\n%s", got, want)
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("unexpected file mode: got %v want %v", got, want)
+	}
 }
 
 func TestApplyToConfigFileMissingFileDoesNotWrite(t *testing.T) {

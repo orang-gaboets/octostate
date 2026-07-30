@@ -42,6 +42,10 @@ func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) error {
 	if err != nil {
 		return err
 	}
+	sourceInfo, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat config file: %w", err)
+	}
 
 	tempFile, err := os.CreateTemp(filepath.Dir(path), ".organization.yaml-*")
 	if err != nil {
@@ -62,7 +66,7 @@ func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) error {
 	if err := tempFile.Close(); err != nil {
 		return fmt.Errorf("close temporary config file: %w", err)
 	}
-	if err := os.Chmod(tempPath, 0o644); err != nil {
+	if err := os.Chmod(tempPath, sourceInfo.Mode().Perm()); err != nil {
 		return fmt.Errorf("set temporary config file permissions: %w", err)
 	}
 	if err := os.Rename(tempPath, path); err != nil {
