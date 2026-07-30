@@ -160,23 +160,26 @@ func TestLoadFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		path    string
-		wantErr string
+		name     string
+		path     string
+		wantErr  string
+		wantKind LoadErrorKind
 	}{
 		{
 			name: "valid organization file",
 			path: filepath.Join("testdata", "valid", "minimal", "organization.yaml"),
 		},
 		{
-			name:    "missing organization file",
-			path:    filepath.Join("testdata", "invalid", "missing-organization-file", "organization.yaml"),
-			wantErr: "organization.yaml",
+			name:     "missing organization file",
+			path:     filepath.Join("testdata", "invalid", "missing-organization-file", "organization.yaml"),
+			wantErr:  "organization.yaml",
+			wantKind: LoadErrorMissingFile,
 		},
 		{
-			name:    "malformed organization file",
-			path:    filepath.Join("testdata", "invalid", "malformed-organization", "organization.yaml"),
-			wantErr: "organization.yaml",
+			name:     "malformed organization file",
+			path:     filepath.Join("testdata", "invalid", "malformed-organization", "organization.yaml"),
+			wantErr:  "organization.yaml",
+			wantKind: LoadErrorDecodeFile,
 		},
 	}
 
@@ -191,6 +194,13 @@ func TestLoadFile(t *testing.T) {
 				}
 				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err)
+				}
+				var loadErr *LoadError
+				if !errors.As(err, &loadErr) {
+					t.Fatalf("expected LoadError, got %T", err)
+				}
+				if loadErr.Kind != tt.wantKind {
+					t.Fatalf("expected load error kind %q, got %q", tt.wantKind, loadErr.Kind)
 				}
 				return
 			}
