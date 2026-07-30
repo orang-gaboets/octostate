@@ -1,0 +1,127 @@
+package configproposal
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+)
+
+func TestApplyToConfigFileSuccess(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, "organization: ' ORANG-GABOETS '\nmembers: []\n")
+
+	err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
+		cfg.Members = append(cfg.Members, gitopsconfig.OrganizationMemberSpec{
+			Username: "alice",
+			Role:     "member",
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "organization: ORANG-GABOETS\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n"
+	if string(got) != want {
+		t.Fatalf("unexpected rewritten config:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestApplyToConfigFileMissingFileDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "organization.yaml")
+	err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+		t.Fatal("mutation should not run")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected missing-file error")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected file to remain missing, got %v", err)
+	}
+}
+
+func TestApplyToConfigFileOrganizationMismatchDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, validConfigContents)
+	before := readFile(t, path)
+
+	err := ApplyToConfigFile(path, "other-org", func(*gitopsconfig.OrganizationConfig) error {
+		t.Fatal("mutation should not run")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected organization mismatch error")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+func TestApplyToConfigFileMutationErrorDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, validConfigContents)
+	before := readFile(t, path)
+	mutationErr := errors.New("mutation failed")
+
+	err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+		return mutationErr
+	})
+	if !errors.Is(err, mutationErr) {
+		t.Fatalf("expected mutation error, got %v", err)
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+func TestApplyToConfigFileValidationErrorDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, validConfigContents)
+	before := readFile(t, path)
+
+	err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
+		cfg.Members[0].Role = "owner"
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+const validConfigContents = "organization: orang-gaboets\nmembers:\n  - username: octocat\n    role: member\ninvites: []\nrepositories: []\nteams: []\n"
+
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return contents
+}
+
+func assertFileUnchanged(t *testing.T, path string, want []byte) {
+	t.Helper()
+	if got := readFile(t, path); string(got) != string(want) {
+		t.Fatalf("config changed after error:\n%s\nwant:\n%s", got, want)
+	}
+}
