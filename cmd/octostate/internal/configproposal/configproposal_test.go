@@ -14,7 +14,7 @@ func TestApplyToConfigFileSuccess(t *testing.T) {
 
 	path := writeConfigFile(t, "organization: ' ORANG-GABOETS '\nmembers: []\n")
 
-	err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
 		cfg.Members = append(cfg.Members, gitopsconfig.OrganizationMemberSpec{
 			Username: "alice",
 			Role:     "member",
@@ -23,6 +23,9 @@ func TestApplyToConfigFileSuccess(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected config to change")
 	}
 
 	got, err := os.ReadFile(path)
@@ -46,12 +49,15 @@ func TestApplyToConfigFileMissingFileDoesNotWrite(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "organization.yaml")
-	err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
 		t.Fatal("mutation should not run")
 		return nil
 	})
 	if err == nil {
 		t.Fatal("expected missing-file error")
+	}
+	if changed {
+		t.Fatal("expected missing file to not change config")
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected file to remain missing, got %v", err)
@@ -64,12 +70,15 @@ func TestApplyToConfigFileOrganizationMismatchDoesNotWrite(t *testing.T) {
 	path := writeConfigFile(t, validConfigContents)
 	before := readFile(t, path)
 
-	err := ApplyToConfigFile(path, "other-org", func(*gitopsconfig.OrganizationConfig) error {
+	changed, err := ApplyToConfigFile(path, "other-org", func(*gitopsconfig.OrganizationConfig) error {
 		t.Fatal("mutation should not run")
 		return nil
 	})
 	if err == nil {
 		t.Fatal("expected organization mismatch error")
+	}
+	if changed {
+		t.Fatal("expected organization mismatch to not change config")
 	}
 	assertFileUnchanged(t, path, before)
 }
@@ -81,11 +90,14 @@ func TestApplyToConfigFileMutationErrorDoesNotWrite(t *testing.T) {
 	before := readFile(t, path)
 	mutationErr := errors.New("mutation failed")
 
-	err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
 		return mutationErr
 	})
 	if !errors.Is(err, mutationErr) {
 		t.Fatalf("expected mutation error, got %v", err)
+	}
+	if changed {
+		t.Fatal("expected mutation error to not change config")
 	}
 	assertFileUnchanged(t, path, before)
 }
@@ -96,12 +108,52 @@ func TestApplyToConfigFileValidationErrorDoesNotWrite(t *testing.T) {
 	path := writeConfigFile(t, validConfigContents)
 	before := readFile(t, path)
 
-	err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
 		cfg.Members[0].Role = "owner"
 		return nil
 	})
 	if err == nil {
 		t.Fatal("expected validation error")
+	}
+	if changed {
+		t.Fatal("expected validation error to not change config")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+func TestApplyToConfigFileNoOpDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, "# keep me\norganization: ' ORANG-GABOETS '\nmembers: []\n")
+	before := readFile(t, path)
+
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("expected no-op mutation to not change config")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+func TestApplyToConfigFileOrganizationMutationDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, validConfigContents)
+	before := readFile(t, path)
+
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
+		cfg.Organization = "another-org"
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected organization mismatch error")
+	}
+	if changed {
+		t.Fatal("expected organization mutation to not change config")
 	}
 	assertFileUnchanged(t, path, before)
 }
