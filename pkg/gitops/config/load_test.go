@@ -156,6 +156,54 @@ func TestLoadDir(t *testing.T) {
 	}
 }
 
+func TestLoadFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		path    string
+		wantErr string
+	}{
+		{
+			name: "valid organization file",
+			path: filepath.Join("testdata", "valid", "minimal", "organization.yaml"),
+		},
+		{
+			name:    "missing organization file",
+			path:    filepath.Join("testdata", "invalid", "missing-organization-file", "organization.yaml"),
+			wantErr: "organization.yaml",
+		},
+		{
+			name:    "malformed organization file",
+			path:    filepath.Join("testdata", "invalid", "malformed-organization", "organization.yaml"),
+			wantErr: "organization.yaml",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := LoadFile(tt.path)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Organization != "orang-gaboets" {
+				t.Fatalf("unexpected organization: %q", got.Organization)
+			}
+		})
+	}
+}
+
 func TestLoadDirRejectsEmptyConfigDir(t *testing.T) {
 	t.Parallel()
 

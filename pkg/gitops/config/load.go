@@ -41,19 +41,17 @@ func LoadDir(configDir string) (OrganizationConfig, error) {
 		}
 	}
 
-	cfg, err := loadOrganizationFile(filepath.Join(configDir, organizationFileName))
-	if err != nil {
-		return OrganizationConfig{}, err
-	}
-	normalize(&cfg)
-	return cfg, nil
+	return LoadFile(filepath.Join(configDir, organizationFileName))
 }
 
-func loadOrganizationFile(path string) (OrganizationConfig, error) {
+// LoadFile loads an organization configuration from path, decodes it strictly,
+// and applies basic normalization.
+func LoadFile(path string) (OrganizationConfig, error) {
 	var cfg OrganizationConfig
 	if err := decodeYAMLFile(path, &cfg); err != nil {
 		return OrganizationConfig{}, err
 	}
+	normalize(&cfg)
 	return cfg, nil
 }
 
