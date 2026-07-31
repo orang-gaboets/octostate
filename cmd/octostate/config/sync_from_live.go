@@ -146,6 +146,11 @@ func syncFromLiveConfig(
 			return nil, nil, runtimePhaseError("check bootstrap config target availability", err)
 		}
 	}
+	if write && (mode == syncFromLiveModeAdopt || mode == syncFromLiveModeMaterialize) {
+		if err := ensureSyncFromLiveWriteTargetRegular(configDir); err != nil {
+			return nil, nil, invalidConfigPhaseError("check sync-from-live config target", err)
+		}
+	}
 
 	var desired gitopsconfig.OrganizationConfig
 	var err error
@@ -316,6 +321,25 @@ func ensureBootstrapConfigTargetAvailable(configDir string) (string, error) {
 	}
 
 	return targetPath, nil
+}
+
+func ensureSyncFromLiveWriteTargetRegular(configDir string) error {
+	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
+
+	info, err := os.Lstat(targetPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat sync-from-live config target %s: %w", targetPath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("sync-from-live config target %s is a symbolic link", targetPath)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("sync-from-live config target %s is not a regular file", targetPath)
+	}
+	return nil
 }
 
 func existingSyncFromLiveConfigValidationError(report gitopsconfig.ValidationReport) error {

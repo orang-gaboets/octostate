@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
@@ -375,6 +376,77 @@ func TestSyncFromLiveConfigCmdMaterializeWriteSuccess(t *testing.T) {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
 	assertUnixMode(t, writtenPath, os.FileMode(syncFromLiveConfigFileMode))
+}
+
+func TestSyncFromLiveConfigCmdWriteRejectsSymlinkTarget(t *testing.T) {
+	for _, mode := range []string{syncFromLiveModeAdopt, syncFromLiveModeMaterialize} {
+		t.Run(mode, func(t *testing.T) {
+			restoreSyncFromLiveHooks(t)
+
+			configDir := t.TempDir()
+			targetPath := filepath.Join(configDir, "target.yaml")
+			linkPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+			before := []byte("organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories: []\nteams: []\n")
+
+			if err := os.WriteFile(targetPath, before, 0o600); err != nil {
+				t.Fatalf("seed symlink target: %v", err)
+			}
+			mustCreateSymlink(t, targetPath, linkPath)
+
+			loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+				t.Fatal("loadSyncFromLiveConfig should not be called when write target is a symlink")
+				return gitopsconfig.OrganizationConfig{}, nil
+			}
+			newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+				t.Fatal("newSyncFromLiveClient should not be called when write target is a symlink")
+				return nil, nil
+			}
+			collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				t.Fatal("collectSyncFromLiveState should not be called when write target is a symlink")
+				return nil, nil
+			}
+			collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				t.Fatal("collectSyncFromLiveMaterializeState should not be called when write target is a symlink")
+				return nil, nil
+			}
+
+			cmd := SyncFromLiveConfigCmd()
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&errBuf)
+			cmd.SetArgs([]string{
+				"--mode", mode,
+				"--org", "orang-gaboets",
+				"--config-dir", configDir,
+				"--token", "secret-token",
+				"--write",
+			})
+
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "failed to check sync-from-live config target") || !strings.Contains(err.Error(), "symbolic link") {
+				t.Fatalf("expected symlink rejection error, got %v", err)
+			}
+			if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+				t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("expected no stdout output, got %q", out.String())
+			}
+			if got := errBuf.String(); !strings.Contains(got, "Error: failed to check sync-from-live config target") {
+				t.Fatalf("expected symlink rejection on stderr, got %q", got)
+			}
+			if got := readSyncFromLiveFile(t, targetPath); string(got) != string(before) {
+				t.Fatalf("symlink target changed:\n%s\nwant:\n%s", got, before)
+			}
+			if got, err := os.Lstat(linkPath); err != nil {
+				t.Fatalf("stat symlink: %v", err)
+			} else if got.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("expected symlink to remain, got mode %v", got.Mode())
+			}
+			assertNoSyncFromLiveTempFiles(t, configDir)
+		})
+	}
 }
 
 func TestSyncFromLiveConfigCmdPrintsAdoptedYAML(t *testing.T) {
@@ -1518,5 +1590,37 @@ func decodeSyncFromLiveData(t *testing.T, payload json.RawMessage, out any) {
 
 	if err := json.Unmarshal(payload, out); err != nil {
 		t.Fatalf("decode sync-from-live data: %v; payload=%q", err, string(payload))
+	}
+}
+
+func mustCreateSymlink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.Errno(1314)) || os.IsPermission(err) {
+			t.Skipf("symlink creation unavailable: %v", err)
+		}
+		t.Fatalf("create symlink: %v", err)
+	}
+}
+
+func readSyncFromLiveFile(t *testing.T, path string) []byte {
+	t.Helper()
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return contents
+}
+
+func assertNoSyncFromLiveTempFiles(t *testing.T, dir string) {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(dir, ".organization.yaml-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("unexpected temp files left behind: %v", matches)
 	}
 }
