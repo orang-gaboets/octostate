@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -143,9 +144,7 @@ func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 	if string(content) != "organization: orang-gaboets\ninvites: []\nrepositories: []\nteams: []\n" {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
-	if mode := os.FileMode(syncFromLiveConfigFileMode); fileMode(t, writtenPath) != mode {
-		t.Fatalf("unexpected written mode: got %o want %o", fileMode(t, writtenPath), mode)
-	}
+	assertUnixMode(t, writtenPath, os.FileMode(syncFromLiveConfigFileMode))
 }
 
 func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {
@@ -375,9 +374,7 @@ func TestSyncFromLiveConfigCmdMaterializeWriteSuccess(t *testing.T) {
 	if string(content) != "organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories:\n  - owner: orang-gaboets\n    name: octostate\n    homepage: https://example.com/octostate\nteams: []\n" {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
-	if mode := os.FileMode(syncFromLiveConfigFileMode); fileMode(t, writtenPath) != mode {
-		t.Fatalf("unexpected written mode: got %o want %o", fileMode(t, writtenPath), mode)
-	}
+	assertUnixMode(t, writtenPath, os.FileMode(syncFromLiveConfigFileMode))
 }
 
 func TestSyncFromLiveConfigCmdPrintsAdoptedYAML(t *testing.T) {
@@ -563,9 +560,7 @@ func TestSyncFromLiveConfigCmdAdoptWriteSuccess(t *testing.T) {
 	if string(content) != "organization: orang-gaboets\nmembers:\n  - username: alice\n    role: member\ninvites: []\nrepositories: []\nteams: []\n" {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
-	if mode := os.FileMode(syncFromLiveConfigFileMode); fileMode(t, writtenPath) != mode {
-		t.Fatalf("unexpected written mode: got %o want %o", fileMode(t, writtenPath), mode)
-	}
+	assertUnixMode(t, writtenPath, os.FileMode(syncFromLiveConfigFileMode))
 }
 
 func TestSyncFromLiveConfigCmdAdoptExistingConfigInvalidFailsBeforeAuth(t *testing.T) {
@@ -1489,6 +1484,17 @@ func fileMode(t *testing.T, path string) os.FileMode {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 	return info.Mode().Perm()
+}
+
+func assertUnixMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if got := fileMode(t, path); got != want {
+		t.Fatalf("unexpected written mode: got %o want %o", got, want)
+	}
 }
 
 type syncFromLiveEnvelope struct {
