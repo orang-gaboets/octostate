@@ -40,7 +40,7 @@ var (
 	buildSyncFromLiveMaterialize        = syncfromlive.BuildMaterializeConfig
 	validateSyncFromLiveConfig          = gitopsconfig.Validate
 	encodeSyncFromLiveConfig            = gitopsconfig.EncodeYAML
-	statSyncFromLivePath                = os.Stat
+	lstatSyncFromLivePath               = os.Lstat
 	mkdirAllSyncFromLiveConfigDir       = os.MkdirAll
 	createTempSyncFromLiveFile          = os.CreateTemp
 	chmodSyncFromLivePath               = os.Chmod
@@ -314,7 +314,7 @@ func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, 
 func ensureBootstrapConfigTargetAvailable(configDir string) (string, error) {
 	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
 
-	if _, err := statSyncFromLivePath(targetPath); err == nil {
+	if _, err := lstatSyncFromLivePath(targetPath); err == nil {
 		return "", fmt.Errorf("bootstrap config target already exists: %s", targetPath)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("stat bootstrap config target %s: %w", targetPath, err)

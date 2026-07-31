@@ -1207,15 +1207,60 @@ func TestWriteBootstrapConfigFileReturnsWrappedTargetExistsError(t *testing.T) {
 	}
 }
 
+func TestSyncFromLiveConfigCmdBootstrapDanglingSymlinkFailsBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	linkPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	targetPath := filepath.Join(configDir, "missing.yaml")
+	mustCreateSymlink(t, targetPath, linkPath)
+
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target is a dangling symlink")
+		return nil, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectSyncFromLiveState should not be called when bootstrap target is a dangling symlink")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "bootstrap",
+		"--org", "orang-gaboets",
+		"--config-dir", configDir,
+		"--token", "secret-token",
+		"--write",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "failed to check bootstrap config target availability") || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected dangling symlink rejection, got %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+	if got, err := os.Lstat(linkPath); err != nil {
+		t.Fatalf("stat symlink: %v", err)
+	} else if got.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("expected symlink to remain, got mode %v", got.Mode())
+	}
+	assertNoSyncFromLiveTempFiles(t, configDir)
+}
+
 func TestSyncFromLiveConfigCmdBootstrapTargetStatFailurePropagates(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 
 	statErr := errors.New("stat failed")
-	statSyncFromLivePath = func(string) (os.FileInfo, error) {
+	lstatSyncFromLivePath = func(string) (os.FileInfo, error) {
 		return nil, statErr
 	}
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
-		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target stat fails")
+		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target lstat fails")
 		return nil, nil
 	}
 
@@ -1522,7 +1567,7 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 	oldBuildMaterialize := buildSyncFromLiveMaterialize
 	oldValidate := validateSyncFromLiveConfig
 	oldEncode := encodeSyncFromLiveConfig
-	oldStat := statSyncFromLivePath
+	oldStat := lstatSyncFromLivePath
 	oldMkdirAll := mkdirAllSyncFromLiveConfigDir
 	oldCreateTemp := createTempSyncFromLiveFile
 	oldChmod := chmodSyncFromLivePath
@@ -1539,7 +1584,7 @@ func restoreSyncFromLiveHooks(t *testing.T) {
 		buildSyncFromLiveMaterialize = oldBuildMaterialize
 		validateSyncFromLiveConfig = oldValidate
 		encodeSyncFromLiveConfig = oldEncode
-		statSyncFromLivePath = oldStat
+		lstatSyncFromLivePath = oldStat
 		mkdirAllSyncFromLiveConfigDir = oldMkdirAll
 		createTempSyncFromLiveFile = oldCreateTemp
 		chmodSyncFromLivePath = oldChmod
