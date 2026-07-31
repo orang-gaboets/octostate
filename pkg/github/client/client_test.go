@@ -3,12 +3,14 @@ package client
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
+	"golang.org/x/oauth2"
 )
 
 func TestNew_DefaultTimeout(t *testing.T) {
@@ -48,23 +50,19 @@ func TestNewPAT_PropagatesConstructorError(t *testing.T) {
 
 func TestNewPAT_SetsAuthorizationHeader(t *testing.T) {
 	authHeaders := make(chan string, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeaders <- r.Header.Get("Authorization")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	t.Cleanup(server.Close)
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			authHeaders <- r.Header.Get("Authorization")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+				Request:    r,
+			}, nil
+		}),
+	})
 
-	old := newGitHubClient
-	t.Cleanup(func() { newGitHubClient = old })
-
-	baseURL := server.URL + "/"
-	newGitHubClient = func(opts ...gh.ClientOptionsFunc) (*gh.Client, error) {
-		opts = append(opts, gh.WithURLs(&baseURL, &baseURL))
-		return gh.NewClient(opts...)
-	}
-
-	c, err := NewPAT(context.Background(), "token")
+	c, err := NewPAT(ctx, "token")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,4 +74,10 @@ func TestNewPAT_SetsAuthorizationHeader(t *testing.T) {
 	if got := <-authHeaders; got != "Bearer token" {
 		t.Fatalf("expected authorization header %q, got %q", "Bearer token", got)
 	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return fn(r)
 }
