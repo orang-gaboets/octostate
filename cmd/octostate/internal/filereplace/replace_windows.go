@@ -23,6 +23,7 @@ var replaceFileWCall = func(targetPathPtr, tempPathPtr, backupPathPtr uintptr) (
 	)
 	return r1, callErr
 }
+var renameFile = os.Rename
 
 func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
 	backupPath, err := createBackupPath(targetPath)
@@ -64,7 +65,7 @@ func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
 	}
 
 	if errors.Is(callErr, syscall.Errno(1177)) {
-		restoreErr := os.Rename(backupPath, targetPath)
+		restoreErr := renameFile(backupPath, targetPath)
 		if restoreErr == nil {
 			keepBackup = false
 			return false, fmt.Errorf("replace existing file %s: %w", targetPath, callErr)
