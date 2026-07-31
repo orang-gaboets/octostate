@@ -13,6 +13,22 @@ var (
 	syncParentDir = syncParentDirPlatform
 )
 
+// StatExistingRegularFile inspects path without following symlinks and
+// requires it to be an existing regular file.
+func StatExistingRegularFile(path string) (os.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat existing file %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("stat existing file %s: target is a symbolic link", path)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("stat existing file %s: target is not a regular file", path)
+	}
+	return info, nil
+}
+
 // Replace writes contents to a same-directory temporary file and atomically
 // replaces the destination file.
 func Replace(path string, contents []byte) error {
@@ -20,12 +36,9 @@ func Replace(path string, contents []byte) error {
 		return fmt.Errorf("path is required")
 	}
 
-	info, err := os.Stat(path)
+	info, err := StatExistingRegularFile(path)
 	if err != nil {
-		return fmt.Errorf("stat existing file %s: %w", path, err)
-	}
-	if info.IsDir() {
-		return fmt.Errorf("stat existing file %s: target is a directory", path)
+		return err
 	}
 
 	dir := filepath.Dir(path)

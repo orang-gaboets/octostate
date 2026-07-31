@@ -4,7 +4,9 @@ package configproposal
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/filereplace"
@@ -19,6 +21,17 @@ type Mutation func(*gitopsconfig.OrganizationConfig) error
 // organization config file with its canonical YAML representation.
 // It returns whether the file contents changed.
 func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) (bool, error) {
+	if _, err := filereplace.StatExistingRegularFile(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, &gitopsconfig.LoadError{
+				Kind: gitopsconfig.LoadErrorMissingFile,
+				Path: path,
+				Err:  err,
+			}
+		}
+		return false, err
+	}
+
 	cfg, err := gitopsconfig.LoadFile(path)
 	if err != nil {
 		return false, err
