@@ -83,6 +83,15 @@ contains the bounded-concurrency collector, planner, and apply packages. That
 keeps the check focused on the code most likely to hide shared-memory races
 while avoiding a slower full-repository `-race` pass on every PR.
 
+For config replacement changes, run the targeted Windows-oriented coverage
+used by CI:
+
+```bash
+go test ./cmd/octostate/internal/filereplace ./cmd/octostate/internal/configproposal ./cmd/octostate/config
+```
+
+GitHub Actions runs that check on `windows-latest`.
+
 ## Testing
 
 Run the full test suite:
