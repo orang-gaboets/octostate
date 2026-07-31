@@ -12,6 +12,7 @@ import (
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/filereplace"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
@@ -44,7 +45,6 @@ var (
 	createTempSyncFromLiveFile          = os.CreateTemp
 	chmodSyncFromLivePath               = os.Chmod
 	linkSyncFromLivePath                = os.Link
-	renameSyncFromLivePath              = os.Rename
 	removeSyncFromLivePath              = os.Remove
 )
 
@@ -299,41 +299,7 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, error) {
 	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
 
-	if err := mkdirAllSyncFromLiveConfigDir(strings.TrimSpace(configDir), syncFromLiveConfigDirectoryMode); err != nil {
-		return "", fmt.Errorf("create config directory %s: %w", configDir, err)
-	}
-
-	file, err := createTempSyncFromLiveFile(filepath.Dir(targetPath), syncFromLiveTempFilePattern)
-	if err != nil {
-		return "", fmt.Errorf("create sync-from-live config temp file: %w", err)
-	}
-	tempPath := file.Name()
-
-	writeErr := error(nil)
-	if _, err := file.Write(yamlBytes); err != nil {
-		writeErr = err
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
-	}
-
-	switch {
-	case writeErr != nil && closeErr != nil:
-		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, errors.Join(writeErr, closeErr))
-	case writeErr != nil:
-		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, writeErr)
-	case closeErr != nil:
-		return "", fmt.Errorf("close sync-from-live config temp file %s: %w", tempPath, closeErr)
-	}
-
-	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
-		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
-		return "", fmt.Errorf("set sync-from-live config file mode %s: %w", tempPath, err)
-	}
-
-	if err := renameSyncFromLivePath(tempPath, targetPath); err != nil {
-		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
+	if err := filereplace.Replace(targetPath, yamlBytes); err != nil {
 		return "", fmt.Errorf("replace sync-from-live config %s: %w", targetPath, err)
 	}
 

@@ -5,10 +5,9 @@ package configproposal
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/filereplace"
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
@@ -54,37 +53,9 @@ func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) (bool, 
 		return false, nil
 	}
 
-	sourceInfo, err := os.Stat(path)
-	if err != nil {
-		return false, fmt.Errorf("stat config file: %w", err)
-	}
-
-	tempFile, err := os.CreateTemp(filepath.Dir(path), ".organization.yaml-*")
-	if err != nil {
-		return false, fmt.Errorf("create temporary config file: %w", err)
-	}
-	tempPath := tempFile.Name()
-	replaced := false
-	defer func() {
-		if !replaced {
-			_ = tempFile.Close()
-			_ = os.Remove(tempPath)
-		}
-	}()
-
-	if _, err := tempFile.Write(after); err != nil {
-		return false, fmt.Errorf("write temporary config file: %w", err)
-	}
-	if err := tempFile.Close(); err != nil {
-		return false, fmt.Errorf("close temporary config file: %w", err)
-	}
-	if err := os.Chmod(tempPath, sourceInfo.Mode().Perm()); err != nil {
-		return false, fmt.Errorf("set temporary config file permissions: %w", err)
-	}
-	if err := os.Rename(tempPath, path); err != nil {
+	if err := filereplace.Replace(path, after); err != nil {
 		return false, fmt.Errorf("replace config file: %w", err)
 	}
 
-	replaced = true
 	return true, nil
 }

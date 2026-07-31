@@ -101,3 +101,19 @@ jobs:
       - name: Run race detector
         # The bounded-concurrency GitOps engine is the highest-risk area for shared-memory races.
         run: go test -race ./pkg/gitops/...
+
+  windows-config:
+    name: Windows config replacement
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test config replacement packages
+        run: go test ./cmd/octostate/internal/filereplace ./cmd/octostate/internal/configproposal ./cmd/octostate/config
