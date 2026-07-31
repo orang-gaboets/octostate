@@ -48,8 +48,9 @@ func Replace(path string, contents []byte) error {
 	}
 	tempPath := tempFile.Name()
 	replaced := false
+	keepTempOnFailure := false
 	defer func() {
-		if !replaced {
+		if !replaced && !keepTempOnFailure {
 			_ = tempFile.Close()    //nolint:errcheck // best-effort cleanup for temp files
 			_ = os.Remove(tempPath) //nolint:errcheck // best-effort cleanup for temp files
 		}
@@ -71,14 +72,13 @@ func Replace(path string, contents []byte) error {
 		return fmt.Errorf("close temporary file %s: %w", tempPath, err)
 	}
 
-	if err := replaceFile(tempPath, path); err != nil {
+	if keepTemp, err := replaceFile(tempPath, path); err != nil {
+		keepTempOnFailure = keepTemp
 		return fmt.Errorf("replace existing file %s: %w", path, err)
 	}
 	replaced = true
 
-	if err := syncParentDir(dir); err != nil {
-		return fmt.Errorf("sync parent directory %s: %w", dir, err)
-	}
+	_ = syncParentDir(dir) // best effort after commit; replacement already succeeded
 
 	return nil
 }

@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-func replaceFilePlatform(tempPath, targetPath string) error {
-	return os.Rename(tempPath, targetPath)
+func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
+	return false, os.Rename(tempPath, targetPath)
 }
 
 func syncParentDirPlatform(dir string) error {

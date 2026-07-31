@@ -26,12 +26,12 @@ func TestReplaceCleansUpTempFileWhenBackendFails(t *testing.T) {
 	})
 
 	var tempPath string
-	replaceFile = func(gotTempPath, gotTargetPath string) error {
+	replaceFile = func(gotTempPath, gotTargetPath string) (bool, error) {
 		tempPath = gotTempPath
 		if gotTargetPath != path {
 			t.Fatalf("unexpected target path %q", gotTargetPath)
 		}
-		return errors.New("replace failed")
+		return false, errors.New("replace failed")
 	}
 	syncParentDir = func(string) error {
 		t.Fatal("syncParentDir should not run after replace failure")
@@ -55,6 +55,90 @@ func TestReplaceCleansUpTempFileWhenBackendFails(t *testing.T) {
 	}
 	if _, err := os.Stat(tempPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected temp file cleanup, got %v", err)
+	}
+}
+
+func TestReplacePreservesTempFileWhenBackendRequestsIt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "organization.yaml")
+
+	if err := os.WriteFile(path, []byte("organization: old\n"), 0o600); err != nil {
+		t.Fatalf("seed config file: %v", err)
+	}
+
+	oldReplaceFile := replaceFile
+	oldSyncParentDir := syncParentDir
+	t.Cleanup(func() {
+		replaceFile = oldReplaceFile
+		syncParentDir = oldSyncParentDir
+	})
+
+	var tempPath string
+	replaceFile = func(gotTempPath, gotTargetPath string) (bool, error) {
+		tempPath = gotTempPath
+		if gotTargetPath != path {
+			t.Fatalf("unexpected target path %q", gotTargetPath)
+		}
+		return true, errors.New("replace uncertain")
+	}
+	syncParentDir = func(string) error {
+		t.Fatal("syncParentDir should not run after replace failure")
+		return nil
+	}
+
+	err := Replace(path, []byte("organization: new\n"))
+	if err == nil || !strings.Contains(err.Error(), "replace uncertain") {
+		t.Fatalf("expected backend failure, got %v", err)
+	}
+	if tempPath == "" {
+		t.Fatal("expected temp path to be captured")
+	}
+	if _, err := os.Stat(tempPath); err != nil {
+		t.Fatalf("expected temp file to remain, got %v", err)
+	}
+}
+
+func TestReplaceIgnoresParentDirSyncFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "organization.yaml")
+
+	if err := os.WriteFile(path, []byte("organization: old\n"), 0o600); err != nil {
+		t.Fatalf("seed config file: %v", err)
+	}
+
+	oldReplaceFile := replaceFile
+	oldSyncParentDir := syncParentDir
+	t.Cleanup(func() {
+		replaceFile = oldReplaceFile
+		syncParentDir = oldSyncParentDir
+	})
+
+	replaceFile = func(gotTempPath, gotTargetPath string) (bool, error) {
+		if gotTempPath == "" || gotTargetPath != path {
+			t.Fatalf("unexpected replace args temp=%q target=%q", gotTempPath, gotTargetPath)
+		}
+		if err := os.WriteFile(gotTargetPath, []byte("organization: new\n"), 0o600); err != nil {
+			return false, err
+		}
+		if err := os.Remove(gotTempPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("remove temp path: %v", err)
+		}
+		return false, nil
+	}
+	syncParentDir = func(string) error {
+		return errors.New("sync failed")
+	}
+
+	if err := Replace(path, []byte("organization: new\n")); err != nil {
+		t.Fatalf("expected sync failure to be ignored, got %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read replaced file: %v", err)
+	}
+	if string(got) != "organization: new\n" {
+		t.Fatalf("unexpected file contents:\n%s", got)
 	}
 }
 
