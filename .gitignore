@@ -48,3 +48,4 @@ out/
 # Local tool caches
 .gocache/
 .golangci-lint-cache/
+graphify-out/
