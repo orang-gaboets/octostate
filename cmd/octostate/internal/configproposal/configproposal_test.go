@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -125,6 +126,31 @@ func TestApplyToConfigFileValidationErrorDoesNotWrite(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), `members[0].role (invalid_enum): organization member role "owner" is not supported`) {
+		t.Fatalf("expected formatted validation error, got %v", err)
+	}
+	if changed {
+		t.Fatal("expected validation error to not change config")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+func TestApplyToConfigFileLoadedValidationErrorDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, "organization: orang-gaboets\nmembers:\n  - username: octocat\n    role: owner\ninvites: []\nrepositories: []\nteams: []\n")
+	before := readFile(t, path)
+
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+		t.Fatal("mutation should not run")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), `members[0].role (invalid_enum): organization member role "owner" is not supported`) {
+		t.Fatalf("expected formatted validation error, got %v", err)
 	}
 	if changed {
 		t.Fatal("expected validation error to not change config")

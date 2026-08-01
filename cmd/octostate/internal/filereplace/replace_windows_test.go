@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -54,9 +53,9 @@ func TestReplaceRecoversFromWindows1177WhenBackupExists(t *testing.T) {
 	t.Cleanup(func() { replaceFileWCall = oldCall })
 	t.Cleanup(func() { renameFile = oldRename })
 
-	replaceFileWCall = func(targetPathPtr, _, backupPathPtr uintptr) (uintptr, error) {
-		targetPath := windows.UTF16PtrToString((*uint16)(unsafe.Pointer(targetPathPtr)))
-		backupPath := windows.UTF16PtrToString((*uint16)(unsafe.Pointer(backupPathPtr)))
+	replaceFileWCall = func(targetPathPtr, _, backupPathPtr *uint16) (uintptr, error) {
+		targetPath := windows.UTF16PtrToString(targetPathPtr)
+		backupPath := windows.UTF16PtrToString(backupPathPtr)
 		if targetPath != path {
 			t.Fatalf("unexpected target path %q", targetPath)
 		}
@@ -105,9 +104,9 @@ func TestReplacePreservesBackupAndTempOnWindowsRecoveryFailure(t *testing.T) {
 	t.Cleanup(func() { replaceFileWCall = oldCall })
 	t.Cleanup(func() { renameFile = oldRename })
 
-	replaceFileWCall = func(targetPathPtr, _, backupPathPtr uintptr) (uintptr, error) {
-		targetPath := windows.UTF16PtrToString((*uint16)(unsafe.Pointer(targetPathPtr)))
-		backupPath := windows.UTF16PtrToString((*uint16)(unsafe.Pointer(backupPathPtr)))
+	replaceFileWCall = func(targetPathPtr, _, backupPathPtr *uint16) (uintptr, error) {
+		targetPath := windows.UTF16PtrToString(targetPathPtr)
+		backupPath := windows.UTF16PtrToString(backupPathPtr)
 		if targetPath != path {
 			t.Fatalf("unexpected target path %q", targetPath)
 		}
@@ -126,6 +125,9 @@ func TestReplacePreservesBackupAndTempOnWindowsRecoveryFailure(t *testing.T) {
 	err := Replace(path, []byte("organization: new\n"))
 	if err == nil || !strings.Contains(err.Error(), "original preserved at") || !strings.Contains(err.Error(), "replacement preserved at") {
 		t.Fatalf("expected recovery failure, got %v", err)
+	}
+	if strings.Count(err.Error(), "replace existing file") != 1 {
+		t.Fatalf("expected a single replace-existing-file prefix, got %v", err)
 	}
 
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {

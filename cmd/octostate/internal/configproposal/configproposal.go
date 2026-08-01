@@ -37,7 +37,7 @@ func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) (bool, 
 		return false, err
 	}
 	if report := gitopsconfig.Validate(cfg); !report.Valid {
-		return false, fmt.Errorf("validate loaded config: %#v", report.Errors)
+		return false, fmt.Errorf("validate loaded config: %s", formatValidationIssues(report.Errors))
 	}
 	if !strings.EqualFold(strings.TrimSpace(cfg.Organization), strings.TrimSpace(expectedOrg)) {
 		return false, fmt.Errorf("organization mismatch: config organization %q does not match expected organization %q", cfg.Organization, expectedOrg)
@@ -56,7 +56,7 @@ func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) (bool, 
 		return false, fmt.Errorf("organization mismatch: config organization %q does not match expected organization %q", cfg.Organization, expectedOrg)
 	}
 	if report := gitopsconfig.Validate(cfg); !report.Valid {
-		return false, fmt.Errorf("validate mutated config: %#v", report.Errors)
+		return false, fmt.Errorf("validate mutated config: %s", formatValidationIssues(report.Errors))
 	}
 	after, err := gitopsconfig.EncodeYAML(cfg)
 	if err != nil {
@@ -71,4 +71,21 @@ func ApplyToConfigFile(path string, expectedOrg string, mutate Mutation) (bool, 
 	}
 
 	return true, nil
+}
+
+func formatValidationIssues(issues []gitopsconfig.ValidationIssue) string {
+	parts := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		switch {
+		case issue.Path != "" && issue.Code != "":
+			parts = append(parts, fmt.Sprintf("%s (%s): %s", issue.Path, issue.Code, issue.Message))
+		case issue.Path != "":
+			parts = append(parts, fmt.Sprintf("%s: %s", issue.Path, issue.Message))
+		case issue.Code != "":
+			parts = append(parts, fmt.Sprintf("%s: %s", issue.Code, issue.Message))
+		default:
+			parts = append(parts, issue.Message)
+		}
+	}
+	return strings.Join(parts, "; ")
 }

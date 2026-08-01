@@ -14,11 +14,11 @@ import (
 )
 
 var replaceFileW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFileW")
-var replaceFileWCall = func(targetPathPtr, tempPathPtr, backupPathPtr uintptr) (uintptr, error) {
+var replaceFileWCall = func(targetPathPtr, tempPathPtr, backupPathPtr *uint16) (uintptr, error) {
 	r1, _, callErr := replaceFileW.Call(
-		targetPathPtr,
-		tempPathPtr,
-		backupPathPtr,
+		uintptr(unsafe.Pointer(targetPathPtr)),
+		uintptr(unsafe.Pointer(tempPathPtr)),
+		uintptr(unsafe.Pointer(backupPathPtr)),
 		0,
 		0,
 		0,
@@ -52,11 +52,7 @@ func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
 		return false, fmt.Errorf("convert backup file path: %w", err)
 	}
 
-	r1, callErr := replaceFileWCall(
-		uintptr(unsafe.Pointer(targetPathPtr)),
-		uintptr(unsafe.Pointer(tempPathPtr)),
-		uintptr(unsafe.Pointer(backupPathPtr)),
-	)
+	r1, callErr := replaceFileWCall(targetPathPtr, tempPathPtr, backupPathPtr)
 	if r1 != 0 {
 		keepBackup = false
 		return false, nil
@@ -70,10 +66,10 @@ func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
 		restoreErr := renameFile(backupPath, targetPath)
 		if restoreErr == nil {
 			keepBackup = false
-			return false, fmt.Errorf("replace existing file %s: %w", targetPath, callErr)
+			return false, callErr
 		}
 		keepBackup = true
-		return true, fmt.Errorf("replace existing file %s: %w; original preserved at %s; replacement preserved at %s; restore failed: %v", targetPath, callErr, backupPath, tempPath, restoreErr)
+		return true, fmt.Errorf("%w; original preserved at %s; replacement preserved at %s; restore failed: %v", callErr, backupPath, tempPath, restoreErr)
 	}
 
 	keepBackup = false
