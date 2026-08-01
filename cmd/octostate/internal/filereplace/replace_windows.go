@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
-var replaceFileW = syscall.NewLazyDLL("kernel32.dll").NewProc("ReplaceFileW")
+var replaceFileW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFileW")
 var replaceFileWCall = func(targetPathPtr, tempPathPtr, backupPathPtr uintptr) (uintptr, error) {
 	r1, _, callErr := replaceFileW.Call(
 		targetPathPtr,
@@ -37,15 +39,15 @@ func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
 		}
 	}()
 
-	tempPathPtr, err := syscall.UTF16PtrFromString(tempPath)
+	tempPathPtr, err := windows.UTF16PtrFromString(tempPath)
 	if err != nil {
 		return false, fmt.Errorf("convert temporary file path: %w", err)
 	}
-	targetPathPtr, err := syscall.UTF16PtrFromString(targetPath)
+	targetPathPtr, err := windows.UTF16PtrFromString(targetPath)
 	if err != nil {
 		return false, fmt.Errorf("convert destination file path: %w", err)
 	}
-	backupPathPtr, err := syscall.UTF16PtrFromString(backupPath)
+	backupPathPtr, err := windows.UTF16PtrFromString(backupPath)
 	if err != nil {
 		return false, fmt.Errorf("convert backup file path: %w", err)
 	}
@@ -59,19 +61,19 @@ func replaceFilePlatform(tempPath, targetPath string) (bool, error) {
 		keepBackup = false
 		return false, nil
 	}
-	if callErr == nil || callErr == syscall.Errno(0) {
+	if callErr == nil || callErr == windows.Errno(0) {
 		keepBackup = false
 		return false, syscall.EINVAL
 	}
 
-	if errors.Is(callErr, syscall.Errno(1177)) {
+	if errors.Is(callErr, windows.Errno(1177)) {
 		restoreErr := renameFile(backupPath, targetPath)
 		if restoreErr == nil {
 			keepBackup = false
 			return false, fmt.Errorf("replace existing file %s: %w", targetPath, callErr)
 		}
 		keepBackup = true
-		return true, fmt.Errorf("replace existing file %s: %w; restore original from %s: %v", targetPath, callErr, backupPath, restoreErr)
+		return true, fmt.Errorf("replace existing file %s: %w; original preserved at %s; replacement preserved at %s; restore failed: %v", targetPath, callErr, backupPath, tempPath, restoreErr)
 	}
 
 	keepBackup = false
