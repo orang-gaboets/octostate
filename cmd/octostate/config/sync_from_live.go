@@ -12,6 +12,7 @@ import (
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/filereplace"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
@@ -39,12 +40,11 @@ var (
 	buildSyncFromLiveMaterialize        = syncfromlive.BuildMaterializeConfig
 	validateSyncFromLiveConfig          = gitopsconfig.Validate
 	encodeSyncFromLiveConfig            = gitopsconfig.EncodeYAML
-	statSyncFromLivePath                = os.Stat
+	lstatSyncFromLivePath               = os.Lstat
 	mkdirAllSyncFromLiveConfigDir       = os.MkdirAll
 	createTempSyncFromLiveFile          = os.CreateTemp
 	chmodSyncFromLivePath               = os.Chmod
 	linkSyncFromLivePath                = os.Link
-	renameSyncFromLivePath              = os.Rename
 	removeSyncFromLivePath              = os.Remove
 )
 
@@ -144,6 +144,11 @@ func syncFromLiveConfig(
 	if write && mode == syncFromLiveModeBootstrap {
 		if _, err := ensureBootstrapConfigTargetAvailable(configDir); err != nil {
 			return nil, nil, runtimePhaseError("check bootstrap config target availability", err)
+		}
+	}
+	if write && (mode == syncFromLiveModeAdopt || mode == syncFromLiveModeMaterialize) {
+		if err := ensureSyncFromLiveWriteTargetRegular(configDir); err != nil {
+			return nil, nil, invalidConfigPhaseError("check sync-from-live config target", err)
 		}
 	}
 
@@ -299,41 +304,7 @@ func writeBootstrapConfigFile(configDir string, yamlBytes []byte) (string, error
 func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, error) {
 	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
 
-	if err := mkdirAllSyncFromLiveConfigDir(strings.TrimSpace(configDir), syncFromLiveConfigDirectoryMode); err != nil {
-		return "", fmt.Errorf("create config directory %s: %w", configDir, err)
-	}
-
-	file, err := createTempSyncFromLiveFile(filepath.Dir(targetPath), syncFromLiveTempFilePattern)
-	if err != nil {
-		return "", fmt.Errorf("create sync-from-live config temp file: %w", err)
-	}
-	tempPath := file.Name()
-
-	writeErr := error(nil)
-	if _, err := file.Write(yamlBytes); err != nil {
-		writeErr = err
-	}
-	closeErr := file.Close()
-	if writeErr != nil || closeErr != nil {
-		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
-	}
-
-	switch {
-	case writeErr != nil && closeErr != nil:
-		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, errors.Join(writeErr, closeErr))
-	case writeErr != nil:
-		return "", fmt.Errorf("write sync-from-live config %s: %w", targetPath, writeErr)
-	case closeErr != nil:
-		return "", fmt.Errorf("close sync-from-live config temp file %s: %w", tempPath, closeErr)
-	}
-
-	if err := chmodSyncFromLivePath(tempPath, syncFromLiveConfigFileMode); err != nil {
-		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
-		return "", fmt.Errorf("set sync-from-live config file mode %s: %w", tempPath, err)
-	}
-
-	if err := renameSyncFromLivePath(tempPath, targetPath); err != nil {
-		_ = removeSyncFromLivePath(tempPath) //nolint:errcheck // best-effort cleanup for temp config files
+	if err := filereplace.Replace(targetPath, yamlBytes); err != nil {
 		return "", fmt.Errorf("replace sync-from-live config %s: %w", targetPath, err)
 	}
 
@@ -343,13 +314,32 @@ func replaceSyncFromLiveConfigFile(configDir string, yamlBytes []byte) (string, 
 func ensureBootstrapConfigTargetAvailable(configDir string) (string, error) {
 	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
 
-	if _, err := statSyncFromLivePath(targetPath); err == nil {
+	if _, err := lstatSyncFromLivePath(targetPath); err == nil {
 		return "", fmt.Errorf("bootstrap config target already exists: %s", targetPath)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("stat bootstrap config target %s: %w", targetPath, err)
 	}
 
 	return targetPath, nil
+}
+
+func ensureSyncFromLiveWriteTargetRegular(configDir string) error {
+	targetPath := filepath.Join(strings.TrimSpace(configDir), syncFromLiveOrganizationFile)
+
+	info, err := os.Lstat(targetPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat sync-from-live config target %s: %w", targetPath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("sync-from-live config target %s is a symbolic link", targetPath)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("sync-from-live config target %s is not a regular file", targetPath)
+	}
+	return nil
 }
 
 func existingSyncFromLiveConfigValidationError(report gitopsconfig.ValidationReport) error {

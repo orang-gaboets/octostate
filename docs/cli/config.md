@@ -134,7 +134,7 @@ Bootstrap rules:
 - Direct organization members outside teams are represented through top-level `members:`
 
 Write behavior:
-- `--write` fails if `<config-dir>/organization.yaml` already exists
+- `--write` fails if `<config-dir>/organization.yaml` already exists, including symlinks and dangling symlinks
 - Writes are atomic: the file is written to a temp file, hard-linked into place at `<config-dir>/organization.yaml`, and then the temp file is removed
 - Existing-target checks happen before GitHub authentication and live collection
 
@@ -171,6 +171,7 @@ Behavior:
 - Prints the adopted YAML to stdout by default
 - Validates the merged config before printing or writing it
 - With `--write`, atomically replaces `<config-dir>/organization.yaml`
+- `--write` requires `<config-dir>/organization.yaml` to directly reference an existing regular file; symbolic links and other non-regular targets are rejected before GitHub authentication or live collection
 
 Adopt rules:
 - Pending invites are excluded by default
@@ -207,6 +208,7 @@ Behavior:
 - Prints the materialized YAML to stdout by default
 - Validates the merged config before printing or writing it
 - With `--write`, atomically replaces `<config-dir>/organization.yaml`
+- `--write` requires `<config-dir>/organization.yaml` to directly reference an existing regular file; symbolic links and other non-regular targets are rejected before GitHub authentication or live collection
 
 Materialize rules:
 - Only these repository fields are materialized:
