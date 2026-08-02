@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	topicscmd "github.com/orang-gaboets/octostate/cmd/octostate/topic"
 	"github.com/orang-gaboets/octostate/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 type captureAddTopicsService struct {
@@ -110,5 +113,124 @@ func TestAddTopicsDryRunSkipsTopicServices(t *testing.T) {
 	}
 	if !strings.Contains(got, "Dry run: would add topics to repository o/n") {
 		t.Fatalf("unexpected dry-run output: %q", got)
+	}
+}
+
+func TestAddTopicsToConfigMergesTrimmedExactTopics(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: Repo
+    visibility: public
+    description: keep me
+    topics: [existing, duplicate, duplicate]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.AddTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, existing,NEW,new ", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"changed": true`) {
+		t.Fatalf("expected changed proposal output, got %q", out.String())
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := cfg.Repositories[0]
+	if got, want := strings.Join(repository.Topics, ","), "existing,duplicate,new,NEW"; got != want {
+		t.Fatalf("unexpected topics: got %q want %q", got, want)
+	}
+	if repository.Description != "keep me" {
+		t.Fatalf("unexpected unrelated field: %q", repository.Description)
+	}
+}
+
+func TestAddTopicsToConfigRejectsEmptyTopicBeforeLoadingConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "a,,b", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "topic cannot be empty") {
+		t.Fatalf("expected empty-topic error, got %v", err)
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
+	}
+}
+
+func TestAddTopicsToConfigMissingTargetLeavesFileUnchanged(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte("organization: o\nrepositories: []\n")
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "missing", "--topics", "a", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not found in config") {
+		t.Fatalf("expected missing-target error, got %v", err)
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(before) {
+		t.Fatalf("config changed after missing-target rejection:\n%s", got)
+	}
+}
+
+func TestAddTopicsToConfigAlreadyPresentIsNoOp(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    topics: [a, b]
+`)
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.AddTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", " b,a ", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"changed": false`) || !strings.Contains(out.String(), "No changes needed for add topics o/n") {
+		t.Fatalf("expected no-op output, got %q", out.String())
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(before) {
+		t.Fatalf("no-op rewrote config:\n%s", got)
+	}
+}
+
+func TestAddTopicsDryRunWinsOverToConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := topicscmd.AddTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "a", "--dry-run", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run output, got %q", out.String())
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
 	}
 }
