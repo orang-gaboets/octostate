@@ -187,6 +187,55 @@ func TestAddTopicsToConfigRejectsEmptyTopicBeforeLoadingConfig(t *testing.T) {
 	}
 }
 
+func TestAddTopicsToConfigRejectsExplicitEmptyTopics(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte("organization: o\nrepositories: []\n")
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics=", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "topic cannot be empty") {
+		t.Fatalf("expected empty-topic error, got %v", err)
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(before) {
+		t.Fatalf("config changed after empty-topic rejection:\n%s", got)
+	}
+}
+
+func TestAddTopicsExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		path string
+	}{
+		{name: "empty", path: ""},
+		{name: "whitespace", path: " "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := topicscmd.AddTopicsCmd(nil)
+			c.SetArgs([]string{
+				"--org", "o",
+				"--name", "n",
+				"--topics", "a",
+				"--to-config", test.path,
+			})
+			err := c.Execute()
+			if err == nil {
+				t.Fatal("expected invalid config path error")
+			}
+			if errors.Is(err, github.ErrNoValidCredentials) {
+				t.Fatalf("explicit config mode attempted GitHub authentication: %v", err)
+			}
+		})
+	}
+}
+
 func TestAddTopicsToConfigMissingTargetLeavesFileUnchanged(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	before := []byte("organization: o\nrepositories: []\n")

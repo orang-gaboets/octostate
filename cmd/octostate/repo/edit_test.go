@@ -215,6 +215,32 @@ repositories:
 	}
 }
 
+func TestEditRepoExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		path string
+	}{
+		{name: "empty", path: ""},
+		{name: "whitespace", path: " "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := reposcmd.EditRepo(nil)
+			c.SetArgs([]string{
+				"--org", "o",
+				"--name", "n",
+				"--to-config", test.path,
+			})
+			err := c.Execute()
+			if err == nil {
+				t.Fatal("expected invalid config path error")
+			}
+			if errors.Is(err, github.ErrNoValidCredentials) {
+				t.Fatalf("explicit config mode attempted GitHub authentication: %v", err)
+			}
+		})
+	}
+}
+
 func TestEditRepoToConfigMissingTargetLeavesFileUnchanged(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	before := []byte("organization: o\nrepositories: []\n")

@@ -55,7 +55,7 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 					},
 				)
 			}
-			if strings.TrimSpace(toConfig) != "" {
+			if cmd.Flags().Changed("to-config") {
 				normalizedTopics, err := normalizeConfigTopicReplaceInput(topicsStr)
 				if err != nil {
 					return err

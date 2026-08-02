@@ -232,6 +232,33 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 	}
 }
 
+func TestCreateRepoFromTemplateExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		path string
+	}{
+		{name: "empty", path: ""},
+		{name: "whitespace", path: " "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+			c.SetArgs([]string{
+				"--org", "o",
+				"--template-name", "temp",
+				"--name", "n",
+				"--to-config", test.path,
+			})
+			err := c.Execute()
+			if err == nil {
+				t.Fatal("expected invalid config path error")
+			}
+			if errors.Is(err, github.ErrNoValidCredentials) {
+				t.Fatalf("explicit config mode attempted GitHub authentication: %v", err)
+			}
+		})
+	}
+}
+
 func TestCreateRepoFromTemplateToConfigDefaultsTemplateOwnerAndPublicVisibility(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	if err := os.WriteFile(configPath, []byte("organization: o\nrepositories: []\n"), 0o600); err != nil {

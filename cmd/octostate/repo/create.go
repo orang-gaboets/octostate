@@ -80,7 +80,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 					},
 				)
 			}
-			if strings.TrimSpace(toConfig) != "" {
+			if cmd.Flags().Changed("to-config") {
 				normalizedTopics, err := normalizeConfigTopics(topicList)
 				if err != nil {
 					return err

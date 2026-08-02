@@ -89,7 +89,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 					},
 				)
 			}
-			if strings.TrimSpace(toConfig) != "" {
+			if cmd.Flags().Changed("to-config") {
 				return editRepoToConfig(cmd, toConfig, org, name, editConfigValues{
 					desc:         newDesc,
 					homepage:     newHomepage,
