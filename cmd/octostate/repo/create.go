@@ -89,7 +89,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 				if private {
 					visibility = "private"
 				}
-				changed, err := configproposal.ApplyToConfigFile(toConfig, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
+				_, err = configproposal.ApplyToConfigFile(toConfig, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
 					if _, exists := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName); exists {
 						return fmt.Errorf("repository %s/%s already exists in config", trimmedOrg, trimmedName)
 					}
@@ -111,15 +111,11 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				message := fmt.Sprintf("Proposed repository %s/%s in config", trimmedOrg, trimmedName)
-				if !changed {
-					message = fmt.Sprintf("No changes needed for create repository %s/%s", trimmedOrg, trimmedName)
-				}
-				return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s in config", trimmedOrg, trimmedName), map[string]any{
 					"owner":                trimmedOrg,
 					"name":                 trimmedName,
 					"config_path":          toConfig,
-					"changed":              changed,
+					"changed":              true,
 					"template_owner":       trimmedTemplateOrg,
 					"template_name":        trimmedTemplateName,
 					"include_all_branches": includeAllBranches,

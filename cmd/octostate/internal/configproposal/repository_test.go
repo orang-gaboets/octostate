@@ -8,8 +8,10 @@ import (
 
 func TestFindRepositoryIndex(t *testing.T) {
 	cfg := &gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
 		Repositories: []gitopsconfig.RepositorySpec{
 			{Owner: "orang-gaboets", Name: "octostate"},
+			{Name: "implicit-owner"},
 			{Owner: "other-org", Name: "other-repo"},
 		},
 	}
@@ -24,6 +26,7 @@ func TestFindRepositoryIndex(t *testing.T) {
 		{name: "case insensitive", owner: "ORANG-GABOETS", repo: "OCTOSTATE", wantIndex: 0, wantFound: true},
 		{name: "trims values", owner: " orang-gaboets ", repo: " octostate ", wantIndex: 0, wantFound: true},
 		{name: "missing", owner: "orang-gaboets", repo: "missing", wantIndex: -1, wantFound: false},
+		{name: "implicit owner", owner: "orang-gaboets", repo: "implicit-owner", wantIndex: 1, wantFound: true},
 	}
 
 	for _, tt := range tests {
@@ -39,5 +42,15 @@ func TestFindRepositoryIndex(t *testing.T) {
 func TestFindRepositoryIndexNilConfig(t *testing.T) {
 	if index, found := FindRepositoryIndex(nil, "org", "repo"); index != -1 || found {
 		t.Fatalf("FindRepositoryIndex(nil) = (%d, %t), want (-1, false)", index, found)
+	}
+}
+
+func TestFindRepositoryIndexUsesConfigOrganizationForEmptyOwner(t *testing.T) {
+	cfg := &gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []gitopsconfig.RepositorySpec{{Name: "octostate"}},
+	}
+	if index, found := FindRepositoryIndex(cfg, "", "octostate"); index != 0 || !found {
+		t.Fatalf("FindRepositoryIndex() = (%d, %t), want (0, true)", index, found)
 	}
 }

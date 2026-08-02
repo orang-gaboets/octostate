@@ -232,6 +232,44 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 	}
 }
 
+func TestCreateRepoFromTemplateToConfigDefaultsTemplateOwnerAndPublicVisibility(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte("organization: o\nrepositories: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--template-name", "temp", "--name", "n", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := cfg.Repositories[0]
+	if repository.Template.Owner != "o" {
+		t.Fatalf("expected template owner o, got %q", repository.Template.Owner)
+	}
+	if repository.Visibility != "public" {
+		t.Fatalf("expected public visibility, got %q", repository.Visibility)
+	}
+}
+
+func TestCreateRepoFromTemplateToConfigRejectsEmptyTopicBeforeLoadingConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--template-name", "temp", "--name", "n", "--topics", "a,,b", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "topic cannot be empty") {
+		t.Fatalf("expected empty-topic error, got %v", err)
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
+	}
+}
+
 func TestCreateRepoFromTemplateToConfigRejectsDuplicate(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	before := "organization: o\nrepositories:\n  - name: n\n    visibility: public\n"
