@@ -90,74 +90,13 @@ func EditRepo(svc repos.Service) *cobra.Command {
 				)
 			}
 			if strings.TrimSpace(toConfig) != "" {
-				trimmedOrg := strings.TrimSpace(org)
-				trimmedName := strings.TrimSpace(name)
-				changed, err := configproposal.ApplyToConfigFile(toConfig, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
-					index, found := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName)
-					if !found {
-						return fmt.Errorf("repository %s/%s not found in config", trimmedOrg, trimmedName)
-					}
-					repository := &cfg.Repositories[index]
-					before := *repository
-					if cmd.Flags().Changed("desc") {
-						repository.SetManagedDescription(newDesc)
-					}
-					if cmd.Flags().Changed("homepage") {
-						repository.SetManagedHomepage(newHomepage)
-					}
-					if cmd.Flags().Changed("private") {
-						if newPrivate {
-							repository.Visibility = "private"
-						} else {
-							repository.Visibility = "public"
-						}
-					}
-					if cmd.Flags().Changed("is-template") {
-						repository.SetManagedIsTemplate(newIsTemplate)
-					}
-					if cmd.Flags().Changed("archived") {
-						repository.SetManagedArchived(newArchived)
-					}
-					if cmd.Flags().Changed("allow-forking") {
-						repository.SetManagedAllowForking(newAllowForking)
-					}
-					changedFields = changedFields[:0]
-					if cmd.Flags().Changed("desc") && before.DescriptionOption() != repository.DescriptionOption() {
-						changedFields = append(changedFields, "desc")
-					}
-					if cmd.Flags().Changed("homepage") && before.HomepageOption() != repository.HomepageOption() {
-						changedFields = append(changedFields, "homepage")
-					}
-					if cmd.Flags().Changed("private") && before.Visibility != repository.Visibility {
-						changedFields = append(changedFields, "private")
-					}
-					if cmd.Flags().Changed("is-template") && before.IsTemplateOption() != repository.IsTemplateOption() {
-						changedFields = append(changedFields, "is-template")
-					}
-					if cmd.Flags().Changed("archived") && before.ArchivedOption() != repository.ArchivedOption() {
-						changedFields = append(changedFields, "archived")
-					}
-					if cmd.Flags().Changed("allow-forking") && before.AllowForkingOption() != repository.AllowForkingOption() {
-						changedFields = append(changedFields, "allow-forking")
-					}
-					return nil
-				})
-				if err != nil {
-					return err
-				}
-				if !changed {
-					changedFields = []string{}
-				}
-				message := fmt.Sprintf("Proposed repository %s/%s edit in config", trimmedOrg, trimmedName)
-				if !changed {
-					message = fmt.Sprintf("No changes needed for edit %s/%s", trimmedOrg, trimmedName)
-				}
-				return cmdoutput.PrintSuccess(cmd, message, map[string]any{
-					"owner":          trimmedOrg,
-					"name":           trimmedName,
-					"config_path":    toConfig,
-					"changed":        changed,
-					"changed_fields": changedFields,
+				return editRepoToConfig(cmd, toConfig, org, name, editConfigValues{
+					desc:         newDesc,
+					homepage:     newHomepage,
+					private:      newPrivate,
+					isTemplate:   newIsTemplate,
+					archived:     newArchived,
+					allowForking: newAllowForking,
 				})
 			}
 
@@ -204,4 +143,85 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	github.MarkRequiredFlags(cmd, "org", "name")
 
 	return cmd
+}
+
+type editConfigValues struct {
+	desc         string
+	homepage     string
+	private      bool
+	isTemplate   bool
+	archived     bool
+	allowForking bool
+}
+
+func editRepoToConfig(cmd *cobra.Command, path, org, name string, values editConfigValues) error {
+	trimmedOrg := strings.TrimSpace(org)
+	trimmedName := strings.TrimSpace(name)
+	changedFields := []string{}
+	changed, err := configproposal.ApplyToConfigFile(path, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
+		index, found := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName)
+		if !found {
+			return fmt.Errorf("repository %s/%s not found in config", trimmedOrg, trimmedName)
+		}
+		repository := &cfg.Repositories[index]
+		before := *repository
+		if cmd.Flags().Changed("desc") {
+			repository.SetManagedDescription(values.desc)
+		}
+		if cmd.Flags().Changed("homepage") {
+			repository.SetManagedHomepage(values.homepage)
+		}
+		if cmd.Flags().Changed("private") {
+			if values.private {
+				repository.Visibility = "private"
+			} else {
+				repository.Visibility = "public"
+			}
+		}
+		if cmd.Flags().Changed("is-template") {
+			repository.SetManagedIsTemplate(values.isTemplate)
+		}
+		if cmd.Flags().Changed("archived") {
+			repository.SetManagedArchived(values.archived)
+		}
+		if cmd.Flags().Changed("allow-forking") {
+			repository.SetManagedAllowForking(values.allowForking)
+		}
+		if cmd.Flags().Changed("desc") && before.DescriptionOption() != repository.DescriptionOption() {
+			changedFields = append(changedFields, "desc")
+		}
+		if cmd.Flags().Changed("homepage") && before.HomepageOption() != repository.HomepageOption() {
+			changedFields = append(changedFields, "homepage")
+		}
+		if cmd.Flags().Changed("private") && before.Visibility != repository.Visibility {
+			changedFields = append(changedFields, "private")
+		}
+		if cmd.Flags().Changed("is-template") && before.IsTemplateOption() != repository.IsTemplateOption() {
+			changedFields = append(changedFields, "is-template")
+		}
+		if cmd.Flags().Changed("archived") && before.ArchivedOption() != repository.ArchivedOption() {
+			changedFields = append(changedFields, "archived")
+		}
+		if cmd.Flags().Changed("allow-forking") && before.AllowForkingOption() != repository.AllowForkingOption() {
+			changedFields = append(changedFields, "allow-forking")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !changed {
+		changedFields = []string{}
+	}
+	message := fmt.Sprintf("Proposed repository %s/%s edit in config", trimmedOrg, trimmedName)
+	if !changed {
+		message = fmt.Sprintf("No changes needed for edit %s/%s", trimmedOrg, trimmedName)
+	}
+	return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+		"owner":          trimmedOrg,
+		"name":           trimmedName,
+		"config_path":    path,
+		"changed":        changed,
+		"changed_fields": changedFields,
+	})
 }
