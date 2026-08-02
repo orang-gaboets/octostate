@@ -67,7 +67,12 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 						return fmt.Errorf("repository %s/%s not found in config", strings.TrimSpace(org), strings.TrimSpace(name))
 					}
 					repository := &cfg.Repositories[index]
-					repository.Topics = github.Unique(normalizedTopics)
+					replacement := github.Unique(normalizedTopics)
+					current := github.Unique(repository.Topics)
+					if github.EqualSets(github.ToSet(current), github.ToSet(replacement)) {
+						replacement = current
+					}
+					repository.Topics = replacement
 					resultingTopics = repository.Topics
 					return nil
 				})

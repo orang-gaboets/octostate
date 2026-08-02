@@ -263,7 +263,7 @@ repositories:
 	var errBuf bytes.Buffer
 	c.SetOut(&out)
 	c.SetErr(&errBuf)
-	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", " a,b,b ", "--to-config", configPath})
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", " b,a ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
