@@ -152,6 +152,28 @@ repositories:
 	}
 }
 
+func TestAddTopicsToConfigSkipsTopicService(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    topics: [a]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := &captureAddTopicsService{}
+	c := topicscmd.AddTopicsCmd(svc)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "b", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if svc.listAllTopicsCalled || svc.replaceAllTopicsCalled {
+		t.Fatalf("expected config mode not to call topic service")
+	}
+}
+
 func TestAddTopicsToConfigRejectsEmptyTopicBeforeLoadingConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "missing.yaml")
 	c := topicscmd.AddTopicsCmd(nil)
