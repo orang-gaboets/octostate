@@ -323,6 +323,12 @@ func TestCreateRepoFromTemplateToConfigDefaultsTemplateOwnerAndPublicVisibility(
 	if repository.Visibility != "public" {
 		t.Fatalf("expected public visibility, got %q", repository.Visibility)
 	}
+	if option := repository.DescriptionOption(); !option.Present || option.Null {
+		t.Fatalf("expected explicitly managed empty description: %#v", option)
+	}
+	if repository.Description != "" {
+		t.Fatalf("expected empty description, got %q", repository.Description)
+	}
 }
 
 func TestCreateRepoFromTemplateToConfigRejectsEmptyTopicBeforeLoadingConfig(t *testing.T) {
