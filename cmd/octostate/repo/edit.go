@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/repos"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // EditRepo creates a new command to edit an existing GitHub repository.
@@ -29,6 +31,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 		newArchived     bool
 		newAllowForking bool
 		dryRun          bool
+		toConfig        string
 	)
 
 	cmd := &cobra.Command{
@@ -86,6 +89,57 @@ func EditRepo(svc repos.Service) *cobra.Command {
 					},
 				)
 			}
+			if strings.TrimSpace(toConfig) != "" {
+				trimmedOrg := strings.TrimSpace(org)
+				trimmedName := strings.TrimSpace(name)
+				changed, err := configproposal.ApplyToConfigFile(toConfig, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
+					index, found := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName)
+					if !found {
+						return fmt.Errorf("repository %s/%s not found in config", trimmedOrg, trimmedName)
+					}
+					repository := &cfg.Repositories[index]
+					if cmd.Flags().Changed("desc") {
+						repository.SetManagedDescription(newDesc)
+					}
+					if cmd.Flags().Changed("homepage") {
+						repository.SetManagedHomepage(newHomepage)
+					}
+					if cmd.Flags().Changed("private") {
+						if newPrivate {
+							repository.Visibility = "private"
+						} else {
+							repository.Visibility = "public"
+						}
+					}
+					if cmd.Flags().Changed("is-template") {
+						repository.SetManagedIsTemplate(newIsTemplate)
+					}
+					if cmd.Flags().Changed("archived") {
+						repository.SetManagedArchived(newArchived)
+					}
+					if cmd.Flags().Changed("allow-forking") {
+						repository.SetManagedAllowForking(newAllowForking)
+					}
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				if !changed {
+					changedFields = []string{}
+				}
+				message := fmt.Sprintf("Proposed repository %s/%s edit in config", trimmedOrg, trimmedName)
+				if !changed {
+					message = fmt.Sprintf("No changes needed for edit repository %s/%s", trimmedOrg, trimmedName)
+				}
+				return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+					"owner":          trimmedOrg,
+					"name":           trimmedName,
+					"config_path":    toConfig,
+					"changed":        changed,
+					"changed_fields": changedFields,
+				})
+			}
 
 			service := svc
 			if service == nil {
@@ -124,6 +178,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&newIsTemplate, "is-template", false, "Set the repository as a template")
 	cmd.Flags().BoolVar(&newArchived, "archived", false, "Archive the repository")
 	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow private forking of the repository")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "name")
