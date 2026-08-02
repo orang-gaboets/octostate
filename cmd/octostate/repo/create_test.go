@@ -26,19 +26,22 @@ type configOperationData struct {
 	Topics        []string `json:"topics"`
 }
 
-func decodeConfigOperationOutput(t *testing.T, output string) configOperationData {
+type configOperationResult struct {
+	Status  string              `json:"status"`
+	Message string              `json:"message"`
+	Data    configOperationData `json:"data"`
+}
+
+func decodeConfigOperationOutput(t *testing.T, output string) configOperationResult {
 	t.Helper()
-	var result struct {
-		Status string              `json:"status"`
-		Data   configOperationData `json:"data"`
-	}
+	var result configOperationResult
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("decode config operation output: %v", err)
 	}
 	if result.Status != "success" {
 		t.Fatalf("expected success status, got %q", result.Status)
 	}
-	return result.Data
+	return result
 }
 
 type captureCreateRepoFromTemplateService struct {
@@ -215,7 +218,9 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 
 	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{
 		"--org", "o",
 		"--template-name", "temp",
@@ -231,7 +236,14 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "Proposed repository o/n in config" {
+		t.Fatalf("unexpected config operation message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}

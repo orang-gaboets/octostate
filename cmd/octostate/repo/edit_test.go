@@ -171,7 +171,9 @@ repositories:
 
 	c := reposcmd.EditRepo(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{
 		"--org", " O ",
 		"--name", "repo",
@@ -186,7 +188,14 @@ repositories:
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "Proposed repository O/repo edit in config" {
+		t.Fatalf("unexpected config operation message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "O" || data.Name != "repo" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
@@ -276,12 +285,21 @@ func TestEditRepoToConfigNoFlagsIsNoOp(t *testing.T) {
 
 	c := reposcmd.EditRepo(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{"--org", "o", "--name", "n", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "No changes needed for edit o/n" {
+		t.Fatalf("unexpected no-op message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || data.Changed || len(data.ChangedFields) != 0 {
 		t.Fatalf("unexpected no-op operation data: %#v", data)
 	}

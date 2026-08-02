@@ -25,19 +25,22 @@ type configOperationData struct {
 	Topics     []string `json:"topics"`
 }
 
-func decodeConfigOperationOutput(t *testing.T, output string) configOperationData {
+type configOperationResult struct {
+	Status  string              `json:"status"`
+	Message string              `json:"message"`
+	Data    configOperationData `json:"data"`
+}
+
+func decodeConfigOperationOutput(t *testing.T, output string) configOperationResult {
 	t.Helper()
-	var result struct {
-		Status string              `json:"status"`
-		Data   configOperationData `json:"data"`
-	}
+	var result configOperationResult
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
 		t.Fatalf("decode config operation output: %v", err)
 	}
 	if result.Status != "success" {
 		t.Fatalf("expected success status, got %q", result.Status)
 	}
-	return result.Data
+	return result
 }
 
 type captureAddTopicsService struct {
@@ -154,12 +157,21 @@ repositories:
 
 	c := topicscmd.AddTopicsCmd(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, existing,NEW,new ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "Proposed topics add for repository O/repo in config" {
+		t.Fatalf("unexpected config operation message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "O" || data.Name != "repo" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
@@ -300,12 +312,21 @@ repositories:
 
 	c := topicscmd.AddTopicsCmd(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", " b,a ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "No changes needed for add topics o/n" {
+		t.Fatalf("unexpected no-op message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || data.Changed {
 		t.Fatalf("unexpected no-op operation data: %#v", data)
 	}

@@ -124,12 +124,21 @@ repositories:
 
 	c := topicscmd.ReplaceAllTopicsCmd(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, keep,NEW,new ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "Proposed topics replace for repository O/repo in config" {
+		t.Fatalf("unexpected config operation message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "O" || data.Name != "repo" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
@@ -251,12 +260,21 @@ repositories:
 
 	c := topicscmd.ReplaceAllTopicsCmd(nil)
 	var out bytes.Buffer
+	var errBuf bytes.Buffer
 	c.SetOut(&out)
+	c.SetErr(&errBuf)
 	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", " a,b,b ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	data := decodeConfigOperationOutput(t, out.String())
+	result := decodeConfigOperationOutput(t, out.String())
+	data := result.Data
+	if result.Message != "No changes needed for replace topics o/n" {
+		t.Fatalf("unexpected no-op message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
 	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || data.Changed {
 		t.Fatalf("unexpected no-op operation data: %#v", data)
 	}
