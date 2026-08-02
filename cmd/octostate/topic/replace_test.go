@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	topicscmd "github.com/orang-gaboets/octostate/cmd/octostate/topic"
 	"github.com/orang-gaboets/octostate/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 type captureReplaceAllTopicsService struct {
@@ -104,5 +107,171 @@ func TestReplaceAllTopicsDryRunSkipsTopicService(t *testing.T) {
 	}
 	if !strings.Contains(got, "Dry run: would replace topics for repository o/n") {
 		t.Fatalf("unexpected dry-run output: %q", got)
+	}
+}
+
+func TestReplaceAllTopicsToConfigReplacesTrimmedUniqueTopics(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: Repo
+    visibility: public
+    description: keep me
+    topics: [old, keep, old]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, keep,NEW,new ", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"changed": true`) {
+		t.Fatalf("expected changed proposal output, got %q", out.String())
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := cfg.Repositories[0]
+	if got, want := strings.Join(repository.Topics, ","), "new,keep,NEW"; got != want {
+		t.Fatalf("unexpected topics: got %q want %q", got, want)
+	}
+	if repository.Description != "keep me" {
+		t.Fatalf("unexpected unrelated field: %q", repository.Description)
+	}
+}
+
+func TestReplaceAllTopicsToConfigAllowsExplicitEmptyReplacement(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    topics: [a, b]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repositories[0].Topics) != 0 {
+		t.Fatalf("expected topics to be empty, got %#v", cfg.Repositories[0].Topics)
+	}
+}
+
+func TestReplaceAllTopicsToConfigRejectsEmptyTopicBeforeLoadingConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "a,,b", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "topic cannot be empty") {
+		t.Fatalf("expected empty-topic error, got %v", err)
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
+	}
+}
+
+func TestReplaceAllTopicsToConfigMissingTargetLeavesFileUnchanged(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte("organization: o\nrepositories: []\n")
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "missing", "--topics", "a", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not found in config") {
+		t.Fatalf("expected missing-target error, got %v", err)
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(before) {
+		t.Fatalf("config changed after missing-target rejection:\n%s", got)
+	}
+}
+
+func TestReplaceAllTopicsToConfigAlreadyPresentIsNoOp(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    topics: [a, b]
+`)
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", " a,b,b ", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"changed": false`) || !strings.Contains(out.String(), "No changes needed for replace topics o/n") {
+		t.Fatalf("expected no-op output, got %q", out.String())
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(before) {
+		t.Fatalf("no-op rewrote config:\n%s", got)
+	}
+}
+
+func TestReplaceAllTopicsToConfigSkipsTopicService(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    topics: [a]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := &captureReplaceAllTopicsService{}
+	c := topicscmd.ReplaceAllTopicsCmd(svc)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "b", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if svc.replaceAllTopicsCalled {
+		t.Fatalf("expected config mode not to call topic service")
+	}
+}
+
+func TestReplaceAllTopicsDryRunWinsOverToConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := topicscmd.ReplaceAllTopicsCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "a", "--dry-run", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run output, got %q", out.String())
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
 	}
 }
