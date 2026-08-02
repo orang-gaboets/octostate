@@ -98,6 +98,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 						return fmt.Errorf("repository %s/%s not found in config", trimmedOrg, trimmedName)
 					}
 					repository := &cfg.Repositories[index]
+					before := *repository
 					if cmd.Flags().Changed("desc") {
 						repository.SetManagedDescription(newDesc)
 					}
@@ -120,6 +121,25 @@ func EditRepo(svc repos.Service) *cobra.Command {
 					if cmd.Flags().Changed("allow-forking") {
 						repository.SetManagedAllowForking(newAllowForking)
 					}
+					changedFields = changedFields[:0]
+					if cmd.Flags().Changed("desc") && before.DescriptionOption() != repository.DescriptionOption() {
+						changedFields = append(changedFields, "desc")
+					}
+					if cmd.Flags().Changed("homepage") && before.HomepageOption() != repository.HomepageOption() {
+						changedFields = append(changedFields, "homepage")
+					}
+					if cmd.Flags().Changed("private") && before.Visibility != repository.Visibility {
+						changedFields = append(changedFields, "private")
+					}
+					if cmd.Flags().Changed("is-template") && before.IsTemplateOption() != repository.IsTemplateOption() {
+						changedFields = append(changedFields, "is-template")
+					}
+					if cmd.Flags().Changed("archived") && before.ArchivedOption() != repository.ArchivedOption() {
+						changedFields = append(changedFields, "archived")
+					}
+					if cmd.Flags().Changed("allow-forking") && before.AllowForkingOption() != repository.AllowForkingOption() {
+						changedFields = append(changedFields, "allow-forking")
+					}
 					return nil
 				})
 				if err != nil {
@@ -130,7 +150,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 				}
 				message := fmt.Sprintf("Proposed repository %s/%s edit in config", trimmedOrg, trimmedName)
 				if !changed {
-					message = fmt.Sprintf("No changes needed for edit repository %s/%s", trimmedOrg, trimmedName)
+					message = fmt.Sprintf("No changes needed for edit %s/%s", trimmedOrg, trimmedName)
 				}
 				return cmdoutput.PrintSuccess(cmd, message, map[string]any{
 					"owner":          trimmedOrg,

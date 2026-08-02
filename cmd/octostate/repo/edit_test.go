@@ -251,13 +251,100 @@ func TestEditRepoToConfigNoFlagsIsNoOp(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"changed": false`) || !strings.Contains(out.String(), "No changes needed for edit repository o/n") {
+	if !strings.Contains(out.String(), `"changed": false`) || !strings.Contains(out.String(), "No changes needed for edit o/n") {
 		t.Fatalf("expected no-op output, got %q", out.String())
 	}
 	if got, err := os.ReadFile(configPath); err != nil {
 		t.Fatal(err)
 	} else if string(got) != string(before) {
 		t.Fatalf("no-op rewrote config:\n%s", got)
+	}
+}
+
+func TestEditRepoToConfigPreservesOmittedFields(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    description: old description
+    homepage: https://example.com
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.EditRepo(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--desc", "new description", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := cfg.Repositories[0]
+	if repository.Description != "new description" || repository.Homepage != "https://example.com" {
+		t.Fatalf("unexpected partial edit result: %#v", repository)
+	}
+}
+
+func TestEditRepoToConfigMatchingExplicitValuesIsNoOp(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte(`organization: o
+repositories:
+  - name: n
+    visibility: public
+    description: description
+    is_template: false
+`)
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.EditRepo(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--desc", "description", "--private=false", "--is-template=false", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"changed": false`) || !strings.Contains(out.String(), `"changed_fields": []`) {
+		t.Fatalf("expected semantic no-op output, got %q", out.String())
+	}
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(before) {
+		t.Fatalf("semantic no-op rewrote config:\n%s", got)
+	}
+}
+
+func TestEditRepoToConfigAllowsPrivateRepositoryForkingField(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: n
+    visibility: private
+    allow_forking: true
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.EditRepo(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--allow-forking=false", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := cfg.Repositories[0]
+	if repository.Visibility != "private" || !repository.AllowForkingOption().Present || repository.AllowForking {
+		t.Fatalf("unexpected private repository forking setting: %#v", repository)
 	}
 }
 
