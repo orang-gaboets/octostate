@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	reposcmd "github.com/orang-gaboets/octostate/cmd/octostate/repo"
 	"github.com/orang-gaboets/octostate/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 type captureCreateRepoFromTemplateService struct {
@@ -176,5 +179,94 @@ func TestCreateRepoFromTemplateDryRunSkipsCreateService(t *testing.T) {
 	}
 	if !strings.Contains(got, "Dry run: would create repository o/n from template o/temp") {
 		t.Fatalf("unexpected dry-run output: %q", got)
+	}
+}
+
+func TestCreateRepoFromTemplateToConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte("organization: o\nrepositories: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{
+		"--org", "o",
+		"--template-name", "temp",
+		"--name", "n",
+		"--template-org", "template-org",
+		"--desc", "description",
+		"--topics", " a,b,a ",
+		"--private=true",
+		"--include-all-branches=true",
+		"--to-config", configPath,
+	})
+
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"changed": true`) {
+		t.Fatalf("expected changed proposal output, got %q", out.String())
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repositories) != 1 {
+		t.Fatalf("expected one repository, got %#v", cfg.Repositories)
+	}
+	repository := cfg.Repositories[0]
+	if repository.Owner != "o" || repository.Name != "n" || repository.Visibility != "private" {
+		t.Fatalf("unexpected repository identity/settings: %#v", repository)
+	}
+	if repository.Template.Owner != "template-org" || repository.Template.Name != "temp" || !repository.Template.IncludeAllBranches {
+		t.Fatalf("unexpected template settings: %#v", repository.Template)
+	}
+	if repository.Description != "description" || !repository.DescriptionOption().Present {
+		t.Fatalf("unexpected description: %#v", repository)
+	}
+	if got, want := strings.Join(repository.Topics, ","), "a,b,a"; got != want {
+		t.Fatalf("unexpected topics: got %q want %q", got, want)
+	}
+}
+
+func TestCreateRepoFromTemplateToConfigRejectsDuplicate(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := "organization: o\nrepositories:\n  - name: n\n    visibility: public\n"
+	if err := os.WriteFile(configPath, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	c.SetArgs([]string{"--org", "O", "--template-name", "temp", "--name", "N", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "already exists in config") {
+		t.Fatalf("expected duplicate error, got %v", err)
+	}
+	got, readErr := os.ReadFile(configPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != before {
+		t.Fatalf("config changed after duplicate rejection:\n%s", got)
+	}
+}
+
+func TestCreateRepoFromTemplateDryRunWinsOverToConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--template-name", "temp", "--name", "n", "--dry-run", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run output, got %q", out.String())
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
 	}
 }
