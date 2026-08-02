@@ -3,6 +3,7 @@ package repo_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +16,30 @@ import (
 	"github.com/orang-gaboets/octostate/pkg/github"
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
+
+type configOperationData struct {
+	Owner         string   `json:"owner"`
+	Name          string   `json:"name"`
+	ConfigPath    string   `json:"config_path"`
+	Changed       bool     `json:"changed"`
+	ChangedFields []string `json:"changed_fields"`
+	Topics        []string `json:"topics"`
+}
+
+func decodeConfigOperationOutput(t *testing.T, output string) configOperationData {
+	t.Helper()
+	var result struct {
+		Status string              `json:"status"`
+		Data   configOperationData `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("decode config operation output: %v", err)
+	}
+	if result.Status != "success" {
+		t.Fatalf("expected success status, got %q", result.Status)
+	}
+	return result.Data
+}
 
 type captureCreateRepoFromTemplateService struct {
 	lastTemplateRepo string
@@ -206,8 +231,12 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"changed": true`) {
-		t.Fatalf("expected changed proposal output, got %q", out.String())
+	data := decodeConfigOperationOutput(t, out.String())
+	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || !data.Changed {
+		t.Fatalf("unexpected config operation data: %#v", data)
+	}
+	if got, want := strings.Join(data.Topics, ","), "a,b,a"; got != want {
+		t.Fatalf("unexpected output topics: got %q want %q", got, want)
 	}
 
 	cfg, err := gitopsconfig.LoadFile(configPath)

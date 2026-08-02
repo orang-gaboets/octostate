@@ -129,8 +129,12 @@ repositories:
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"changed": true`) {
-		t.Fatalf("expected changed proposal output, got %q", out.String())
+	data := decodeConfigOperationOutput(t, out.String())
+	if data.Owner != "O" || data.Name != "repo" || data.ConfigPath != configPath || !data.Changed {
+		t.Fatalf("unexpected config operation data: %#v", data)
+	}
+	if got, want := strings.Join(data.Topics, ","), "new,keep,NEW"; got != want {
+		t.Fatalf("unexpected output topics: got %q want %q", got, want)
 	}
 
 	cfg, err := gitopsconfig.LoadFile(configPath)
@@ -252,8 +256,15 @@ repositories:
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"changed": false`) || !strings.Contains(out.String(), "No changes needed for replace topics o/n") {
-		t.Fatalf("expected no-op output, got %q", out.String())
+	data := decodeConfigOperationOutput(t, out.String())
+	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || data.Changed {
+		t.Fatalf("unexpected no-op operation data: %#v", data)
+	}
+	if got, want := strings.Join(data.Topics, ","), "a,b"; got != want {
+		t.Fatalf("unexpected no-op output topics: got %q want %q", got, want)
+	}
+	if !strings.Contains(out.String(), "No changes needed for replace topics o/n") {
+		t.Fatalf("expected no-op message, got %q", out.String())
 	}
 	got, err := os.ReadFile(configPath)
 	if err != nil {
