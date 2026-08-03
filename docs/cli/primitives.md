@@ -1,9 +1,10 @@
 # Primitive Commands
 
-These commands operate directly on GitHub resources instead of going through
-the desired-state file (`config/organization.yaml` in the common layout).
+Live invocations of these commands operate directly on GitHub resources
+instead of going through the desired-state file (`config/organization.yaml` in
+the common layout).
 
-All primitive commands require GitHub authentication. Supply exactly one of:
+Live primitive operations require GitHub authentication. Supply exactly one of:
 - `--token`
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
@@ -15,6 +16,19 @@ This reference uses canonical command names. Common aliases such as `org`,
 
 Mutating commands support `--dry-run` where noted. Destructive delete commands
 require explicit confirmation with `--yes` unless `--dry-run` is used.
+
+## Proposal mode
+
+The repository and topic mutation commands documented below also support
+`--to-config <organization.yaml>`. Proposal mode updates the existing local
+configuration instead of calling GitHub, so GitHub authentication is not
+required for these operations.
+
+Proposal mode requires an existing regular file (not a directory or symbolic
+link) whose `organization:` value matches `--org` case-insensitively. The file
+is validated before and after the requested mutation and is replaced
+atomically. Semantic no-ops return `changed: false` and leave the file bytes
+unchanged. `--to-config` and `--dry-run` are mutually exclusive.
 
 ## Organization
 
@@ -120,7 +134,7 @@ Flags:
 ### `octostate repo create-from-template`
 
 ```bash
-octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--dry-run]
+octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -136,6 +150,7 @@ Flags:
 - `--topics` (optional): Comma-separated list of repository topics
 - `--private` (optional): Create a private repository (default is public)
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
+- `--to-config` (optional): Add the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository creation without creating it
 
 ### `octostate repo delete`
@@ -157,7 +172,7 @@ Flags:
 ### `octostate repo edit`
 
 ```bash
-octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--dry-run]
+octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -173,6 +188,7 @@ Flags:
 - `--is-template` (optional): Set or unset repository as a template
 - `--archived` (optional): Archive/unarchive the repository
 - `--allow-forking` (optional): Allow/disallow private forking of the repository
+- `--to-config` (optional): Apply the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository edits without updating the repository
 
 ## Topic
@@ -180,7 +196,7 @@ Flags:
 ### `octostate topic add`
 
 ```bash
-octostate topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
+octostate topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -191,6 +207,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to add
+- `--to-config` (optional): Apply the topic proposal to an existing local organization config
 - `--dry-run` (optional): Preview topic additions without updating the repository
 
 ### `octostate topic list`
@@ -210,7 +227,7 @@ Flags:
 ### `octostate topic replace`
 
 ```bash
-octostate topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--dry-run]
+octostate topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --topics <t1,t2> [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -221,6 +238,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--topics` (required): Comma-separated list of topics to set
+- `--to-config` (optional): Apply the topic replacement to an existing local organization config
 - `--dry-run` (optional): Preview topic replacement without updating the repository
 
 ## Team
