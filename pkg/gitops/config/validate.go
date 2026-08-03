@@ -442,6 +442,12 @@ func isValidInviteEmail(email string) bool {
 	return address.Address == email
 }
 
+// NormalizeTeamName derives the canonical team slug from a team name using
+// the same normalization applied during semantic validation.
+func NormalizeTeamName(name string) string {
+	return normalizeTeamName(name)
+}
+
 func normalizeTeamName(name string) string {
 	name = strings.TrimSpace(strings.ToLower(name))
 

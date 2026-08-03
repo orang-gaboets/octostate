@@ -186,6 +186,7 @@ func TestCreateTeamToConfigTopLevelDefaultClosed(t *testing.T) {
 	}
 
 	want := `organization: o
+members: []
 invites: []
 repositories: []
 teams:
