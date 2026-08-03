@@ -73,6 +73,9 @@ func EditRepo(svc repos.Service) *cobra.Command {
 				opts.AllowForking = &newAllowForking
 				changedFields = append(changedFields, "allow-forking")
 			}
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,

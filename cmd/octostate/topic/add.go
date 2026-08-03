@@ -44,6 +44,9 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 			if topicsStr != "" {
 				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,

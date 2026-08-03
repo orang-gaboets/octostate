@@ -56,6 +56,9 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 			if trimmedTemplateOrg == "" {
 				trimmedTemplateOrg = trimmedOrg
 			}
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,

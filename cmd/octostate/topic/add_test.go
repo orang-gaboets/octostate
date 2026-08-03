@@ -345,17 +345,13 @@ repositories:
 	}
 }
 
-func TestAddTopicsDryRunWinsOverToConfig(t *testing.T) {
+func TestAddTopicsRejectsDryRunWithToConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "missing.yaml")
 	c := topicscmd.AddTopicsCmd(nil)
-	var out bytes.Buffer
-	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--name", "n", "--topics", "a", "--dry-run", "--to-config", configPath})
-	if err := c.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), `"status": "dry-run"`) {
-		t.Fatalf("expected dry-run output, got %q", out.String())
+	err := c.Execute()
+	if err == nil || err.Error() != "--to-config cannot be combined with --dry-run" {
+		t.Fatalf("expected conflicting-flag error, got %v", err)
 	}
 	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected config to remain absent, got %v", err)
