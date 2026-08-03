@@ -23,6 +23,7 @@ type configOperationData struct {
 	ConfigPath    string   `json:"config_path"`
 	Changed       bool     `json:"changed"`
 	ChangedFields []string `json:"changed_fields"`
+	TemplateRepo  string   `json:"template_repo"`
 	Topics        []string `json:"topics"`
 }
 
@@ -246,6 +247,9 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 	}
 	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
+	}
+	if data.TemplateRepo != "temp" {
+		t.Fatalf("unexpected template repository: %q", data.TemplateRepo)
 	}
 	if got, want := strings.Join(data.Topics, ","), "a,b,a"; got != want {
 		t.Fatalf("unexpected output topics: got %q want %q", got, want)

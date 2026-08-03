@@ -117,7 +117,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 					"config_path":          toConfig,
 					"changed":              true,
 					"template_owner":       trimmedTemplateOrg,
-					"template_name":        trimmedTemplateName,
+					"template_repo":        trimmedTemplateName,
 					"include_all_branches": includeAllBranches,
 					"topics":               normalizedTopics,
 				})
