@@ -18,13 +18,16 @@ import (
 )
 
 type configOperationData struct {
-	Owner         string   `json:"owner"`
-	Name          string   `json:"name"`
-	ConfigPath    string   `json:"config_path"`
-	Changed       bool     `json:"changed"`
-	ChangedFields []string `json:"changed_fields"`
-	TemplateRepo  string   `json:"template_repo"`
-	Topics        []string `json:"topics"`
+	Owner              string   `json:"owner"`
+	Name               string   `json:"name"`
+	ConfigPath         string   `json:"config_path"`
+	Changed            bool     `json:"changed"`
+	ChangedFields      []string `json:"changed_fields"`
+	TemplateOwner      string   `json:"template_owner"`
+	TemplateRepo       string   `json:"template_repo"`
+	Private            bool     `json:"private"`
+	IncludeAllBranches bool     `json:"include_all_branches"`
+	Topics             []string `json:"topics"`
 }
 
 type configOperationResult struct {
@@ -248,8 +251,8 @@ func TestCreateRepoFromTemplateToConfig(t *testing.T) {
 	if data.Owner != "o" || data.Name != "n" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
-	if data.TemplateRepo != "temp" {
-		t.Fatalf("unexpected template repository: %q", data.TemplateRepo)
+	if data.TemplateOwner != "template-org" || data.TemplateRepo != "temp" || !data.Private || !data.IncludeAllBranches {
+		t.Fatalf("unexpected template output data: %#v", data)
 	}
 	if got, want := strings.Join(data.Topics, ","), "a,b,a"; got != want {
 		t.Fatalf("unexpected output topics: got %q want %q", got, want)
