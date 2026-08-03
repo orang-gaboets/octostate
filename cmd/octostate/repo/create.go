@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/repos"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // CreateNewRepoFromTemplateCmd creates a new command to create a GitHub repository from a template.
@@ -29,6 +31,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 		private            bool
 		includeAllBranches bool
 		dryRun             bool
+		toConfig           string
 	)
 
 	cmd := &cobra.Command{
@@ -53,6 +56,9 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 			if trimmedTemplateOrg == "" {
 				trimmedTemplateOrg = trimmedOrg
 			}
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,
@@ -76,6 +82,49 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 						"topics":               topicList,
 					},
 				)
+			}
+			if cmd.Flags().Changed("to-config") {
+				normalizedTopics, err := normalizeConfigTopics(topicList)
+				if err != nil {
+					return err
+				}
+				visibility := "public"
+				if private {
+					visibility = "private"
+				}
+				_, err = configproposal.ApplyToConfigFile(toConfig, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
+					if _, exists := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName); exists {
+						return fmt.Errorf("repository %s/%s already exists in config", trimmedOrg, trimmedName)
+					}
+					repository := gitopsconfig.RepositorySpec{
+						Owner: trimmedOrg,
+						Name:  trimmedName,
+						Template: gitopsconfig.TemplateSpec{
+							Owner:              trimmedTemplateOrg,
+							Name:               trimmedTemplateName,
+							IncludeAllBranches: includeAllBranches,
+						},
+						Visibility: visibility,
+						Topics:     normalizedTopics,
+					}
+					repository.SetManagedDescription(desc)
+					cfg.Repositories = append(cfg.Repositories, repository)
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s in config", trimmedOrg, trimmedName), map[string]any{
+					"owner":                trimmedOrg,
+					"name":                 trimmedName,
+					"config_path":          toConfig,
+					"changed":              true,
+					"template_owner":       trimmedTemplateOrg,
+					"template_repo":        trimmedTemplateName,
+					"private":              private,
+					"include_all_branches": includeAllBranches,
+					"topics":               normalizedTopics,
+				})
 			}
 			service := svc
 			if service == nil {
@@ -133,9 +182,22 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
 	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", false, "Include all branches from the template repository")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "template-name", "name")
 
 	return cmd
+}
+
+func normalizeConfigTopics(topics []string) ([]string, error) {
+	normalized := make([]string, 0, len(topics))
+	for _, topic := range topics {
+		topic = strings.TrimSpace(topic)
+		if topic == "" {
+			return nil, fmt.Errorf("topic cannot be empty")
+		}
+		normalized = append(normalized, topic)
+	}
+	return normalized, nil
 }

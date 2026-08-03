@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/topics"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // AddTopicsCmd creates a new command to add topics to an existing GitHub repository.
@@ -24,6 +26,7 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 		name           string
 		topicsStr      string
 		dryRun         bool
+		toConfig       string
 	)
 
 	cmd := &cobra.Command{
@@ -41,6 +44,9 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 			if topicsStr != "" {
 				topicsList = strings.Split(strings.TrimSpace(topicsStr), ",")
 			}
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,
@@ -51,6 +57,39 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 						"topics": topicsList,
 					},
 				)
+			}
+			if cmd.Flags().Changed("to-config") {
+				normalizedTopics, err := normalizeConfigTopicAddInput(topicsStr)
+				if err != nil {
+					return err
+				}
+				var resultingTopics []string
+				changed, err := configproposal.ApplyToConfigFile(toConfig, strings.TrimSpace(org), func(cfg *gitopsconfig.OrganizationConfig) error {
+					index, found := configproposal.FindRepositoryIndex(cfg, org, name)
+					if !found {
+						return fmt.Errorf("repository %s/%s not found in config", strings.TrimSpace(org), strings.TrimSpace(name))
+					}
+					repository := &cfg.Repositories[index]
+					repository.Topics = github.MergeUnique(repository.Topics, normalizedTopics)
+					resultingTopics = repository.Topics
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+				trimmedOrg := strings.TrimSpace(org)
+				trimmedName := strings.TrimSpace(name)
+				message := fmt.Sprintf("Proposed topics add for repository %s/%s in config", trimmedOrg, trimmedName)
+				if !changed {
+					message = fmt.Sprintf("No changes needed for add topics %s/%s", trimmedOrg, trimmedName)
+				}
+				return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+					"owner":       trimmedOrg,
+					"name":        trimmedName,
+					"config_path": toConfig,
+					"changed":     changed,
+					"topics":      resultingTopics,
+				})
 			}
 			service := svc
 			if service == nil {
@@ -87,9 +126,23 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&name, "name", "", "GitHub repository name")
 	cmd.Flags().StringVar(&topicsStr, "topics", "", "Comma-separated list of topics to add to the repository")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "name", "topics")
 
 	return cmd
+}
+
+func normalizeConfigTopicAddInput(value string) ([]string, error) {
+	parts := strings.Split(value, ",")
+	normalized := make([]string, 0, len(parts))
+	for _, part := range parts {
+		topic := strings.TrimSpace(part)
+		if topic == "" {
+			return nil, fmt.Errorf("topic cannot be empty")
+		}
+		normalized = append(normalized, topic)
+	}
+	return normalized, nil
 }
