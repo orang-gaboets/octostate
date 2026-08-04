@@ -552,7 +552,7 @@ func TestValidateRepositoryTopicsFormat(t *testing.T) {
 		{name: "uppercase", topic: "Go", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
 		{name: "underscore", topic: "go_lang", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
 		{name: "slash", topic: "go/lang", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
-		{name: "non ASCII", topic: "café", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+		{name: "non ASCII under 50 characters", topic: strings.Repeat("é", 26), wantCode: ValidationIssueCodeInvalidRepositoryTopic},
 		{name: "50 characters", topic: strings.Repeat("a", 50)},
 		{name: "51 characters", topic: strings.Repeat("a", 51), wantCode: ValidationIssueCodeInvalidRepositoryTopic},
 	}

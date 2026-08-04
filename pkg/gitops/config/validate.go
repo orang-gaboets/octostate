@@ -181,10 +181,6 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 			continue
 		}
 		normalizedTopics[normalized] = struct{}{}
-		if len(normalized) > 50 {
-			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must be at most 50 bytes", normalized)
-			continue
-		}
 
 		valid := true
 		for j := 0; j < len(normalized); j++ {
@@ -196,6 +192,10 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 		}
 		if !valid {
 			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must contain only lowercase ASCII letters, digits, and hyphens", normalized)
+			continue
+		}
+		if len(normalized) > 50 {
+			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must be at most 50 characters", normalized)
 			continue
 		}
 	}
