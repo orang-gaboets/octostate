@@ -627,6 +627,17 @@ func TestValidateRepositoryTopicsLimit(t *testing.T) {
 	}
 }
 
+func TestValidateRepositoryTopicsLimitCountsInvalidTopics(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].Topics = append(repositoryTopics(20), "Go")
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].topics[20]", ValidationIssueCodeInvalidRepositoryTopic)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].topics", ValidationIssueCodeRepositoryTopicLimit)
+}
+
 func repositoryTopics(count int) []string {
 	topics := make([]string, count)
 	for i := range topics {

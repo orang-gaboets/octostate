@@ -171,7 +171,7 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 }
 
 func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topics []string) {
-	validTopics := make(map[string]struct{}, len(topics))
+	normalizedTopics := make(map[string]struct{}, len(topics))
 
 	for i, topic := range topics {
 		normalized := strings.TrimSpace(topic)
@@ -180,6 +180,7 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 			report.addError(topicPath, ValidationIssueCodeMissingRequiredField, "repository topic cannot be empty")
 			continue
 		}
+		normalizedTopics[normalized] = struct{}{}
 		if len(normalized) > 50 {
 			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must be at most 50 bytes", normalized)
 			continue
@@ -197,11 +198,10 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must contain only lowercase ASCII letters, digits, and hyphens", normalized)
 			continue
 		}
-		validTopics[normalized] = struct{}{}
 	}
 
-	if len(validTopics) > 20 {
-		report.addError(pathPrefix+".topics", ValidationIssueCodeRepositoryTopicLimit, "repository topics must contain at most 20 distinct valid topics")
+	if len(normalizedTopics) > 20 {
+		report.addError(pathPrefix+".topics", ValidationIssueCodeRepositoryTopicLimit, "repository topics must contain at most 20 distinct normalized topics")
 	}
 }
 
