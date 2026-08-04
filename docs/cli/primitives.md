@@ -392,7 +392,7 @@ Flags:
 ### `octostate team repo permissions add`
 
 ```bash
-octostate team repo permissions add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--permission <pull|push|admin|maintain|triage>] [--dry-run]
+octostate team repo permissions add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--permission <pull|push|admin|maintain|triage>] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -405,12 +405,13 @@ Flags:
 - `--repo` (required): Repository name
 - `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
 - `--permission` (optional): Permission to grant (`pull`, `push`, `admin`, `maintain`, `triage`; default is `pull`)
+- `--to-config` (optional): Apply the permission proposal to an existing local organization config instead of GitHub; the team must exist in desired state and an existing entry for the repository is updated in place
 - `--dry-run` (optional): Preview the permission change without calling GitHub
 
 ### `octostate team repo permissions remove`
 
 ```bash
-octostate team repo permissions remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--dry-run]
+octostate team repo permissions remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --repo <repo-name> [--repo-org <repo-org>] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -422,6 +423,7 @@ Flags:
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
 - `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
+- `--to-config` (optional): Remove the permission entry from an existing local organization config instead of GitHub; an entry that does not exist is a no-op
 - `--dry-run` (optional): Preview the permission removal without calling GitHub
 
 ## User
