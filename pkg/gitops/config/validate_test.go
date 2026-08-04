@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateValidConfig(t *testing.T) {
 	t.Parallel()
@@ -527,6 +530,108 @@ func TestValidateRepositoryOptionalFieldsOmittedAreValid(t *testing.T) {
 	if !report.Valid {
 		t.Fatalf("expected omitted repository optional fields to be valid, got %#v", report)
 	}
+}
+
+func TestValidateRepositoryTopicsFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		topic    string
+		wantCode ValidationIssueCode
+	}{
+		{name: "letters", topic: "go"},
+		{name: "hyphen", topic: "go-lang"},
+		{name: "digits", topic: "abc123"},
+		{name: "leading and trailing hyphen", topic: "-go-"},
+		{name: "surrounding whitespace", topic: " go "},
+		{name: "whitespace only", topic: "   ", wantCode: ValidationIssueCodeMissingRequiredField},
+		{name: "empty", topic: "", wantCode: ValidationIssueCodeMissingRequiredField},
+		{name: "embedded whitespace", topic: "go lang", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+		{name: "uppercase", topic: "Go", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+		{name: "underscore", topic: "go_lang", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+		{name: "slash", topic: "go/lang", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+		{name: "non ASCII", topic: "café", wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+		{name: "50 characters", topic: strings.Repeat("a", 50)},
+		{name: "51 characters", topic: strings.Repeat("a", 51), wantCode: ValidationIssueCodeInvalidRepositoryTopic},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validOrganizationConfig()
+			cfg.Repositories[0].Topics = []string{tt.topic}
+			originalTopics := append([]string(nil), cfg.Repositories[0].Topics...)
+
+			report := Validate(cfg)
+			if tt.wantCode == "" {
+				if !report.Valid || len(report.Errors) != 0 {
+					t.Fatalf("expected valid report, got %#v", report.Errors)
+				}
+			} else {
+				assertHasIssueAtPathAndCode(t, report, "repositories[0].topics[0]", tt.wantCode)
+			}
+			if strings.Join(cfg.Repositories[0].Topics, "\x00") != strings.Join(originalTopics, "\x00") {
+				t.Fatalf("validation mutated topics: got %#v, want %#v", cfg.Repositories[0].Topics, originalTopics)
+			}
+		})
+	}
+}
+
+func TestValidateRepositoryTopicsOmittedAndEmptyAreValid(t *testing.T) {
+	t.Parallel()
+
+	for _, topics := range [][]string{nil, {}} {
+		cfg := validOrganizationConfig()
+		cfg.Repositories[0].Topics = topics
+
+		report := Validate(cfg)
+		if !report.Valid {
+			t.Fatalf("expected topics %#v to be valid, got %#v", topics, report.Errors)
+		}
+	}
+}
+
+func TestValidateRepositoryTopicsLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		topics    []string
+		wantValid bool
+		wantPath  string
+		wantCode  ValidationIssueCode
+	}{
+		{name: "20 distinct", topics: repositoryTopics(20), wantValid: true},
+		{name: "21 distinct", topics: repositoryTopics(21), wantPath: "repositories[0].topics", wantCode: ValidationIssueCodeRepositoryTopicLimit},
+		{name: "20 distinct plus duplicate", topics: append(repositoryTopics(20), " topic-a "), wantValid: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validOrganizationConfig()
+			cfg.Repositories[0].Topics = tt.topics
+
+			report := Validate(cfg)
+			if report.Valid != tt.wantValid {
+				t.Fatalf("Validate valid = %t, want %t; errors: %#v", report.Valid, tt.wantValid, report.Errors)
+			}
+			if tt.wantCode != "" {
+				assertHasIssueAtPathAndCode(t, report, tt.wantPath, tt.wantCode)
+			}
+		})
+	}
+}
+
+func repositoryTopics(count int) []string {
+	topics := make([]string, count)
+	for i := range topics {
+		topics[i] = "topic-" + strings.Repeat("a", i)
+	}
+	return topics
 }
 
 func TestValidateRepositoryOptionalStringsExplicitEmptyAreValid(t *testing.T) {

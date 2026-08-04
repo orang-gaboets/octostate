@@ -156,11 +156,7 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 			report.addError(pathPrefix+".is_template", ValidationIssueCodeInvalidFieldValue, "repository is_template must not be null when provided")
 		}
 
-		for j, topic := range repo.Topics {
-			if strings.TrimSpace(topic) == "" {
-				report.addError(fmt.Sprintf("%s.topics[%d]", pathPrefix, j), ValidationIssueCodeMissingRequiredField, "repository topic cannot be empty")
-			}
-		}
+		validateRepositoryTopics(report, pathPrefix, repo.Topics)
 
 		if owner == "" || name == "" {
 			continue
@@ -171,6 +167,41 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 			continue
 		}
 		seen[key] = i
+	}
+}
+
+func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topics []string) {
+	validTopics := make(map[string]struct{}, len(topics))
+
+	for i, topic := range topics {
+		normalized := strings.TrimSpace(topic)
+		topicPath := fmt.Sprintf("%s.topics[%d]", pathPrefix, i)
+		if normalized == "" {
+			report.addError(topicPath, ValidationIssueCodeMissingRequiredField, "repository topic cannot be empty")
+			continue
+		}
+		if len(normalized) > 50 {
+			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must be at most 50 bytes", normalized)
+			continue
+		}
+
+		valid := true
+		for j := 0; j < len(normalized); j++ {
+			char := normalized[j]
+			if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			report.addError(topicPath, ValidationIssueCodeInvalidRepositoryTopic, "repository topic %q must contain only lowercase ASCII letters, digits, and hyphens", normalized)
+			continue
+		}
+		validTopics[normalized] = struct{}{}
+	}
+
+	if len(validTopics) > 20 {
+		report.addError(pathPrefix+".topics", ValidationIssueCodeRepositoryTopicLimit, "repository topics must contain at most 20 distinct valid topics")
 	}
 }
 
