@@ -108,6 +108,21 @@ Repository reconciliation semantics:
 - explicit `null` is rejected for the presence-aware optional fields
 - `allow_forking` is ignored for private repositories
 
+Repository topics:
+
+- omitted or empty `topics` means no topics
+- leading and trailing whitespace is trimmed
+- whitespace-only values fail validation
+- valid topics contain only ASCII lowercase letters, numbers, and hyphens
+- each topic is at most 50 characters
+- each repository has at most 20 distinct normalized valid topics
+- duplicate entries do not consume topic-limit capacity
+- validation does not lowercase, reorder, or deduplicate config values
+- invalid state is rejected before plan, apply, or proposal writes, and before
+  `sync-from-live --write` writes generated config
+
+These constraints follow the [GitHub repository topic constraints](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics).
+
 ## Teams
 
 Each team entry requires:
