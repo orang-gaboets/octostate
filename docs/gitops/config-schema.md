@@ -115,7 +115,7 @@ Repository topics:
 - whitespace-only values fail validation
 - valid topics contain only ASCII lowercase letters, numbers, and hyphens
 - each topic is at most 50 characters
-- each repository has at most 20 distinct normalized valid topics
+- each repository has at most 20 distinct non-empty normalized topics
 - duplicate entries do not consume topic-limit capacity
 - validation does not lowercase, reorder, or deduplicate config values
 - invalid state is rejected before plan, apply, or proposal writes, and before
