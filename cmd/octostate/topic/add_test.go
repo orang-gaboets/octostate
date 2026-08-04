@@ -192,6 +192,37 @@ repositories:
 	}
 }
 
+func TestAddTopicsToConfigRejectsInvalidTopicWithoutWriting(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	contents := []byte(`organization: o
+repositories:
+  - name: repo
+    visibility: public
+    topics: [existing]
+`)
+	if err := os.WriteFile(configPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "repo", "--topics", "Go", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil {
+		t.Fatal("expected invalid topic error")
+	}
+	if !strings.Contains(err.Error(), "repositories[0].topics[1] (invalid_repository_topic)") {
+		t.Fatalf("expected invalid repository topic code, got %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, contents) {
+		t.Fatalf("config changed after invalid topic error:\n%s\nwant:\n%s", got, contents)
+	}
+}
+
 func TestAddTopicsToConfigSkipsTopicService(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	if err := os.WriteFile(configPath, []byte(`organization: o
