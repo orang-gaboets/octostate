@@ -123,6 +123,19 @@ Repository topics:
 
 These constraints follow the [GitHub repository topic constraints](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics).
 
+Examples:
+
+```yaml
+# Valid
+repositories:
+  - name: octostate
+    visibility: public
+    topics: [go, gitops-tools, octostate]
+
+# Rejected by validation as written; values are not rewritten.
+topics: [Go, go_lang, go/lang, "go lang"]
+```
+
 ## Teams
 
 Each team entry requires:
