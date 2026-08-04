@@ -7,9 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
+	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // RemoveCmd creates a command to remove a user from a GitHub team by slug.
@@ -23,6 +26,7 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 		slug           string
 		username       string
 		dryRun         bool
+		toConfig       string
 	)
 
 	cmd := &cobra.Command{
@@ -45,6 +49,9 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 				return fmt.Errorf("username cannot be empty: %w", github.ErrMissingRequiredField)
 			}
 
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				_, err := fmt.Fprintf(
 					cmd.OutOrStdout(),
@@ -54,6 +61,10 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 					trimmedSlug,
 				)
 				return err
+			}
+
+			if cmd.Flags().Changed("to-config") {
+				return removeTeamMemberToConfig(cmd, toConfig, trimmedOrg, trimmedSlug, trimmedUsername)
 			}
 
 			service := svc
@@ -86,9 +97,42 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
 	cmd.Flags().StringVar(&username, "username", "", "GitHub username to remove from the team")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "slug", "username")
 
 	return cmd
+}
+
+func removeTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username string) error {
+	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
+		teamIndex, found := configproposal.FindTeamIndex(cfg, slug)
+		if !found {
+			return fmt.Errorf("team %s/%s not found in config", org, slug)
+		}
+
+		team := &cfg.Teams[teamIndex]
+		memberIndex, found := configproposal.FindTeamMemberIndex(team, username)
+		if !found {
+			return nil
+		}
+		team.Members = append(team.Members[:memberIndex], team.Members[memberIndex+1:]...)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	message := fmt.Sprintf("Proposed member remove for team %s/%s in config", org, slug)
+	if !changed {
+		message = fmt.Sprintf("No changes needed for remove member %s/%s", org, slug)
+	}
+	return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+		"organization": org,
+		"slug":         slug,
+		"username":     username,
+		"config_path":  path,
+		"changed":      changed,
+	})
 }
