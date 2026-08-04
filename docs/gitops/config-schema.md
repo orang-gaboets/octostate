@@ -127,13 +127,17 @@ Examples:
 
 ```yaml
 # Valid
+organization: octostate
 repositories:
   - name: octostate
     visibility: public
     topics: [go, gitops-tools, octostate]
 
 # Rejected by validation as written; values are not rewritten.
-topics: [Go, go_lang, go/lang, "go lang"]
+organization: octostate
+repositories:
+  - name: octostate
+    topics: [Go, go_lang, go/lang, "go lang"]
 ```
 
 ## Teams
