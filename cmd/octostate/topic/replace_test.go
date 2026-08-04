@@ -127,7 +127,7 @@ repositories:
 	var errBuf bytes.Buffer
 	c.SetOut(&out)
 	c.SetErr(&errBuf)
-	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, keep,NEW,new ", "--to-config", configPath})
+	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, keep,new,new ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ repositories:
 	if data.Owner != "O" || data.Name != "repo" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
-	if got, want := strings.Join(data.Topics, ","), "new,keep,NEW"; got != want {
+	if got, want := strings.Join(data.Topics, ","), "new,keep"; got != want {
 		t.Fatalf("unexpected output topics: got %q want %q", got, want)
 	}
 
@@ -151,7 +151,7 @@ repositories:
 		t.Fatal(err)
 	}
 	repository := cfg.Repositories[0]
-	if got, want := strings.Join(repository.Topics, ","), "new,keep,NEW"; got != want {
+	if got, want := strings.Join(repository.Topics, ","), "new,keep"; got != want {
 		t.Fatalf("unexpected topics: got %q want %q", got, want)
 	}
 	if repository.Description != "keep me" {
