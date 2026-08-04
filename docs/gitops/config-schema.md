@@ -137,6 +137,7 @@ repositories:
 organization: octostate
 repositories:
   - name: octostate
+    visibility: public
     topics: [Go, go_lang, go/lang, "go lang"]
 ```
 
