@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // EditTeamCmd creates a new command to edit a GitHub team by slug.
@@ -28,6 +30,7 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 		parent         string
 		clearParent    bool
 		dryRun         bool
+		toConfig       string
 	)
 
 	cmd := &cobra.Command{
@@ -110,6 +113,9 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 				changedFields = append(changedFields, "<none>")
 			}
 
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,
@@ -120,6 +126,16 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 						"changed_fields": changedFields,
 					},
 				)
+			}
+
+			if cmd.Flags().Changed("to-config") {
+				return editTeamToConfig(cmd, toConfig, trimmedOrg, trimmedSlug, editTeamConfigValues{
+					name:        trimmedName,
+					desc:        desc,
+					secret:      secret,
+					parent:      trimmedParent,
+					clearParent: clearParent,
+				})
 			}
 
 			service := svc
@@ -158,9 +174,95 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().BoolVar(&secret, "secret", false, "Set team privacy to secret when true, closed when false")
 	cmd.Flags().StringVar(&parent, "parent", "", "Parent team slug to assign (optional)")
 	cmd.Flags().BoolVar(&clearParent, "clear-parent", false, "Remove the parent team relationship")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "slug")
 
 	return cmd
+}
+
+type editTeamConfigValues struct {
+	name        string
+	desc        string
+	secret      bool
+	parent      string
+	clearParent bool
+}
+
+func editTeamToConfig(cmd *cobra.Command, path, org, slug string, values editTeamConfigValues) error {
+	changedFields := []string{}
+	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
+		index, found := configproposal.FindTeamIndex(cfg, slug)
+		if !found {
+			return fmt.Errorf("team %s/%s not found in config", org, slug)
+		}
+		team := &cfg.Teams[index]
+		before := *team
+
+		if cmd.Flags().Changed("name") {
+			proposedSlug := gitopsconfig.NormalizeTeamName(values.name)
+			existingSlug := strings.TrimSpace(team.Slug)
+			if !strings.EqualFold(proposedSlug, existingSlug) {
+				return fmt.Errorf(
+					"team name %q would change team slug from %s to %s; slug-changing renames are not supported in config proposals",
+					values.name,
+					existingSlug,
+					proposedSlug,
+				)
+			}
+			team.Name = values.name
+		}
+		if cmd.Flags().Changed("desc") {
+			team.Description = strings.TrimSpace(values.desc)
+		}
+		if cmd.Flags().Changed("secret") {
+			team.Privacy = string(github.PrivacyFromBool(values.secret))
+		}
+		if cmd.Flags().Changed("parent") {
+			parentIndex, found := configproposal.FindTeamIndex(cfg, values.parent)
+			if !found {
+				return fmt.Errorf("parent team %s not found in config", values.parent)
+			}
+			team.ParentSlug = strings.TrimSpace(cfg.Teams[parentIndex].Slug)
+		}
+		if values.clearParent {
+			team.ParentSlug = ""
+		}
+
+		if cmd.Flags().Changed("name") && before.Name != team.Name {
+			changedFields = append(changedFields, "name")
+		}
+		if cmd.Flags().Changed("desc") && before.Description != team.Description {
+			changedFields = append(changedFields, "desc")
+		}
+		if cmd.Flags().Changed("secret") && before.Privacy != team.Privacy {
+			changedFields = append(changedFields, "secret")
+		}
+		if cmd.Flags().Changed("parent") && before.ParentSlug != team.ParentSlug {
+			changedFields = append(changedFields, "parent")
+		}
+		if values.clearParent && before.ParentSlug != team.ParentSlug {
+			changedFields = append(changedFields, "clear-parent")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !changed {
+		changedFields = []string{}
+	}
+
+	message := fmt.Sprintf("Proposed team %s/%s edit in config", org, slug)
+	if !changed {
+		message = fmt.Sprintf("No changes needed for edit %s/%s", org, slug)
+	}
+	return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+		"organization":   org,
+		"slug":           slug,
+		"config_path":    path,
+		"changed":        changed,
+		"changed_fields": changedFields,
+	})
 }

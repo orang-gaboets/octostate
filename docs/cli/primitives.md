@@ -19,9 +19,9 @@ require explicit confirmation with `--yes` unless `--dry-run` is used.
 
 ## Proposal mode
 
-The repository and topic mutation commands documented below also support
-`--to-config <organization.yaml>`. Proposal mode updates the existing local
-configuration instead of calling GitHub, so GitHub authentication is not
+The repository, topic, and team mutation commands documented below also
+support `--to-config <organization.yaml>`. Proposal mode updates the existing
+local configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
 
 Proposal mode requires an existing regular file (not a directory or symbolic
@@ -29,6 +29,11 @@ link) whose `organization:` value matches `--org` case-insensitively. The file
 is validated before and after the requested mutation and is replaced
 atomically. Semantic no-ops return `changed: false` and leave the file bytes
 unchanged. `--to-config` and `--dry-run` are mutually exclusive.
+
+Team proposals follow the desired-state schema rules: `team create` derives
+the team slug from the normalized team name and rejects a slug that collides
+with an existing team; `team edit` rejects name changes that would change the
+team slug; and any supplied parent team must already exist in desired state.
 
 ## Organization
 
@@ -246,7 +251,7 @@ Flags:
 ### `octostate team create`
 
 ```bash
-octostate team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>] [--dry-run]
+octostate team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> [--desc <description>] [--secret true|false] [--parent <parent-team-slug>] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -258,13 +263,14 @@ Flags:
 - `--name` (required): Team name
 - `--desc` (optional): Team description
 - `--secret` (optional): Create a secret team (default is false)
-- `--parent` (optional): Parent team slug (if creating a child team)
+- `--parent` (optional): Parent team slug (if creating a child team); the parent must already exist in desired state when using `--to-config`
+- `--to-config` (optional): Add the team proposal to an existing local organization config instead of creating the team in GitHub; the slug is derived from the normalized team name and must not collide with an existing team
 - `--dry-run` (optional): Preview team creation without creating the team
 
 ### `octostate team edit`
 
 ```bash
-octostate team edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--name <new-team-name>] [--desc <description>] [--secret true|false] [--parent <parent-team-slug> | --clear-parent] [--dry-run]
+octostate team edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> [--name <new-team-name>] [--desc <description>] [--secret true|false] [--parent <parent-team-slug> | --clear-parent] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -279,6 +285,7 @@ Flags:
 - `--secret` (optional): Set privacy to secret (`true`) or closed (`false`) when provided
 - `--parent` (optional): Parent team slug to assign
 - `--clear-parent` (optional): Remove the parent team relationship
+- `--to-config` (optional): Apply the team edit proposal to an existing local organization config instead of GitHub; name edits that would change the normalized team slug are rejected, and a supplied parent must already exist in desired state
 - `--dry-run` (optional): Preview team edits without updating the team
 
 ### `octostate team delete-by-slug`

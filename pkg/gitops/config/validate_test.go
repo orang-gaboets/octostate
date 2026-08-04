@@ -714,3 +714,21 @@ func nullOptionalBool() OptionalBool {
 		Null:    true,
 	}
 }
+
+func TestNormalizeTeamNameExported(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: " Platform Team ", want: "platform-team"},
+		{name: "Core_Infra  Ops", want: "core-infra-ops"},
+		{name: "***", want: ""},
+	}
+	for _, tt := range tests {
+		if got := NormalizeTeamName(tt.name); got != tt.want {
+			t.Fatalf("NormalizeTeamName(%q) = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
