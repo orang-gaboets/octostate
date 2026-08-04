@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -572,7 +573,7 @@ func TestValidateRepositoryTopicsFormat(t *testing.T) {
 			} else {
 				assertHasIssueAtPathAndCode(t, report, "repositories[0].topics[0]", tt.wantCode)
 			}
-			if strings.Join(cfg.Repositories[0].Topics, "\x00") != strings.Join(originalTopics, "\x00") {
+			if !slices.Equal(cfg.Repositories[0].Topics, originalTopics) {
 				t.Fatalf("validation mutated topics: got %#v, want %#v", cfg.Repositories[0].Topics, originalTopics)
 			}
 		})
