@@ -19,9 +19,10 @@ require explicit confirmation with `--yes` unless `--dry-run` is used.
 
 ## Proposal mode
 
-The repository, topic, team, and team membership mutation commands documented
-below also support `--to-config <organization.yaml>`. Proposal mode updates the existing
-local configuration instead of calling GitHub, so GitHub authentication is not
+The repository, topic, team, team membership, and team repository permission
+mutation commands documented below also support
+`--to-config <organization.yaml>`. Proposal mode updates the existing local
+configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
 
 Proposal mode requires an existing regular file (not a directory or symbolic
@@ -41,6 +42,22 @@ top-level `members:`, and updates the role in place when the member is already
 on the team. `team members remove` drops only the targeted membership and
 leaves the top-level `members:` entry in place; removing a member who is not on
 the team is a no-op.
+
+Team repository permission proposals also require the target team to exist in
+desired state. `team repo permissions add` updates the permission in place when
+the team already has an entry for the repository, and `remove` drops only the
+targeted entry; a repository the team has no entry for is a no-op. `--repo-org`
+is stored only when it differs from the organization.
+
+The repository itself does not need to be declared under top-level
+`repositories:` — `config validate` does not cross-check permission entries
+against declared repositories, so this is valid proposal state. Be aware of what
+that means downstream: `config plan` marks a team repository permission
+executable only once the repository exists in live state or is created earlier
+in the same plan, and `config apply` skips actions that are not executable. A
+permission proposed against a repository that is neither declared nor live is
+therefore valid, reviewable config that stays pending until the repository
+exists.
 
 ## Organization
 
