@@ -7,11 +7,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
 	"github.com/orang-gaboets/octostate/pkg/github/users"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // InviteCmd creates a command to invite a user to an organization.
@@ -25,6 +27,7 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 		userID         int64
 		username       string
 		dryRun         bool
+		toConfig       string
 	)
 
 	cmd := &cobra.Command{
@@ -49,6 +52,9 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 				return fmt.Errorf("%w: cannot provide both --id and --username", github.ErrConflictingCredentials)
 			}
 
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				if usernameProvided {
 					return cmdoutput.PrintDryRun(
@@ -73,6 +79,10 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 
 			if userIDProvided && userID <= 0 {
 				return fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
+			}
+
+			if cmd.Flags().Changed("to-config") {
+				return inviteToConfig(cmd, toConfig, trimmedOrg, trimmedUsername, userID, usernameProvided)
 			}
 
 			var client auth.Client
@@ -146,9 +156,59 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 	cmd.Flags().StringVarP(&org, "org", "o", "", "Name of the organization to invite the user to")
 	cmd.Flags().Int64VarP(&userID, "id", "i", 0, "User ID to invite to the organization")
 	cmd.Flags().StringVarP(&username, "username", "u", "", "Username of the user to invite to the organization")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org")
 
 	return cmd
+}
+
+// inviteProposalRole matches the role GitHub applies when the live invite path
+// sends no explicit role.
+const inviteProposalRole = "direct_member"
+
+func inviteToConfig(cmd *cobra.Command, path, org, username string, userID int64, usernameProvided bool) error {
+	resourceID := fmt.Sprintf("user_id:%d", userID)
+	if usernameProvided {
+		resourceID = "username:" + username
+	}
+
+	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
+		invite := gitopsconfig.InviteSpec{Role: inviteProposalRole}
+		if usernameProvided {
+			if _, exists := configproposal.FindInviteIndexByUsername(cfg, username); exists {
+				return nil
+			}
+			invite.Username = gitopsconfig.OptionalString{Present: true, Value: username}
+		} else {
+			if _, exists := configproposal.FindInviteIndexByUserID(cfg, userID); exists {
+				return nil
+			}
+			invite.UserID = gitopsconfig.OptionalInt64{Present: true, Value: userID}
+		}
+		cfg.Invites = append(cfg.Invites, invite)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	message := fmt.Sprintf("Proposed organization invite %s in config", resourceID)
+	if !changed {
+		message = fmt.Sprintf("No changes needed for organization invite %s", resourceID)
+	}
+
+	data := map[string]any{
+		"organization": org,
+		"role":         inviteProposalRole,
+		"config_path":  path,
+		"changed":      changed,
+	}
+	if usernameProvided {
+		data["username"] = username
+	} else {
+		data["user_id"] = userID
+	}
+	return cmdoutput.PrintSuccess(cmd, message, data)
 }
