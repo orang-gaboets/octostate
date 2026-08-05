@@ -7,10 +7,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 // AddCmd creates a command to add or update a user's membership in a GitHub team by slug.
@@ -25,6 +27,7 @@ func AddCmd(svc teams.Service) *cobra.Command {
 		username       string
 		role           string
 		dryRun         bool
+		toConfig       string
 	)
 
 	cmd := &cobra.Command{
@@ -51,6 +54,9 @@ func AddCmd(svc teams.Service) *cobra.Command {
 				return github.ErrInvalidFieldValue
 			}
 
+			if dryRun && cmd.Flags().Changed("to-config") {
+				return fmt.Errorf("--to-config cannot be combined with --dry-run")
+			}
 			if dryRun {
 				_, err := fmt.Fprintf(
 					cmd.OutOrStdout(),
@@ -61,6 +67,10 @@ func AddCmd(svc teams.Service) *cobra.Command {
 					trimmedRole,
 				)
 				return err
+			}
+
+			if cmd.Flags().Changed("to-config") {
+				return addTeamMemberToConfig(cmd, toConfig, trimmedOrg, trimmedSlug, trimmedUsername, trimmedRole)
 			}
 
 			service := svc
@@ -94,9 +104,52 @@ func AddCmd(svc teams.Service) *cobra.Command {
 	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
 	cmd.Flags().StringVar(&username, "username", "", "GitHub username to add to the team")
 	cmd.Flags().StringVar(&role, "role", string(teams.TeamMemberAddRoleMember), "Team membership role: member, maintainer")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	github.MarkRequiredFlags(cmd, "org", "slug", "username")
 
 	return cmd
+}
+
+func addTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username, role string) error {
+	canonicalUsername := username
+	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
+		teamIndex, found := configproposal.FindTeamIndex(cfg, slug)
+		if !found {
+			return fmt.Errorf("team %s/%s not found in config", org, slug)
+		}
+		memberIndex, found := configproposal.FindOrganizationMemberIndex(cfg, username)
+		if !found {
+			return fmt.Errorf("member %q must be declared in top-level members before joining a team", username)
+		}
+		canonicalUsername = strings.TrimSpace(cfg.Members[memberIndex].Username)
+
+		team := &cfg.Teams[teamIndex]
+		if existing, found := configproposal.FindTeamMemberIndex(team, username); found {
+			team.Members[existing].Role = role
+			return nil
+		}
+		team.Members = append(team.Members, gitopsconfig.TeamMemberSpec{
+			Username: canonicalUsername,
+			Role:     role,
+		})
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	message := fmt.Sprintf("Proposed member add for team %s/%s in config", org, slug)
+	if !changed {
+		message = fmt.Sprintf("No changes needed for add member %s/%s", org, slug)
+	}
+	return cmdoutput.PrintSuccess(cmd, message, map[string]any{
+		"organization": org,
+		"slug":         slug,
+		"username":     canonicalUsername,
+		"role":         role,
+		"config_path":  path,
+		"changed":      changed,
+	})
 }

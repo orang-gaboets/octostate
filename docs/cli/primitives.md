@@ -19,8 +19,8 @@ require explicit confirmation with `--yes` unless `--dry-run` is used.
 
 ## Proposal mode
 
-The repository, topic, and team mutation commands documented below also
-support `--to-config <organization.yaml>`. Proposal mode updates the existing
+The repository, topic, team, and team membership mutation commands documented
+below also support `--to-config <organization.yaml>`. Proposal mode updates the existing
 local configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
 
@@ -34,6 +34,13 @@ Team proposals follow the desired-state schema rules: `team create` derives
 the team slug from the normalized team name and rejects a slug that collides
 with an existing team; `team edit` rejects name changes that would change the
 team slug; and any supplied parent team must already exist in desired state.
+
+Team membership proposals require the target team to exist in desired state.
+`team members add` also requires the username to already be declared in
+top-level `members:`, and updates the role in place when the member is already
+on the team. `team members remove` drops only the targeted membership and
+leaves the top-level `members:` entry in place; removing a member who is not on
+the team is a no-op.
 
 ## Organization
 
@@ -336,7 +343,7 @@ Flags:
 ### `octostate team members add`
 
 ```bash
-octostate team members add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--role <member|maintainer>] [--dry-run]
+octostate team members add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--role <member|maintainer>] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -348,12 +355,13 @@ Flags:
 - `--slug` (required): Team slug (URL-friendly name)
 - `--username` (required): GitHub username to add/update in the team
 - `--role` (optional): Team membership role (`member` or `maintainer`; default is `member`)
+- `--to-config` (optional): Apply the membership proposal to an existing local organization config instead of GitHub; the team must exist in desired state and the username must already be declared in top-level `members:`
 - `--dry-run` (optional): Preview the membership change without calling GitHub
 
 ### `octostate team members remove`
 
 ```bash
-octostate team members remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--dry-run]
+octostate team members remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --username <username> [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -364,6 +372,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--username` (required): GitHub username to remove from the team
+- `--to-config` (optional): Remove the membership from an existing local organization config instead of GitHub; the top-level `members:` entry is preserved
 - `--dry-run` (optional): Preview the membership removal without calling GitHub
 
 ### `octostate team repo permissions list`

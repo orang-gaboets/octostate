@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	memberscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/members"
 	"github.com/orang-gaboets/octostate/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 type captureRemoveTeamMembershipBySlugService struct {
@@ -142,5 +145,226 @@ func TestRemoveTeamMemberUsesProvidedService(t *testing.T) {
 	}
 	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Removed user "u" from team o/s`) {
 		t.Fatalf("unexpected success output: %q", got)
+	}
+}
+
+func TestRemoveTeamMemberToConfigRemovesTargetedMember(t *testing.T) {
+	configPath := writeMembersConfig(t, `organization: o
+members:
+  - username: alice
+    role: member
+  - username: bob
+    role: member
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    members:
+      - username: alice
+        role: maintainer
+      - username: bob
+        role: member
+`)
+
+	c := memberscmd.RemoveCmd(nil)
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	c.SetOut(&out)
+	c.SetErr(&errBuf)
+	c.SetArgs([]string{"--org", " o ", "--slug", " PLATFORM ", "--username", " ALICE ", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Message != "Proposed member remove for team o/PLATFORM in config" {
+		t.Fatalf("unexpected message: %q", result.Message)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+	data := result.Data
+	if data.Organization != "o" || data.Slug != "PLATFORM" || data.Username != "ALICE" || data.ConfigPath != configPath || !data.Changed {
+		t.Fatalf("unexpected operation data: %#v", data)
+	}
+
+	want := `organization: o
+members:
+  - username: alice
+    role: member
+  - username: bob
+    role: member
+invites: []
+repositories: []
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    members:
+      - username: bob
+        role: member
+`
+	if got := readMembersConfig(t, configPath); got != want {
+		t.Fatalf("unexpected config contents:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRemoveTeamMemberToConfigKeepsTopLevelMember(t *testing.T) {
+	configPath := writeMembersConfig(t, `organization: o
+members:
+  - username: alice
+    role: member
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    members:
+      - username: alice
+        role: member
+`)
+
+	c := memberscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "alice", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Members) != 1 || cfg.Members[0].Username != "alice" {
+		t.Fatalf("top-level member should be preserved, got %#v", cfg.Members)
+	}
+	if len(cfg.Teams[0].Members) != 0 {
+		t.Fatalf("expected team membership removed, got %#v", cfg.Teams[0].Members)
+	}
+}
+
+func TestRemoveTeamMemberToConfigMissingMemberIsNoOp(t *testing.T) {
+	before := `organization: o
+members:
+  - username: alice
+    role: member
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    members:
+      - username: alice
+        role: member
+`
+	configPath := writeMembersConfig(t, before)
+
+	c := memberscmd.RemoveCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "carol", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Message != "No changes needed for remove member o/platform" {
+		t.Fatalf("unexpected no-op message: %q", result.Message)
+	}
+	if result.Data.Changed {
+		t.Fatalf("expected changed=false, got %#v", result.Data)
+	}
+	if got := readMembersConfig(t, configPath); got != before {
+		t.Fatalf("no-op rewrote config:\n%s", got)
+	}
+}
+
+func TestRemoveTeamMemberToConfigMissingTeamLeavesFileUnchanged(t *testing.T) {
+	before := membersBaseConfig
+	configPath := writeMembersConfig(t, before)
+
+	c := memberscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--slug", "missing", "--username", "alice", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "team o/missing not found in config") {
+		t.Fatalf("expected missing-team error, got %v", err)
+	}
+	if got := readMembersConfig(t, configPath); got != before {
+		t.Fatalf("config changed after rejection:\n%s", got)
+	}
+}
+
+func TestRemoveTeamMemberToConfigOrganizationMismatchLeavesFileUnchanged(t *testing.T) {
+	before := membersBaseConfig
+	configPath := writeMembersConfig(t, before)
+
+	c := memberscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "other", "--slug", "platform", "--username", "alice", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "organization mismatch") {
+		t.Fatalf("expected organization mismatch error, got %v", err)
+	}
+	if got := readMembersConfig(t, configPath); got != before {
+		t.Fatalf("config changed after mismatch:\n%s", got)
+	}
+}
+
+func TestRemoveTeamMemberToConfigRejectsDirectoryTarget(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "organization.yaml")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	c := memberscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "alice", "--to-config", target})
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("expected directory rejection, got %v", err)
+	}
+}
+
+func TestRemoveTeamMemberToConfigSkipsTeamService(t *testing.T) {
+	configPath := writeMembersConfig(t, membersBaseConfig)
+
+	svc := &captureRemoveTeamMembershipBySlugService{}
+	c := memberscmd.RemoveCmd(svc)
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "alice", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if svc.removeCalled {
+		t.Fatal("expected config mode not to call team service")
+	}
+}
+
+func TestRemoveTeamMemberExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		path string
+	}{
+		{name: "empty", path: ""},
+		{name: "whitespace", path: " "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := memberscmd.RemoveCmd(nil)
+			c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "alice", "--to-config", test.path})
+			err := c.Execute()
+			if err == nil {
+				t.Fatal("expected invalid config path error")
+			}
+			if errors.Is(err, github.ErrNoValidCredentials) {
+				t.Fatalf("explicit config mode attempted GitHub authentication: %v", err)
+			}
+		})
+	}
+}
+
+func TestRemoveTeamMemberRejectsDryRunWithToConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	c := memberscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "alice", "--dry-run", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil || err.Error() != "--to-config cannot be combined with --dry-run" {
+		t.Fatalf("expected conflicting-flag error, got %v", err)
+	}
+	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected config to remain absent, got %v", err)
 	}
 }
