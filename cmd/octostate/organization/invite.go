@@ -189,8 +189,8 @@ func inviteToConfig(cmd *cobra.Command, path, org, username string, userID int64
 	teamSlugs := []string{}
 
 	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
-		existing := -1
-		found := false
+		var existing int
+		var found bool
 		if usernameProvided {
 			existing, found = configproposal.FindInviteIndexByUsername(cfg, username)
 		} else {
