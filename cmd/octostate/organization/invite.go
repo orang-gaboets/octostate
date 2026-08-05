@@ -168,23 +168,45 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 // sends no explicit role.
 const inviteProposalRole = "direct_member"
 
+// effectiveInviteRole reports the role an invite resolves to. An omitted role
+// is sent to GitHub as no role at all, which GitHub treats as direct_member.
+func effectiveInviteRole(role string) string {
+	if trimmed := strings.TrimSpace(role); trimmed != "" {
+		return trimmed
+	}
+	return inviteProposalRole
+}
+
 func inviteToConfig(cmd *cobra.Command, path, org, username string, userID int64, usernameProvided bool) error {
 	resourceID := fmt.Sprintf("user_id:%d", userID)
 	if usernameProvided {
 		resourceID = "username:" + username
 	}
 
+	// Reported back to the caller so a no-op describes the invite the config
+	// actually retains rather than the one this command would have added.
+	role := inviteProposalRole
+	teamSlugs := []string{}
+
 	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
+		existing := -1
+		found := false
+		if usernameProvided {
+			existing, found = configproposal.FindInviteIndexByUsername(cfg, username)
+		} else {
+			existing, found = configproposal.FindInviteIndexByUserID(cfg, userID)
+		}
+		if found {
+			retained := cfg.Invites[existing]
+			role = effectiveInviteRole(retained.Role)
+			teamSlugs = append(teamSlugs, retained.TeamSlugs...)
+			return nil
+		}
+
 		invite := gitopsconfig.InviteSpec{Role: inviteProposalRole}
 		if usernameProvided {
-			if _, exists := configproposal.FindInviteIndexByUsername(cfg, username); exists {
-				return nil
-			}
 			invite.Username = gitopsconfig.OptionalString{Present: true, Value: username}
 		} else {
-			if _, exists := configproposal.FindInviteIndexByUserID(cfg, userID); exists {
-				return nil
-			}
 			invite.UserID = gitopsconfig.OptionalInt64{Present: true, Value: userID}
 		}
 		cfg.Invites = append(cfg.Invites, invite)
@@ -196,12 +218,13 @@ func inviteToConfig(cmd *cobra.Command, path, org, username string, userID int64
 
 	message := fmt.Sprintf("Proposed organization invite %s in config", resourceID)
 	if !changed {
-		message = fmt.Sprintf("No changes needed for organization invite %s", resourceID)
+		message = fmt.Sprintf("No changes needed for organization invite %s; config already declares it", resourceID)
 	}
 
 	data := map[string]any{
 		"organization": org,
-		"role":         inviteProposalRole,
+		"role":         role,
+		"team_slugs":   teamSlugs,
 		"config_path":  path,
 		"changed":      changed,
 	}

@@ -184,12 +184,13 @@ func TestInviteCmdDryRunSkipsUserLookupAndOrgInvite(t *testing.T) {
 }
 
 type configOperationData struct {
-	Organization string `json:"organization"`
-	Username     string `json:"username"`
-	UserID       int64  `json:"user_id"`
-	Role         string `json:"role"`
-	ConfigPath   string `json:"config_path"`
-	Changed      bool   `json:"changed"`
+	Organization string   `json:"organization"`
+	Username     string   `json:"username"`
+	UserID       int64    `json:"user_id"`
+	Role         string   `json:"role"`
+	TeamSlugs    []string `json:"team_slugs"`
+	ConfigPath   string   `json:"config_path"`
+	Changed      bool     `json:"changed"`
 }
 
 type configOperationResult struct {
@@ -325,7 +326,7 @@ invites:
 		t.Fatal(err)
 	}
 	result := decodeConfigOperationOutput(t, out.String())
-	if result.Message != "No changes needed for organization invite username:OCTOCAT" {
+	if result.Message != "No changes needed for organization invite username:OCTOCAT; config already declares it" {
 		t.Fatalf("unexpected no-op message: %q", result.Message)
 	}
 	if result.Data.Changed {
@@ -501,5 +502,95 @@ func TestInviteRejectsDryRunWithToConfig(t *testing.T) {
 	}
 	if _, err := os.Stat(configPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected config to remain absent, got %v", err)
+	}
+}
+
+func TestInviteToConfigNoOpReportsRetainedRoleAndTeams(t *testing.T) {
+	before := `organization: o
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+invites:
+  - username: octocat
+    role: admin
+    team_slugs:
+      - platform
+`
+	configPath := writeInviteConfig(t, before)
+
+	orgSvc := &captureInviteOrganizationService{}
+	userSvc := &captureInviteUserLookupService{}
+	c := organizationcmd.InviteCmd(orgSvc, userSvc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Data.Changed {
+		t.Fatalf("expected changed=false, got %#v", result.Data)
+	}
+	if result.Data.Role != "admin" {
+		t.Fatalf("expected retained role admin to be reported, got %q", result.Data.Role)
+	}
+	if got := strings.Join(result.Data.TeamSlugs, ","); got != "platform" {
+		t.Fatalf("expected retained team slugs to be reported, got %q", got)
+	}
+	if got := readInviteConfig(t, configPath); got != before {
+		t.Fatalf("no-op rewrote config:\n%s", got)
+	}
+	if orgSvc.inviteCalled || userSvc.getCalled {
+		t.Fatal("expected no GitHub calls for a config no-op")
+	}
+}
+
+func TestInviteToConfigNoOpTreatsOmittedRoleAsDirectMember(t *testing.T) {
+	before := `organization: o
+invites:
+  - user_id: 42
+    role: ""
+`
+	configPath := writeInviteConfig(t, before)
+
+	c := organizationcmd.InviteCmd(nil, nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--id", "42", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Data.Changed {
+		t.Fatalf("expected changed=false, got %#v", result.Data)
+	}
+	if result.Data.Role != "direct_member" {
+		t.Fatalf("expected omitted role to report as direct_member, got %q", result.Data.Role)
+	}
+	if got := readInviteConfig(t, configPath); got != before {
+		t.Fatalf("no-op rewrote config:\n%s", got)
+	}
+}
+
+func TestInviteToConfigNewInviteReportsEmptyTeamSlugs(t *testing.T) {
+	configPath := writeInviteConfig(t, inviteBaseConfig)
+
+	c := organizationcmd.InviteCmd(nil, nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	result := decodeConfigOperationOutput(t, out.String())
+	if !result.Data.Changed || result.Data.Role != "direct_member" {
+		t.Fatalf("unexpected new-invite data: %#v", result.Data)
+	}
+	if len(result.Data.TeamSlugs) != 0 {
+		t.Fatalf("expected no team slugs on a new invite, got %#v", result.Data.TeamSlugs)
 	}
 }
