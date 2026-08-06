@@ -160,7 +160,7 @@ repositories:
 	var errBuf bytes.Buffer
 	c.SetOut(&out)
 	c.SetErr(&errBuf)
-	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, existing,NEW,new ", "--to-config", configPath})
+	c.SetArgs([]string{"--org", " O ", "--name", "repo", "--topics", " new, existing,new,new ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ repositories:
 	if data.Owner != "O" || data.Name != "repo" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
-	if got, want := strings.Join(data.Topics, ","), "existing,duplicate,new,NEW"; got != want {
+	if got, want := strings.Join(data.Topics, ","), "existing,duplicate,new"; got != want {
 		t.Fatalf("unexpected output topics: got %q want %q", got, want)
 	}
 
@@ -184,11 +184,42 @@ repositories:
 		t.Fatal(err)
 	}
 	repository := cfg.Repositories[0]
-	if got, want := strings.Join(repository.Topics, ","), "existing,duplicate,new,NEW"; got != want {
+	if got, want := strings.Join(repository.Topics, ","), "existing,duplicate,new"; got != want {
 		t.Fatalf("unexpected topics: got %q want %q", got, want)
 	}
 	if repository.Description != "keep me" {
 		t.Fatalf("unexpected unrelated field: %q", repository.Description)
+	}
+}
+
+func TestAddTopicsToConfigRejectsInvalidTopicWithoutWriting(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	contents := []byte(`organization: o
+repositories:
+  - name: repo
+    visibility: public
+    topics: [existing]
+`)
+	if err := os.WriteFile(configPath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := topicscmd.AddTopicsCmd(nil)
+	c.SetArgs([]string{"--org", "o", "--name", "repo", "--topics", "Go", "--to-config", configPath})
+	err := c.Execute()
+	if err == nil {
+		t.Fatal("expected invalid topic error")
+	}
+	if !strings.Contains(err.Error(), "repositories[0].topics[1] (invalid_repository_topic)") {
+		t.Fatalf("expected invalid repository topic code, got %v", err)
+	}
+
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, contents) {
+		t.Fatalf("config changed after invalid topic error:\n%s\nwant:\n%s", got, contents)
 	}
 }
 
