@@ -407,7 +407,7 @@ teams:
     privacy: closed
     parent_slug: PLATFORM
 `,
-			wantErr: "team o/platform cannot be deleted from config because it would violate the config validator's child-team invariant: child team devs(parent_slug=platform), child team ops(parent_slug=PLATFORM), invite[0](team_slug=platform), invite[1](team_slug=PLATFORM)",
+			wantErr: "team o/platform cannot be deleted from config while dependencies exist: child team devs(parent_slug=platform), child team ops(parent_slug=PLATFORM), invite[0](team_slug=platform), invite[1](team_slug=PLATFORM)",
 		},
 	}
 
