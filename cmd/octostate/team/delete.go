@@ -167,6 +167,7 @@ func collectTeamDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, slug string
 			if strings.EqualFold(strings.TrimSpace(teamSlug), slug) {
 				hasInviteBlocker = true
 				blockers = append(blockers, fmt.Sprintf("invite[%d](team_slug=%s)", inviteIndex, strings.TrimSpace(teamSlug)))
+				break
 			}
 		}
 	}

@@ -367,6 +367,7 @@ invites:
     role: direct_member
     team_slugs:
       - platform
+      - PLATFORM
 teams:
   - slug: platform
     name: Platform
