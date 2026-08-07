@@ -40,9 +40,7 @@ Delete proposals add command-specific safety checks. `repo delete` refuses to
 remove a repository while any team repository permissions still reference it.
 `team delete-by-slug` refuses to remove a team while child teams or invites
 still reference the slug. The child-team block preserves the config
-validator's `parent_slug` invariant; it is not a live-delete preflight. These
-checks are separate from issue #189, which remains a separate local
-fixture-based end-to-end proposal-mode coverage task.
+validator's `parent_slug` invariant; it is not a live-delete preflight.
 
 Team proposals follow the desired-state schema rules: `team create` derives
 the team slug from the normalized team name and rejects a slug that collides
