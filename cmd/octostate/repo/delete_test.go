@@ -224,6 +224,28 @@ teams: []
 	}
 }
 
+func TestDeleteRepoToConfigDoesNotRequireCredentialsOrYes(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte(`organization: o
+repositories:
+  - name: api
+    visibility: private
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := reposcmd.DeleteRepoCmd(nil)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--name", "api", "--to-config", configPath})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !decodeConfigOperationOutput(t, out.String()).Data.Changed {
+		t.Fatalf("expected config proposal to report changed=true")
+	}
+}
+
 func TestDeleteRepoExplicitEmptyToConfigReturnsProposalPathError(t *testing.T) {
 	for _, test := range []struct {
 		name string
