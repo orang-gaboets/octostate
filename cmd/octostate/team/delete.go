@@ -148,11 +148,7 @@ func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
 }
 
 func collectTeamDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, slug string) ([]string, bool) {
-	if cfg == nil {
-		return nil, false
-	}
-
-	blockers := make([]string, 0)
+	var blockers []string
 	hasChildTeamBlocker := false
 	for _, team := range cfg.Teams {
 		if strings.EqualFold(strings.TrimSpace(team.ParentSlug), slug) {

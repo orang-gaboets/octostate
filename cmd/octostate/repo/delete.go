@@ -145,22 +145,18 @@ func deleteRepoToConfig(cmd *cobra.Command, path, org, name string) error {
 }
 
 func collectRepositoryDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, repository gitopsconfig.RepositorySpec) []string {
-	if cfg == nil {
-		return nil
-	}
-
-	blockers := make([]string, 0)
-	for _, team := range cfg.Teams {
-		teamCopy := team
-		repositoryIndex, found := configproposal.FindTeamRepositoryIndex(&teamCopy, cfg.Organization, repository.Owner, repository.Name)
+	var blockers []string
+	for teamIndex := range cfg.Teams {
+		team := &cfg.Teams[teamIndex]
+		repositoryIndex, found := configproposal.FindTeamRepositoryIndex(team, cfg.Organization, repository.Owner, repository.Name)
 		if !found {
 			continue
 		}
 
-		repoPermission := teamCopy.Repositories[repositoryIndex]
+		repoPermission := team.Repositories[repositoryIndex]
 		blockers = append(blockers, fmt.Sprintf(
 			"%s(%s/%s:%s)",
-			strings.TrimSpace(teamCopy.Slug),
+			strings.TrimSpace(team.Slug),
 			repositoryDeleteOwner(cfg.Organization, repoPermission.Owner),
 			strings.TrimSpace(repoPermission.Name),
 			strings.TrimSpace(repoPermission.Permission),
