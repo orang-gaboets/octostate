@@ -373,8 +373,8 @@ teams:
 			c := reposcmd.DeleteRepoCmd(nil)
 			c.SetArgs([]string{"--org", "o", "--name", "api", "--to-config", configPath})
 			err = c.Execute()
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("expected blocker error containing %q, got %v", tt.wantErr, err)
+			if err == nil || !strings.HasSuffix(err.Error(), tt.wantErr) {
+				t.Fatalf("expected blocker error ending with %q, got %v", tt.wantErr, err)
 			}
 
 			after, err := os.ReadFile(configPath)
