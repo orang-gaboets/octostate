@@ -35,14 +35,14 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 		Short:   "Delete a GitHub team by its slug",
 		Long:    "Delete a GitHub team by its slug within an organization.",
 		Example: `
-			# Proposal mode
+			# Proposal mode (--to-config; not with --dry-run)
 			octostate team delete-by-slug --org <org> --slug <team-slug> --to-config <path-to-organization.yaml>
 
-			# Live mode
+			# Live mode (auth required; --yes required)
 			octostate team delete-by-slug --token <token> --org <org> --slug <team-slug> --yes
 			octostate team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --yes
 
-			# Dry-run mode
+			# Dry-run mode (--dry-run; not with --to-config)
 			octostate team delete-by-slug --org <org> --slug <team-slug> --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			trimmedOrg := strings.TrimSpace(org)

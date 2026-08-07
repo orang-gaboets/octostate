@@ -8,6 +8,9 @@ Live primitive operations require GitHub authentication. Supply exactly one of:
 - `--token`
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
+Live destructive delete commands also require `--yes`. Proposal mode and
+`--dry-run` do not require GitHub authentication or `--yes`.
+
 The command examples in this page intentionally show GitHub App auth directly so
 that the non-token path stays visible in the reference.
 
@@ -30,6 +33,12 @@ link) whose `organization:` value matches `--org` case-insensitively. The file
 is validated before and after the requested mutation and is replaced
 atomically. Semantic no-ops return `changed: false` and leave the file bytes
 unchanged. `--to-config` and `--dry-run` are mutually exclusive.
+
+Delete proposals add command-specific safety checks. `repo delete` refuses to
+remove a repository while any team repository permissions still reference it.
+`team delete-by-slug` refuses to remove a team while child teams or invites
+still reference the slug. These checks are separate from issue #189, which
+remains a live-delete concern.
 
 Team proposals follow the desired-state schema rules: `team create` derives
 the team slug from the normalized team name and rejects a slug that collides
@@ -185,7 +194,7 @@ Flags:
 ### `octostate repo delete`
 
 ```bash
-octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> (--yes | --dry-run)
+octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> (--yes | --dry-run | --to-config <organization.yaml>)
 ```
 
 Flags:
@@ -196,7 +205,8 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--name` (required): Repository name
 - `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
-- `--dry-run` (optional): Preview repository deletion without deleting it
+- `--dry-run` (optional): Preview repository deletion without deleting it; cannot be combined with `--to-config`
+- `--to-config` (optional): Apply the repository deletion proposal to an existing local organization config instead of GitHub; the repository must exist in desired state and any team repository permissions that still reference it block deletion
 
 ### `octostate repo edit`
 
@@ -315,7 +325,7 @@ Flags:
 ### `octostate team delete-by-slug`
 
 ```bash
-octostate team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> (--yes | --dry-run)
+octostate team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> (--yes | --dry-run | --to-config <organization.yaml>)
 ```
 
 Flags:
@@ -326,7 +336,8 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--yes` (required unless `--dry-run` is set): Confirm the destructive delete operation
-- `--dry-run` (optional): Preview team deletion without deleting the team
+- `--dry-run` (optional): Preview team deletion without deleting the team; cannot be combined with `--to-config`
+- `--to-config` (optional): Apply the team deletion proposal to an existing local organization config instead of GitHub; the team must exist in desired state and child teams or invites that still reference the slug block deletion
 
 ### `octostate team get-by-slug`
 

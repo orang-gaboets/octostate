@@ -35,14 +35,14 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 		Short:   "Delete a GitHub repository",
 		Long:    "Delete a specified GitHub repository by providing the organization and repository name.",
 		Example: `
-			# Proposal mode
+			# Proposal mode (--to-config; not with --dry-run)
 			octostate repo delete --org <org> --name <repo-name> --to-config <path-to-organization.yaml>
 
-			# Live mode
+			# Live mode (auth required; --yes required)
 			octostate repo delete --token <token> --org <org> --name <repo-name> --yes
-			octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path> --org <org> --name <repo-name> --yes
+			octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --yes
 
-			# Dry-run mode
+			# Dry-run mode (--dry-run; not with --to-config)
 			octostate repo delete --org <org> --name <repo-name> --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			trimmedOrg := strings.TrimSpace(org)
