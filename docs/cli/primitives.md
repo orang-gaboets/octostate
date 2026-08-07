@@ -19,8 +19,8 @@ require explicit confirmation with `--yes` unless `--dry-run` is used.
 
 ## Proposal mode
 
-The repository, topic, team, team membership, and team repository permission
-mutation commands documented below also support
+The repository, topic, team, team membership, team repository permission, and
+organization invite mutation commands documented below also support
 `--to-config <organization.yaml>`. Proposal mode updates the existing local
 configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
@@ -58,6 +58,25 @@ in the same plan, and `config apply` skips actions that are not executable. A
 permission proposed against a repository that is neither declared nor live is
 therefore valid, reviewable config that stays pending until the repository
 exists.
+
+`organization invite` proposals record the invite locally instead of sending
+it, so the username form is written as a `username:` invite (trimmed) without
+the live user-ID lookup. New proposed invites use the `direct_member` role,
+matching what GitHub applies when the live path sends no explicit role; an
+invite that omits `role:` resolves to `direct_member` for the same reason.
+
+Matching is identity-only: an invite whose username or `user_id` is already
+declared is a no-op, and because the command has no `--role` flag it never
+rewrites the retained entry. When the declared invite carries a different role
+or `team_slugs:`, the no-op result reports that retained shape rather than
+`direct_member`, since `config apply` sends the retained role and team
+assignments. Note that identity matching cannot span forms: a `username:`
+invite and a `user_id:` invite for the same person are not recognised as
+duplicates, because resolving one to the other would require a live lookup.
+
+A *username* invite that duplicates a declared top-level member is rejected by
+the existing config validation. That check applies to username invites only:
+`email:` and `user_id:` invites are not compared against `members:`.
 
 ## Organization
 
@@ -131,7 +150,7 @@ Flags:
 ### `octostate organization invite`
 
 ```bash
-octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--dry-run]
+octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -142,6 +161,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--id` (required unless `--username` is provided): GitHub user ID to invite
 - `--username` (required unless `--id` is provided): GitHub username to invite
+- `--to-config` (optional): Record the invite in an existing local organization config instead of creating it in GitHub; the username form is stored trimmed, with no user-ID lookup
 - `--dry-run` (optional): Preview the invitation request without creating it (username lookups are skipped in dry-run mode)
 
 ## Repository
