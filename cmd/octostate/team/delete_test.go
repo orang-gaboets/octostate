@@ -218,24 +218,28 @@ teams:
         permission: triage
 `)
 
-	c := teamcmd.DeleteTeamBySlugCmd(nil)
+	svc := &captureDeleteTeamBySlugService{}
+	c := teamcmd.DeleteTeamBySlugCmd(svc)
 	var out bytes.Buffer
 	var errBuf bytes.Buffer
 	c.SetOut(&out)
 	c.SetErr(&errBuf)
-	c.SetArgs([]string{"--org", " O ", "--slug", " devs ", "--to-config", configPath})
+	c.SetArgs([]string{"--org", " O ", "--slug", " DeVs ", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
+	if svc.deleteCalled {
+		t.Fatal("expected proposal mode not to call the delete service")
+	}
 
 	result := decodeConfigOperationOutput(t, out.String())
-	if result.Message != "Proposed team O/devs deletion in config" {
+	if result.Message != "Proposed team O/DeVs deletion in config" {
 		t.Fatalf("unexpected message: %q", result.Message)
 	}
 	if errBuf.Len() != 0 {
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
-	if data := result.Data; data.Organization != "O" || data.Slug != "devs" || data.ConfigPath != configPath || !data.Changed {
+	if data := result.Data; data.Organization != "O" || data.Slug != "DeVs" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected config operation data: %#v", data)
 	}
 
