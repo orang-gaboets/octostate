@@ -124,7 +124,28 @@ func TestDeleteTeamDryRunSkipsDeleteService(t *testing.T) {
 	}
 }
 
-func TestDeleteTeamUsesProvidedServiceWithTrimmedValues(t *testing.T) {
+func TestDeleteTeamDryRunUsesRawValuesInOutput(t *testing.T) {
+	svc := &captureDeleteTeamBySlugService{}
+	c := teamcmd.DeleteTeamBySlugCmd(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", " o ", "--slug", " s ", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.deleteCalled {
+		t.Fatalf("expected delete service not to be called in dry-run mode")
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would delete team  o / s ") {
+		t.Fatalf("expected raw dry-run output, got: %q", got)
+	}
+}
+
+func TestDeleteTeamUsesProvidedServiceWithRawValues(t *testing.T) {
 	svc := &captureDeleteTeamBySlugService{}
 	c := teamcmd.DeleteTeamBySlugCmd(svc)
 	var out bytes.Buffer
@@ -136,31 +157,65 @@ func TestDeleteTeamUsesProvidedServiceWithTrimmedValues(t *testing.T) {
 	if !svc.deleteCalled {
 		t.Fatal("expected delete service to be called")
 	}
-	if svc.org != "o" || svc.slug != "s" {
-		t.Fatalf("expected trimmed delete target o/s, got %q/%q", svc.org, svc.slug)
+	if svc.org != " o " || svc.slug != " s " {
+		t.Fatalf("expected raw delete target \" o \"/\" s \", got %q/%q", svc.org, svc.slug)
 	}
 	got := strings.TrimSpace(out.String())
 	if !strings.Contains(got, `"status": "success"`) {
 		t.Fatalf("expected success status output, got: %q", got)
 	}
-	if !strings.Contains(got, "Deleted team o/s") {
-		t.Fatalf("unexpected success output: %q", got)
+	if !strings.Contains(got, "Deleted team  o / s ") {
+		t.Fatalf("expected raw success output, got: %q", got)
 	}
 }
 
 func TestDeleteTeamToConfigRemovesNestedTeam(t *testing.T) {
 	configPath := writeTeamConfig(t, `organization: o
+members:
+  - username: alice
+    role: member
+  - username: bob
+    role: member
+  - username: carol
+    role: member
+repositories:
+  - name: api
+    visibility: private
+  - name: docs-site
+    visibility: public
 teams:
   - slug: platform
     name: Platform
     privacy: closed
+    members:
+      - username: bob
+        role: maintainer
+    repositories:
+      - name: api
+        permission: admin
   - slug: devs
     name: Devs
     privacy: closed
     parent_slug: platform
+    members:
+      - username: alice
+        role: member
+      - username: carol
+        role: maintainer
+    repositories:
+      - name: api
+        permission: push
+      - name: docs-site
+        permission: pull
   - slug: docs
     name: Docs
     privacy: closed
+    members:
+      - username: carol
+        role: member
+    repositories:
+      - name: docs-site
+        permission: triage
 `)
 
 	c := teamcmd.DeleteTeamBySlugCmd(nil)
@@ -186,19 +241,47 @@ teams:
 
 	got := readTeamConfig(t, configPath)
 	want := `organization: o
-members: []
+members:
+  - username: alice
+    role: member
+  - username: bob
+    role: member
+  - username: carol
+    role: member
 invites: []
-repositories: []
+repositories:
+  - name: api
+    visibility: private
+  - name: docs-site
+    visibility: public
 teams:
   - slug: platform
     name: Platform
     privacy: closed
+    members:
+      - username: bob
+        role: maintainer
+    repositories:
+      - name: api
+        permission: admin
   - slug: docs
     name: Docs
     privacy: closed
+    members:
+      - username: carol
+        role: member
+    repositories:
+      - name: docs-site
+        permission: triage
 `
 	if got != want {
 		t.Fatalf("unexpected config contents:\n%s\nwant:\n%s", got, want)
+	}
+	if strings.Contains(got, "slug: devs") {
+		t.Fatalf("expected deleted team to be absent, got:\n%s", got)
+	}
+	if !strings.Contains(got, "slug: platform") || !strings.Contains(got, "slug: docs") {
+		t.Fatalf("expected unrelated teams to remain, got:\n%s", got)
 	}
 }
 

@@ -35,34 +35,31 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 		Short:   "Delete a GitHub repository",
 		Long:    "Delete a specified GitHub repository by providing the organization and repository name.",
 		Example: `
-			# Proposal mode (--to-config; not with --dry-run)
+			# Proposal mode (no auth or --yes; not with --dry-run)
 			octostate repo delete --org <org> --name <repo-name> --to-config <path-to-organization.yaml>
 
 			# Live mode (auth required; --yes required)
 			octostate repo delete --token <token> --org <org> --name <repo-name> --yes
 			octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --yes
 
-			# Dry-run mode (--dry-run; not with --to-config)
+			# Dry-run mode (no auth or --yes; not with --to-config)
 			octostate repo delete --org <org> --name <repo-name> --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			trimmedOrg := strings.TrimSpace(org)
-			trimmedName := strings.TrimSpace(name)
-
 			if dryRun && cmd.Flags().Changed("to-config") {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,
-					fmt.Sprintf("Dry run: would delete repository %s/%s", trimmedOrg, trimmedName),
+					fmt.Sprintf("Dry run: would delete repository %s/%s", org, name),
 					map[string]any{
-						"owner": trimmedOrg,
-						"name":  trimmedName,
+						"owner": org,
+						"name":  name,
 					},
 				)
 			}
 			if cmd.Flags().Changed("to-config") {
-				return deleteRepoToConfig(cmd, toConfig, trimmedOrg, trimmedName)
+				return deleteRepoToConfig(cmd, toConfig, org, name)
 			}
 			if err := safety.RequireYesOrDryRun(yes, dryRun); err != nil {
 				return err
@@ -79,8 +76,8 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 			}
 
 			opts := repos.DeleteOptions{
-				Repo:    trimmedName,
-				Owner:   trimmedOrg,
+				Repo:    name,
+				Owner:   org,
 				Service: service,
 			}
 
@@ -89,10 +86,10 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 			}
 			return cmdoutput.PrintSuccess(
 				cmd,
-				fmt.Sprintf("Deleted repository %s/%s", trimmedOrg, trimmedName),
+				fmt.Sprintf("Deleted repository %s/%s", org, name),
 				map[string]any{
-					"owner": trimmedOrg,
-					"name":  trimmedName,
+					"owner": org,
+					"name":  name,
 				},
 			)
 		},
@@ -102,7 +99,7 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&name, "name", "", "GitHub repository name to delete")
-	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the deletion proposal to an organization.yaml file instead of GitHub (no auth or --yes required; cannot be combined with --dry-run)")
 	safety.AddDryRunFlag(cmd, &dryRun)
 	safety.AddYesFlag(cmd, &yes)
 
@@ -112,10 +109,13 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 }
 
 func deleteRepoToConfig(cmd *cobra.Command, path, org, name string) error {
-	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
-		index, found := configproposal.FindRepositoryIndex(cfg, org, name)
+	trimmedOrg := strings.TrimSpace(org)
+	trimmedName := strings.TrimSpace(name)
+
+	changed, err := configproposal.ApplyToConfigFile(path, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
+		index, found := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName)
 		if !found {
-			return fmt.Errorf("repository %s/%s not found in config", org, name)
+			return fmt.Errorf("repository %s/%s not found in config", trimmedOrg, trimmedName)
 		}
 
 		repository := cfg.Repositories[index]
@@ -136,9 +136,9 @@ func deleteRepoToConfig(cmd *cobra.Command, path, org, name string) error {
 		return err
 	}
 
-	return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s deletion in config", org, name), map[string]any{
-		"owner":       org,
-		"name":        name,
+	return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s deletion in config", trimmedOrg, trimmedName), map[string]any{
+		"owner":       trimmedOrg,
+		"name":        trimmedName,
 		"config_path": path,
 		"changed":     changed,
 	})

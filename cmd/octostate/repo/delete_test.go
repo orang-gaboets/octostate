@@ -124,7 +124,28 @@ func TestDeleteRepoDryRunSkipsDeleteService(t *testing.T) {
 	}
 }
 
-func TestDeleteRepoUsesProvidedServiceWithTrimmedValues(t *testing.T) {
+func TestDeleteRepoDryRunUsesRawValuesInOutput(t *testing.T) {
+	svc := &captureDeleteRepoService{}
+	c := reposcmd.DeleteRepoCmd(svc)
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", " o ", "--name", " n ", "--dry-run"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc.deleteCalled {
+		t.Fatalf("expected delete service not to be called in dry-run mode")
+	}
+	got := strings.TrimSpace(out.String())
+	if !strings.Contains(got, `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run status output, got: %q", got)
+	}
+	if !strings.Contains(got, "Dry run: would delete repository  o / n ") {
+		t.Fatalf("expected raw dry-run output, got: %q", got)
+	}
+}
+
+func TestDeleteRepoUsesProvidedServiceWithRawValues(t *testing.T) {
 	svc := &captureDeleteRepoService{}
 	c := reposcmd.DeleteRepoCmd(svc)
 	var out bytes.Buffer
@@ -136,15 +157,15 @@ func TestDeleteRepoUsesProvidedServiceWithTrimmedValues(t *testing.T) {
 	if !svc.deleteCalled {
 		t.Fatal("expected delete service to be called")
 	}
-	if svc.owner != "o" || svc.repo != "n" {
-		t.Fatalf("expected trimmed delete target o/n, got %q/%q", svc.owner, svc.repo)
+	if svc.owner != " o " || svc.repo != " n " {
+		t.Fatalf("expected raw delete target \" o \"/\" n \", got %q/%q", svc.owner, svc.repo)
 	}
 	got := strings.TrimSpace(out.String())
 	if !strings.Contains(got, `"status": "success"`) {
 		t.Fatalf("expected success status output, got: %q", got)
 	}
-	if !strings.Contains(got, "Deleted repository o/n") {
-		t.Fatalf("unexpected success output: %q", got)
+	if !strings.Contains(got, "Deleted repository  o / n ") {
+		t.Fatalf("expected raw success output, got: %q", got)
 	}
 }
 
@@ -199,7 +220,7 @@ teams: []
 	}
 }
 
-func TestDeleteRepoExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
+func TestDeleteRepoExplicitEmptyToConfigReturnsProposalPathError(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		path string
@@ -213,6 +234,12 @@ func TestDeleteRepoExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
 			err := c.Execute()
 			if err == nil {
 				t.Fatal("expected invalid config path error")
+			}
+			if !strings.Contains(err.Error(), "required config file") {
+				t.Fatalf("expected config path error, got %v", err)
+			}
+			if errors.Is(err, safety.ErrConfirmationRequired) {
+				t.Fatalf("proposal mode unexpectedly reached live confirmation: %v", err)
 			}
 			if errors.Is(err, github.ErrNoValidCredentials) {
 				t.Fatalf("explicit config mode attempted GitHub authentication: %v", err)

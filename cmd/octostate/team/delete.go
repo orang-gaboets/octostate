@@ -35,34 +35,31 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 		Short:   "Delete a GitHub team by its slug",
 		Long:    "Delete a GitHub team by its slug within an organization.",
 		Example: `
-			# Proposal mode (--to-config; not with --dry-run)
+			# Proposal mode (no auth or --yes; not with --dry-run)
 			octostate team delete-by-slug --org <org> --slug <team-slug> --to-config <path-to-organization.yaml>
 
 			# Live mode (auth required; --yes required)
 			octostate team delete-by-slug --token <token> --org <org> --slug <team-slug> --yes
 			octostate team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --yes
 
-			# Dry-run mode (--dry-run; not with --to-config)
+			# Dry-run mode (no auth or --yes; not with --to-config)
 			octostate team delete-by-slug --org <org> --slug <team-slug> --dry-run`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			trimmedOrg := strings.TrimSpace(org)
-			trimmedSlug := strings.TrimSpace(slug)
-
 			if dryRun && cmd.Flags().Changed("to-config") {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
 			if dryRun {
 				return cmdoutput.PrintDryRun(
 					cmd,
-					fmt.Sprintf("Dry run: would delete team %s/%s", trimmedOrg, trimmedSlug),
+					fmt.Sprintf("Dry run: would delete team %s/%s", org, slug),
 					map[string]any{
-						"organization": trimmedOrg,
-						"slug":         trimmedSlug,
+						"organization": org,
+						"slug":         slug,
 					},
 				)
 			}
 			if cmd.Flags().Changed("to-config") {
-				return deleteTeamToConfig(cmd, toConfig, trimmedOrg, trimmedSlug)
+				return deleteTeamToConfig(cmd, toConfig, org, slug)
 			}
 			if err := safety.RequireYesOrDryRun(yes, dryRun); err != nil {
 				return err
@@ -79,8 +76,8 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 			}
 
 			opts := teams.DeleteTeamBySlugOptions{
-				Org:     trimmedOrg,
-				Slug:    trimmedSlug,
+				Org:     org,
+				Slug:    slug,
 				Service: service,
 			}
 			if err := teams.DeleteTeamBySlug(ctx, opts); err != nil {
@@ -88,10 +85,10 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 			}
 			return cmdoutput.PrintSuccess(
 				cmd,
-				fmt.Sprintf("Deleted team %s/%s", trimmedOrg, trimmedSlug),
+				fmt.Sprintf("Deleted team %s/%s", org, slug),
 				map[string]any{
-					"organization": trimmedOrg,
-					"slug":         trimmedSlug,
+					"organization": org,
+					"slug":         slug,
 				},
 			)
 		},
@@ -101,7 +98,7 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 
 	cmd.Flags().StringVar(&org, "org", "", "GitHub organization name")
 	cmd.Flags().StringVar(&slug, "slug", "", "Team slug")
-	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
+	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the deletion proposal to an organization.yaml file instead of GitHub (no auth or --yes required; cannot be combined with --dry-run)")
 	safety.AddDryRunFlag(cmd, &dryRun)
 	safety.AddYesFlag(cmd, &yes)
 
@@ -111,13 +108,16 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 }
 
 func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
-	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
-		index, found := configproposal.FindTeamIndex(cfg, slug)
+	trimmedOrg := strings.TrimSpace(org)
+	trimmedSlug := strings.TrimSpace(slug)
+
+	changed, err := configproposal.ApplyToConfigFile(path, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
+		index, found := configproposal.FindTeamIndex(cfg, trimmedSlug)
 		if !found {
-			return fmt.Errorf("team %s/%s not found in config", org, slug)
+			return fmt.Errorf("team %s/%s not found in config", trimmedOrg, trimmedSlug)
 		}
 
-		blockers, hasChildTeamBlocker := collectTeamDeleteBlockers(cfg, slug)
+		blockers, hasChildTeamBlocker := collectTeamDeleteBlockers(cfg, trimmedSlug)
 		if len(blockers) > 0 {
 			reason := "while dependencies exist"
 			if hasChildTeamBlocker {
@@ -125,8 +125,8 @@ func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
 			}
 			return fmt.Errorf(
 				"team %s/%s cannot be deleted from config %s: %s",
-				org,
-				slug,
+				trimmedOrg,
+				trimmedSlug,
 				reason,
 				strings.Join(blockers, ", "),
 			)
@@ -139,9 +139,9 @@ func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
 		return err
 	}
 
-	return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed team %s/%s deletion in config", org, slug), map[string]any{
-		"organization": org,
-		"slug":         slug,
+	return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed team %s/%s deletion in config", trimmedOrg, trimmedSlug), map[string]any{
+		"organization": trimmedOrg,
+		"slug":         trimmedSlug,
 		"config_path":  path,
 		"changed":      changed,
 	})
