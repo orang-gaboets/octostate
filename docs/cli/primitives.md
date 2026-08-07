@@ -34,7 +34,7 @@ Proposal mode requires an existing regular file (not a directory or symbolic
 link) whose `organization:` value matches `--org` case-insensitively. The file
 is validated before and after the requested mutation and is replaced
 atomically. Semantic no-ops return `changed: false` and leave the file bytes
-unchanged.
+unchanged. `--to-config` and `--dry-run` are mutually exclusive.
 
 Delete proposals add command-specific safety checks. `repo delete` refuses to
 remove a repository while any team repository permissions still reference it.
