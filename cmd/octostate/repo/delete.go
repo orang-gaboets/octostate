@@ -2,7 +2,6 @@ package repo
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -167,8 +166,6 @@ func collectRepositoryDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, repos
 			strings.TrimSpace(repoPermission.Permission),
 		))
 	}
-
-	slices.Sort(blockers)
 	return blockers
 }
 

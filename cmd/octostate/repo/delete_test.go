@@ -267,7 +267,7 @@ teams:
 			wantErr: "repository o/api cannot be deleted from config while team permissions exist: platform(o/api:push)",
 		},
 		{
-			name: "multiple blockers sorted by team slug",
+			name: "multiple blockers follow declared config order",
 			config: `organization: o
 repositories:
   - name: api
@@ -286,7 +286,7 @@ teams:
       - name: api
         permission: admin
 `,
-			wantErr: "repository o/api cannot be deleted from config while team permissions exist: alpha(o/api:admin), zebra(o/api:pull)",
+			wantErr: "repository o/api cannot be deleted from config while team permissions exist: zebra(o/api:pull), alpha(o/api:admin)",
 		},
 		{
 			name: "omitted permission owner defaults to organization",
