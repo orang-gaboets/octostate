@@ -19,8 +19,8 @@ that the non-token path stays visible in the reference.
 This reference uses canonical command names. Common aliases such as `org`,
 `repo create`, `team delete`, and `team get` also work.
 
-Mutating commands support `--dry-run` where noted. Destructive delete commands
-require explicit confirmation with `--yes` unless `--dry-run` is used.
+Mutating commands support `--dry-run` where noted. Live destructive delete
+commands require explicit confirmation with `--yes`; proposal mode does not.
 
 ## Proposal mode
 
