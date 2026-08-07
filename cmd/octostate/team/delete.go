@@ -117,12 +117,17 @@ func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
 			return fmt.Errorf("team %s/%s not found in config", org, slug)
 		}
 
-		blockers := collectTeamDeleteBlockers(cfg, slug)
+		blockers, hasChildTeamBlocker := collectTeamDeleteBlockers(cfg, slug)
 		if len(blockers) > 0 {
+			reason := "while dependencies exist"
+			if hasChildTeamBlocker {
+				reason = "because it would violate the config validator's child-team invariant"
+			}
 			return fmt.Errorf(
-				"team %s/%s cannot be deleted from config while dependencies exist: %s",
+				"team %s/%s cannot be deleted from config %s: %s",
 				org,
 				slug,
+				reason,
 				strings.Join(blockers, ", "),
 			)
 		}
@@ -142,14 +147,16 @@ func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
 	})
 }
 
-func collectTeamDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, slug string) []string {
+func collectTeamDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, slug string) ([]string, bool) {
 	if cfg == nil {
-		return nil
+		return nil, false
 	}
 
 	blockers := make([]string, 0)
+	hasChildTeamBlocker := false
 	for _, team := range cfg.Teams {
 		if strings.EqualFold(strings.TrimSpace(team.ParentSlug), slug) {
+			hasChildTeamBlocker = true
 			blockers = append(blockers, fmt.Sprintf(
 				"child team %s(parent_slug=%s)",
 				strings.TrimSpace(team.Slug),
@@ -166,5 +173,5 @@ func collectTeamDeleteBlockers(cfg *gitopsconfig.OrganizationConfig, slug string
 		}
 	}
 
-	return blockers
+	return blockers, hasChildTeamBlocker
 }

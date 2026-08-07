@@ -19,10 +19,14 @@ import (
 type captureDeleteTeamBySlugService struct {
 	auth.MockTeamsService
 	deleteCalled bool
+	org          string
+	slug         string
 }
 
-func (s *captureDeleteTeamBySlugService) DeleteTeamBySlug(_ context.Context, _, _ string) (*gh.Response, error) {
+func (s *captureDeleteTeamBySlugService) DeleteTeamBySlug(_ context.Context, org, slug string) (*gh.Response, error) {
 	s.deleteCalled = true
+	s.org = org
+	s.slug = slug
 	return nil, nil
 }
 
@@ -132,6 +136,9 @@ func TestDeleteTeamUsesProvidedServiceWithTrimmedValues(t *testing.T) {
 	if !svc.deleteCalled {
 		t.Fatal("expected delete service to be called")
 	}
+	if svc.org != "o" || svc.slug != "s" {
+		t.Fatalf("expected trimmed delete target o/s, got %q/%q", svc.org, svc.slug)
+	}
 	got := strings.TrimSpace(out.String())
 	if !strings.Contains(got, `"status": "success"`) {
 		t.Fatalf("expected success status output, got: %q", got)
@@ -195,7 +202,7 @@ teams:
 	}
 }
 
-func TestDeleteTeamExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
+func TestDeleteTeamExplicitEmptyToConfigReturnsProposalPathError(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		path string
@@ -209,6 +216,12 @@ func TestDeleteTeamExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
 			err := c.Execute()
 			if err == nil {
 				t.Fatal("expected invalid config path error")
+			}
+			if !strings.Contains(err.Error(), "required config file") {
+				t.Fatalf("expected config path error, got %v", err)
+			}
+			if errors.Is(err, safety.ErrConfirmationRequired) {
+				t.Fatalf("proposal mode unexpectedly reached live confirmation: %v", err)
 			}
 			if errors.Is(err, github.ErrNoValidCredentials) {
 				t.Fatalf("explicit config mode attempted GitHub authentication: %v", err)
@@ -257,7 +270,7 @@ teams:
     privacy: closed
     parent_slug: platform
 `,
-			wantErr: "team o/platform cannot be deleted from config while dependencies exist: child team devs(parent_slug=platform)",
+			wantErr: "team o/platform cannot be deleted from config because it would violate the config validator's child-team invariant: child team devs(parent_slug=platform)",
 		},
 		{
 			name: "invite blocker",
@@ -307,7 +320,7 @@ teams:
     privacy: closed
     parent_slug: PLATFORM
 `,
-			wantErr: "team o/platform cannot be deleted from config while dependencies exist: child team devs(parent_slug=platform), child team ops(parent_slug=PLATFORM), invite[0](team_slug=platform), invite[1](team_slug=PLATFORM)",
+			wantErr: "team o/platform cannot be deleted from config because it would violate the config validator's child-team invariant: child team devs(parent_slug=platform), child team ops(parent_slug=PLATFORM), invite[0](team_slug=platform), invite[1](team_slug=PLATFORM)",
 		},
 	}
 
