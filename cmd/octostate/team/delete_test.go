@@ -178,6 +178,11 @@ members:
     role: member
   - username: carol
     role: member
+invites:
+  - email: docs@example.com
+    role: direct_member
+    team_slugs:
+      - docs
 repositories:
   - name: api
     visibility: private
@@ -252,7 +257,11 @@ members:
     role: member
   - username: carol
     role: member
-invites: []
+invites:
+  - email: docs@example.com
+    role: direct_member
+    team_slugs:
+      - docs
 repositories:
   - name: api
     visibility: private
