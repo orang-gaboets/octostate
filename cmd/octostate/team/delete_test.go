@@ -290,12 +290,6 @@ teams:
 	if got != want {
 		t.Fatalf("unexpected config contents:\n%s\nwant:\n%s", got, want)
 	}
-	if strings.Contains(got, "slug: devs") {
-		t.Fatalf("expected deleted team to be absent, got:\n%s", got)
-	}
-	if !strings.Contains(got, "slug: platform") || !strings.Contains(got, "slug: docs") {
-		t.Fatalf("expected unrelated teams to remain, got:\n%s", got)
-	}
 }
 
 func TestDeleteTeamExplicitEmptyToConfigReturnsProposalPathError(t *testing.T) {
