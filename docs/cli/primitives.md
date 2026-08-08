@@ -8,19 +8,16 @@ Live primitive operations require GitHub authentication. Supply exactly one of:
 - `--token`
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
-Live destructive delete commands also require `--yes`. Delete proposal mode
-(`--to-config`) and delete `--dry-run` mode are separate flows; neither
-requires GitHub authentication or `--yes`, and `--to-config` cannot be
-combined with `--dry-run`.
+Mutating commands support `--dry-run` where noted. Live destructive delete
+commands require GitHub authentication and explicit `--yes`; delete proposal
+and `--dry-run` modes require neither. `--to-config` and `--dry-run` are
+mutually exclusive.
 
 The command examples in this page intentionally show GitHub App auth directly so
 that the non-token path stays visible in the reference.
 
 This reference uses canonical command names. Common aliases such as `org`,
 `repo create`, `team delete`, and `team get` also work.
-
-Mutating commands support `--dry-run` where noted. Live destructive delete
-commands require explicit confirmation with `--yes`; proposal mode does not.
 
 ## Proposal mode
 
