@@ -122,6 +122,8 @@ func deleteTeamToConfig(cmd *cobra.Command, path, org, slug string) error {
 			reason := "while dependencies exist"
 			if hasChildTeamBlocker && !hasInviteBlocker {
 				reason = "because it would violate the config validator's child-team invariant"
+			} else if hasInviteBlocker && !hasChildTeamBlocker {
+				reason = "because it would violate the config validator's invite-team invariant"
 			}
 			return fmt.Errorf(
 				"team %s/%s cannot be deleted from config %s: %s",

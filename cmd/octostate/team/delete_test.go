@@ -376,7 +376,7 @@ teams:
     name: Platform
     privacy: closed
 `,
-			wantErr: "team o/platform cannot be deleted from config while dependencies exist: invite[0](team_slug=platform)",
+			wantErr: "team o/platform cannot be deleted from config because it would violate the config validator's invite-team invariant: invite[0](team_slug=platform)",
 		},
 		{
 			name: "combined blockers keep deterministic order",
