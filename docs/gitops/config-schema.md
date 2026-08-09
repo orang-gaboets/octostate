@@ -63,6 +63,31 @@ Validation rules:
 - `user_id` values must be greater than zero
 - empty or whitespace-only `username` / `email` values are rejected
 - explicit `null` is rejected for `username`, `email`, and `user_id`
+- a `username` invite that duplicates a declared top-level member is rejected
+- two invites must not declare the same identity
+
+Duplicate invite identities are compared within a single identity kind, after
+trimming:
+
+- `username` against `username`, case-insensitively, matching how GitHub
+  usernames are compared everywhere else in the schema
+- `email` against `email`, case-insensitively over the whole address
+- `user_id` against `user_id`, by numeric value
+
+The later duplicate is reported and names the first declaration, so the error
+is stable regardless of how many duplicates a file contains.
+
+Comparison never spans identity kinds. A `username` invite, an `email` invite,
+and a `user_id` invite are always independent, even when they refer to the same
+GitHub account, because establishing that relationship would require a live
+identity lookup that offline validation must not perform.
+
+Case-insensitive email comparison is a deliberate choice. RFC 5321 makes the
+local-part of an address technically case-sensitive, but it also discourages
+relying on that, and mainstream providers treat addresses case-insensitively.
+For a validator whose purpose is catching an accidental duplicate declaration,
+letting `Dev@example.com` and `dev@example.com` both through would be the worse
+outcome.
 
 ## Repositories
 
