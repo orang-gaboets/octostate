@@ -1,0 +1,44 @@
+organization: proposal-org
+members:
+  - username: alice
+    role: member
+  - username: bob
+    role: member
+invites:
+  - username: octocat
+    role: direct_member
+repositories:
+  - owner: ""
+    name: api
+    visibility: private
+    description: Old API description
+    topics:
+      - legacy
+  - owner: ""
+    name: legacy
+    visibility: private
+    description: Legacy repository
+  - owner: ""
+    name: web
+    visibility: private
+    description: Web repository
+teams:
+  - slug: platform
+    name: Platform
+    description: Platform engineering
+    privacy: closed
+    parent_slug: ""
+    members:
+      - username: alice
+        role: maintainer
+    repositories:
+      - owner: ""
+        name: api
+        permission: push
+  - slug: legacy-team
+    name: Legacy Team
+    description: Team to delete
+    privacy: closed
+    parent_slug: ""
+    members: []
+    repositories: []
