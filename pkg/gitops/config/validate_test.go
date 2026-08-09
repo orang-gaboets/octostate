@@ -866,29 +866,29 @@ func TestValidateDuplicateInviteUsernames(t *testing.T) {
 		{
 			name: "identical",
 			invites: []InviteSpec{
-				{Username: optionalString("alice"), Role: "direct_member"},
-				{Username: optionalString("alice"), Role: "direct_member"},
+				{Username: optionalString("octocat"), Role: "direct_member"},
+				{Username: optionalString("octocat"), Role: "direct_member"},
 			},
 		},
 		{
 			name: "case insensitive",
 			invites: []InviteSpec{
-				{Username: optionalString("alice"), Role: "direct_member"},
-				{Username: optionalString("Alice"), Role: "admin"},
+				{Username: optionalString("octocat"), Role: "direct_member"},
+				{Username: optionalString("Octocat"), Role: "admin"},
 			},
 		},
 		{
 			name: "surrounding whitespace",
 			invites: []InviteSpec{
-				{Username: optionalString("alice"), Role: "direct_member"},
-				{Username: optionalString(" alice "), Role: "direct_member"},
+				{Username: optionalString("octocat"), Role: "direct_member"},
+				{Username: optionalString(" octocat "), Role: "direct_member"},
 			},
 		},
 		{
 			name: "conflicting team slugs",
 			invites: []InviteSpec{
-				{Username: optionalString("alice"), Role: "direct_member", TeamSlugs: []string{"platform"}},
-				{Username: optionalString("alice"), Role: "direct_member"},
+				{Username: optionalString("octocat"), Role: "direct_member", TeamSlugs: []string{"platform"}},
+				{Username: optionalString("octocat"), Role: "direct_member"},
 			},
 		},
 	}
@@ -927,8 +927,8 @@ func TestValidateDistinctInvitesRemainValid(t *testing.T) {
 	t.Parallel()
 
 	report := Validate(inviteConfigWith(
-		InviteSpec{Username: optionalString("alice"), Role: "direct_member"},
-		InviteSpec{Username: optionalString("bob"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("octocat"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("hubber"), Role: "direct_member"},
 		InviteSpec{Email: optionalString("dev@example.com"), Role: "direct_member"},
 		InviteSpec{Email: optionalString("ops@example.com"), Role: "direct_member"},
 		InviteSpec{UserID: optionalInt64(1), Role: "direct_member"},
@@ -946,8 +946,8 @@ func TestValidateInviteIdentityKindsAreIndependent(t *testing.T) {
 	// person must not be treated as duplicates: resolving that would require a
 	// live identity lookup the offline validator must not perform.
 	report := Validate(inviteConfigWith(
-		InviteSpec{Username: optionalString("alice"), Role: "direct_member"},
-		InviteSpec{Email: optionalString("alice@example.com"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("octocat"), Role: "direct_member"},
+		InviteSpec{Email: optionalString("octocat@example.com"), Role: "direct_member"},
 		InviteSpec{UserID: optionalInt64(42), Role: "direct_member"},
 	))
 	if !report.Valid {
@@ -959,9 +959,9 @@ func TestValidateDuplicateInvitesReferenceFirstDeclaration(t *testing.T) {
 	t.Parallel()
 
 	report := Validate(inviteConfigWith(
-		InviteSpec{Username: optionalString("alice"), Role: "direct_member"},
-		InviteSpec{Username: optionalString("ALICE"), Role: "direct_member"},
-		InviteSpec{Username: optionalString("alice"), Role: "admin"},
+		InviteSpec{Username: optionalString("octocat"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("OCTOCAT"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("octocat"), Role: "admin"},
 	))
 
 	var messages []string

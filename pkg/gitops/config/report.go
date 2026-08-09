@@ -31,6 +31,8 @@ const (
 	ValidationIssueCodeDuplicateTeamRepository ValidationIssueCode = "duplicate_team_repository"
 	// ValidationIssueCodeDuplicateOrganizationMemberInvite indicates a username is declared in both members and invites.
 	ValidationIssueCodeDuplicateOrganizationMemberInvite ValidationIssueCode = "duplicate_organization_member_invite"
+	// ValidationIssueCodeDuplicateInvite indicates an invite identity is declared by more than one invite.
+	ValidationIssueCodeDuplicateInvite ValidationIssueCode = "duplicate_invite"
 	// ValidationIssueCodeInvalidEnum indicates a field has an unsupported enum value.
 	ValidationIssueCodeInvalidEnum ValidationIssueCode = "invalid_enum"
 	// ValidationIssueCodeInvalidFieldValue indicates a field value is invalid for its schema.

@@ -305,6 +305,12 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 }
 
 func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex map[string]int, memberIndex map[string]int) {
+	// Keyed by identity kind and normalized value so distinct kinds never
+	// collide. Cross-kind equivalence is deliberately not inferred: deciding
+	// whether a username, email, and user ID name the same account needs a
+	// live lookup this validator must not perform.
+	identityIndex := make(map[string]int, len(invites))
+
 	for i, invite := range invites {
 		pathPrefix := fmt.Sprintf("invites[%d]", i)
 		usernameDeclared := invite.Username.Present
@@ -363,6 +369,8 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			}
 		}
 
+		validateInviteIdentityUniqueness(report, identityIndex, pathPrefix, i, invite)
+
 		if role := strings.TrimSpace(invite.Role); role != "" && !isAllowed(role, validInviteRoles) {
 			report.addError(pathPrefix+".role", ValidationIssueCodeInvalidEnum, "invite role %q is not supported", role)
 		}
@@ -377,6 +385,59 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeUnknownInviteTeamSlug, "invite references unknown team slug %q", trimmedTeamSlug)
 			}
 		}
+	}
+}
+
+// validateInviteIdentityUniqueness rejects an invite whose identity is already
+// declared by an earlier invite. Only a well-formed identity participates, so
+// an invite that is already invalid is not additionally reported as a
+// duplicate.
+//
+// Usernames and emails are compared case-insensitively after trimming, matching
+// how every other desired-state collection establishes identity. RFC 5321
+// technically makes an email local-part case-sensitive, but it also discourages
+// relying on that, and every mainstream provider treats addresses
+// case-insensitively; for a validator whose purpose is catching an accidental
+// duplicate declaration, missing `Dev@example.com` against `dev@example.com`
+// would be the worse error.
+func validateInviteIdentityUniqueness(report *ValidationReport, identityIndex map[string]int, pathPrefix string, index int, invite InviteSpec) {
+	var field, key string
+
+	switch {
+	case invite.Username.Present && !invite.Username.Null:
+		username := strings.TrimSpace(invite.Username.Value)
+		if username == "" || !isValidGitHubUsername(username) {
+			return
+		}
+		field, key = "username", "username\x00"+strings.ToLower(username)
+	case invite.Email.Present && !invite.Email.Null:
+		email := strings.TrimSpace(invite.Email.Value)
+		if email == "" || !isValidInviteEmail(email) {
+			return
+		}
+		field, key = "email", "email\x00"+strings.ToLower(email)
+	case invite.UserID.Present && !invite.UserID.Null:
+		if invite.UserID.Value <= 0 {
+			return
+		}
+		field, key = "user_id", fmt.Sprintf("user_id\x00%d", invite.UserID.Value)
+	default:
+		return
+	}
+
+	firstIndex, duplicate := identityIndex[key]
+	if !duplicate {
+		identityIndex[key] = index
+		return
+	}
+
+	switch field {
+	case "user_id":
+		report.addError(pathPrefix+".user_id", ValidationIssueCodeDuplicateInvite, "invite user_id %d duplicates invites[%d]", invite.UserID.Value, firstIndex)
+	case "email":
+		report.addError(pathPrefix+".email", ValidationIssueCodeDuplicateInvite, "invite email %q duplicates invites[%d]", strings.TrimSpace(invite.Email.Value), firstIndex)
+	default:
+		report.addError(pathPrefix+".username", ValidationIssueCodeDuplicateInvite, "invite username %q duplicates invites[%d]", strings.TrimSpace(invite.Username.Value), firstIndex)
 	}
 }
 
