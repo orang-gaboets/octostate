@@ -849,3 +849,168 @@ func TestNormalizeTeamNameExported(t *testing.T) {
 		}
 	}
 }
+
+func inviteConfigWith(invites ...InviteSpec) OrganizationConfig {
+	cfg := validOrganizationConfig()
+	cfg.Invites = invites
+	return cfg
+}
+
+func TestValidateDuplicateInviteUsernames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		invites []InviteSpec
+	}{
+		{
+			name: "identical",
+			invites: []InviteSpec{
+				{Username: optionalString("alice"), Role: "direct_member"},
+				{Username: optionalString("alice"), Role: "direct_member"},
+			},
+		},
+		{
+			name: "case insensitive",
+			invites: []InviteSpec{
+				{Username: optionalString("alice"), Role: "direct_member"},
+				{Username: optionalString("Alice"), Role: "admin"},
+			},
+		},
+		{
+			name: "surrounding whitespace",
+			invites: []InviteSpec{
+				{Username: optionalString("alice"), Role: "direct_member"},
+				{Username: optionalString(" alice "), Role: "direct_member"},
+			},
+		},
+		{
+			name: "conflicting team slugs",
+			invites: []InviteSpec{
+				{Username: optionalString("alice"), Role: "direct_member", TeamSlugs: []string{"platform"}},
+				{Username: optionalString("alice"), Role: "direct_member"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			report := Validate(inviteConfigWith(tt.invites...))
+			assertHasIssueAtPathAndCode(t, report, "invites[1].username", ValidationIssueCodeDuplicateInvite)
+		})
+	}
+}
+
+func TestValidateDuplicateInviteEmailsAreCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	report := Validate(inviteConfigWith(
+		InviteSpec{Email: optionalString("dev@example.com"), Role: "direct_member"},
+		InviteSpec{Email: optionalString("DEV@Example.COM"), Role: "admin"},
+	))
+	assertHasIssueAtPathAndCode(t, report, "invites[1].email", ValidationIssueCodeDuplicateInvite)
+}
+
+func TestValidateDuplicateInviteUserIDs(t *testing.T) {
+	t.Parallel()
+
+	report := Validate(inviteConfigWith(
+		InviteSpec{UserID: optionalInt64(42), Role: "direct_member"},
+		InviteSpec{UserID: optionalInt64(42), Role: "billing_manager"},
+	))
+	assertHasIssueAtPathAndCode(t, report, "invites[1].user_id", ValidationIssueCodeDuplicateInvite)
+}
+
+func TestValidateDistinctInvitesRemainValid(t *testing.T) {
+	t.Parallel()
+
+	report := Validate(inviteConfigWith(
+		InviteSpec{Username: optionalString("alice"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("bob"), Role: "direct_member"},
+		InviteSpec{Email: optionalString("dev@example.com"), Role: "direct_member"},
+		InviteSpec{Email: optionalString("ops@example.com"), Role: "direct_member"},
+		InviteSpec{UserID: optionalInt64(1), Role: "direct_member"},
+		InviteSpec{UserID: optionalInt64(2), Role: "direct_member"},
+	))
+	if !report.Valid {
+		t.Fatalf("expected distinct invites to be valid, got %#v", report.Errors)
+	}
+}
+
+func TestValidateInviteIdentityKindsAreIndependent(t *testing.T) {
+	t.Parallel()
+
+	// A username, an email, and a user_id that a human might consider the same
+	// person must not be treated as duplicates: resolving that would require a
+	// live identity lookup the offline validator must not perform.
+	report := Validate(inviteConfigWith(
+		InviteSpec{Username: optionalString("alice"), Role: "direct_member"},
+		InviteSpec{Email: optionalString("alice@example.com"), Role: "direct_member"},
+		InviteSpec{UserID: optionalInt64(42), Role: "direct_member"},
+	))
+	if !report.Valid {
+		t.Fatalf("expected different identity kinds to be independent, got %#v", report.Errors)
+	}
+}
+
+func TestValidateDuplicateInvitesReferenceFirstDeclaration(t *testing.T) {
+	t.Parallel()
+
+	report := Validate(inviteConfigWith(
+		InviteSpec{Username: optionalString("alice"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("ALICE"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("alice"), Role: "admin"},
+	))
+
+	var messages []string
+	for _, issue := range report.Errors {
+		if issue.Code == ValidationIssueCodeDuplicateInvite {
+			messages = append(messages, issue.Path+": "+issue.Message)
+		}
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected two duplicate errors, got %#v", messages)
+	}
+	for _, message := range messages {
+		if !strings.Contains(message, "duplicates invites[0]") {
+			t.Fatalf("expected every duplicate to reference the first declaration, got %q", message)
+		}
+	}
+	if !strings.HasPrefix(messages[0], "invites[1].username") || !strings.HasPrefix(messages[1], "invites[2].username") {
+		t.Fatalf("expected deterministic ordering by invite index, got %#v", messages)
+	}
+}
+
+func TestValidateDuplicateInviteDoesNotMaskMemberConflict(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Members = []OrganizationMemberSpec{{Username: "alice", Role: "member"}}
+	cfg.Invites = []InviteSpec{
+		{Username: optionalString("alice"), Role: "direct_member"},
+		{Username: optionalString("alice"), Role: "direct_member"},
+	}
+	cfg.Teams = nil
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "invites[0].username", ValidationIssueCodeDuplicateOrganizationMemberInvite)
+	assertHasIssueAtPathAndCode(t, report, "invites[1].username", ValidationIssueCodeDuplicateInvite)
+}
+
+func TestValidateInvalidInviteIdentityIsNotReportedAsDuplicate(t *testing.T) {
+	t.Parallel()
+
+	report := Validate(inviteConfigWith(
+		InviteSpec{Role: "direct_member"},
+		InviteSpec{Role: "direct_member"},
+	))
+	for _, issue := range report.Errors {
+		if issue.Code == ValidationIssueCodeDuplicateInvite {
+			t.Fatalf("invites without an identity must not be reported as duplicates: %#v", issue)
+		}
+	}
+	assertHasIssueAtPathAndCode(t, report, "invites[0]", ValidationIssueCodeInvalidInviteIdentity)
+	assertHasIssueAtPathAndCode(t, report, "invites[1]", ValidationIssueCodeInvalidInviteIdentity)
+}
