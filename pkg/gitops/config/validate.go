@@ -369,7 +369,13 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			}
 		}
 
-		validateInviteIdentityUniqueness(report, identityIndex, pathPrefix, i, invite)
+		// Only an invite that declares exactly one identity has an identity to
+		// compare. Anything else is already reported above, and letting it into
+		// the index would make duplicate reporting depend on which field the
+		// malformed invite happened to declare first.
+		if identityCount == 1 {
+			validateInviteIdentityUniqueness(report, identityIndex, pathPrefix, i, invite)
+		}
 
 		if role := strings.TrimSpace(invite.Role); role != "" && !isAllowed(role, validInviteRoles) {
 			report.addError(pathPrefix+".role", ValidationIssueCodeInvalidEnum, "invite role %q is not supported", role)
@@ -389,17 +395,15 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 }
 
 // validateInviteIdentityUniqueness rejects an invite whose identity is already
-// declared by an earlier invite. Only a well-formed identity participates, so
-// an invite that is already invalid is not additionally reported as a
-// duplicate.
+// declared by an earlier invite. Callers must only invoke this for an invite
+// that declares exactly one identity; a malformed invite is reported by its own
+// identity validation and never seeds or matches the index.
 //
-// Usernames and emails are compared case-insensitively after trimming, matching
-// how every other desired-state collection establishes identity. RFC 5321
-// technically makes an email local-part case-sensitive, but it also discourages
-// relying on that, and every mainstream provider treats addresses
-// case-insensitively; for a validator whose purpose is catching an accidental
-// duplicate declaration, missing `Dev@example.com` against `dev@example.com`
-// would be the worse error.
+// Usernames and emails are compared case-insensitively after trimming. This is
+// a deliberate desired-state comparison rule rather than a claim about how any
+// mail system routes messages: SMTP still permits a case-sensitive local-part,
+// so octostate defines equivalence for itself and applies it consistently with
+// how every other collection in the schema establishes identity.
 func validateInviteIdentityUniqueness(report *ValidationReport, identityIndex map[string]int, pathPrefix string, index int, invite InviteSpec) {
 	var field, key string
 

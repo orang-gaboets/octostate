@@ -82,12 +82,16 @@ and a `user_id` invite are always independent, even when they refer to the same
 GitHub account, because establishing that relationship would require a live
 identity lookup that offline validation must not perform.
 
-Case-insensitive email comparison is a deliberate choice. RFC 5321 makes the
-local-part of an address technically case-sensitive, but it also discourages
-relying on that, and mainstream providers treat addresses case-insensitively.
-For a validator whose purpose is catching an accidental duplicate declaration,
-letting `Dev@example.com` and `dev@example.com` both through would be the worse
-outcome.
+Case-insensitive email comparison is an intentional octostate desired-state
+rule, not an assumption about how mail systems route messages. SMTP still
+permits a case-sensitive local-part, so octostate defines equivalence for
+itself: two invite emails that differ only by case are one desired-state
+identity, handled deterministically and consistently with how every other
+collection in this schema establishes identity.
+
+An invite that does not declare exactly one identity is reported by the
+identity rules above and takes no part in duplicate detection, so a malformed
+entry never masks or manufactures a duplicate.
 
 ## Repositories
 

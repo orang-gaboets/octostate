@@ -1014,3 +1014,63 @@ func TestValidateInvalidInviteIdentityIsNotReportedAsDuplicate(t *testing.T) {
 	assertHasIssueAtPathAndCode(t, report, "invites[0]", ValidationIssueCodeInvalidInviteIdentity)
 	assertHasIssueAtPathAndCode(t, report, "invites[1]", ValidationIssueCodeInvalidInviteIdentity)
 }
+
+func TestValidateMalformedMultiIdentityInviteIsExcludedFromDuplicateDetection(t *testing.T) {
+	t.Parallel()
+
+	malformedUsernameAndEmail := InviteSpec{
+		Username: optionalString("octocat"),
+		Email:    optionalString("dup@example.com"),
+		Role:     "direct_member",
+	}
+	validUsername := InviteSpec{Username: optionalString("octocat"), Role: "direct_member"}
+	validEmail := InviteSpec{Email: optionalString("dup@example.com"), Role: "direct_member"}
+
+	tests := []struct {
+		name    string
+		invites []InviteSpec
+	}{
+		{name: "malformed before username", invites: []InviteSpec{malformedUsernameAndEmail, validUsername}},
+		{name: "malformed after username", invites: []InviteSpec{validUsername, malformedUsernameAndEmail}},
+		{name: "malformed before email", invites: []InviteSpec{malformedUsernameAndEmail, validEmail}},
+		{name: "malformed after email", invites: []InviteSpec{validEmail, malformedUsernameAndEmail}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			report := Validate(inviteConfigWith(tt.invites...))
+
+			// The malformed invite must be reported for its identity declaration
+			// only. It must never seed or match the uniqueness index, in either
+			// position and regardless of which identity field it happens to
+			// declare first.
+			assertHasIssueCode(t, report, ValidationIssueCodeInvalidInviteIdentity)
+			for _, issue := range report.Errors {
+				if issue.Code == ValidationIssueCodeDuplicateInvite {
+					t.Fatalf("malformed multi-identity invite participated in duplicate detection: %#v", issue)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateDuplicateDetectionSurvivesMalformedNeighbour(t *testing.T) {
+	t.Parallel()
+
+	// A malformed invite between two genuine duplicates must not shift which
+	// declaration the duplicate is reported against.
+	report := Validate(inviteConfigWith(
+		InviteSpec{Username: optionalString("octocat"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("hubber"), Email: optionalString("x@example.com"), Role: "direct_member"},
+		InviteSpec{Username: optionalString("octocat"), Role: "direct_member"},
+	))
+	assertHasIssueAtPathAndCode(t, report, "invites[2].username", ValidationIssueCodeDuplicateInvite)
+
+	for _, issue := range report.Errors {
+		if issue.Code == ValidationIssueCodeDuplicateInvite && !strings.Contains(issue.Message, "duplicates invites[0]") {
+			t.Fatalf("expected duplicate to reference invites[0], got %q", issue.Message)
+		}
+	}
+}
