@@ -127,6 +127,7 @@ func addTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username, role s
 
 		team := &cfg.Teams[teamIndex]
 		if existing, found := configproposal.FindTeamMemberIndex(team, username); found {
+			canonicalUsername = strings.TrimSpace(team.Members[existing].Username)
 			team.Members[existing].Role = role
 			return nil
 		}

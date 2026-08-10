@@ -106,6 +106,7 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 }
 
 func removeTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username string) error {
+	reportedUsername := username
 	changed, err := configproposal.ApplyToConfigFile(path, org, func(cfg *gitopsconfig.OrganizationConfig) error {
 		teamIndex, found := configproposal.FindTeamIndex(cfg, slug)
 		if !found {
@@ -117,6 +118,7 @@ func removeTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username stri
 		if !found {
 			return nil
 		}
+		reportedUsername = strings.TrimSpace(team.Members[memberIndex].Username)
 		team.Members = append(team.Members[:memberIndex], team.Members[memberIndex+1:]...)
 		return nil
 	})
@@ -131,7 +133,7 @@ func removeTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username stri
 	return cmdoutput.PrintSuccess(cmd, message, map[string]any{
 		"organization": org,
 		"slug":         slug,
-		"username":     username,
+		"username":     reportedUsername,
 		"config_path":  path,
 		"changed":      changed,
 	})

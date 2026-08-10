@@ -431,7 +431,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--username` (required): GitHub username to add/update in the team
-- `--role` (optional): Team membership role (`member` or `maintainer`; default is `member`)
+- `--role` (optional): Team membership role (`member` or `maintainer`; default is `member`); when updating an existing maintainer, omitting this flag changes that membership to `member`
 - `--to-config` (optional): Apply the membership proposal to an existing local organization config instead of GitHub; the team must exist in desired state and the username must already be declared in top-level `members:`
 - `--dry-run` (optional): Preview the membership change without calling GitHub
 
