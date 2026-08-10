@@ -480,7 +480,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
-- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
+- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`); surrounding whitespace is ignored, case-only differences still count as the same organization, and a different organization is rejected before dry-run output, proposal changes, authentication, or GitHub calls
 - `--permission` (optional): Permission to grant (`pull`, `push`, `admin`, `maintain`, `triage`; default is `pull`)
 - `--to-config` (optional): Apply the permission proposal to an existing local organization config instead of GitHub; the team must exist in desired state and an existing entry for the repository is updated in place
 - `--dry-run` (optional): Preview the permission change without calling GitHub
@@ -499,7 +499,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
-- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
+- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`); surrounding whitespace is ignored, case-only differences still count as the same organization, and a different organization is rejected before dry-run output, proposal changes, authentication, or GitHub calls
 - `--to-config` (optional): Remove the permission entry from an existing local organization config instead of GitHub; an entry that does not exist is a no-op
 - `--dry-run` (optional): Preview the permission removal without calling GitHub
 

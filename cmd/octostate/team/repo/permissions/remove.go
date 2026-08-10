@@ -50,6 +50,9 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 			if trimmedRepoOrg == "" {
 				trimmedRepoOrg = trimmedOrg
 			}
+			if !gitopsconfig.RepositoryOwnerMatchesOrganization(trimmedRepoOrg, trimmedOrg) {
+				return fmt.Errorf("repository owner %q must match organization %q", trimmedRepoOrg, trimmedOrg)
+			}
 			if trimmedRepo == "" {
 				return fmt.Errorf("repo name cannot be empty: %w", github.ErrMissingRequiredField)
 			}
