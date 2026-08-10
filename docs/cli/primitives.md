@@ -28,10 +28,26 @@ configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
 
 Proposal mode requires an existing regular file (not a directory or symbolic
-link) whose `organization:` value matches `--org` case-insensitively. The file
-is validated before and after the requested mutation and is replaced
-atomically. Semantic no-ops return `changed: false` and leave the file bytes
-unchanged. `--to-config` and `--dry-run` are mutually exclusive.
+link) whose `organization:` value matches `--org` case-insensitively. It loads
+and validates the file before mutation, validates the mutated config again, and
+replaces the file atomically only when the canonical YAML bytes change.
+
+Proposal mode does not authenticate, construct or call a GitHub client, make
+GitHub API requests, resolve usernames, create a branch, open a pull request,
+run `config plan`, or run `config apply`. It only records the requested
+mutation in the local organization YAML file.
+
+Failures leave the original file unchanged. Semantic no-ops report
+`changed: false` and leave the file bytes unchanged. Successful changes are
+written as canonical YAML, so formatting may be normalized and comments may be
+dropped. `--to-config` and `--dry-run` are mutually exclusive. Live destructive
+deletes require `--yes`; proposal deletes and dry-runs do not require `--yes`.
+
+For example, this offline proposal needs no GitHub credentials:
+
+```bash
+octostate repo edit --org proposal-org --name api --desc "Updated API description" --to-config organization.yaml
+```
 
 Delete proposals add command-specific safety checks. `repo delete` refuses to
 remove a repository while any team repository permissions still reference it.
