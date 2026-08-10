@@ -71,7 +71,10 @@ Team repository permission proposals also require the target team to exist in
 desired state. `team repo permissions add` updates the permission in place when
 the team already has an entry for the repository, and `remove` drops only the
 targeted entry; a repository the team has no entry for is a no-op. `--repo-org`
-is stored only when it differs from the organization.
+is compatibility-only: omitted values default to `--org`, explicit same-org
+values are accepted after trimming and case-insensitive comparison, canonical
+YAML omits same-org owners, and cross-org values are rejected before proposal
+mutation.
 
 The repository itself does not need to be declared under top-level
 `repositories:` — `config validate` does not cross-check permission entries
