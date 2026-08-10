@@ -139,6 +139,25 @@ func TestProposalModeAllMutations(t *testing.T) {
 	}
 }
 
+func TestProposalModeDoesNotRequireCredentials(t *testing.T) {
+	path := copyProposalFixture(t)
+	run := runProposalCommand(t, []string{
+		"repo", "edit", "--org", "proposal-org", "--name", "api",
+		"--desc", "Updated without credentials", "--to-config", path,
+	})
+	if run.err != nil {
+		t.Fatalf("unexpected error: %v", run.err)
+	}
+	result := decodeProposalResult(t, run.stdout)
+	data, ok := result["data"].(map[string]any)
+	if !ok || data["changed"] != true {
+		t.Fatalf("expected changed=true, got %#v", result["data"])
+	}
+	if bytes.Equal(run.before, run.after) {
+		t.Fatal("expected config mutation")
+	}
+}
+
 func TestProposalModeFailuresLeaveFilesUnchanged(t *testing.T) {
 	tests := []struct {
 		name string
