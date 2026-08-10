@@ -362,6 +362,56 @@ func TestPlanConfigCmdInvalidConfigPrintsStderrAndReturnsTypedExit(t *testing.T)
 	}
 }
 
+func TestPlanConfigCmdRejectsMismatchedRepositoryOwnerBeforeGitHub(t *testing.T) {
+	restorePlanHooks(t)
+
+	cfg := mismatchedRepositoryOwnerConfig()
+	loadPlanConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return cfg, nil
+	}
+	validatePlanConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		if !reflect.DeepEqual(got, cfg) {
+			t.Fatalf("unexpected config: got %#v want %#v", got, cfg)
+		}
+		report := gitopsconfig.Validate(got)
+		assertValidationReportHasIssue(t, report, "repositories[0].owner", gitopsconfig.ValidationIssueCodeRepositoryOwnerScope)
+		return report
+	}
+	newPlanClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("newPlanClient should not be called for invalid repository owner")
+		return nil, nil
+	}
+	collectPlanState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("collectPlanState should not be called for invalid repository owner")
+		return nil, nil
+	}
+	buildPlanReport = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) {
+		t.Fatal("buildPlanReport should not be called for invalid repository owner")
+		return nil, nil
+	}
+
+	cmd := PlanConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid config error")
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+	if got := errBuf.String(); !strings.Contains(got, "Error: configuration is invalid; run `octostate config validate`") {
+		t.Fatalf("expected invalid config error on stderr, got %q", got)
+	}
+}
+
 func TestPlanConfigCmdAuthFailurePropagates(t *testing.T) {
 	restorePlanHooks(t)
 
@@ -564,4 +614,29 @@ func normalizePlanPreviewForCompare(preview *planPreview) {
 	for i := range preview.SkippedActions {
 		preview.SkippedActions[i].Normalize()
 	}
+}
+
+func mismatchedRepositoryOwnerConfig() gitopsconfig.OrganizationConfig {
+	return gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []gitopsconfig.TeamSpec{},
+	}
+}
+
+func assertValidationReportHasIssue(t *testing.T, report gitopsconfig.ValidationReport, wantPath string, wantCode gitopsconfig.ValidationIssueCode) {
+	t.Helper()
+
+	for _, issue := range report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, report.Errors)
 }

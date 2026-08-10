@@ -244,6 +244,62 @@ func TestDiffCmdInvalidConfigReturnsErrorWithoutSnapshotRead(t *testing.T) {
 	}
 }
 
+func TestDiffCmdRejectsMismatchedRepositoryOwnerBeforeSnapshotRead(t *testing.T) {
+	restoreAuditDiffHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []gitopsconfig.TeamSpec{},
+	}
+	loadAuditDiffConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return cfg, nil
+	}
+	validateAuditDiffConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		if !reflect.DeepEqual(got, cfg) {
+			t.Fatalf("unexpected config: got %#v want %#v", got, cfg)
+		}
+		report := gitopsconfig.Validate(got)
+		assertAuditValidationReportHasIssue(t, report, "repositories[0].owner", gitopsconfig.ValidationIssueCodeRepositoryOwnerScope)
+		return report
+	}
+	readAuditSnapshot = func(string) (*gitopssnapshot.ActualSnapshot, error) {
+		t.Fatal("readAuditSnapshot should not be called for invalid repository owner")
+		return nil, nil
+	}
+	buildAuditDiffReport = func(gitopsdiff.Options) (*gitopsdiff.Report, error) {
+		t.Fatal("buildAuditDiffReport should not be called for invalid repository owner")
+		return nil, nil
+	}
+
+	cmd := DiffCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--state-dir", "./state"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid config error")
+	}
+	if !strings.Contains(err.Error(), "configuration is invalid") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := exitcode.Code(err); ok {
+		t.Fatalf("expected plain error for invalid config, got typed exit error: %v", err)
+	}
+	if out.Len() != 0 || errBuf.Len() != 0 {
+		t.Fatalf("expected no output, got stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}
+
 func TestDiffCmdSnapshotReadAndBuildFailuresPropagate(t *testing.T) {
 	snapshotErr := errors.New("snapshot read failed")
 	buildErr := errors.New("diff build failed")
@@ -412,4 +468,15 @@ func decodeDiffReport(t *testing.T, payload []byte) gitopsdiff.Report {
 		t.Fatalf("decode diff report: %v; payload=%q", err, string(payload))
 	}
 	return report
+}
+
+func assertAuditValidationReportHasIssue(t *testing.T, report gitopsconfig.ValidationReport, wantPath string, wantCode gitopsconfig.ValidationIssueCode) {
+	t.Helper()
+
+	for _, issue := range report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, report.Errors)
 }

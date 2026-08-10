@@ -86,6 +86,54 @@ teams: []
 	}
 }
 
+func TestValidateConfigCmdRejectsMismatchedRepositoryOwner(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+members: []
+invites: []
+repositories:
+  - owner: shared-platform
+    name: octostate
+    visibility: private
+teams: []
+`)
+
+	cmd := configcmd.ValidateConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", configDir})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if code, ok := exitcode.Code(err); !ok || code != 2 {
+		t.Fatalf("expected typed exit code 2, got ok=%v code=%d err=%v", ok, code, err)
+	}
+
+	report := decodeReport(t, out.Bytes())
+	if report.Valid {
+		t.Fatalf("expected invalid report, got %#v", report)
+	}
+	if len(report.Errors) != 1 {
+		t.Fatalf("expected one validation error, got %#v", report.Errors)
+	}
+	if got, want := report.Errors[0].Path, "repositories[0].owner"; got != want {
+		t.Fatalf("unexpected validation path: got %q want %q", got, want)
+	}
+	if got, want := report.Errors[0].Code, gitopsconfig.ValidationIssueCodeRepositoryOwnerScope; got != want {
+		t.Fatalf("unexpected validation code: got %q want %q", got, want)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+}
+
 func TestValidateConfigCmdMissingOrganizationFileReturnsExitCode1(t *testing.T) {
 	t.Parallel()
 

@@ -401,6 +401,76 @@ func TestApplyConfigCmdInvalidConfigPrintsStderrAndReturnsTypedExit(t *testing.T
 	}
 }
 
+func TestApplyConfigCmdRejectsMismatchedRepositoryOwnerBeforeGitHub(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "apply", args: []string{"--config-dir", "./config", "--token", "secret-token"}},
+		{name: "check", args: []string{"--config-dir", "./config", "--token", "secret-token", "--check"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			restoreApplyHooks(t)
+
+			cfg := mismatchedRepositoryOwnerConfig()
+			loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+				return cfg, nil
+			}
+			validateApplyConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+				if !reflect.DeepEqual(got, cfg) {
+					t.Fatalf("unexpected config: got %#v want %#v", got, cfg)
+				}
+				report := gitopsconfig.Validate(got)
+				assertValidationReportHasIssue(t, report, "repositories[0].owner", gitopsconfig.ValidationIssueCodeRepositoryOwnerScope)
+				return report
+			}
+			newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+				t.Fatal("newApplyClient should not be called for invalid repository owner")
+				return nil, nil
+			}
+			collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				t.Fatal("collectApplyState should not be called for invalid repository owner")
+				return nil, nil
+			}
+			buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) {
+				t.Fatal("buildApplyPlan should not be called for invalid repository owner")
+				return nil, nil
+			}
+			checkApply = func(context.Context, gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+				t.Fatal("checkApply should not be called for invalid repository owner")
+				return nil, nil
+			}
+			executeApply = func(context.Context, gitopsapply.Options) (*gitopsapply.Result, error) {
+				t.Fatal("executeApply should not be called for invalid repository owner")
+				return nil, nil
+			}
+
+			cmd := ApplyConfigCmd()
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&errBuf)
+			cmd.SetArgs(tt.args)
+
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("expected invalid config error")
+			}
+			if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+				t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("expected no stdout output, got %q", out.String())
+			}
+			if got := errBuf.String(); !strings.Contains(got, "Error: configuration is invalid; run `octostate config validate`") {
+				t.Fatalf("expected invalid config error on stderr, got %q", got)
+			}
+		})
+	}
+}
+
 func TestApplyConfigCmdAuthCollectorBuildAndExecuteFailuresPropagate(t *testing.T) {
 	authErr := errors.New("auth failed")
 	collectErr := errors.New("collect failed")
