@@ -70,6 +70,17 @@ func Validate(cfg OrganizationConfig) ValidationReport {
 	return report
 }
 
+// RepositoryOwnerMatchesOrganization reports whether owner and organization
+// refer to the same nonblank organization after trimming, case-insensitively.
+func RepositoryOwnerMatchesOrganization(owner, organization string) bool {
+	owner = strings.TrimSpace(owner)
+	organization = strings.TrimSpace(organization)
+	if owner == "" || organization == "" {
+		return false
+	}
+	return strings.EqualFold(owner, organization)
+}
+
 func (r *ValidationReport) addError(path string, code ValidationIssueCode, format string, args ...any) {
 	r.Errors = append(r.Errors, ValidationIssue{
 		Path:    path,
@@ -119,6 +130,8 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 		owner := strings.TrimSpace(repo.Owner)
 		if owner == "" {
 			owner = organization
+		} else if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
+			report.addError(pathPrefix+".owner", ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)
 		}
 		name := strings.TrimSpace(repo.Name)
 		if name == "" {
@@ -267,6 +280,8 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 			owner := strings.TrimSpace(repo.Owner)
 			if owner == "" {
 				owner = organization
+			} else if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
+				report.addError(repoPath+".owner", ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)
 			}
 			name := strings.TrimSpace(repo.Name)
 			permission := strings.TrimSpace(repo.Permission)
