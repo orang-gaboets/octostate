@@ -69,9 +69,20 @@ func TestExecuteRejectsInvalidDesiredConfig(t *testing.T) {
 			Name:       "octostate",
 			Visibility: "private",
 		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "other-org",
+				Name:       "octostate-infra",
+				Permission: "push",
+			}},
+		}},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
 
 	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
 }
 
 func TestExecuteOrganizationMemberCreateAndUpdate(t *testing.T) {

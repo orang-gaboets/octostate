@@ -132,11 +132,22 @@ func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
 				Name:       "octostate",
 				Visibility: "private",
 			}},
+			Teams: []config.TeamSpec{{
+				Slug:    "platform",
+				Name:    "Platform",
+				Privacy: "closed",
+				Repositories: []config.TeamRepositorySpec{{
+					Owner:      "other-org",
+					Name:       "octostate-infra",
+					Permission: "push",
+				}},
+			}},
 		},
 		Snapshot: &snap,
 	})
 
 	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
 }
 
 func TestBuildRejectsInviteThatDuplicatesDesiredMemberByResolvedUserID(t *testing.T) {
