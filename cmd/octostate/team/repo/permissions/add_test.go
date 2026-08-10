@@ -235,10 +235,12 @@ func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testi
 	t.Parallel()
 
 	wantError := `repository owner "other-org" must match organization "o"`
+	configPath := writePermissionsConfig(t, permissionsBaseConfig)
 
 	tests := []struct {
-		name string
-		args []string
+		name       string
+		args       []string
+		configPath string
 	}{
 		{
 			name: "live path before auth",
@@ -249,8 +251,9 @@ func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testi
 			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push", "--dry-run"},
 		},
 		{
-			name: "proposal path before config mutation",
-			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push", "--to-config", writePermissionsConfig(t, permissionsBaseConfig)},
+			name:       "proposal path before config mutation",
+			args:       []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push", "--to-config", configPath},
+			configPath: configPath,
 		},
 	}
 
@@ -272,6 +275,11 @@ func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testi
 			}
 			if errors.Is(err, github.ErrNoValidCredentials) {
 				t.Fatalf("cross-org validation should happen before auth, got %v", err)
+			}
+			if tt.configPath != "" {
+				if got := readPermissionsConfig(t, tt.configPath); got != permissionsBaseConfig {
+					t.Fatalf("config changed after cross-org rejection:\n%s", got)
+				}
 			}
 		})
 	}
