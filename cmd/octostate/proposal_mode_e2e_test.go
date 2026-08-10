@@ -7,6 +7,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
@@ -14,12 +16,11 @@ import (
 )
 
 type proposalRun struct {
-	configPath string
-	before     []byte
-	after      []byte
-	stdout     string
-	stderr     string
-	err        error
+	before []byte
+	after  []byte
+	stdout string
+	stderr string
+	err    error
 }
 
 type proposalCase struct {
@@ -90,12 +91,11 @@ func runProposalCommand(t *testing.T, args []string) proposalRun {
 	}
 
 	return proposalRun{
-		configPath: configPath,
-		before:     before,
-		after:      after,
-		stdout:     stdout.String(),
-		stderr:     stderr.String(),
-		err:        err,
+		before: before,
+		after:  after,
+		stdout: stdout.String(),
+		stderr: stderr.String(),
+		err:    err,
 	}
 }
 
@@ -147,7 +147,7 @@ func TestProposalModeFailuresLeaveFilesUnchanged(t *testing.T) {
 			return []string{"repo", "edit", "--org", "other-org", "--name", "api", "--desc", "ignored", "--token", "unreachable", "--to-config", path}
 		}},
 		{name: "post-mutation validation", args: func(path string) []string {
-			return []string{"team", "create", "--org", "proposal-org", "--name", "Platform", "--token", "unreachable", "--to-config", path}
+			return []string{"team", "edit", "--org", "proposal-org", "--slug", "platform", "--parent", "platform", "--token", "unreachable", "--to-config", path}
 		}},
 	}
 
@@ -156,6 +156,9 @@ func TestProposalModeFailuresLeaveFilesUnchanged(t *testing.T) {
 			run := runProposalCommand(t, test.args(copyProposalFixture(t)))
 			if run.err == nil {
 				t.Fatal("expected error")
+			}
+			if test.name == "post-mutation validation" && (!strings.Contains(run.err.Error(), "team_parent_cycle") || !strings.Contains(run.err.Error(), "team parent cycle detected")) {
+				t.Fatalf("expected team-parent-cycle validation error, got %v", run.err)
 			}
 			if !bytes.Equal(run.before, run.after) {
 				t.Fatal("config changed after failed proposal")
@@ -285,7 +288,7 @@ func proposalSuccessCases() []proposalCase {
 			return []string{"topic", "add", "--org", "proposal-org", "--name", "api", "--topics", "observability", "--token", "unreachable", "--to-config", path}
 		}, assert: func(t *testing.T, path string) {
 			topics := findRepository(t, loadProposalConfig(t, path), "api").Topics
-			if !contains(topics, "legacy") || !contains(topics, "observability") {
+			if !slices.Contains(topics, "legacy") || !slices.Contains(topics, "observability") {
 				t.Fatalf("unexpected topics: %#v", topics)
 			}
 		}},
@@ -293,7 +296,7 @@ func proposalSuccessCases() []proposalCase {
 			return []string{"topic", "replace", "--org", "proposal-org", "--name", "api", "--topics", "api,stable", "--token", "unreachable", "--to-config", path}
 		}, assert: func(t *testing.T, path string) {
 			topics := findRepository(t, loadProposalConfig(t, path), "api").Topics
-			if !equalStrings(topics, []string{"api", "stable"}) {
+			if !slices.Equal(topics, []string{"api", "stable"}) {
 				t.Fatalf("unexpected topics: %#v", topics)
 			}
 		}},
@@ -409,25 +412,4 @@ func findTeam(t *testing.T, cfg gitopsconfig.OrganizationConfig, slug string) gi
 	}
 	t.Fatalf("team %q not found", slug)
 	return gitopsconfig.TeamSpec{}
-}
-
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
-func equalStrings(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for index := range got {
-		if got[index] != want[index] {
-			return false
-		}
-	}
-	return true
 }
