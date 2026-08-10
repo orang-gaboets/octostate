@@ -244,12 +244,17 @@ teams:
 func TestRemoveTeamMemberToConfigMissingMemberIsNoOp(t *testing.T) {
 	before := `organization: o
 members:
-  - username: alice
+  - username: Alice
+    role: member
+  - username: bob
     role: member
 teams:
   - slug: platform
     name: Platform
     privacy: closed
+    members:
+      - username: bob
+        role: member
 `
 	configPath := writeMembersConfig(t, before)
 
