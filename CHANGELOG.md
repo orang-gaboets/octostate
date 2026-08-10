@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## Unreleased
+
+### Compatibility
+
+* **config:** Previously accepted invalid explicit cross-organization managed
+  ownership is now rejected before GitHub calls or config-file mutation.
+  External `template.owner` references remain valid.
+
 ## [1.1.1](https://github.com/orang-gaboets/octostate/compare/v1.1.0...v1.1.1) (2026-07-29)
 
 

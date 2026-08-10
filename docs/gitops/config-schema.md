@@ -254,6 +254,9 @@ Managed repository ownership in this schema is organization-local:
   trimming and case-folding
 - explicit cross-organization managed owners are invalid and are reported as
   `repository_owner_scope`
+- when the top-level `organization` is missing or blank, owner-scope
+  diagnostics are suppressed and the missing-organization rule remains
+  authoritative
 - `template.owner` is not part of this managed-owner boundary and does not need
   to match the top-level `organization`
 
@@ -266,12 +269,11 @@ cross-organization managed owners:
 2. For managed repositories or team repository permission targets that belong
    to the same organization, either remove the redundant `owner` field or
    normalize it to the top-level organization.
-3. For external template sources, keep `template.owner` as written; no
+3. For intentionally cross-organization managed targets, remove them from
+   managed desired state or move them to a desired config whose top-level
+   `organization` matches the managed owner.
+4. For external template sources, keep `template.owner` as written; no
    migration is required unless the template itself changed.
-
-Compatibility impact for PR descriptions and release notes: previously accepted
-invalid managed state is now rejected before GitHub calls or config-file
-mutation.
 
 ## Reconciliation Notes
 
