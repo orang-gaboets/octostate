@@ -104,6 +104,15 @@ Repository owner handling:
 
 - `owner` is optional
 - when omitted, it defaults to the top-level `organization`
+- managed repository owners stay within the declared top-level organization
+- explicit owners are compared after trimming surrounding whitespace and
+  case-folding, so `Acme`, ` acme `, and `ACME` all match the same
+  organization
+- an explicit cross-organization managed owner is rejected with
+  `repository_owner_scope`
+- this boundary applies only to managed repository ownership in
+  `repositories[].owner`; external `template.owner` references are separate
+  create-time inputs and may still point at another organization
 
 Supported visibility values:
 
@@ -215,6 +224,17 @@ Repository owner handling:
 
 - `owner` is optional
 - when omitted, it defaults to the top-level `organization`
+- managed team repository permission targets stay within the declared
+  top-level organization
+- explicit owners are compared after trimming surrounding whitespace and
+  case-folding, matching the same normalization used for top-level
+  repositories
+- an explicit cross-organization managed owner is rejected with
+  `repository_owner_scope`
+- same-organization team targets may be declared here even when the same
+  repository is omitted from the top-level `repositories:` collection; this
+  grants team access without making the repository a top-level managed
+  repository
 
 Supported repository permissions:
 
@@ -223,6 +243,35 @@ Supported repository permissions:
 - `push`
 - `maintain`
 - `admin`
+
+## Ownership Boundary and Migration
+
+Managed repository ownership in this schema is organization-local:
+
+- `repositories[].owner` and `teams[].repositories[].owner` default to the
+  top-level `organization` when omitted
+- omitted owners and explicit same-organization owners are equivalent after
+  trimming and case-folding
+- explicit cross-organization managed owners are invalid and are reported as
+  `repository_owner_scope`
+- `template.owner` is not part of this managed-owner boundary and does not need
+  to match the top-level `organization`
+
+If you have existing config that relied on previously accepted explicit
+cross-organization managed owners:
+
+1. Run `octostate config validate --config-dir ./config` to surface each
+   `repository_owner_scope` violation before plan, apply, diff, or
+   `sync-from-live --write` continues.
+2. For managed repositories or team repository permission targets that belong
+   to the same organization, either remove the redundant `owner` field or
+   normalize it to the top-level organization.
+3. For external template sources, keep `template.owner` as written; no
+   migration is required unless the template itself changed.
+
+Compatibility impact for PR descriptions and release notes: previously accepted
+invalid managed state is now rejected before GitHub calls or config-file
+mutation.
 
 ## Reconciliation Notes
 
