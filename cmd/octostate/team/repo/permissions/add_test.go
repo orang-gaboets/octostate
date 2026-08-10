@@ -259,7 +259,8 @@ func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testi
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := permissionscmd.AddCmd(nil)
+			svc := &captureAddTeamRepoBySlugService{}
+			c := permissionscmd.AddCmd(svc)
 			c.SilenceUsage = true
 			var out bytes.Buffer
 			var errBuf bytes.Buffer
@@ -275,6 +276,9 @@ func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testi
 			}
 			if errors.Is(err, github.ErrNoValidCredentials) {
 				t.Fatalf("cross-org validation should happen before auth, got %v", err)
+			}
+			if svc.addCalled {
+				t.Fatal("cross-org validation should happen before GitHub calls")
 			}
 			if tt.configPath != "" {
 				if got := readPermissionsConfig(t, tt.configPath); got != permissionsBaseConfig {
