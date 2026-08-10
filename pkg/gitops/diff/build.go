@@ -35,9 +35,12 @@ func (opt *Options) Validate() error {
 			desiredOrg,
 			githubpkg.ErrInvalidFieldValue,
 		)
-	default:
-		return nil
 	}
+
+	if err := config.ValidateAndError(opt.Desired); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Build computes a deterministic, read-only drift report from desired GitOps

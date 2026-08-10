@@ -1,6 +1,7 @@
 package syncfromlive
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -23,6 +24,26 @@ func TestBuildAdoptConfigRejectsInvalidInput(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "does not match desired organization") {
 		t.Fatalf("expected organization mismatch error, got %v", err)
 	}
+}
+
+func TestBuildAdoptConfigRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "shared-platform",
+				Name:       "octostate",
+				Visibility: "private",
+			}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+		},
+	})
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
 }
 
 func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *testing.T) {
@@ -325,4 +346,21 @@ func assertAdoptedTeams(t *testing.T, teams []config.TeamSpec) {
 	if len(teams[2].Repositories) != 1 || teams[2].Repositories[0] != (config.TeamRepositorySpec{Name: "live-only", Permission: "push"}) {
 		t.Fatalf("unexpected adopted ops repositories %#v", teams[2].Repositories)
 	}
+}
+
+func assertValidationErrorHasIssue(t *testing.T, err error, wantPath string, wantCode config.ValidationIssueCode) {
+	t.Helper()
+
+	var validationErr *config.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *config.ValidationError, got %T (%v)", err, err)
+	}
+
+	for _, issue := range validationErr.Report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, validationErr.Report.Errors)
 }

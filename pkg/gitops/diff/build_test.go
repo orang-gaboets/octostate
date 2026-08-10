@@ -117,6 +117,28 @@ func TestBuildUsesSnapshotResolvedInviteUserIDsByUsernameByDefault(t *testing.T)
 	}
 }
 
+func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "orang-gaboets",
+	})
+
+	_, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "shared-platform",
+				Name:       "octostate",
+				Visibility: "private",
+			}},
+		},
+		Snapshot: &snap,
+	})
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildRejectsInviteThatDuplicatesDesiredMemberByResolvedUserID(t *testing.T) {
 	t.Parallel()
 
@@ -380,7 +402,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			Teams: []config.TeamSpec{
 				{
 					Slug:        "platform",
-					Name:        "Platform New",
+					Name:        "Platform",
 					Description: "New desc",
 					Privacy:     "secret",
 					Members: []config.TeamMemberSpec{
@@ -426,7 +448,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: false, Message: "repository orang-gaboets/new-repo cannot be created because template configuration is missing", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: "orang-gaboets/orphan-repo", Executable: false, Message: "repository orang-gaboets/orphan-repo exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform New"}, {Field: "privacy", From: "closed", To: "secret"}}},
+			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform"}, {Field: "privacy", From: "closed", To: "secret"}}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationDelete, ResourceID: "legacy", Executable: false, Message: "team legacy exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationCreate, ResourceID: "charlie", Executable: true, Message: "create organization member charlie", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationUpdate, ResourceID: "alice", Executable: true, Message: "update organization member alice", Changes: []FieldChange{{Field: "role", From: "member", To: "admin"}}},
@@ -975,4 +997,21 @@ func presentInt64(value int64) config.OptionalInt64 {
 		Present: true,
 		Value:   value,
 	}
+}
+
+func assertValidationErrorHasIssue(t *testing.T, err error, wantPath string, wantCode config.ValidationIssueCode) {
+	t.Helper()
+
+	var validationErr *config.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *config.ValidationError, got %T (%v)", err, err)
+	}
+
+	for _, issue := range validationErr.Report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, validationErr.Report.Errors)
 }

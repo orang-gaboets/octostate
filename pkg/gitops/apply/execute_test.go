@@ -56,6 +56,24 @@ func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
 	}
 }
 
+func TestExecuteRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	plan := &gitopsplan.Report{Organization: "orang-gaboets"}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestExecuteOrganizationMemberCreateAndUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -413,9 +431,10 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
-		Owner:  "orang-gaboets",
-		Name:   "octostate",
-		Topics: []string{"gitops", "go"},
+		Owner:      "orang-gaboets",
+		Name:       "octostate",
+		Visibility: "private",
+		Topics:     []string{"gitops", "go"},
 	}
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
@@ -681,8 +700,9 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
-		Owner: "orang-gaboets",
-		Name:  "octostate",
+		Owner:      "orang-gaboets",
+		Name:       "octostate",
+		Visibility: "private",
 	}
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
@@ -988,10 +1008,10 @@ func TestExecuteInviteUsernamePreResolutionStartsAtFirstInviteBoundary(t *testin
 	}
 }
 
-func TestExecuteInviteUsernamePreResolutionCachesAndBoundsConcurrency(t *testing.T) {
+func TestExecuteInviteUsernamePreResolutionBoundsConcurrency(t *testing.T) {
 	usernames := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa"}
-	desiredInvites := make([]config.InviteSpec, 0, len(usernames)+1)
-	actions := make([]gitopsplan.Action, 0, len(usernames)+1)
+	desiredInvites := make([]config.InviteSpec, 0, len(usernames))
+	actions := make([]gitopsplan.Action, 0, len(usernames))
 	userIDs := make(map[string]int64, len(usernames))
 	for i, username := range usernames {
 		invite := inviteByUsername(username, "direct_member")
@@ -1008,19 +1028,6 @@ func TestExecuteInviteUsernamePreResolutionCachesAndBoundsConcurrency(t *testing
 		})
 		userIDs[inviteUsernameKey(username)] = int64(i + 1)
 	}
-
-	duplicate := inviteByUsername(" Alpha ", "direct_member")
-	duplicateResourceID, err := desiredInviteResourceID(duplicate)
-	if err != nil {
-		t.Fatalf("unexpected duplicate resource ID error: %v", err)
-	}
-	desiredInvites = append(desiredInvites, duplicate)
-	actions = append(actions, gitopsplan.Action{
-		ResourceType: gitopsplan.ActionResourceTypeInvite,
-		Operation:    gitopsplan.ActionOperationCreate,
-		ResourceID:   duplicateResourceID,
-		Executable:   true,
-	})
 
 	var (
 		lookupCalls     atomic.Int64
@@ -1293,6 +1300,10 @@ func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Teams: []config.TeamSpec{{
 			Slug:         "platform",
 			Name:         "Platform",
@@ -1329,6 +1340,10 @@ func TestExecuteTeamMembershipRejectsUnsupportedOperation(t *testing.T) {
 
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -1417,6 +1432,10 @@ func TestExecuteStopsOnFirstFailure(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Invites:      []config.InviteSpec{inviteByEmail("alice@example.com", "direct_member")},
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -1816,4 +1835,21 @@ func waitForError(t *testing.T, ch <-chan error, description string) error {
 		t.Fatalf("timed out waiting for %s", description)
 		return nil
 	}
+}
+
+func assertValidationErrorHasIssue(t *testing.T, err error, wantPath string, wantCode config.ValidationIssueCode) {
+	t.Helper()
+
+	var validationErr *config.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *config.ValidationError, got %T (%v)", err, err)
+	}
+
+	for _, issue := range validationErr.Report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, validationErr.Report.Errors)
 }

@@ -25,6 +25,26 @@ func TestBuildMaterializeConfigRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestBuildMaterializeConfigRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildMaterializeConfig(MaterializeOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "shared-platform",
+				Name:       "octostate",
+				Visibility: "private",
+			}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+		},
+	})
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) {
 	t.Parallel()
 

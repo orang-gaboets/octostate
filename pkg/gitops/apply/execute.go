@@ -55,9 +55,12 @@ func (opt *Options) Validate() error {
 		return githubpkg.ErrNilService
 	case opt.UserService == nil:
 		return githubpkg.ErrNilService
-	default:
-		return nil
 	}
+
+	if err := config.ValidateAndError(opt.Desired); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Result captures the actions executed and the unsupported drift skipped by one
