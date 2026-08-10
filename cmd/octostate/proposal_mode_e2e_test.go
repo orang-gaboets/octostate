@@ -123,7 +123,11 @@ func TestProposalModeAllMutations(t *testing.T) {
 			if run.stdout == "" {
 				t.Fatal("expected JSON stdout")
 			}
-			decodeProposalResult(t, run.stdout)
+			result := decodeProposalResult(t, run.stdout)
+			data, ok := result["data"].(map[string]any)
+			if !ok || data["changed"] != true {
+				t.Fatalf("expected changed=true, got %#v", result["data"])
+			}
 			if run.stderr != "" {
 				t.Fatalf("expected empty stderr without --verbose, got %q", run.stderr)
 			}
