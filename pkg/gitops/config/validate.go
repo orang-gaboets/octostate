@@ -194,10 +194,6 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 		if repo.ArchivedOption().Null {
 			report.addError(pathPrefix+".archived", ValidationIssueCodeInvalidFieldValue, "repository archived must not be null when provided")
 		}
-		if repo.IsTemplateOption().Null {
-			report.addError(pathPrefix+".is_template", ValidationIssueCodeInvalidFieldValue, "repository is_template must not be null when provided")
-		}
-
 		validateRepositoryTopics(report, pathPrefix, repo.Topics)
 
 		if owner == "" || name == "" {

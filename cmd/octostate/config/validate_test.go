@@ -44,6 +44,39 @@ teams: []
 	}
 }
 
+func TestValidateConfigCmdAllowsNullRepositoryTemplateState(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeOrganizationYAML(t, configDir, `
+organization: orang-gaboets
+invites: []
+repositories:
+  - name: repo-template
+    visibility: private
+    is_template: null
+teams: []
+`)
+
+	cmd := configcmd.ValidateConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", configDir})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	report := decodeReport(t, out.Bytes())
+	if !report.Valid || report.Summary.Errors != 0 {
+		t.Fatalf("expected valid report, got %#v", report)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+}
+
 func TestValidateConfigCmdInvalidSemanticConfigReturnsExitCode2(t *testing.T) {
 	t.Parallel()
 

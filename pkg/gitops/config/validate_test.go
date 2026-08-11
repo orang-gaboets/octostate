@@ -936,7 +936,7 @@ func TestValidateRepositoryOptionalBooleansExplicitFalseAreValid(t *testing.T) {
 	}
 }
 
-func TestValidateRepositoryOptionalNullFieldsAreInvalid(t *testing.T) {
+func TestValidateRepositoryOptionalNullFields(t *testing.T) {
 	t.Parallel()
 
 	cfg := validOrganizationConfig()
@@ -956,7 +956,11 @@ func TestValidateRepositoryOptionalNullFieldsAreInvalid(t *testing.T) {
 	assertHasIssueAtPathAndCode(t, report, "repositories[0].homepage", ValidationIssueCodeInvalidFieldValue)
 	assertHasIssueAtPathAndCode(t, report, "repositories[0].allow_forking", ValidationIssueCodeInvalidFieldValue)
 	assertHasIssueAtPathAndCode(t, report, "repositories[0].archived", ValidationIssueCodeInvalidFieldValue)
-	assertHasIssueAtPathAndCode(t, report, "repositories[0].is_template", ValidationIssueCodeInvalidFieldValue)
+	for _, issue := range report.Errors {
+		if issue.Path == "repositories[0].is_template" {
+			t.Fatalf("expected repository is_template null to be accepted, got %#v", issue)
+		}
+	}
 }
 
 func TestValidateSlugNameMismatch(t *testing.T) {

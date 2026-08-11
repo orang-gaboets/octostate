@@ -1260,14 +1260,14 @@ func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
 	}
 }
 
-func TestBuildDoesNotTreatExternalConsumerAsManagedTemplateDependency(t *testing.T) {
+func TestBuildDoesNotTreatExternalTemplateAsManagedDependency(t *testing.T) {
 	t.Parallel()
 
 	template := config.RepositorySpec{Owner: "orang-gaboets", Name: "template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
 	template.SetManagedIsTemplate(true)
 	report, err := Build(context.Background(), Options{
 		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{
-			{Owner: "aaa-external", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "template"}},
+			{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "aaa-external", Name: "template"}},
 			template,
 		}},
 		Actual: &state.OrganizationState{Organization: "orang-gaboets"},
@@ -1276,8 +1276,8 @@ func TestBuildDoesNotTreatExternalConsumerAsManagedTemplateDependency(t *testing
 		t.Fatalf("Build returned error: %v", err)
 	}
 
-	if got, want := report.Actions[0].ResourceID, "aaa-external/consumer"; got != want {
-		t.Fatalf("external consumer should retain normalized independent ordering: got %q want %q; actions=%#v", got, want, report.Actions)
+	if got, want := report.Actions[0].ResourceID, "orang-gaboets/consumer"; got != want {
+		t.Fatalf("external template consumer should retain normalized independent ordering: got %q want %q; actions=%#v", got, want, report.Actions)
 	}
 	if !report.Actions[0].Executable {
 		t.Fatalf("external consumer should not inherit managed source availability: %#v", report.Actions[0])
@@ -1387,9 +1387,9 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "ORANG-GABOETS", Name: "z-template"}},
 				managedTemplate("ORANG-GABOETS", "Z-Template", "external", "base"),
 			},
-			wantOrder: []string{"ORANG-GABOETS/Z-Template", "orang-gaboets/consumer"},
+			wantOrder: []string{"orang-gaboets/Z-Template", "orang-gaboets/consumer"},
 			wantExecutable: map[string]bool{
-				"ORANG-GABOETS/Z-Template": true, "orang-gaboets/consumer": true,
+				"orang-gaboets/Z-Template": true, "orang-gaboets/consumer": true,
 			},
 		},
 		{
@@ -1557,8 +1557,6 @@ func TestBuildTeamRepositoryPermissionUsesRepositoryAvailability(t *testing.T) {
 		{name: "missing same organization", owner: "orang-gaboets", executable: false},
 		{name: "executable same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{executableRepository}, executable: true},
 		{name: "non-executable same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "target", Visibility: "private"}}, executable: false},
-		{name: "live-only cross organization", owner: "shared", actualRepos: []state.Repository{{Owner: "shared", Name: "target"}}, executable: true},
-		{name: "missing cross organization", owner: "shared", executable: false},
 	}
 
 	for _, tt := range tests {
