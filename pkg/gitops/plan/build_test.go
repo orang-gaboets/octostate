@@ -1236,6 +1236,36 @@ func TestBuildIgnoresTemplateConfigurationForExistingRepository(t *testing.T) {
 	}
 }
 
+func TestBuildDoesNotOrderExistingConsumerAfterReferencedTemplate(t *testing.T) {
+	t.Parallel()
+
+	template := config.RepositorySpec{Owner: "orang-gaboets", Name: "z-template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	template.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Description: "new", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}}
+	consumer.SetManagedDescription("new")
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, template}},
+		Actual: &state.OrganizationState{Organization: "orang-gaboets", Repositories: []state.Repository{{
+			Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Description: "old",
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	wantOrder := []string{"orang-gaboets/a-consumer", "orang-gaboets/z-template"}
+	gotOrder := make([]string, len(report.Actions))
+	for i, action := range report.Actions {
+		gotOrder[i] = action.ResourceID
+	}
+	if !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("existing consumer should not depend on desired template: got %#v want %#v", gotOrder, wantOrder)
+	}
+	if report.Actions[0].Operation != ActionOperationUpdate {
+		t.Fatalf("expected existing consumer update first, got %#v", report.Actions[0])
+	}
+}
+
 func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
 	t.Parallel()
 
