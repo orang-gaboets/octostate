@@ -1108,6 +1108,29 @@ func TestNormalizeTeamNameExported(t *testing.T) {
 	}
 }
 
+func TestNormalizeRepositoryOwnersDoesNotMutateConfig(t *testing.T) {
+	original := OrganizationConfig{
+		Organization: " org-a ",
+		Repositories: []RepositorySpec{{Owner: "", Name: "service"}},
+		Teams:        []TeamSpec{{Repositories: []TeamRepositorySpec{{Owner: " ORG-A ", Name: "service", Permission: "push"}}}},
+	}
+
+	normalized := NormalizeRepositoryOwners(original)
+	if normalized.Organization != "org-a" {
+		t.Fatalf("normalized organization = %q, want %q", normalized.Organization, "org-a")
+	}
+	if normalized.Repositories[0].Owner != "org-a" {
+		t.Fatalf("normalized repository owner = %q, want %q", normalized.Repositories[0].Owner, "org-a")
+	}
+	if normalized.Teams[0].Repositories[0].Owner != "org-a" {
+		t.Fatalf("normalized team repository owner = %q, want %q", normalized.Teams[0].Repositories[0].Owner, "org-a")
+	}
+
+	if original.Organization != " org-a " || original.Repositories[0].Owner != "" || original.Teams[0].Repositories[0].Owner != " ORG-A " {
+		t.Fatalf("normalization mutated the original config: %#v", original)
+	}
+}
+
 func inviteConfigWith(invites ...InviteSpec) OrganizationConfig {
 	cfg := validOrganizationConfig()
 	cfg.Invites = invites

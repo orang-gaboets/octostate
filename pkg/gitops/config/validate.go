@@ -81,6 +81,40 @@ func RepositoryOwnerMatchesOrganization(owner, organization string) bool {
 	return strings.EqualFold(owner, organization)
 }
 
+// ResolveRepositoryOwner returns the effective managed repository owner.
+// Explicit owners are trimmed; omitted owners default to the organization.
+func ResolveRepositoryOwner(owner, organization string) string {
+	owner = strings.TrimSpace(owner)
+	organization = strings.TrimSpace(organization)
+	if owner == "" {
+		return organization
+	}
+	if organization != "" && strings.EqualFold(owner, organization) {
+		return organization
+	}
+	return owner
+}
+
+// NormalizeRepositoryOwners returns a copy with managed repository owners
+// resolved without mutating the caller's config.
+func NormalizeRepositoryOwners(cfg OrganizationConfig) OrganizationConfig {
+	cfg.Organization = strings.TrimSpace(cfg.Organization)
+	cfg.Repositories = append([]RepositorySpec(nil), cfg.Repositories...)
+	for i := range cfg.Repositories {
+		cfg.Repositories[i].Owner = ResolveRepositoryOwner(cfg.Repositories[i].Owner, cfg.Organization)
+	}
+
+	cfg.Teams = append([]TeamSpec(nil), cfg.Teams...)
+	for i := range cfg.Teams {
+		cfg.Teams[i].Repositories = append([]TeamRepositorySpec(nil), cfg.Teams[i].Repositories...)
+		for j := range cfg.Teams[i].Repositories {
+			cfg.Teams[i].Repositories[j].Owner = ResolveRepositoryOwner(cfg.Teams[i].Repositories[j].Owner, cfg.Organization)
+		}
+	}
+
+	return cfg
+}
+
 func (r *ValidationReport) addError(path string, code ValidationIssueCode, format string, args ...any) {
 	r.Errors = append(r.Errors, ValidationIssue{
 		Path:    path,
@@ -214,9 +248,9 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 }
 
 func normalizeRepositoryOwner(report *ValidationReport, path string, owner string, organization string) string {
-	owner = strings.TrimSpace(owner)
+	owner = ResolveRepositoryOwner(owner, organization)
 	if owner == "" {
-		return organization
+		return owner
 	}
 	if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
 		report.addError(path, ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)

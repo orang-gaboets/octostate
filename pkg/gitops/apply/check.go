@@ -10,6 +10,7 @@ import (
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
 	"github.com/orang-gaboets/octostate/pkg/github/repos"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 )
 
@@ -47,6 +48,7 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	opt.Desired = config.NormalizeRepositoryOwners(opt.Desired)
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}

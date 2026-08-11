@@ -85,6 +85,103 @@ func TestExecuteRejectsInvalidDesiredConfig(t *testing.T) {
 	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
 }
 
+func TestCheckAndExecuteResolveUnnormalizedRepositoryOwners(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: " org-a ",
+		Repositories: []config.RepositorySpec{{
+			Name:       "service",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      " ORG-A ",
+				Name:       "service",
+				Permission: "push",
+			}},
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "org-a",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   repositoryResourceID("org-a", "service"),
+				Executable:   true,
+				Changes:      []gitopsplan.FieldChange{{Field: "visibility", From: "public", To: "private"}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   teamRepoPermissionResourceID("platform", "org-a", "service"),
+				Executable:   true,
+				Changes:      []gitopsplan.FieldChange{{Field: "permission", From: "pull", To: "push"}},
+			},
+		},
+	}
+	plan.Normalize()
+	actual := &state.OrganizationState{
+		Organization: "org-a",
+		Repositories: []state.Repository{{Owner: "org-a", Name: "service", Visibility: "public"}},
+		Teams:        []state.Team{{ID: 1, Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+
+	var checkOwners []string
+	checkRepoService := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			checkOwners = append(checkOwners, owner)
+			if repo != "service" {
+				t.Fatalf("unexpected check repository %q", repo)
+			}
+			return githubRepository("org-a", "service", false), nil, nil
+		},
+	}
+	checkTeamService := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			return githubTeam(1, slug, "Platform", org), nil, nil
+		},
+	}
+	if _, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(checkRepoService), withTeamService(checkTeamService))); err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	if !reflect.DeepEqual(checkOwners, []string{"org-a"}) {
+		t.Fatalf("Check used unexpected repository owners: %#v", checkOwners)
+	}
+
+	var executeRepoOwners []string
+	executeRepoService := &testRepoService{
+		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			executeRepoOwners = append(executeRepoOwners, owner)
+			if repo != "service" {
+				t.Fatalf("unexpected execute repository %q", repo)
+			}
+			return githubRepository("org-a", "service", false), nil, nil
+		},
+	}
+	var executeTeamOwners []string
+	executeTeamService := &testTeamService{
+		addTeamRepoBySlugFunc: func(_ context.Context, org, slug, owner, repo string, _ *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+			if org != "org-a" || slug != "platform" || repo != "service" {
+				t.Fatalf("unexpected team repository target: %s/%s/%s/%s", org, slug, owner, repo)
+			}
+			executeTeamOwners = append(executeTeamOwners, owner)
+			return &gh.Response{}, nil
+		},
+	}
+	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(executeRepoService), withTeamService(executeTeamService))); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !reflect.DeepEqual(executeRepoOwners, []string{"org-a"}) {
+		t.Fatalf("Execute used unexpected repository owners: %#v", executeRepoOwners)
+	}
+	if !reflect.DeepEqual(executeTeamOwners, []string{"org-a"}) {
+		t.Fatalf("Execute used unexpected team repository owners: %#v", executeTeamOwners)
+	}
+}
+
 func TestExecuteOrganizationMemberCreateAndUpdate(t *testing.T) {
 	t.Parallel()
 

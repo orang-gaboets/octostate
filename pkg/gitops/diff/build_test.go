@@ -117,6 +117,45 @@ func TestBuildUsesSnapshotResolvedInviteUserIDsByUsernameByDefault(t *testing.T)
 	}
 }
 
+func TestBuildResolvesUnnormalizedRepositoryOwners(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: " org-a ",
+		Repositories: []config.RepositorySpec{{
+			Name:       "service",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      " ORG-A ",
+				Name:       "service",
+				Permission: "push",
+			}},
+		}},
+	}
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "org-a",
+		Repositories: []state.Repository{{Owner: "org-a", Name: "service", Visibility: "private"}},
+		Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
+			TeamSlug: "platform", Owner: "org-a", Name: "service", Permission: "push",
+		}},
+	})
+
+	report, err := Build(Options{Desired: desired, Snapshot: &snap})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if report.Summary.HasChanges {
+		t.Fatalf("expected no drift for effective repository owners, got %#v", report.Actions)
+	}
+	if desired.Repositories[0].Owner != "" || desired.Teams[0].Repositories[0].Owner != " ORG-A " {
+		t.Fatalf("Build mutated the desired config: %#v", desired)
+	}
+}
+
 func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
 	t.Parallel()
 

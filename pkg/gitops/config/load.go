@@ -165,10 +165,7 @@ func normalizeInvites(invites []InviteSpec) []InviteSpec {
 }
 
 func normalizeRepository(repo *RepositorySpec, organization string) {
-	repo.Owner = strings.TrimSpace(repo.Owner)
-	if repo.Owner == "" {
-		repo.Owner = organization
-	}
+	repo.Owner = ResolveRepositoryOwner(repo.Owner, organization)
 
 	repo.Name = strings.TrimSpace(repo.Name)
 	repo.Visibility = strings.TrimSpace(repo.Visibility)
@@ -214,10 +211,7 @@ func normalizeTeam(team *TeamSpec, organization string) {
 		team.Repositories = []TeamRepositorySpec{}
 	}
 	for i := range team.Repositories {
-		team.Repositories[i].Owner = strings.TrimSpace(team.Repositories[i].Owner)
-		if team.Repositories[i].Owner == "" {
-			team.Repositories[i].Owner = organization
-		}
+		team.Repositories[i].Owner = ResolveRepositoryOwner(team.Repositories[i].Owner, organization)
 		team.Repositories[i].Name = strings.TrimSpace(team.Repositories[i].Name)
 		team.Repositories[i].Permission = strings.TrimSpace(team.Repositories[i].Permission)
 	}

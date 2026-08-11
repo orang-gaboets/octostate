@@ -176,6 +176,47 @@ func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesUnnormalizedRepositoryOwners(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: " org-a ",
+		Repositories: []config.RepositorySpec{{
+			Name:       "service",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      " ORG-A ",
+				Name:       "service",
+				Permission: "push",
+			}},
+		}},
+	}
+
+	report, err := Build(context.Background(), Options{
+		Desired: desired,
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			Repositories: []state.Repository{{Owner: "org-a", Name: "service", Visibility: "private"}},
+			Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+			TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
+				TeamSlug: "platform", Owner: "org-a", Name: "service", Permission: "push",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if report.Summary.HasChanges {
+		t.Fatalf("expected no drift for effective repository owners, got %#v", report.Actions)
+	}
+	if desired.Repositories[0].Owner != "" || desired.Teams[0].Repositories[0].Owner != " ORG-A " {
+		t.Fatalf("Build mutated the desired config: %#v", desired)
+	}
+}
+
 func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
 	t.Parallel()
 
@@ -836,9 +877,9 @@ func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenRepositoryIsCreatedI
 		{
 			ResourceType: ActionResourceTypeRepository,
 			Operation:    ActionOperationCreate,
-			ResourceID:   "ORANG-GABOETS/OctoState",
+			ResourceID:   "orang-gaboets/OctoState",
 			Executable:   true,
-			Message:      "create repository ORANG-GABOETS/OctoState",
+			Message:      "create repository orang-gaboets/OctoState",
 			Changes:      []FieldChange{},
 		},
 		{

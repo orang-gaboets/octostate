@@ -50,17 +50,18 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	desired := config.NormalizeRepositoryOwners(opt.Desired)
 
 	planner := planner{
 		ctx:            ctx,
-		desired:        opt.Desired,
+		desired:        desired,
 		actual:         opt.Actual,
 		userService:    opt.UserService,
 		userLoginsByID: map[int64]string{},
 	}
 
 	report := &Report{
-		Organization: strings.TrimSpace(opt.Desired.Organization),
+		Organization: desired.Organization,
 	}
 
 	actions, err := planner.buildActions()

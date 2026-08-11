@@ -96,6 +96,7 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	opt.Desired = config.NormalizeRepositoryOwners(opt.Desired)
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}
