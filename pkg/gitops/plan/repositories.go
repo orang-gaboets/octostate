@@ -2,14 +2,13 @@ package plan
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func repositoryCreateAction(repository config.RepositorySpec) *Action {
-	return &Action{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: repositoryID(repository.Owner, repository.Name), Executable: strings.TrimSpace(repository.Template.Owner) != "" && strings.TrimSpace(repository.Template.Name) != "", Message: fmt.Sprintf("create repository %s", repositoryID(repository.Owner, repository.Name))}
+	return &Action{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: repositoryID(repository.Owner, repository.Name), Message: fmt.Sprintf("create repository %s", repositoryID(repository.Owner, repository.Name))}
 }
 
 func repositoryUpdateAction(repository config.RepositorySpec, actual state.Repository) *Action {
