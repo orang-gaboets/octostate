@@ -305,6 +305,12 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 }
 
 func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex map[string]int, memberIndex map[string]int) {
+	// Keyed by identity kind and normalized value so distinct kinds never
+	// collide. Cross-kind equivalence is deliberately not inferred: deciding
+	// whether a username, email, and user ID name the same account needs a
+	// live lookup this validator must not perform.
+	identityIndex := make(map[string]int, len(invites))
+
 	for i, invite := range invites {
 		pathPrefix := fmt.Sprintf("invites[%d]", i)
 		usernameDeclared := invite.Username.Present
@@ -363,6 +369,14 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 			}
 		}
 
+		// Only an invite that declares exactly one identity has an identity to
+		// compare. Anything else is already reported above, and letting it into
+		// the index would make duplicate reporting depend on which field the
+		// malformed invite happened to declare first.
+		if identityCount == 1 {
+			validateInviteIdentityUniqueness(report, identityIndex, pathPrefix, i, invite)
+		}
+
 		if role := strings.TrimSpace(invite.Role); role != "" && !isAllowed(role, validInviteRoles) {
 			report.addError(pathPrefix+".role", ValidationIssueCodeInvalidEnum, "invite role %q is not supported", role)
 		}
@@ -377,6 +391,57 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 				report.addError(fmt.Sprintf("%s.team_slugs[%d]", pathPrefix, j), ValidationIssueCodeUnknownInviteTeamSlug, "invite references unknown team slug %q", trimmedTeamSlug)
 			}
 		}
+	}
+}
+
+// validateInviteIdentityUniqueness rejects an invite whose identity is already
+// declared by an earlier invite. Callers must only invoke this for an invite
+// that declares exactly one identity; a malformed invite is reported by its own
+// identity validation and never seeds or matches the index.
+//
+// Usernames and emails are compared case-insensitively after trimming. This is
+// a deliberate desired-state comparison rule rather than a claim about how any
+// mail system routes messages: SMTP still permits a case-sensitive local-part,
+// so octostate defines equivalence for itself and applies it consistently with
+// how every other collection in the schema establishes identity.
+func validateInviteIdentityUniqueness(report *ValidationReport, identityIndex map[string]int, pathPrefix string, index int, invite InviteSpec) {
+	var field, key string
+
+	switch {
+	case invite.Username.Present && !invite.Username.Null:
+		username := strings.TrimSpace(invite.Username.Value)
+		if username == "" || !isValidGitHubUsername(username) {
+			return
+		}
+		field, key = "username", "username\x00"+strings.ToLower(username)
+	case invite.Email.Present && !invite.Email.Null:
+		email := strings.TrimSpace(invite.Email.Value)
+		if email == "" || !isValidInviteEmail(email) {
+			return
+		}
+		field, key = "email", "email\x00"+strings.ToLower(email)
+	case invite.UserID.Present && !invite.UserID.Null:
+		if invite.UserID.Value <= 0 {
+			return
+		}
+		field, key = "user_id", fmt.Sprintf("user_id\x00%d", invite.UserID.Value)
+	default:
+		return
+	}
+
+	firstIndex, duplicate := identityIndex[key]
+	if !duplicate {
+		identityIndex[key] = index
+		return
+	}
+
+	switch field {
+	case "user_id":
+		report.addError(pathPrefix+".user_id", ValidationIssueCodeDuplicateInvite, "invite user_id %d duplicates invites[%d]", invite.UserID.Value, firstIndex)
+	case "email":
+		report.addError(pathPrefix+".email", ValidationIssueCodeDuplicateInvite, "invite email %q duplicates invites[%d]", strings.TrimSpace(invite.Email.Value), firstIndex)
+	default:
+		report.addError(pathPrefix+".username", ValidationIssueCodeDuplicateInvite, "invite username %q duplicates invites[%d]", strings.TrimSpace(invite.Username.Value), firstIndex)
 	}
 }
 

@@ -63,6 +63,35 @@ Validation rules:
 - `user_id` values must be greater than zero
 - empty or whitespace-only `username` / `email` values are rejected
 - explicit `null` is rejected for `username`, `email`, and `user_id`
+- a `username` invite that duplicates a declared top-level member is rejected
+- two invites must not declare the same identity
+
+Duplicate invite identities are compared within a single identity kind, after
+trimming:
+
+- `username` against `username`, case-insensitively, matching how GitHub
+  usernames are compared everywhere else in the schema
+- `email` against `email`, case-insensitively over the whole address
+- `user_id` against `user_id`, by numeric value
+
+The later duplicate is reported and names the first declaration, so the error
+is stable regardless of how many duplicates a file contains.
+
+Comparison never spans identity kinds. A `username` invite, an `email` invite,
+and a `user_id` invite are always independent, even when they refer to the same
+GitHub account, because establishing that relationship would require a live
+identity lookup that offline validation must not perform.
+
+Case-insensitive email comparison is an intentional octostate desired-state
+rule, not an assumption about how mail systems route messages. SMTP still
+permits a case-sensitive local-part, so octostate defines equivalence for
+itself: two invite emails that differ only by case are one desired-state
+identity, handled deterministically and consistently with how every other
+collection in this schema establishes identity.
+
+An invite that does not declare exactly one identity is reported by the
+identity rules above and takes no part in duplicate detection, so a malformed
+entry never masks or manufactures a duplicate.
 
 ## Repositories
 
