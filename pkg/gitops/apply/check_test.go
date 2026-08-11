@@ -87,6 +87,35 @@ func TestCheckSkipsNonExecutableDriftWithoutMutations(t *testing.T) {
 	}
 }
 
+func TestCheckRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	plan := &gitopsplan.Report{Organization: "orang-gaboets"}
+	plan.Normalize()
+
+	_, err := Check(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "other-org",
+				Name:       "octostate-infra",
+				Permission: "push",
+			}},
+		}},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestCheckPreflightsTeamCreatesAndInviteDependenciesWithoutMutations(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
@@ -1044,6 +1073,7 @@ func TestCheckFailsWhenCheckTeamDependenciesCannotBeResolved(t *testing.T) {
 		Organization: "orang-gaboets",
 		Teams: []config.TeamSpec{
 			{Slug: "app", Name: "App", Privacy: "closed", ParentSlug: "platform"},
+			{Slug: "platform", Name: "Platform", Privacy: "closed"},
 		},
 	}
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}

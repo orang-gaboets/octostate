@@ -296,6 +296,45 @@ func TestEncodeYAMLIncludesExplicitOptionalsAndExternalOwners(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLPreservesExplicitMismatchedManagedOwners(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites:      []InviteSpec{},
+		Repositories: []RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []TeamRepositorySpec{{
+				Owner:      "other-org",
+				Name:       "octostate-infra",
+				Permission: "push",
+			}},
+		}},
+	}
+
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := string(got)
+	for _, expected := range []string{
+		"- owner: shared-platform",
+		"- owner: other-org",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected YAML to contain %q, got:\n%s", expected, text)
+		}
+	}
+}
+
 func TestEncodeYAMLIncludesTeamParentSlug(t *testing.T) {
 	t.Parallel()
 

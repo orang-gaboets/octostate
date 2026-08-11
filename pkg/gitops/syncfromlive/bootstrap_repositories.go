@@ -32,8 +32,8 @@ func bootstrapRepositories(organization string, repositories []state.Repository)
 }
 
 func bootstrapOwner(organization, owner string) string {
-	owner = strings.TrimSpace(owner)
-	if owner == "" || strings.EqualFold(owner, strings.TrimSpace(organization)) {
+	owner = config.ResolveRepositoryOwner(owner, organization)
+	if config.RepositoryOwnerMatchesOrganization(owner, organization) {
 		return ""
 	}
 	return owner

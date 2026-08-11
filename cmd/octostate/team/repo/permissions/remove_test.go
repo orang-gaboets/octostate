@@ -13,7 +13,6 @@ import (
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	permissionscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/repo/permissions"
 	"github.com/orang-gaboets/octostate/pkg/github"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 type captureRemoveTeamRepoBySlugService struct {
@@ -96,6 +95,14 @@ func TestRemoveTeamRepoPermissionWithWhitespaceRepoRejected(t *testing.T) {
 	}
 }
 
+func TestRemoveTeamRepoPermissionWithWhitespaceOrganizationRejected(t *testing.T) {
+	c := permissionscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "   ", "--slug", "s", "--repo", "r"})
+	if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+}
+
 func TestRemoveTeamRepoPermissionDryRunSkipsRemoveService(t *testing.T) {
 	svc := &captureRemoveTeamRepoBySlugService{}
 	c := permissionscmd.RemoveCmd(svc)
@@ -162,27 +169,124 @@ func TestRemoveTeamRepoPermissionUsesProvidedServiceAndDefaultsRepoOrg(t *testin
 	}
 }
 
-func TestRemoveTeamRepoPermissionUsesProvidedServiceAndExplicitRepoOrg(t *testing.T) {
-	svc := &captureRemoveTeamRepoBySlugService{}
-	c := permissionscmd.RemoveCmd(svc)
-	var out bytes.Buffer
-	c.SetOut(&out)
-	c.SetArgs([]string{"--org", " o ", "--slug", " s ", "--repo-org", " ro ", "--repo", " r "})
-	if err := c.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestRemoveTeamRepoPermissionRepoOrgCompatibility(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		args          []string
+		wantRepoOwner string
+	}{
+		{
+			name:          "omitted repo org defaults to org",
+			args:          []string{"--org", " o ", "--slug", " s ", "--repo", " r "},
+			wantRepoOwner: "o",
+		},
+		{
+			name:          "explicit same org is accepted",
+			args:          []string{"--org", " o ", "--slug", " s ", "--repo-org", "o", "--repo", " r "},
+			wantRepoOwner: "o",
+		},
+		{
+			name:          "trimmed and case equivalent repo org is accepted",
+			args:          []string{"--org", " o ", "--slug", " s ", "--repo-org", " O ", "--repo", " r "},
+			wantRepoOwner: "O",
+		},
 	}
-	if !svc.removeCalled {
-		t.Fatalf("expected remove team repo permission service to be called")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &captureRemoveTeamRepoBySlugService{}
+			c := permissionscmd.RemoveCmd(svc)
+			var out bytes.Buffer
+			c.SetOut(&out)
+			c.SetArgs(tt.args)
+			if err := c.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !svc.removeCalled {
+				t.Fatalf("expected remove team repo permission service to be called")
+			}
+			if svc.repoOwner != tt.wantRepoOwner || svc.repoName != "r" {
+				t.Fatalf("expected repo target %s/r, got %q/%q", tt.wantRepoOwner, svc.repoOwner, svc.repoName)
+			}
+			got := strings.TrimSpace(out.String())
+			if !strings.Contains(got, `"status": "success"`) {
+				t.Fatalf("expected success status output, got: %q", got)
+			}
+		})
 	}
-	if svc.repoOwner != "ro" || svc.repoName != "r" {
-		t.Fatalf("expected explicit repo target ro/r, got %q/%q", svc.repoOwner, svc.repoName)
+}
+
+func TestRemoveTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeAuth(t *testing.T) {
+	c := permissionscmd.RemoveCmd(nil)
+	c.SilenceUsage = true
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api"})
+
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), `repository owner "other-org" must match organization "o"`) {
+		t.Fatalf("expected owner mismatch error, got %v", err)
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "success"`) {
-		t.Fatalf("expected success status output, got: %q", got)
+	if errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("cross-org validation should happen before auth, got %v", err)
 	}
-	if !strings.Contains(got, "Removed team o/s access to repository ro/r") {
-		t.Fatalf("unexpected success output: %q", got)
+}
+
+func TestRemoveTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testing.T) {
+	t.Parallel()
+
+	wantError := `repository owner "other-org" must match organization "o"`
+	configPath := writePermissionsConfig(t, permissionsBaseConfig)
+
+	tests := []struct {
+		name       string
+		args       []string
+		configPath string
+	}{
+		{
+			name: "live path before GitHub call",
+			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api"},
+		},
+		{
+			name: "dry run before output",
+			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--dry-run"},
+		},
+		{
+			name:       "proposal path before config mutation",
+			args:       []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--to-config", configPath},
+			configPath: configPath,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &captureRemoveTeamRepoBySlugService{}
+			c := permissionscmd.RemoveCmd(svc)
+			c.SilenceUsage = true
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			c.SetOut(&out)
+			c.SetErr(&errBuf)
+			c.SetArgs(tt.args)
+			err := c.Execute()
+			if err == nil || !strings.Contains(err.Error(), wantError) {
+				t.Fatalf("expected owner mismatch error containing %q, got %v", wantError, err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("expected no stdout output, got %q", out.String())
+			}
+			if errors.Is(err, github.ErrNoValidCredentials) {
+				t.Fatalf("cross-org validation should happen before auth, got %v", err)
+			}
+			if svc.removeCalled {
+				t.Fatal("cross-org validation should happen before GitHub calls")
+			}
+			if tt.configPath != "" {
+				if got := readPermissionsConfig(t, tt.configPath); got != permissionsBaseConfig {
+					t.Fatalf("config changed after cross-org rejection:\n%s", got)
+				}
+			}
+		})
 	}
 }
 
@@ -235,39 +339,6 @@ teams:
 `
 	if got := readPermissionsConfig(t, configPath); got != want {
 		t.Fatalf("unexpected config contents:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-func TestRemoveTeamRepoPermissionToConfigMatchesExplicitRepoOwner(t *testing.T) {
-	configPath := writePermissionsConfig(t, `organization: o
-teams:
-  - slug: platform
-    name: Platform
-    privacy: closed
-    repositories:
-      - owner: other-org
-        name: api
-        permission: push
-      - name: api
-        permission: pull
-`)
-
-	c := permissionscmd.RemoveCmd(nil)
-	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--to-config", configPath})
-	if err := c.Execute(); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := gitopsconfig.LoadFile(configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	repositories := cfg.Teams[0].Repositories
-	if len(repositories) != 1 {
-		t.Fatalf("expected one remaining entry, got %#v", repositories)
-	}
-	if repositories[0].Owner != "o" || repositories[0].Name != "api" || repositories[0].Permission != "pull" {
-		t.Fatalf("expected same-org entry preserved, got %#v", repositories[0])
 	}
 }
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -60,6 +61,33 @@ func TestValidateDuplicateRepositoriesCaseInsensitive(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateRepository)
 }
 
+func TestRepositoryOwnerMatchesOrganization(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		owner        string
+		organization string
+		want         bool
+	}{
+		{name: "exact", owner: "orang-gaboets", organization: "orang-gaboets", want: true},
+		{name: "trimmed and case insensitive", owner: " ORANG-GABOETS ", organization: " orang-gaboets ", want: true},
+		{name: "blank owner", owner: " ", organization: "orang-gaboets", want: false},
+		{name: "blank organization", owner: "orang-gaboets", organization: " ", want: false},
+		{name: "different owner", owner: "shared-platform", organization: "orang-gaboets", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := RepositoryOwnerMatchesOrganization(tt.owner, tt.organization); got != tt.want {
+				t.Fatalf("RepositoryOwnerMatchesOrganization(%q, %q) = %t, want %t", tt.owner, tt.organization, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateDuplicateTeamSlugs(t *testing.T) {
 	t.Parallel()
 
@@ -84,6 +112,236 @@ func TestValidateDuplicateTeamSlugsCaseInsensitive(t *testing.T) {
 
 	report := Validate(cfg)
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateTeamSlug)
+}
+
+func TestValidateRepositoryOwnerScope(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cfg       OrganizationConfig
+		wantValid bool
+		wantPaths []string
+	}{
+		{
+			name: "omitted owners default to organization",
+			cfg: OrganizationConfig{
+				Organization: " Orang-Gaboets ",
+				Repositories: []RepositorySpec{{
+					Name:       "octostate",
+					Visibility: "private",
+				}},
+				Teams: []TeamSpec{{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Repositories: []TeamRepositorySpec{{
+						Name:       "octostate-infra",
+						Permission: "push",
+					}},
+				}},
+			},
+			wantValid: true,
+		},
+		{
+			name: "same organization owners with whitespace and case are valid",
+			cfg: OrganizationConfig{
+				Organization: " orang-gaboets ",
+				Repositories: []RepositorySpec{{
+					Owner:      " ORANG-GABOETS ",
+					Name:       "octostate",
+					Visibility: "private",
+				}},
+				Teams: []TeamSpec{{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Repositories: []TeamRepositorySpec{{
+						Owner:      " Orang-Gaboets ",
+						Name:       "octostate-infra",
+						Permission: "push",
+					}},
+				}},
+			},
+			wantValid: true,
+		},
+		{
+			name: "top level repository owner outside organization is invalid",
+			cfg: OrganizationConfig{
+				Organization: "orang-gaboets",
+				Repositories: []RepositorySpec{{
+					Owner:      "shared-platform",
+					Name:       "octostate",
+					Visibility: "private",
+				}},
+			},
+			wantPaths: []string{"repositories[0].owner"},
+		},
+		{
+			name: "team repository owner outside organization is invalid",
+			cfg: OrganizationConfig{
+				Organization: "orang-gaboets",
+				Teams: []TeamSpec{{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Repositories: []TeamRepositorySpec{{
+						Owner:      "shared-platform",
+						Name:       "octostate",
+						Permission: "push",
+					}},
+				}},
+			},
+			wantPaths: []string{"teams[0].repositories[0].owner"},
+		},
+		{
+			name: "multiple mismatches are deterministic",
+			cfg: OrganizationConfig{
+				Organization: "orang-gaboets",
+				Repositories: []RepositorySpec{{
+					Owner:      "shared-platform",
+					Name:       "octostate",
+					Visibility: "private",
+				}},
+				Teams: []TeamSpec{{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Repositories: []TeamRepositorySpec{{
+						Owner:      "other-org",
+						Name:       "octostate-infra",
+						Permission: "push",
+					}},
+				}},
+			},
+			wantPaths: []string{
+				"repositories[0].owner",
+				"teams[0].repositories[0].owner",
+			},
+		},
+		{
+			name: "blank organization suppresses owner scope issues",
+			cfg: OrganizationConfig{
+				Organization: " ",
+				Repositories: []RepositorySpec{{
+					Owner:      "shared-platform",
+					Name:       "octostate",
+					Visibility: "private",
+				}},
+				Teams: []TeamSpec{{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Repositories: []TeamRepositorySpec{{
+						Owner:      "other-org",
+						Name:       "octostate-infra",
+						Permission: "push",
+					}},
+				}},
+			},
+			wantPaths: []string{"organization"},
+		},
+		{
+			name: "external template owner is exempt",
+			cfg: OrganizationConfig{
+				Organization: "orang-gaboets",
+				Repositories: []RepositorySpec{{
+					Name:       "octostate",
+					Visibility: "private",
+					Template: TemplateSpec{
+						Owner: "shared-platform",
+						Name:  "repo-template",
+					},
+				}},
+			},
+			wantValid: true,
+		},
+		{
+			name: "same organization team repository need not exist top level",
+			cfg: OrganizationConfig{
+				Organization: "orang-gaboets",
+				Teams: []TeamSpec{{
+					Slug:    "platform",
+					Name:    "Platform",
+					Privacy: "closed",
+					Repositories: []TeamRepositorySpec{{
+						Owner:      "orang-gaboets",
+						Name:       "octostate-infra",
+						Permission: "push",
+					}},
+				}},
+			},
+			wantValid: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			report := Validate(tt.cfg)
+			if report.Valid != tt.wantValid {
+				t.Fatalf("Validate valid = %t, want %t; errors: %#v", report.Valid, tt.wantValid, report.Errors)
+			}
+
+			if len(tt.wantPaths) == 0 {
+				assertNotHasIssueCode(t, report, ValidationIssueCodeRepositoryOwnerScope)
+				return
+			}
+
+			gotPaths := make([]string, 0, len(report.Errors))
+			for _, issue := range report.Errors {
+				if issue.Code == ValidationIssueCodeRepositoryOwnerScope || issue.Path == "organization" {
+					gotPaths = append(gotPaths, issue.Path)
+				}
+			}
+			if !slices.Equal(gotPaths, tt.wantPaths) {
+				t.Fatalf("owner-scope paths = %#v, want %#v; full errors: %#v", gotPaths, tt.wantPaths, report.Errors)
+			}
+		})
+	}
+}
+
+func TestValidateAndErrorFormatsReportInOrder(t *testing.T) {
+	t.Parallel()
+
+	cfg := OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []TeamRepositorySpec{{
+				Owner:      "other-org",
+				Name:       "octostate-infra",
+				Permission: "push",
+			}},
+		}},
+	}
+
+	err := ValidateAndError(cfg)
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+
+	var validationErr *ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+
+	want := strings.Join([]string{
+		"organization config validation failed:",
+		"- repositories[0].owner: repository_owner_scope: repository owner \"shared-platform\" must match organization \"orang-gaboets\"",
+		"- teams[0].repositories[0].owner: repository_owner_scope: repository owner \"other-org\" must match organization \"orang-gaboets\"",
+	}, "\n")
+	if err.Error() != want {
+		t.Fatalf("ValidationError.Error() = %q, want %q", err.Error(), want)
+	}
 }
 
 func TestValidateDuplicateOrganizationMembers(t *testing.T) {
@@ -847,6 +1105,29 @@ func TestNormalizeTeamNameExported(t *testing.T) {
 		if got := NormalizeTeamName(tt.name); got != tt.want {
 			t.Fatalf("NormalizeTeamName(%q) = %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestNormalizeRepositoryOwnersDoesNotMutateConfig(t *testing.T) {
+	original := OrganizationConfig{
+		Organization: " org-a ",
+		Repositories: []RepositorySpec{{Owner: "", Name: "service"}},
+		Teams:        []TeamSpec{{Repositories: []TeamRepositorySpec{{Owner: " ORG-A ", Name: "service", Permission: "push"}}}},
+	}
+
+	normalized := NormalizeRepositoryOwners(original)
+	if normalized.Organization != "org-a" {
+		t.Fatalf("normalized organization = %q, want %q", normalized.Organization, "org-a")
+	}
+	if normalized.Repositories[0].Owner != "org-a" {
+		t.Fatalf("normalized repository owner = %q, want %q", normalized.Repositories[0].Owner, "org-a")
+	}
+	if normalized.Teams[0].Repositories[0].Owner != "org-a" {
+		t.Fatalf("normalized team repository owner = %q, want %q", normalized.Teams[0].Repositories[0].Owner, "org-a")
+	}
+
+	if original.Organization != " org-a " || original.Repositories[0].Owner != "" || original.Teams[0].Repositories[0].Owner != " ORG-A " {
+		t.Fatalf("normalization mutated the original config: %#v", original)
 	}
 }
 

@@ -110,6 +110,14 @@ func TestAddTeamRepoPermissionWithWhitespaceRepoRejected(t *testing.T) {
 	}
 }
 
+func TestAddTeamRepoPermissionWithWhitespaceOrganizationRejected(t *testing.T) {
+	c := permissionscmd.AddCmd(nil)
+	c.SetArgs([]string{"--org", "   ", "--slug", "s", "--repo", "r"})
+	if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+}
+
 func TestAddTeamRepoPermissionDryRunSkipsAddService(t *testing.T) {
 	svc := &captureAddTeamRepoBySlugService{}
 	c := permissionscmd.AddCmd(svc)
@@ -179,30 +187,127 @@ func TestAddTeamRepoPermissionUsesProvidedServiceAndDefaultsRepoOrg(t *testing.T
 	}
 }
 
-func TestAddTeamRepoPermissionUsesProvidedServiceAndExplicitRepoOrg(t *testing.T) {
-	svc := &captureAddTeamRepoBySlugService{}
-	c := permissionscmd.AddCmd(svc)
-	var out bytes.Buffer
-	c.SetOut(&out)
-	c.SetArgs([]string{"--org", " o ", "--slug", " s ", "--repo-org", " ro ", "--repo", " r ", "--permission", "admin"})
-	if err := c.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestAddTeamRepoPermissionRepoOrgCompatibility(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		args          []string
+		wantRepoOwner string
+	}{
+		{
+			name:          "omitted repo org defaults to org",
+			args:          []string{"--org", " o ", "--slug", " s ", "--repo", " r ", "--permission", "admin"},
+			wantRepoOwner: "o",
+		},
+		{
+			name:          "explicit same org is accepted",
+			args:          []string{"--org", " o ", "--slug", " s ", "--repo-org", "o", "--repo", " r ", "--permission", "admin"},
+			wantRepoOwner: "o",
+		},
+		{
+			name:          "trimmed and case equivalent repo org is accepted",
+			args:          []string{"--org", " o ", "--slug", " s ", "--repo-org", " O ", "--repo", " r ", "--permission", "admin"},
+			wantRepoOwner: "O",
+		},
 	}
-	if !svc.addCalled {
-		t.Fatalf("expected add team repo permission service to be called")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &captureAddTeamRepoBySlugService{}
+			c := permissionscmd.AddCmd(svc)
+			var out bytes.Buffer
+			c.SetOut(&out)
+			c.SetArgs(tt.args)
+			if err := c.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !svc.addCalled {
+				t.Fatalf("expected add team repo permission service to be called")
+			}
+			if svc.repoOwner != tt.wantRepoOwner || svc.repoName != "r" {
+				t.Fatalf("expected repo target %s/r, got %q/%q", tt.wantRepoOwner, svc.repoOwner, svc.repoName)
+			}
+			if svc.permission != "admin" {
+				t.Fatalf("expected permission %q, got %q", "admin", svc.permission)
+			}
+			got := strings.TrimSpace(out.String())
+			if !strings.Contains(got, `"status": "success"`) {
+				t.Fatalf("expected success status output, got: %q", got)
+			}
+		})
 	}
-	if svc.repoOwner != "ro" || svc.repoName != "r" {
-		t.Fatalf("expected explicit repo target ro/r, got %q/%q", svc.repoOwner, svc.repoName)
+}
+
+func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeAuth(t *testing.T) {
+	c := permissionscmd.AddCmd(nil)
+	c.SilenceUsage = true
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push"})
+
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), `repository owner "other-org" must match organization "o"`) {
+		t.Fatalf("expected owner mismatch error, got %v", err)
 	}
-	if svc.permission != "admin" {
-		t.Fatalf("expected permission %q, got %q", "admin", svc.permission)
+	if errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("cross-org validation should happen before auth, got %v", err)
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "success"`) {
-		t.Fatalf("expected success status output, got: %q", got)
+}
+
+func TestAddTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testing.T) {
+	t.Parallel()
+
+	wantError := `repository owner "other-org" must match organization "o"`
+	configPath := writePermissionsConfig(t, permissionsBaseConfig)
+
+	tests := []struct {
+		name       string
+		args       []string
+		configPath string
+	}{
+		{
+			name: "live path before GitHub call",
+			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push"},
+		},
+		{
+			name: "dry run before output",
+			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push", "--dry-run"},
+		},
+		{
+			name:       "proposal path before config mutation",
+			args:       []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "push", "--to-config", configPath},
+			configPath: configPath,
+		},
 	}
-	if !strings.Contains(got, "Granted team o/s permission admin on repository ro/r") {
-		t.Fatalf("unexpected success output: %q", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &captureAddTeamRepoBySlugService{}
+			c := permissionscmd.AddCmd(svc)
+			c.SilenceUsage = true
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			c.SetOut(&out)
+			c.SetErr(&errBuf)
+			c.SetArgs(tt.args)
+			err := c.Execute()
+			if err == nil || !strings.Contains(err.Error(), wantError) {
+				t.Fatalf("expected owner mismatch error containing %q, got %v", wantError, err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("expected no stdout output, got %q", out.String())
+			}
+			if errors.Is(err, github.ErrNoValidCredentials) {
+				t.Fatalf("cross-org validation should happen before auth, got %v", err)
+			}
+			if svc.addCalled {
+				t.Fatal("cross-org validation should happen before GitHub calls")
+			}
+			if tt.configPath != "" {
+				if got := readPermissionsConfig(t, tt.configPath); got != permissionsBaseConfig {
+					t.Fatalf("config changed after cross-org rejection:\n%s", got)
+				}
+			}
+		})
 	}
 }
 
@@ -301,26 +406,6 @@ teams:
 `
 	if got := readPermissionsConfig(t, configPath); got != want {
 		t.Fatalf("unexpected config contents:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-func TestAddTeamRepoPermissionToConfigPreservesExplicitRepoOwner(t *testing.T) {
-	configPath := writePermissionsConfig(t, permissionsBaseConfig)
-
-	c := permissionscmd.AddCmd(nil)
-	var out bytes.Buffer
-	c.SetOut(&out)
-	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api", "--permission", "admin", "--to-config", configPath})
-	if err := c.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if got := decodeConfigOperationOutput(t, out.String()).Data.RepoOwner; got != "other-org" {
-		t.Fatalf("expected repo owner other-org, got %q", got)
-	}
-
-	got := readPermissionsConfig(t, configPath)
-	if !strings.Contains(got, "      - owner: other-org\n        name: api\n        permission: admin\n") {
-		t.Fatalf("expected explicit owner to be serialized, got:\n%s", got)
 	}
 }
 

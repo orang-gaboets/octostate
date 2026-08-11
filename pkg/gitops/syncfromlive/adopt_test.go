@@ -1,6 +1,7 @@
 package syncfromlive
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -25,6 +26,69 @@ func TestBuildAdoptConfigRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestBuildAdoptConfigRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "shared-platform",
+				Name:       "octostate",
+				Visibility: "private",
+			}},
+			Teams: []config.TeamSpec{{
+				Slug:    "platform",
+				Name:    "Platform",
+				Privacy: "closed",
+				Repositories: []config.TeamRepositorySpec{{
+					Owner:      "other-org",
+					Name:       "octostate-infra",
+					Permission: "push",
+				}},
+			}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+		},
+	})
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
+func TestBuildAdoptConfigPreservesExternalManagedOwnersForValidation(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Teams:        []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			Repositories: []state.Repository{{Owner: "org-b", Name: "service", Visibility: "private"}},
+			Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+			TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
+				TeamSlug:   "platform",
+				Owner:      "org-b",
+				Name:       "service",
+				Permission: "push",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Repositories[0].Owner != "org-b" || got.Teams[0].Repositories[0].Owner != "org-b" {
+		t.Fatalf("expected external owners to be preserved, got %#v", got)
+	}
+
+	err = config.ValidateAndError(got)
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *testing.T) {
 	t.Parallel()
 
@@ -47,7 +111,7 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 					Name:       "octostate",
 					Visibility: "public",
 					Template: config.TemplateSpec{
-						Owner: "orang-gaboets",
+						Owner: "shared-platform",
 						Name:  "repo-template",
 					},
 					Topics: []string{"legacy"},
@@ -251,7 +315,7 @@ func assertAdoptedRepositories(t *testing.T, repositories []config.RepositorySpe
 		t.Fatalf("unexpected repositories %#v", repositories)
 	}
 	repoBuilder := repositories[0]
-	if repoBuilder.Template != (config.TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"}) {
+	if repoBuilder.Template != (config.TemplateSpec{Owner: "shared-platform", Name: "repo-template"}) {
 		t.Fatalf("expected template to be preserved, got %#v", repoBuilder.Template)
 	}
 	if repoBuilder.Visibility != "private" {
@@ -325,4 +389,21 @@ func assertAdoptedTeams(t *testing.T, teams []config.TeamSpec) {
 	if len(teams[2].Repositories) != 1 || teams[2].Repositories[0] != (config.TeamRepositorySpec{Name: "live-only", Permission: "push"}) {
 		t.Fatalf("unexpected adopted ops repositories %#v", teams[2].Repositories)
 	}
+}
+
+func assertValidationErrorHasIssue(t *testing.T, err error, wantPath string, wantCode config.ValidationIssueCode) {
+	t.Helper()
+
+	var validationErr *config.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *config.ValidationError, got %T (%v)", err, err)
+	}
+
+	for _, issue := range validationErr.Report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, validationErr.Report.Errors)
 }

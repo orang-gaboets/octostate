@@ -1147,6 +1147,157 @@ func TestSyncFromLiveConfigCmdGeneratedInvalidConfigFails(t *testing.T) {
 	}
 }
 
+func TestSyncFromLiveRejectsGeneratedOwnershipViolations(t *testing.T) {
+	cases := []struct {
+		name string
+		mode string
+	}{
+		{name: "bootstrap", mode: syncFromLiveModeBootstrap},
+		{name: "adopt", mode: syncFromLiveModeAdopt},
+		{name: "materialize", mode: syncFromLiveModeMaterialize},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, writeResult, err := runGeneratedOwnershipFailure(t, tc.mode)
+			if err == nil {
+				t.Fatal("expected generated ownership validation error")
+			}
+			if len(stdout) != 0 {
+				t.Fatalf("expected no generated YAML, got %q", stdout)
+			}
+			if writeResult != nil {
+				t.Fatalf("expected no write result, got %#v", writeResult)
+			}
+			if !strings.Contains(err.Error(), "repository owner \"org-b\" must match organization \"org-a\"") {
+				t.Fatalf("expected mismatched owner validation detail, got %v", err)
+			}
+		})
+	}
+}
+
+func runGeneratedOwnershipFailure(t *testing.T, mode string) ([]byte, *syncFromLiveWriteResult, error) {
+	t.Helper()
+	restoreSyncFromLiveHooks(t)
+
+	configDir := t.TempDir()
+	targetPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+	var before []byte
+	if mode != syncFromLiveModeBootstrap {
+		before = []byte("organization: org-a\nmembers: []\ninvites: []\nrepositories: []\nteams: []\n")
+		if err := os.WriteFile(targetPath, before, 0o644); err != nil {
+			t.Fatalf("write existing config: %v", err)
+		}
+	}
+
+	actual := &state.OrganizationState{Organization: "org-a"}
+	generated := gitopsconfig.OrganizationConfig{
+		Organization: "org-a",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{{
+			Owner:      "org-b",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []gitopsconfig.TeamSpec{},
+	}
+	generated.Repositories[0].SetManagedHomepage("https://example.com/octostate")
+	existing := gitopsconfig.OrganizationConfig{
+		Organization: "org-a",
+		Members:      []gitopsconfig.OrganizationMemberSpec{},
+		Invites:      []gitopsconfig.InviteSpec{},
+		Repositories: []gitopsconfig.RepositorySpec{},
+		Teams:        []gitopsconfig.TeamSpec{},
+	}
+
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		if mode == syncFromLiveModeMaterialize {
+			t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
+		}
+		return actual, nil
+	}
+	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		if mode != syncFromLiveModeMaterialize {
+			t.Fatal("collectSyncFromLiveMaterializeState should only be called for materialize mode")
+		}
+		return actual, nil
+	}
+	loadSyncFromLiveConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		if mode == syncFromLiveModeBootstrap {
+			t.Fatal("loadSyncFromLiveConfig should not be called for bootstrap mode")
+		}
+		return existing, nil
+	}
+	buildSyncFromLiveBootstrap = func(opt syncfromlive.BootstrapOptions) (gitopsconfig.OrganizationConfig, error) {
+		if mode != syncFromLiveModeBootstrap {
+			t.Fatal("buildSyncFromLiveBootstrap should only be called for bootstrap mode")
+		}
+		if opt.Actual != actual {
+			t.Fatal("unexpected actual state pointer")
+		}
+		return generated, nil
+	}
+	buildSyncFromLiveAdopt = func(opt syncfromlive.AdoptOptions) (gitopsconfig.OrganizationConfig, error) {
+		if mode != syncFromLiveModeAdopt {
+			t.Fatal("buildSyncFromLiveAdopt should only be called for adopt mode")
+		}
+		if opt.Actual != actual {
+			t.Fatal("unexpected actual state pointer")
+		}
+		if opt.Desired.Organization != existing.Organization {
+			t.Fatalf("unexpected desired config %#v", opt.Desired)
+		}
+		return generated, nil
+	}
+	buildSyncFromLiveMaterialize = func(opt syncfromlive.MaterializeOptions) (gitopsconfig.OrganizationConfig, error) {
+		if mode != syncFromLiveModeMaterialize {
+			t.Fatal("buildSyncFromLiveMaterialize should only be called for materialize mode")
+		}
+		if opt.Actual != actual {
+			t.Fatal("unexpected actual state pointer")
+		}
+		if opt.Desired.Organization != existing.Organization {
+			t.Fatalf("unexpected desired config %#v", opt.Desired)
+		}
+		return generated, nil
+	}
+	generatedValidationCalls := 0
+	validateSyncFromLiveConfig = func(got gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		report := gitopsconfig.Validate(got)
+		if len(got.Repositories) == 1 && got.Repositories[0].Name == "octostate" {
+			generatedValidationCalls++
+			if got.Repositories[0].Owner != "org-b" {
+				t.Fatalf("generated owner was omitted or rewritten before validation: %#v", got.Repositories[0])
+			}
+			assertValidationReportHasIssue(t, report, "repositories[0].owner", gitopsconfig.ValidationIssueCodeRepositoryOwnerScope)
+		}
+		return report
+	}
+	encodeSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) ([]byte, error) {
+		t.Fatal("encodeSyncFromLiveConfig should not be called for invalid generated ownership")
+		return nil, nil
+	}
+
+	stdout, writeResult, err := syncFromLiveConfig(context.Background(), "secret-token", 0, 0, "", mode, "org-a", configDir, true)
+	if generatedValidationCalls != 1 {
+		t.Fatalf("expected generated config to be validated once, got %d", generatedValidationCalls)
+	}
+	if mode == syncFromLiveModeBootstrap {
+		if _, statErr := os.Stat(targetPath); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("expected bootstrap target to remain absent, got %v", statErr)
+		}
+	} else if got, readErr := os.ReadFile(targetPath); readErr != nil {
+		t.Fatalf("read target after validation failure: %v", readErr)
+	} else if string(got) != string(before) {
+		t.Fatalf("target config changed after validation failure:\n%s\nwant:\n%s", got, before)
+	}
+	return stdout, writeResult, err
+}
+
 func TestSyncFromLiveConfigCmdWriteFailsWhenTargetExists(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 

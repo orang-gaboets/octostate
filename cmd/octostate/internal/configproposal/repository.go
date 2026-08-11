@@ -13,16 +13,10 @@ func FindRepositoryIndex(cfg *gitopsconfig.OrganizationConfig, owner, name strin
 		return -1, false
 	}
 
-	wantOwner := strings.TrimSpace(owner)
-	if wantOwner == "" {
-		wantOwner = strings.TrimSpace(cfg.Organization)
-	}
+	wantOwner := gitopsconfig.ResolveRepositoryOwner(owner, cfg.Organization)
 	wantName := strings.TrimSpace(name)
 	for index, repository := range cfg.Repositories {
-		repositoryOwner := strings.TrimSpace(repository.Owner)
-		if repositoryOwner == "" {
-			repositoryOwner = strings.TrimSpace(cfg.Organization)
-		}
+		repositoryOwner := gitopsconfig.ResolveRepositoryOwner(repository.Owner, cfg.Organization)
 		if strings.EqualFold(repositoryOwner, wantOwner) &&
 			strings.EqualFold(strings.TrimSpace(repository.Name), wantName) {
 			return index, true

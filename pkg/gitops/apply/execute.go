@@ -55,9 +55,12 @@ func (opt *Options) Validate() error {
 		return githubpkg.ErrNilService
 	case opt.UserService == nil:
 		return githubpkg.ErrNilService
-	default:
-		return nil
 	}
+
+	if err := config.ValidateAndError(opt.Desired); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Result captures the actions executed and the unsupported drift skipped by one
@@ -93,6 +96,7 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	opt.Desired = config.NormalizeRepositoryOwners(opt.Desired)
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}

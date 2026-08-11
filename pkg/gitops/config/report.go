@@ -41,6 +41,8 @@ const (
 	ValidationIssueCodeInvalidRepositoryTopic ValidationIssueCode = "invalid_repository_topic"
 	// ValidationIssueCodeRepositoryTopicLimit indicates a repository has too many distinct topics.
 	ValidationIssueCodeRepositoryTopicLimit ValidationIssueCode = "repository_topic_limit"
+	// ValidationIssueCodeRepositoryOwnerScope indicates a managed repository owner is outside the declared organization.
+	ValidationIssueCodeRepositoryOwnerScope ValidationIssueCode = "repository_owner_scope"
 	// ValidationIssueCodeSlugNameMismatch indicates a team slug does not match its normalized name.
 	ValidationIssueCodeSlugNameMismatch ValidationIssueCode = "slug_name_mismatch"
 )

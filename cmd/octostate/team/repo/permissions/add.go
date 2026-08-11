@@ -49,8 +49,14 @@ func AddCmd(svc teams.Service) *cobra.Command {
 			trimmedRepo := strings.TrimSpace(repo)
 			trimmedPermission := strings.TrimSpace(permission)
 
+			if trimmedOrg == "" {
+				return fmt.Errorf("organization cannot be empty: %w", github.ErrMissingRequiredField)
+			}
 			if trimmedRepoOrg == "" {
 				trimmedRepoOrg = trimmedOrg
+			}
+			if !gitopsconfig.RepositoryOwnerMatchesOrganization(trimmedRepoOrg, trimmedOrg) {
+				return fmt.Errorf("repository owner %q must match organization %q", trimmedRepoOrg, trimmedOrg)
 			}
 			if trimmedRepo == "" {
 				return fmt.Errorf("repo name cannot be empty: %w", github.ErrMissingRequiredField)

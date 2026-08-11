@@ -33,9 +33,12 @@ func (opt *MaterializeOptions) Validate() error {
 			opt.Desired.Organization,
 			githubpkg.ErrInvalidFieldValue,
 		)
-	default:
-		return nil
 	}
+
+	if err := config.ValidateAndError(opt.Desired); err != nil {
+		return err
+	}
+	return nil
 }
 
 // BuildMaterializeConfig fills currently unmanaged repository optional fields

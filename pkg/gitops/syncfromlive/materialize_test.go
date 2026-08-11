@@ -25,6 +25,37 @@ func TestBuildMaterializeConfigRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestBuildMaterializeConfigRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildMaterializeConfig(MaterializeOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{
+				Owner:      "shared-platform",
+				Name:       "octostate",
+				Visibility: "private",
+			}},
+			Teams: []config.TeamSpec{{
+				Slug:    "platform",
+				Name:    "Platform",
+				Privacy: "closed",
+				Repositories: []config.TeamRepositorySpec{{
+					Owner:      "other-org",
+					Name:       "octostate-infra",
+					Permission: "push",
+				}},
+			}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "orang-gaboets",
+		},
+	})
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +77,7 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 					Visibility: "public",
 					Topics:     []string{"gitops"},
 					Template: config.TemplateSpec{
-						Owner: "orang-gaboets",
+						Owner: "shared-platform",
 						Name:  "repo-template",
 					},
 				}
@@ -177,7 +208,7 @@ func assertMaterializedRepoBuilder(
 	if isTemplate, managed := got.ManagedIsTemplate(); !managed || !isTemplate {
 		t.Fatalf("expected is_template=true to materialize from live, got value=%v managed=%v", isTemplate, managed)
 	}
-	if got.Template != desired.Template {
+	if got.Template != desired.Template || got.Template.Owner != "shared-platform" {
 		t.Fatalf("expected template to remain unchanged, got %#v", got.Template)
 	}
 	if got.Visibility != "public" {

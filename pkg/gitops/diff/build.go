@@ -35,9 +35,12 @@ func (opt *Options) Validate() error {
 			desiredOrg,
 			githubpkg.ErrInvalidFieldValue,
 		)
-	default:
-		return nil
 	}
+
+	if err := config.ValidateAndError(opt.Desired); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Build computes a deterministic, read-only drift report from desired GitOps
@@ -46,6 +49,7 @@ func Build(opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
+	desired := config.NormalizeRepositoryOwners(opt.Desired)
 
 	var rawResolvedInviteUserIDsByUsername map[string]int64
 	var err error
@@ -73,13 +77,13 @@ func Build(opt Options) (*Report, error) {
 	}
 
 	builder := builder{
-		desired:                         opt.Desired,
+		desired:                         desired,
 		actual:                          organizationStateFromSnapshot(opt.Snapshot),
 		resolvedInviteUserIDsByUsername: resolvedInviteUserIDsByUsername,
 	}
 
 	report := &Report{
-		Organization:     strings.TrimSpace(opt.Desired.Organization),
+		Organization:     desired.Organization,
 		SnapshotPulledAt: opt.Snapshot.PulledAt.UTC(),
 	}
 

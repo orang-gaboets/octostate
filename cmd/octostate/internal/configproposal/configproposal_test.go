@@ -158,6 +158,54 @@ func TestApplyToConfigFileLoadedValidationErrorDoesNotWrite(t *testing.T) {
 	assertFileUnchanged(t, path, before)
 }
 
+func TestApplyToConfigFileLoadedOwnershipValidationErrorDoesNotMutateOrWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, "organization: orang-gaboets\nmembers: []\ninvites: []\nrepositories:\n  - owner: shared-platform\n    name: octostate\n    visibility: private\nteams: []\n")
+	before := readFile(t, path)
+
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(*gitopsconfig.OrganizationConfig) error {
+		t.Fatal("mutation should not run")
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), `validate loaded config: repositories[0].owner (repository_owner_scope): repository owner "shared-platform" must match organization "orang-gaboets"`) {
+		t.Fatalf("expected repository owner scope detail, got %v", err)
+	}
+	if changed {
+		t.Fatal("expected validation error to not change config")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
+func TestApplyToConfigFileMutatedOwnershipValidationErrorDoesNotWrite(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, validConfigContents)
+	before := readFile(t, path)
+
+	changed, err := ApplyToConfigFile(path, "orang-gaboets", func(cfg *gitopsconfig.OrganizationConfig) error {
+		cfg.Repositories = append(cfg.Repositories, gitopsconfig.RepositorySpec{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		})
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), `validate mutated config: repositories[0].owner (repository_owner_scope): repository owner "shared-platform" must match organization "orang-gaboets"`) {
+		t.Fatalf("expected repository owner scope detail, got %v", err)
+	}
+	if changed {
+		t.Fatal("expected validation error to not change config")
+	}
+	assertFileUnchanged(t, path, before)
+}
+
 func TestApplyToConfigFileNoOpDoesNotWrite(t *testing.T) {
 	t.Parallel()
 

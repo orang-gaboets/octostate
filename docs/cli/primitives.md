@@ -71,7 +71,10 @@ Team repository permission proposals also require the target team to exist in
 desired state. `team repo permissions add` updates the permission in place when
 the team already has an entry for the repository, and `remove` drops only the
 targeted entry; a repository the team has no entry for is a no-op. `--repo-org`
-is stored only when it differs from the organization.
+is compatibility-only: omitted values default to `--org`, explicit same-org
+values are accepted after trimming and case-insensitive comparison, canonical
+YAML omits same-org owners, and cross-org values are rejected before proposal
+mutation.
 
 The repository itself does not need to be declared under top-level
 `repositories:` — `config validate` does not cross-check permission entries
@@ -480,7 +483,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
-- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
+- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`); surrounding whitespace is ignored, case-only differences still count as the same organization, and a different organization is rejected before dry-run output, proposal changes, authentication, or GitHub calls
 - `--permission` (optional): Permission to grant (`pull`, `push`, `admin`, `maintain`, `triage`; default is `pull`)
 - `--to-config` (optional): Apply the permission proposal to an existing local organization config instead of GitHub; the team must exist in desired state and an existing entry for the repository is updated in place
 - `--dry-run` (optional): Preview the permission change without calling GitHub
@@ -499,7 +502,7 @@ Flags:
 - `--org` (required): GitHub organization name
 - `--slug` (required): Team slug (URL-friendly name)
 - `--repo` (required): Repository name
-- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`)
+- `--repo-org` (optional): Owner organization of the repository (defaults to `--org`); surrounding whitespace is ignored, case-only differences still count as the same organization, and a different organization is rejected before dry-run output, proposal changes, authentication, or GitHub calls
 - `--to-config` (optional): Remove the permission entry from an existing local organization config instead of GitHub; an entry that does not exist is a no-op
 - `--dry-run` (optional): Preview the permission removal without calling GitHub
 

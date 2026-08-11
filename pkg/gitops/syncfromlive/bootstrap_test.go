@@ -39,6 +39,36 @@ func TestBuildBootstrapConfigBuildsCanonicalDesiredState(t *testing.T) {
 	assertCanonicalBootstrapConfig(t, got)
 }
 
+func TestBuildBootstrapConfigPreservesExternalManagedOwnersForValidation(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{Actual: &state.OrganizationState{
+		Organization: "org-a",
+		Repositories: []state.Repository{{
+			Owner:      "org-b",
+			Name:       "service",
+			Visibility: "private",
+		}},
+		Teams: []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
+			TeamSlug:   "platform",
+			Owner:      "org-b",
+			Name:       "service",
+			Permission: "push",
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Repositories[0].Owner != "org-b" || got.Teams[0].Repositories[0].Owner != "org-b" {
+		t.Fatalf("expected external owners to be preserved, got %#v", got)
+	}
+
+	err = config.ValidateAndError(got)
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildBootstrapConfigRejectsUnknownTeamRelationships(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +157,7 @@ func canonicalBootstrapActualState() *state.OrganizationState {
 		PendingInvitations: []state.PendingInvitation{{Username: "octocat", Role: "direct_member"}},
 		Repositories: []state.Repository{
 			{
-				Owner:        "shared-platform",
+				Owner:        "orang-gaboets",
 				Name:         "shared-repo",
 				Visibility:   "public",
 				Description:  "",
@@ -170,7 +200,7 @@ func canonicalBootstrapActualState() *state.OrganizationState {
 			{TeamSlug: "platform", Username: "alice", Role: "maintainer"},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
-			{TeamSlug: "platform-infra", Owner: "shared-platform", Name: "shared-repo", Permission: "pull"},
+			{TeamSlug: "platform-infra", Owner: "orang-gaboets", Name: "shared-repo", Permission: "pull"},
 			{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "admin"},
 		},
 	}
@@ -239,8 +269,8 @@ func assertBootstrapRepositories(t *testing.T, repositories []config.RepositoryS
 	}
 
 	sharedRepo := repositories[1]
-	if sharedRepo.Owner != "shared-platform" {
-		t.Fatalf("expected external owner to be preserved, got %#v", sharedRepo.Owner)
+	if sharedRepo.Owner != "" {
+		t.Fatalf("expected same-organization repository owner to be omitted, got %#v", sharedRepo.Owner)
 	}
 	if allowForking, managed := sharedRepo.ManagedAllowForking(); !managed || allowForking {
 		t.Fatalf("expected managed allow_forking=false, got value=%v managed=%v", allowForking, managed)
@@ -267,6 +297,9 @@ func assertBootstrapTeams(t *testing.T, teams []config.TeamSpec) {
 	}
 	if teams[0].Repositories == nil || len(teams[0].Repositories) != 1 || teams[0].Repositories[0].Owner != "" {
 		t.Fatalf("expected org-owned team repository owner to be omitted, got %#v", teams[0].Repositories)
+	}
+	if teams[1].Repositories == nil || len(teams[1].Repositories) != 1 || teams[1].Repositories[0].Owner != "" {
+		t.Fatalf("expected same-organization team repository owner to be omitted, got %#v", teams[1].Repositories)
 	}
 	if teams[1].ParentSlug != "platform" {
 		t.Fatalf("expected parent slug, got %#v", teams[1].ParentSlug)

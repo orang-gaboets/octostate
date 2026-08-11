@@ -70,6 +70,51 @@ func Validate(cfg OrganizationConfig) ValidationReport {
 	return report
 }
 
+// RepositoryOwnerMatchesOrganization reports whether owner and organization
+// refer to the same nonblank organization after trimming, case-insensitively.
+func RepositoryOwnerMatchesOrganization(owner, organization string) bool {
+	owner = strings.TrimSpace(owner)
+	organization = strings.TrimSpace(organization)
+	if owner == "" || organization == "" {
+		return false
+	}
+	return strings.EqualFold(owner, organization)
+}
+
+// ResolveRepositoryOwner returns the effective managed repository owner.
+// Explicit owners are trimmed; omitted owners default to the organization.
+func ResolveRepositoryOwner(owner, organization string) string {
+	owner = strings.TrimSpace(owner)
+	organization = strings.TrimSpace(organization)
+	if owner == "" {
+		return organization
+	}
+	if organization != "" && strings.EqualFold(owner, organization) {
+		return organization
+	}
+	return owner
+}
+
+// NormalizeRepositoryOwners returns a copy with managed repository owners
+// resolved without mutating the caller's config.
+func NormalizeRepositoryOwners(cfg OrganizationConfig) OrganizationConfig {
+	cfg.Organization = strings.TrimSpace(cfg.Organization)
+	cfg.Repositories = append([]RepositorySpec(nil), cfg.Repositories...)
+	for i := range cfg.Repositories {
+		cfg.Repositories[i].Owner = ResolveRepositoryOwner(cfg.Repositories[i].Owner, cfg.Organization)
+	}
+
+	cfg.Teams = append([]TeamSpec(nil), cfg.Teams...)
+	for i := range cfg.Teams {
+		cfg.Teams[i].Repositories = append([]TeamRepositorySpec(nil), cfg.Teams[i].Repositories...)
+		for j := range cfg.Teams[i].Repositories {
+			cfg.Teams[i].Repositories[j].Owner = ResolveRepositoryOwner(cfg.Teams[i].Repositories[j].Owner, cfg.Organization)
+		}
+	}
+
+	return cfg
+}
+
 func (r *ValidationReport) addError(path string, code ValidationIssueCode, format string, args ...any) {
 	r.Errors = append(r.Errors, ValidationIssue{
 		Path:    path,
@@ -116,10 +161,7 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 
 	for i, repo := range repositories {
 		pathPrefix := fmt.Sprintf("repositories[%d]", i)
-		owner := strings.TrimSpace(repo.Owner)
-		if owner == "" {
-			owner = organization
-		}
+		owner := normalizeRepositoryOwner(report, pathPrefix+".owner", repo.Owner, organization)
 		name := strings.TrimSpace(repo.Name)
 		if name == "" {
 			report.addError(pathPrefix+".name", ValidationIssueCodeMissingRequiredField, "repository name is required")
@@ -205,6 +247,17 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 	}
 }
 
+func normalizeRepositoryOwner(report *ValidationReport, path string, owner string, organization string) string {
+	owner = ResolveRepositoryOwner(owner, organization)
+	if owner == "" {
+		return owner
+	}
+	if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
+		report.addError(path, ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)
+	}
+	return owner
+}
+
 func validateTeams(report *ValidationReport, teams []TeamSpec, organization string, organizationMemberIndex map[string]int) map[string]int {
 	teamIndex := make(map[string]int, len(teams))
 
@@ -264,10 +317,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 		repositoryIndex := make(map[string]int, len(team.Repositories))
 		for j, repo := range team.Repositories {
 			repoPath := fmt.Sprintf("%s.repositories[%d]", pathPrefix, j)
-			owner := strings.TrimSpace(repo.Owner)
-			if owner == "" {
-				owner = organization
-			}
+			owner := normalizeRepositoryOwner(report, repoPath+".owner", repo.Owner, organization)
 			name := strings.TrimSpace(repo.Name)
 			permission := strings.TrimSpace(repo.Permission)
 

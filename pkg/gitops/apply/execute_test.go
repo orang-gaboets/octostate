@@ -56,6 +56,132 @@ func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
 	}
 }
 
+func TestExecuteRejectsInvalidDesiredConfig(t *testing.T) {
+	t.Parallel()
+
+	plan := &gitopsplan.Report{Organization: "orang-gaboets"}
+	plan.Normalize()
+
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "shared-platform",
+			Name:       "octostate",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "other-org",
+				Name:       "octostate-infra",
+				Permission: "push",
+			}},
+		}},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
+
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
+func TestCheckAndExecuteResolveUnnormalizedRepositoryOwners(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: " org-a ",
+		Repositories: []config.RepositorySpec{{
+			Name:       "service",
+			Visibility: "private",
+		}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      " ORG-A ",
+				Name:       "service",
+				Permission: "push",
+			}},
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "org-a",
+		Actions: []gitopsplan.Action{
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   repositoryResourceID("org-a", "service"),
+				Executable:   true,
+				Changes:      []gitopsplan.FieldChange{{Field: "visibility", From: "public", To: "private"}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission,
+				Operation:    gitopsplan.ActionOperationUpdate,
+				ResourceID:   teamRepoPermissionResourceID("platform", "org-a", "service"),
+				Executable:   true,
+				Changes:      []gitopsplan.FieldChange{{Field: "permission", From: "pull", To: "push"}},
+			},
+		},
+	}
+	plan.Normalize()
+	actual := &state.OrganizationState{
+		Organization: "org-a",
+		Repositories: []state.Repository{{Owner: "org-a", Name: "service", Visibility: "public"}},
+		Teams:        []state.Team{{ID: 1, Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+
+	var checkOwners []string
+	checkRepoService := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			checkOwners = append(checkOwners, owner)
+			if repo != "service" {
+				t.Fatalf("unexpected check repository %q", repo)
+			}
+			return githubRepository("org-a", "service", false), nil, nil
+		},
+	}
+	checkTeamService := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, org, slug string) (*gh.Team, *gh.Response, error) {
+			return githubTeam(1, slug, "Platform", org), nil, nil
+		},
+	}
+	if _, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(checkRepoService), withTeamService(checkTeamService))); err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	if !reflect.DeepEqual(checkOwners, []string{"org-a"}) {
+		t.Fatalf("Check used unexpected repository owners: %#v", checkOwners)
+	}
+
+	var executeRepoOwners []string
+	executeRepoService := &testRepoService{
+		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			executeRepoOwners = append(executeRepoOwners, owner)
+			if repo != "service" {
+				t.Fatalf("unexpected execute repository %q", repo)
+			}
+			return githubRepository("org-a", "service", false), nil, nil
+		},
+	}
+	var executeTeamOwners []string
+	executeTeamService := &testTeamService{
+		addTeamRepoBySlugFunc: func(_ context.Context, org, slug, owner, repo string, _ *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+			if org != "org-a" || slug != "platform" || repo != "service" {
+				t.Fatalf("unexpected team repository target: %s/%s/%s/%s", org, slug, owner, repo)
+			}
+			executeTeamOwners = append(executeTeamOwners, owner)
+			return &gh.Response{}, nil
+		},
+	}
+	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(executeRepoService), withTeamService(executeTeamService))); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !reflect.DeepEqual(executeRepoOwners, []string{"org-a"}) {
+		t.Fatalf("Execute used unexpected repository owners: %#v", executeRepoOwners)
+	}
+	if !reflect.DeepEqual(executeTeamOwners, []string{"org-a"}) {
+		t.Fatalf("Execute used unexpected team repository owners: %#v", executeTeamOwners)
+	}
+}
+
 func TestExecuteOrganizationMemberCreateAndUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -413,9 +539,10 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
-		Owner:  "orang-gaboets",
-		Name:   "octostate",
-		Topics: []string{"gitops", "go"},
+		Owner:      "orang-gaboets",
+		Name:       "octostate",
+		Visibility: "private",
+		Topics:     []string{"gitops", "go"},
 	}
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
@@ -681,8 +808,9 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
-		Owner: "orang-gaboets",
-		Name:  "octostate",
+		Owner:      "orang-gaboets",
+		Name:       "octostate",
+		Visibility: "private",
 	}
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
@@ -988,10 +1116,10 @@ func TestExecuteInviteUsernamePreResolutionStartsAtFirstInviteBoundary(t *testin
 	}
 }
 
-func TestExecuteInviteUsernamePreResolutionCachesAndBoundsConcurrency(t *testing.T) {
+func TestExecuteInviteUsernamePreResolutionBoundsConcurrency(t *testing.T) {
 	usernames := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa"}
-	desiredInvites := make([]config.InviteSpec, 0, len(usernames)+1)
-	actions := make([]gitopsplan.Action, 0, len(usernames)+1)
+	desiredInvites := make([]config.InviteSpec, 0, len(usernames))
+	actions := make([]gitopsplan.Action, 0, len(usernames))
 	userIDs := make(map[string]int64, len(usernames))
 	for i, username := range usernames {
 		invite := inviteByUsername(username, "direct_member")
@@ -1008,19 +1136,6 @@ func TestExecuteInviteUsernamePreResolutionCachesAndBoundsConcurrency(t *testing
 		})
 		userIDs[inviteUsernameKey(username)] = int64(i + 1)
 	}
-
-	duplicate := inviteByUsername(" Alpha ", "direct_member")
-	duplicateResourceID, err := desiredInviteResourceID(duplicate)
-	if err != nil {
-		t.Fatalf("unexpected duplicate resource ID error: %v", err)
-	}
-	desiredInvites = append(desiredInvites, duplicate)
-	actions = append(actions, gitopsplan.Action{
-		ResourceType: gitopsplan.ActionResourceTypeInvite,
-		Operation:    gitopsplan.ActionOperationCreate,
-		ResourceID:   duplicateResourceID,
-		Executable:   true,
-	})
 
 	var (
 		lookupCalls     atomic.Int64
@@ -1293,6 +1408,10 @@ func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Teams: []config.TeamSpec{{
 			Slug:         "platform",
 			Name:         "Platform",
@@ -1329,6 +1448,10 @@ func TestExecuteTeamMembershipRejectsUnsupportedOperation(t *testing.T) {
 
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -1417,6 +1540,10 @@ func TestExecuteStopsOnFirstFailure(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Invites:      []config.InviteSpec{inviteByEmail("alice@example.com", "direct_member")},
+		Members: []config.OrganizationMemberSpec{{
+			Username: "alice",
+			Role:     "member",
+		}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -1816,4 +1943,21 @@ func waitForError(t *testing.T, ch <-chan error, description string) error {
 		t.Fatalf("timed out waiting for %s", description)
 		return nil
 	}
+}
+
+func assertValidationErrorHasIssue(t *testing.T, err error, wantPath string, wantCode config.ValidationIssueCode) {
+	t.Helper()
+
+	var validationErr *config.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *config.ValidationError, got %T (%v)", err, err)
+	}
+
+	for _, issue := range validationErr.Report.Errors {
+		if issue.Path == wantPath && issue.Code == wantCode {
+			return
+		}
+	}
+
+	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, validationErr.Report.Errors)
 }
