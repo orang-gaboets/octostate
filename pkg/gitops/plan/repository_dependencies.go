@@ -168,11 +168,23 @@ func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) 
 		slices.SortFunc(ready, compareStrings)
 	}
 
-	// A cycle has no ready node. Append its remaining nodes in normalized
-	// identity order so cycle diagnostics and plans remain deterministic.
+	// A cycle has no ready node. Emit cycle members before their downstream
+	// nodes, keeping normalized identity order within each group.
 	emitted := make(map[string]struct{}, len(order))
 	for _, key := range order {
 		emitted[key] = struct{}{}
+	}
+	remaining := make(map[string]struct{}, len(keys)-len(order))
+	for _, key := range keys {
+		if _, ok := emitted[key]; !ok {
+			remaining[key] = struct{}{}
+		}
+	}
+	for _, key := range keys {
+		if _, ok := remaining[key]; ok && repositoryCycleContains(key, nodes, remaining) {
+			order = append(order, key)
+			emitted[key] = struct{}{}
+		}
 	}
 	for _, key := range keys {
 		if _, ok := emitted[key]; !ok {
@@ -180,6 +192,27 @@ func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) 
 		}
 	}
 	return order
+}
+
+func repositoryCycleContains(start string, nodes map[string]*repositoryPlanNode, remaining map[string]struct{}) bool {
+	seen := make(map[string]struct{})
+	for current := start; ; {
+		if current == start && len(seen) > 0 {
+			return true
+		}
+		if _, ok := seen[current]; ok {
+			return false
+		}
+		seen[current] = struct{}{}
+		node := nodes[current]
+		if node.dependency == "" {
+			return false
+		}
+		if _, ok := remaining[node.dependency]; !ok {
+			return false
+		}
+		current = node.dependency
+	}
 }
 
 func repositoryNodeAvailability(node *repositoryPlanNode, dependency repositoryAvailability) repositoryAvailability {

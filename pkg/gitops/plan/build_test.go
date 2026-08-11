@@ -1459,6 +1459,21 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 			},
 		},
 		{
+			name: "cycle precedes lexically earlier downstream consumer",
+			repositories: []config.RepositorySpec{
+				managedTemplate("orang-gaboets", "z-a", "orang-gaboets", "z-b"),
+				managedTemplate("orang-gaboets", "z-b", "orang-gaboets", "z-a"),
+				{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-a"}},
+			},
+			wantOrder: []string{"orang-gaboets/z-a", "orang-gaboets/z-b", "orang-gaboets/a-consumer"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/z-a": false, "orang-gaboets/z-b": false, "orang-gaboets/a-consumer": false,
+			},
+			wantMessage: map[string][]string{
+				"orang-gaboets/a-consumer": {"required template orang-gaboets/z-a is unavailable", "orang-gaboets/z-a -> orang-gaboets/z-b -> orang-gaboets/z-a"},
+			},
+		},
+		{
 			name: "transitive cycle consumer and dependent team permission",
 			repositories: []config.RepositorySpec{
 				managedTemplate("orang-gaboets", "a", "orang-gaboets", "b"),
