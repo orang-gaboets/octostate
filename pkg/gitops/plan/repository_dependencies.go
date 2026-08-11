@@ -104,6 +104,39 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 	}
 
 	actions := make([]Action, 0, len(nodes)+len(actual))
+	for _, key := range repositoryActionOrder(nodes, keys) {
+		node := nodes[key]
+		if node.action == nil {
+			continue
+		}
+		action := *node.action
+		if action.Operation == ActionOperationCreate {
+			status := availability[key]
+			action.Executable = status.executable
+			if !status.executable {
+				action.Message = repositoryUnavailableMessage(node.repository, status.diagnostic)
+			}
+		}
+		actions = append(actions, action)
+	}
+
+	orphans := make([]state.Repository, 0)
+	for key, repository := range actual {
+		if _, ok := nodes[key]; !ok {
+			orphans = append(orphans, repository)
+		}
+	}
+	slices.SortFunc(orphans, func(a, b state.Repository) int {
+		return compareStrings(repositoryKey(a.Owner, a.Name), repositoryKey(b.Owner, b.Name))
+	})
+	for _, repository := range orphans {
+		actions = append(actions, Action{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: repositoryID(repository.Owner, repository.Name), Message: fmt.Sprintf("repository %s exists in live state but is not declared in desired config", repositoryID(repository.Owner, repository.Name))})
+	}
+
+	return repositoryPlan{actions: actions, availability: availability}
+}
+
+func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) []string {
 	indegree := make(map[string]int, len(nodes))
 	dependents := make(map[string][]string, len(nodes))
 	for key, node := range nodes {
@@ -146,36 +179,7 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 			order = append(order, key)
 		}
 	}
-	for _, key := range order {
-		node := nodes[key]
-		if node.action == nil {
-			continue
-		}
-		action := *node.action
-		if action.Operation == ActionOperationCreate {
-			status := availability[key]
-			action.Executable = status.executable
-			if !status.executable {
-				action.Message = repositoryUnavailableMessage(node.repository, status.diagnostic)
-			}
-		}
-		actions = append(actions, action)
-	}
-
-	orphans := make([]state.Repository, 0)
-	for key, repository := range actual {
-		if _, ok := nodes[key]; !ok {
-			orphans = append(orphans, repository)
-		}
-	}
-	slices.SortFunc(orphans, func(a, b state.Repository) int {
-		return compareStrings(repositoryKey(a.Owner, a.Name), repositoryKey(b.Owner, b.Name))
-	})
-	for _, repository := range orphans {
-		actions = append(actions, Action{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: repositoryID(repository.Owner, repository.Name), Message: fmt.Sprintf("repository %s exists in live state but is not declared in desired config", repositoryID(repository.Owner, repository.Name))})
-	}
-
-	return repositoryPlan{actions: actions, availability: availability}
+	return order
 }
 
 func repositoryNodeAvailability(node *repositoryPlanNode, dependency repositoryAvailability) repositoryAvailability {
