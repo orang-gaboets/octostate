@@ -127,12 +127,7 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 
 	for i, repo := range repositories {
 		pathPrefix := fmt.Sprintf("repositories[%d]", i)
-		owner := strings.TrimSpace(repo.Owner)
-		if owner == "" {
-			owner = organization
-		} else if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
-			report.addError(pathPrefix+".owner", ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)
-		}
+		owner := normalizeRepositoryOwner(report, pathPrefix+".owner", repo.Owner, organization)
 		name := strings.TrimSpace(repo.Name)
 		if name == "" {
 			report.addError(pathPrefix+".name", ValidationIssueCodeMissingRequiredField, "repository name is required")
@@ -218,6 +213,17 @@ func validateRepositoryTopics(report *ValidationReport, pathPrefix string, topic
 	}
 }
 
+func normalizeRepositoryOwner(report *ValidationReport, path string, owner string, organization string) string {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return organization
+	}
+	if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
+		report.addError(path, ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)
+	}
+	return owner
+}
+
 func validateTeams(report *ValidationReport, teams []TeamSpec, organization string, organizationMemberIndex map[string]int) map[string]int {
 	teamIndex := make(map[string]int, len(teams))
 
@@ -277,12 +283,7 @@ func validateTeams(report *ValidationReport, teams []TeamSpec, organization stri
 		repositoryIndex := make(map[string]int, len(team.Repositories))
 		for j, repo := range team.Repositories {
 			repoPath := fmt.Sprintf("%s.repositories[%d]", pathPrefix, j)
-			owner := strings.TrimSpace(repo.Owner)
-			if owner == "" {
-				owner = organization
-			} else if organization != "" && !RepositoryOwnerMatchesOrganization(owner, organization) {
-				report.addError(repoPath+".owner", ValidationIssueCodeRepositoryOwnerScope, "repository owner %q must match organization %q", owner, organization)
-			}
+			owner := normalizeRepositoryOwner(report, repoPath+".owner", repo.Owner, organization)
 			name := strings.TrimSpace(repo.Name)
 			permission := strings.TrimSpace(repo.Permission)
 
