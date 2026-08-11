@@ -122,14 +122,19 @@ Supported visibility values:
 `internal` visibility is currently rejected by validation and is not supported
 by apply yet.
 
-Repository template fields are create-time inputs:
+Repository template fields are create-time inputs and also define managed
+same-organization dependency edges for repositories that are missing from live
+state:
 
 - `template.owner`
 - `template.name`
 - `template.include_all_branches`
 
 `template.owner` and `template.name` are required together when creating a
-repository from a template.
+repository from a template. A reference to another missing repository is a
+managed dependency only when both repositories belong to the configured
+organization. External or cross-organization references are checked during
+apply preflight instead.
 
 `config apply` currently creates repositories only through templates, so any
 repository that may need to be created must declare both `template.owner` and
@@ -143,7 +148,8 @@ Repository reconciliation semantics:
 - omitted optional fields are left unmanaged
 - explicit empty strings for `description` or `homepage` clear those fields
 - explicit boolean values manage the boolean fields
-- explicit `null` is rejected for the presence-aware optional fields
+- explicit `null` is rejected for presence-aware fields by semantic validation;
+  at the planner layer it means the field is unmanaged
 - `allow_forking` is ignored for private repositories
 
 Repository topics:
@@ -280,8 +286,15 @@ cross-organization managed owners:
 - presence-aware repository fields only reconcile when they are explicitly
   declared in desired config
 - repository template fields are create-time only
-- team repository permissions are managed per team, but the underlying
-  repository still needs to exist or be created earlier in the same plan
-- `config apply --check` uses the same normalized plan ordering as `config
-  apply`, so same-plan repository template updates are visible to later same
-  plan creates
+- for dependency resolution, an existing source uses an explicitly managed
+  `is_template` value or its live value when `is_template` is omitted/null; a
+  new source is usable only when `is_template: true`
+- managed repository actions use deterministic dependency-first DFS postorder;
+  unavailable sources propagate diagnostics transitively and cycles report a
+  stable `template dependency cycle: ...` path
+- team repository permissions reuse repository availability, while external
+  and cross-organization targets remain apply-preflight concerns
+- the public plan JSON contains no dependency field
+- `config apply --check` uses the same dependency-safe order as `config apply`,
+  and continues best-effort preflight to aggregate independent failures in plan
+  order

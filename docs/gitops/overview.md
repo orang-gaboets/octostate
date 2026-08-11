@@ -134,11 +134,26 @@ in a fixed order:
 6. team repository permissions
 
 `Report.Normalize()` stays sequential because it is the final global
-sort/summarize pass that defines the public plan ordering. Repository updates
-sort before repository creates in that normalized ordering, which lets a
-same-plan template-state update become visible to a later repository create.
-Repository identity is normalized the same way, so mixed-case references still
-resolve to the same planned repository key during same-plan dependency checks.
+sort/summarize pass that defines the public plan ordering. Managed repositories
+in the desired organization form dependency edges when a missing repository is
+created from another managed repository in that same organization. The planner
+walks those edges with sorted keys and emits deterministic dependency-first DFS
+postorder, so a source update or create precedes its consumers. External or
+cross-organization template references are not managed dependency edges; their
+availability remains an apply-preflight concern. Dependency metadata is
+internal and is not added to the public plan JSON.
+
+For an existing source, an explicitly managed `is_template` value is the final
+state used by dependants; when it is omitted (or null at the planner layer), the
+live template state is retained. A newly created source is usable as a template
+only when its final desired state explicitly sets `is_template: true`. A false,
+omitted, or null new-source state makes dependent creates non-executable.
+Semantic CLI validation rejects explicit null before planning.
+
+Availability failures propagate transitively to dependent creates and team
+repository permissions. Cycles produce stable diagnostics such as `template
+dependency cycle: org/a -> org/b -> org/a`. Team permissions reuse the same
+repository availability gate, including its diagnostics.
 
 `config apply` then executes only the supported executable `create` and
 `update` actions from that plan. Unsupported `delete` and `remove` drift is
@@ -146,9 +161,11 @@ reported back as skipped state rather than being executed.
 
 `config apply --check` runs the same live read and plan build, then performs
 apply preflight validation without mutating GitHub. Because it consumes the
-same normalized plan as `config apply`, a repository updated to
+same dependency-safe plan order as `config apply`, a repository updated to
 `is_template: true` earlier in the plan is available to later same-plan
-repository creates that use it as a template.
+repository creates that use it as a template. Check mode continues through
+independent actions and returns best-effort aggregate errors in plan order;
+it is not a transaction or a guarantee that a later apply will succeed.
 
 This check mode is best-effort: it validates the supported apply executor inputs
 against the collected live state and uses read-only GitHub probes for supported
