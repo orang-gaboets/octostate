@@ -146,22 +146,12 @@ func (p planner) planTeamMembers() []Action {
 	return actions
 }
 
-func (p planner) planTeamRepositoryPermissions() []Action {
+func (p planner) planTeamRepositoryPermissions(repoPlan repositoryPlan) []Action {
 	actions := make([]Action, 0)
 	actualPermissions := make(map[string]state.TeamRepositoryPermission, len(p.actual.TeamRepositoryPermissions))
 	for _, permission := range p.actual.TeamRepositoryPermissions {
 		actualPermissions[teamRepositoryPermissionKey(permission.TeamSlug, permission.Owner, permission.Name)] = permission
 	}
-	actualRepos := make(map[string]state.Repository, len(p.actual.Repositories))
-	for _, repository := range p.actual.Repositories {
-		actualRepos[repositoryKey(repository.Owner, repository.Name)] = repository
-	}
-
-	desiredRepos := make(map[string]config.RepositorySpec, len(p.desired.Repositories))
-	for _, repository := range p.desired.Repositories {
-		desiredRepos[repositoryKey(repository.Owner, repository.Name)] = repository
-	}
-
 	desiredPermissions := make(map[string]config.TeamRepositorySpec)
 	for _, team := range p.desired.Teams {
 		for _, permission := range team.Repositories {
@@ -169,14 +159,15 @@ func (p planner) planTeamRepositoryPermissions() []Action {
 			desiredPermissions[key] = permission
 			actualPermission, ok := actualPermissions[key]
 			if !ok {
-				executable := repositoryAvailableForTeamRepositoryPermission(permission.Owner, permission.Name, actualRepos, desiredRepos)
+				availability, managed := repoPlan.availability[repositoryKey(permission.Owner, permission.Name)]
+				executable := !managed || availability.executable
 				message := fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
 				if !executable {
 					message = fmt.Sprintf(
-						"team repository permission %s requires repository %s/%s to exist or be created earlier in the same plan",
+						"team repository permission %s requires repository %s/%s to be available: %s",
 						teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
 						permission.Owner,
-						permission.Name,
+						permission.Name, availability.diagnostic,
 					)
 				}
 				actions = append(actions, Action{
@@ -191,14 +182,15 @@ func (p planner) planTeamRepositoryPermissions() []Action {
 			if actualPermission.Permission == permission.Permission {
 				continue
 			}
-			executable := repositoryAvailableForTeamRepositoryPermission(permission.Owner, permission.Name, actualRepos, desiredRepos)
+			availability, managed := repoPlan.availability[repositoryKey(permission.Owner, permission.Name)]
+			executable := !managed || availability.executable
 			message := fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
 			if !executable {
 				message = fmt.Sprintf(
-					"team repository permission %s requires repository %s/%s to exist or be created earlier in the same plan",
+					"team repository permission %s requires repository %s/%s to be available: %s",
 					teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
 					permission.Owner,
-					permission.Name,
+					permission.Name, availability.diagnostic,
 				)
 			}
 			actions = append(actions, Action{

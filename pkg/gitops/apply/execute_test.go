@@ -744,12 +744,6 @@ func TestExecuteRepositoryUpdateToTemplateRunsBeforeLaterSamePlanCreate(t *testi
 		Actions: []gitopsplan.Action{
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
-				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
-				Executable:   true,
-			},
-			{
-				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationUpdate,
 				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
 				Executable:   true,
@@ -758,6 +752,12 @@ func TestExecuteRepositoryUpdateToTemplateRunsBeforeLaterSamePlanCreate(t *testi
 					From:  false,
 					To:    true,
 				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
+				Executable:   true,
 			},
 		},
 	}

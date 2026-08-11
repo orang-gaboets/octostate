@@ -84,7 +84,7 @@ type planner struct {
 const planPhaseConcurrency = 6
 
 type planBuildResult struct {
-	repositoryActions               []Action
+	repositoryPlan                  repositoryPlan
 	teamActions                     []Action
 	organizationMemberActions       []Action
 	inviteActions                   []Action
@@ -93,15 +93,9 @@ type planBuildResult struct {
 }
 
 func (p planner) buildActions() ([]Action, error) {
+	result := planBuildResult{repositoryPlan: p.planRepositories()}
 	g, groupCtx := errgroup.WithContext(p.ctx)
 	g.SetLimit(planPhaseConcurrency)
-
-	result := planBuildResult{}
-
-	g.Go(func() error {
-		result.repositoryActions = p.planRepositories()
-		return nil
-	})
 	g.Go(func() error {
 		result.teamActions = p.planTeams()
 		return nil
@@ -126,7 +120,7 @@ func (p planner) buildActions() ([]Action, error) {
 		return nil
 	})
 	g.Go(func() error {
-		result.teamRepositoryPermissionActions = p.planTeamRepositoryPermissions()
+		result.teamRepositoryPermissionActions = p.planTeamRepositoryPermissions(result.repositoryPlan)
 		return nil
 	})
 
@@ -135,14 +129,14 @@ func (p planner) buildActions() ([]Action, error) {
 	}
 
 	actions := make([]Action, 0,
-		len(result.repositoryActions)+
+		len(result.repositoryPlan.actions)+
 			len(result.teamActions)+
 			len(result.organizationMemberActions)+
 			len(result.inviteActions)+
 			len(result.teamMemberActions)+
 			len(result.teamRepositoryPermissionActions),
 	)
-	actions = append(actions, result.repositoryActions...)
+	actions = append(actions, result.repositoryPlan.actions...)
 	actions = append(actions, result.teamActions...)
 	actions = append(actions, result.organizationMemberActions...)
 	actions = append(actions, result.inviteActions...)

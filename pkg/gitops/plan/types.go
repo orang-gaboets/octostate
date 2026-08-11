@@ -77,8 +77,9 @@ type FieldChange struct {
 	To    any    `json:"to,omitempty"`
 }
 
-// Normalize initializes nil slices, sorts actions deterministically, sorts
-// field changes within each action, and recomputes summary counts.
+// Normalize initializes nil slices, keeps repository actions in planner order,
+// sorts other actions deterministically, sorts field changes, and recomputes
+// summary counts.
 func (r *Report) Normalize() {
 	if r == nil {
 		return
@@ -92,7 +93,17 @@ func (r *Report) Normalize() {
 		r.Actions[i].Normalize()
 	}
 
-	slices.SortFunc(r.Actions, comparePlanActions)
+	repositoryActions := make([]Action, 0, len(r.Actions))
+	nonRepositoryActions := make([]Action, 0, len(r.Actions))
+	for _, action := range r.Actions {
+		if action.ResourceType == ActionResourceTypeRepository {
+			repositoryActions = append(repositoryActions, action)
+			continue
+		}
+		nonRepositoryActions = append(nonRepositoryActions, action)
+	}
+	slices.SortFunc(nonRepositoryActions, comparePlanActions)
+	r.Actions = append(repositoryActions, nonRepositoryActions...)
 	r.Summary = summarizeActions(r.Actions)
 }
 

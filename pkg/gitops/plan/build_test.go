@@ -358,8 +358,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    9,
-			NonExecutableActions: 10,
+			ExecutableActions:    11,
+			NonExecutableActions: 8,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,
@@ -382,8 +382,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: false, Message: "team membership platform/charlie requires organization member charlie to exist first", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in live state but is not declared in desired config", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-extra requires repository orang-gaboets/repo-extra to exist or be created earlier in the same plan", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: false, Message: "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to exist or be created earlier in the same plan", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: true, Message: "update team repository permission platform/orang-gaboets/octostate", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationRemove, ResourceID: "platform/orang-gaboets/repo-old", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-old exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 		},
 	}
@@ -948,7 +948,7 @@ func TestBuildTeamRepositoryPermissionCreateIsNonExecutableWhenRepositoryCannotB
 			Operation:    ActionOperationCreate,
 			ResourceID:   "platform/orang-gaboets/octostate",
 			Executable:   false,
-			Message:      "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to exist or be created earlier in the same plan",
+			Message:      "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to be available: template configuration is missing",
 			Changes:      []FieldChange{},
 		},
 	}
@@ -1232,6 +1232,30 @@ func TestBuildIgnoresTemplateConfigurationForExistingRepository(t *testing.T) {
 	}
 	if report.Summary.Actions != 0 || len(report.Actions) != 0 {
 		t.Fatalf("expected template-only diff to be ignored, got %#v", report)
+	}
+}
+
+func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
+	t.Parallel()
+
+	template := config.RepositorySpec{Owner: "orang-gaboets", Name: "template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	template.SetManagedIsTemplate(true)
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{
+			{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "template"}},
+			template,
+		}},
+		Actual: &state.OrganizationState{Organization: "orang-gaboets"},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	if got, want := report.Actions[0].ResourceID, "orang-gaboets/template"; got != want {
+		t.Fatalf("template action order: got %q want %q; actions=%#v", got, want, report.Actions)
+	}
+	if got, want := report.Actions[1].ResourceID, "orang-gaboets/consumer"; got != want {
+		t.Fatalf("consumer action order: got %q want %q; actions=%#v", got, want, report.Actions)
 	}
 }
 

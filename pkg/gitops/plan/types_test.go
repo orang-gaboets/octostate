@@ -53,6 +53,13 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 			},
 			{
 				ResourceType: ActionResourceTypeRepository,
+				Operation:    ActionOperationCreate,
+				ResourceID:   "orang-gaboets/new-repo",
+				Executable:   true,
+				Message:      "create repository",
+			},
+			{
+				ResourceType: ActionResourceTypeRepository,
 				Operation:    ActionOperationUpdate,
 				ResourceID:   "orang-gaboets/octostate",
 				Executable:   true,
@@ -61,13 +68,6 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 					{Field: "visibility", From: "public", To: "private"},
 					{Field: "allow_forking", From: true, To: false},
 				},
-			},
-			{
-				ResourceType: ActionResourceTypeRepository,
-				Operation:    ActionOperationCreate,
-				ResourceID:   "orang-gaboets/new-repo",
-				Executable:   true,
-				Message:      "create repository",
 			},
 			{
 				ResourceType: ActionResourceTypeTeam,
@@ -94,6 +94,14 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 	wantActions := []Action{
 		{
 			ResourceType: ActionResourceTypeRepository,
+			Operation:    ActionOperationCreate,
+			ResourceID:   "orang-gaboets/new-repo",
+			Executable:   true,
+			Message:      "create repository",
+			Changes:      []FieldChange{},
+		},
+		{
+			ResourceType: ActionResourceTypeRepository,
 			Operation:    ActionOperationUpdate,
 			ResourceID:   "orang-gaboets/octostate",
 			Executable:   true,
@@ -102,14 +110,6 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 				{Field: "allow_forking", From: true, To: false},
 				{Field: "visibility", From: "public", To: "private"},
 			},
-		},
-		{
-			ResourceType: ActionResourceTypeRepository,
-			Operation:    ActionOperationCreate,
-			ResourceID:   "orang-gaboets/new-repo",
-			Executable:   true,
-			Message:      "create repository",
-			Changes:      []FieldChange{},
 		},
 		{
 			ResourceType: ActionResourceTypeTeam,
