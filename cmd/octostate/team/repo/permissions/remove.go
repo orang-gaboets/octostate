@@ -47,6 +47,9 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 			trimmedRepoOrg := strings.TrimSpace(repoOrg)
 			trimmedRepo := strings.TrimSpace(repo)
 
+			if trimmedOrg == "" {
+				return fmt.Errorf("organization cannot be empty: %w", github.ErrMissingRequiredField)
+			}
 			if trimmedRepoOrg == "" {
 				trimmedRepoOrg = trimmedOrg
 			}

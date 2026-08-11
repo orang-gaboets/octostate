@@ -110,6 +110,14 @@ func TestAddTeamRepoPermissionWithWhitespaceRepoRejected(t *testing.T) {
 	}
 }
 
+func TestAddTeamRepoPermissionWithWhitespaceOrganizationRejected(t *testing.T) {
+	c := permissionscmd.AddCmd(nil)
+	c.SetArgs([]string{"--org", "   ", "--slug", "s", "--repo", "r"})
+	if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+}
+
 func TestAddTeamRepoPermissionDryRunSkipsAddService(t *testing.T) {
 	svc := &captureAddTeamRepoBySlugService{}
 	c := permissionscmd.AddCmd(svc)

@@ -95,6 +95,14 @@ func TestRemoveTeamRepoPermissionWithWhitespaceRepoRejected(t *testing.T) {
 	}
 }
 
+func TestRemoveTeamRepoPermissionWithWhitespaceOrganizationRejected(t *testing.T) {
+	c := permissionscmd.RemoveCmd(nil)
+	c.SetArgs([]string{"--org", "   ", "--slug", "s", "--repo", "r"})
+	if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
+		t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
+	}
+}
+
 func TestRemoveTeamRepoPermissionDryRunSkipsRemoveService(t *testing.T) {
 	svc := &captureRemoveTeamRepoBySlugService{}
 	c := permissionscmd.RemoveCmd(svc)
