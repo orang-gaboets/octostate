@@ -58,15 +58,17 @@ func AddCmd(svc teams.Service) *cobra.Command {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would add user %q to team %s/%s with role %s\n",
-					trimmedUsername,
-					trimmedOrg,
-					trimmedSlug,
-					trimmedRole,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would add user %q to team %s/%s with role %s",
+						trimmedUsername,
+						trimmedOrg,
+						trimmedSlug,
+						trimmedRole,
+					),
+					teamMemberOperationData(trimmedOrg, trimmedSlug, trimmedUsername, trimmedRole, nil),
 				)
-				return err
 			}
 
 			if cmd.Flags().Changed("to-config") {
@@ -94,7 +96,17 @@ func AddCmd(svc teams.Service) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmdoutput.PrintJSON(cmd, membership)
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf(
+					"Added user %q to team %s/%s with role %s",
+					trimmedUsername,
+					trimmedOrg,
+					trimmedSlug,
+					trimmedRole,
+				),
+				teamMemberOperationData(trimmedOrg, trimmedSlug, trimmedUsername, trimmedRole, membership),
+			)
 		},
 	}
 
@@ -153,4 +165,20 @@ func addTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username, role s
 		"config_path":  path,
 		"changed":      changed,
 	})
+}
+
+// teamMemberOperationData builds the stable operation metadata reported by the
+// live and dry-run membership paths. membership is attached only when the live
+// call returned one, so dry-run output never implies a GitHub response.
+func teamMemberOperationData(org, slug, username, role string, membership any) map[string]any {
+	data := map[string]any{
+		"organization": org,
+		"slug":         slug,
+		"username":     username,
+		"role":         role,
+	}
+	if membership != nil {
+		data["membership"] = membership
+	}
+	return data
 }
