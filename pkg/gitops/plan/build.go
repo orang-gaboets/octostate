@@ -93,7 +93,7 @@ type planBuildResult struct {
 }
 
 func (p planner) buildActions() ([]Action, error) {
-	result := planBuildResult{repositoryPlan: p.planRepositories()}
+	result := planBuildResult{repositoryPlan: p.computeRepositoryPlan()}
 	g, groupCtx := errgroup.WithContext(p.ctx)
 	g.SetLimit(planPhaseConcurrency)
 	g.Go(func() error {

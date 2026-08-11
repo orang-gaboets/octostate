@@ -8,10 +8,6 @@ import (
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
-func (p planner) planRepositories() repositoryPlan {
-	return p.computeRepositoryPlan()
-}
-
 func repositoryCreateAction(repository config.RepositorySpec) *Action {
 	return &Action{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: repositoryID(repository.Owner, repository.Name), Executable: strings.TrimSpace(repository.Template.Owner) != "" && strings.TrimSpace(repository.Template.Name) != "", Message: fmt.Sprintf("create repository %s", repositoryID(repository.Owner, repository.Name))}
 }

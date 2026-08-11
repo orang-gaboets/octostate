@@ -152,11 +152,7 @@ func comparePlanActions(a, b Action) int {
 	if diff := compareActionResourceTypes(a.ResourceType, b.ResourceType); diff != 0 {
 		return diff
 	}
-	if a.ResourceType == ActionResourceTypeRepository {
-		if diff := compareRepositoryActionOperations(a.Operation, b.Operation); diff != 0 {
-			return diff
-		}
-	} else if diff := compareActionOperations(a.Operation, b.Operation); diff != 0 {
+	if diff := compareActionOperations(a.Operation, b.Operation); diff != 0 {
 		return diff
 	}
 	if diff := compareStrings(a.ResourceID, b.ResourceID); diff != 0 {
@@ -196,15 +192,6 @@ func compareActionOperations(a, b ActionOperation) int {
 	return compareOrderedStrings(string(a), string(b), []string{
 		string(ActionOperationCreate),
 		string(ActionOperationUpdate),
-		string(ActionOperationRemove),
-		string(ActionOperationDelete),
-	})
-}
-
-func compareRepositoryActionOperations(a, b ActionOperation) int {
-	return compareOrderedStrings(string(a), string(b), []string{
-		string(ActionOperationUpdate),
-		string(ActionOperationCreate),
 		string(ActionOperationRemove),
 		string(ActionOperationDelete),
 	})
