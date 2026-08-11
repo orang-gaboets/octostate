@@ -64,8 +64,8 @@ Current collector concurrency limits:
 - Builds independent action phases concurrently, then appends them back in
   fixed order before final normalization
 - Builds managed same-organization template dependency edges for missing
-  repositories and emits them in deterministic, dependency-first DFS
-  postorder using sorted repository keys
+  repositories and emits them in deterministic dependency-safe topological
+  order, using normalized repository identity to break ready-action ties
 - Uses final template state for dependency availability: existing sources use
   an explicitly managed `is_template` value or retain live state when omitted;
   new sources require `is_template: true`

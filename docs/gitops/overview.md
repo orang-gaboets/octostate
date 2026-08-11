@@ -137,8 +137,9 @@ in a fixed order:
 sort/summarize pass that defines the public plan ordering. Managed repositories
 in the desired organization form dependency edges when a missing repository is
 created from another managed repository in that same organization. The planner
-walks those edges with sorted keys and emits deterministic dependency-first DFS
-postorder, so a source update or create precedes its consumers. External or
+emits a deterministic dependency-safe topological order, using normalized
+repository identity to break ties among ready actions, so a source update or
+create precedes its consumers. External or
 cross-organization template references are not managed dependency edges; their
 availability remains an apply-preflight concern. Dependency metadata is
 internal and is not added to the public plan JSON.
@@ -148,7 +149,8 @@ state used by dependants; when it is omitted (or null at the planner layer), the
 live template state is retained. A newly created source is usable as a template
 only when its final desired state explicitly sets `is_template: true`. A false,
 omitted, or null new-source state makes dependent creates non-executable.
-Semantic CLI validation rejects explicit null before planning.
+Explicit `is_template: null` is accepted by CLI validation and is treated as
+unmanaged by the planner.
 
 Availability failures propagate transitively to dependent creates and team
 repository permissions. Cycles produce stable diagnostics such as `template

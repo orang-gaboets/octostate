@@ -148,8 +148,8 @@ Repository reconciliation semantics:
 - omitted optional fields are left unmanaged
 - explicit empty strings for `description` or `homepage` clear those fields
 - explicit boolean values manage the boolean fields
-- explicit `null` is rejected for presence-aware fields by semantic validation;
-  at the planner layer it means the field is unmanaged
+- explicit `null` is rejected for presence-aware fields by semantic validation,
+  except for `is_template`, where it means unmanaged/preserve-live-state
 - `allow_forking` is ignored for private repositories
 
 Repository topics:
@@ -289,9 +289,9 @@ cross-organization managed owners:
 - for dependency resolution, an existing source uses an explicitly managed
   `is_template` value or its live value when `is_template` is omitted/null; a
   new source is usable only when `is_template: true`
-- managed repository actions use deterministic dependency-first DFS postorder;
-  unavailable sources propagate diagnostics transitively and cycles report a
-  stable `template dependency cycle: ...` path
+- managed repository actions use deterministic dependency-safe topological
+  ordering; unavailable sources propagate diagnostics transitively and cycles
+  report a stable `template dependency cycle: ...` path
 - team repository permissions reuse repository availability, while external
   and cross-organization targets remain apply-preflight concerns
 - the public plan JSON contains no dependency field
