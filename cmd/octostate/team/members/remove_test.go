@@ -160,7 +160,7 @@ teams:
     name: Platform
     privacy: closed
     members:
-      - username: alice
+      - username: aLiCe
         role: maintainer
       - username: bob
         role: member
@@ -184,7 +184,7 @@ teams:
 		t.Fatalf("expected no stderr output, got %q", errBuf.String())
 	}
 	data := result.Data
-	if data.Organization != "o" || data.Slug != "PLATFORM" || data.Username != "ALICE" || data.ConfigPath != configPath || !data.Changed {
+	if data.Organization != "o" || data.Slug != "PLATFORM" || data.Username != "aLiCe" || data.ConfigPath != configPath || !data.Changed {
 		t.Fatalf("unexpected operation data: %#v", data)
 	}
 
@@ -244,14 +244,16 @@ teams:
 func TestRemoveTeamMemberToConfigMissingMemberIsNoOp(t *testing.T) {
 	before := `organization: o
 members:
-  - username: alice
+  - username: Alice
+    role: member
+  - username: bob
     role: member
 teams:
   - slug: platform
     name: Platform
     privacy: closed
     members:
-      - username: alice
+      - username: bob
         role: member
 `
 	configPath := writeMembersConfig(t, before)
@@ -259,7 +261,7 @@ teams:
 	c := memberscmd.RemoveCmd(nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
-	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "carol", "--to-config", configPath})
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "aLiCe", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +271,9 @@ teams:
 	}
 	if result.Data.Changed {
 		t.Fatalf("expected changed=false, got %#v", result.Data)
+	}
+	if result.Data.Username != "aLiCe" {
+		t.Fatalf("expected reported username aLiCe, got %q", result.Data.Username)
 	}
 	if got := readMembersConfig(t, configPath); got != before {
 		t.Fatalf("no-op rewrote config:\n%s", got)

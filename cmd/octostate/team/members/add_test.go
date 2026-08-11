@@ -277,7 +277,7 @@ teams:
 func TestAddTeamMemberToConfigUpdatesExistingRole(t *testing.T) {
 	configPath := writeMembersConfig(t, `organization: o
 members:
-  - username: alice
+  - username: Alice
     role: member
   - username: bob
     role: member
@@ -286,7 +286,7 @@ teams:
     name: Platform
     privacy: closed
     members:
-      - username: alice
+      - username: ALICE
         role: member
       - username: bob
         role: member
@@ -299,8 +299,9 @@ teams:
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !decodeConfigOperationOutput(t, out.String()).Data.Changed {
-		t.Fatal("expected changed=true for role update")
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Data.Username != "ALICE" || !result.Data.Changed {
+		t.Fatalf("expected existing team username ALICE and changed=true, got %#v", result.Data)
 	}
 
 	cfg, err := gitopsconfig.LoadFile(configPath)
@@ -311,8 +312,8 @@ teams:
 	if len(members) != 2 {
 		t.Fatalf("expected member count to stay 2, got %#v", members)
 	}
-	if members[0].Username != "alice" || members[0].Role != "maintainer" {
-		t.Fatalf("expected alice updated in place, got %#v", members[0])
+	if members[0].Username != "ALICE" || members[0].Role != "maintainer" {
+		t.Fatalf("expected ALICE updated in place, got %#v", members[0])
 	}
 	if members[1].Username != "bob" || members[1].Role != "member" {
 		t.Fatalf("unrelated member changed: %#v", members[1])
@@ -331,9 +332,14 @@ teams:
 `)
 
 	c := memberscmd.AddCmd(nil)
-	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "ALICE", "--to-config", configPath})
+	var out bytes.Buffer
+	c.SetOut(&out)
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--username", "alice", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
+	}
+	if got := decodeConfigOperationOutput(t, out.String()).Data.Username; got != "Alice" {
+		t.Fatalf("expected canonical username Alice in proposal, got %q", got)
 	}
 
 	cfg, err := gitopsconfig.LoadFile(configPath)
