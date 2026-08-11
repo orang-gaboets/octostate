@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -1258,6 +1259,74 @@ func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
 		t.Fatalf("consumer action order: got %q want %q; actions=%#v", got, want, report.Actions)
 	}
 }
+
+func TestBuildDoesNotTreatExternalConsumerAsManagedTemplateDependency(t *testing.T) {
+	t.Parallel()
+
+	template := config.RepositorySpec{Owner: "orang-gaboets", Name: "template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	template.SetManagedIsTemplate(true)
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{
+			{Owner: "aaa-external", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "template"}},
+			template,
+		}},
+		Actual: &state.OrganizationState{Organization: "orang-gaboets"},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	if got, want := report.Actions[0].ResourceID, "aaa-external/consumer"; got != want {
+		t.Fatalf("external consumer should retain normalized independent ordering: got %q want %q; actions=%#v", got, want, report.Actions)
+	}
+	if !report.Actions[0].Executable {
+		t.Fatalf("external consumer should not inherit managed source availability: %#v", report.Actions[0])
+	}
+}
+
+func TestBuildUsesFinalManagedTemplateState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		live        *bool
+		declaration string
+		executable  bool
+	}{
+		{"existing template omitted", boolPtr(true), "", true},
+		{"existing template null", boolPtr(true), "is_template: null", true},
+		{"existing template false", boolPtr(true), "is_template: false", false},
+		{"existing template true", boolPtr(false), "is_template: true", true},
+		{"new template omitted", nil, "", false},
+		{"new template null", nil, "is_template: null", false},
+		{"new template false", nil, "is_template: false", false},
+		{"new template true", nil, "is_template: true", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			declaration := ""
+			if tt.declaration != "" {
+				declaration = "\n    " + tt.declaration
+			}
+			desired := testconfig.LoadDesiredConfig(t, fmt.Sprintf("organization: orang-gaboets\nrepositories:\n  - name: source\n    visibility: private\n    template: {owner: external, name: base}%s\n  - name: consumer\n    visibility: private\n    template: {owner: orang-gaboets, name: source}\nteams: []\ninvites: []\n", declaration))
+			actual := &state.OrganizationState{Organization: "orang-gaboets"}
+			if tt.live != nil {
+				actual.Repositories = []state.Repository{{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: *tt.live}}
+			}
+			report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			for _, action := range report.Actions {
+				if action.ResourceID == "orang-gaboets/consumer" && action.Executable != tt.executable {
+					t.Fatalf("consumer executable=%v want %v: %#v", action.Executable, tt.executable, report.Actions)
+				}
+			}
+		})
+	}
+}
+
+func boolPtr(value bool) *bool { return &value }
 
 func presentString(value string) config.OptionalString {
 	return config.OptionalString{Present: true, Value: value}

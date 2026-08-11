@@ -54,7 +54,7 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 	organization := strings.TrimSpace(p.desired.Organization)
 	for _, key := range keys {
 		node := nodes[key]
-		if node.actual != nil || strings.TrimSpace(node.repository.Template.Owner) == "" || strings.TrimSpace(node.repository.Template.Name) == "" || !strings.EqualFold(strings.TrimSpace(node.repository.Template.Owner), organization) {
+		if node.actual != nil || !strings.EqualFold(strings.TrimSpace(node.repository.Owner), organization) || strings.TrimSpace(node.repository.Template.Owner) == "" || strings.TrimSpace(node.repository.Template.Name) == "" || !strings.EqualFold(strings.TrimSpace(node.repository.Template.Owner), organization) {
 			continue
 		}
 		dependency := repositoryKey(node.repository.Template.Owner, node.repository.Template.Name)
