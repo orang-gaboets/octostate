@@ -39,6 +39,36 @@ func TestBuildBootstrapConfigBuildsCanonicalDesiredState(t *testing.T) {
 	assertCanonicalBootstrapConfig(t, got)
 }
 
+func TestBuildBootstrapConfigPreservesExternalManagedOwnersForValidation(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{Actual: &state.OrganizationState{
+		Organization: "org-a",
+		Repositories: []state.Repository{{
+			Owner:      "org-b",
+			Name:       "service",
+			Visibility: "private",
+		}},
+		Teams: []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
+			TeamSlug:   "platform",
+			Owner:      "org-b",
+			Name:       "service",
+			Permission: "push",
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Repositories[0].Owner != "org-b" || got.Teams[0].Repositories[0].Owner != "org-b" {
+		t.Fatalf("expected external owners to be preserved, got %#v", got)
+	}
+
+	err = config.ValidateAndError(got)
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildBootstrapConfigRejectsUnknownTeamRelationships(t *testing.T) {
 	t.Parallel()
 

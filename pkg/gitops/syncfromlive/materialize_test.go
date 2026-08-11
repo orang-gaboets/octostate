@@ -77,7 +77,7 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 					Visibility: "public",
 					Topics:     []string{"gitops"},
 					Template: config.TemplateSpec{
-						Owner: "orang-gaboets",
+						Owner: "shared-platform",
 						Name:  "repo-template",
 					},
 				}
@@ -208,7 +208,7 @@ func assertMaterializedRepoBuilder(
 	if isTemplate, managed := got.ManagedIsTemplate(); !managed || !isTemplate {
 		t.Fatalf("expected is_template=true to materialize from live, got value=%v managed=%v", isTemplate, managed)
 	}
-	if got.Template != desired.Template {
+	if got.Template != desired.Template || got.Template.Owner != "shared-platform" {
 		t.Fatalf("expected template to remain unchanged, got %#v", got.Template)
 	}
 	if got.Visibility != "public" {

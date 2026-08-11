@@ -57,6 +57,38 @@ func TestBuildAdoptConfigRejectsInvalidDesiredConfig(t *testing.T) {
 	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
 }
 
+func TestBuildAdoptConfigPreservesExternalManagedOwnersForValidation(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Teams:        []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			Repositories: []state.Repository{{Owner: "org-b", Name: "service", Visibility: "private"}},
+			Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+			TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
+				TeamSlug:   "platform",
+				Owner:      "org-b",
+				Name:       "service",
+				Permission: "push",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Repositories[0].Owner != "org-b" || got.Teams[0].Repositories[0].Owner != "org-b" {
+		t.Fatalf("expected external owners to be preserved, got %#v", got)
+	}
+
+	err = config.ValidateAndError(got)
+	assertValidationErrorHasIssue(t, err, "repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
+}
+
 func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +111,7 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 					Name:       "octostate",
 					Visibility: "public",
 					Template: config.TemplateSpec{
-						Owner: "orang-gaboets",
+						Owner: "shared-platform",
 						Name:  "repo-template",
 					},
 					Topics: []string{"legacy"},
@@ -283,7 +315,7 @@ func assertAdoptedRepositories(t *testing.T, repositories []config.RepositorySpe
 		t.Fatalf("unexpected repositories %#v", repositories)
 	}
 	repoBuilder := repositories[0]
-	if repoBuilder.Template != (config.TemplateSpec{Owner: "orang-gaboets", Name: "repo-template"}) {
+	if repoBuilder.Template != (config.TemplateSpec{Owner: "shared-platform", Name: "repo-template"}) {
 		t.Fatalf("expected template to be preserved, got %#v", repoBuilder.Template)
 	}
 	if repoBuilder.Visibility != "private" {
