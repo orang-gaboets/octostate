@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -62,8 +63,58 @@ func (r *Report) Normalize() {
 
 	r.Organization = base.Organization
 	r.Summary = base.Summary
-	r.Actions = base.Actions
+	repositoryActions := make([]Action, 0, len(base.Actions))
+	nonRepositoryActions := make([]Action, 0, len(base.Actions))
+	for _, action := range base.Actions {
+		if action.ResourceType == ActionResourceTypeRepository {
+			repositoryActions = append(repositoryActions, action)
+		} else {
+			nonRepositoryActions = append(nonRepositoryActions, action)
+		}
+	}
+	slices.SortStableFunc(repositoryActions, compareOfflineRepositoryActions)
+	r.Actions = append(repositoryActions, nonRepositoryActions...)
 	if !r.SnapshotPulledAt.IsZero() {
 		r.SnapshotPulledAt = r.SnapshotPulledAt.UTC()
 	}
+}
+
+func compareOfflineRepositoryActions(a, b Action) int {
+	if diff := compareOfflineRepositoryOperations(a.Operation, b.Operation); diff != 0 {
+		return diff
+	}
+	if diff := compareStrings(a.ResourceID, b.ResourceID); diff != 0 {
+		return diff
+	}
+	if a.Executable != b.Executable {
+		if a.Executable {
+			return -1
+		}
+		return 1
+	}
+	return compareStrings(a.Message, b.Message)
+}
+
+func compareOfflineRepositoryOperations(a, b ActionOperation) int {
+	rank := func(operation ActionOperation) int {
+		switch operation {
+		case ActionOperationUpdate:
+			return 0
+		case ActionOperationCreate:
+			return 1
+		case ActionOperationRemove:
+			return 2
+		case ActionOperationDelete:
+			return 3
+		default:
+			return 4
+		}
+	}
+	if aRank, bRank := rank(a), rank(b); aRank != bRank {
+		if aRank < bRank {
+			return -1
+		}
+		return 1
+	}
+	return compareStrings(string(a), string(b))
 }

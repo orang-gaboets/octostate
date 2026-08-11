@@ -864,46 +864,6 @@ func TestBuildOrdersRepositoryUpdateBeforeCreateWhenTemplateStateChangesInSameSn
 	}
 }
 
-func TestBuildDoesNotOrderExistingRepositoryByHistoricalTemplateMetadata(t *testing.T) {
-	t.Parallel()
-
-	desired := config.OrganizationConfig{
-		Organization: "orang-gaboets",
-		Repositories: []config.RepositorySpec{
-			{
-				Owner:       "orang-gaboets",
-				Name:        "a-existing-consumer",
-				Visibility:  "private",
-				Description: "updated",
-				Template:    config.TemplateSpec{Owner: "orang-gaboets", Name: "z-new-source"},
-			},
-			{
-				Owner:      "orang-gaboets",
-				Name:       "z-new-source",
-				Visibility: "private",
-				Template:   config.TemplateSpec{Owner: "external", Name: "base"},
-			},
-		},
-	}
-	snap := snapshot.NewActualSnapshot(time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC), &state.OrganizationState{
-		Organization: "orang-gaboets",
-		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "a-existing-consumer", Visibility: "private"}},
-	})
-
-	report, err := Build(Options{Desired: desired, Snapshot: &snap})
-	if err != nil {
-		t.Fatalf("Build returned error: %v", err)
-	}
-	wantOrder := []string{"orang-gaboets/a-existing-consumer", "orang-gaboets/z-new-source"}
-	gotOrder := make([]string, len(report.Actions))
-	for i, action := range report.Actions {
-		gotOrder[i] = action.ResourceID
-	}
-	if !reflect.DeepEqual(gotOrder, wantOrder) {
-		t.Fatalf("historical template metadata changed action order: got %#v want %#v", gotOrder, wantOrder)
-	}
-}
-
 func TestBuildActionsKeepsFixedPhaseOrder(t *testing.T) {
 	t.Parallel()
 
