@@ -1382,6 +1382,18 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 			},
 		},
 		{
+			name: "normalized tie-break among ready repositories",
+			repositories: []config.RepositorySpec{
+				{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}},
+				managedTemplate("orang-gaboets", "z-template", "external", "base"),
+				managedTemplate("orang-gaboets", "b-independent", "external", "base"),
+			},
+			wantOrder: []string{"orang-gaboets/b-independent", "orang-gaboets/z-template", "orang-gaboets/a-consumer"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/a-consumer": true, "orang-gaboets/z-template": true, "orang-gaboets/b-independent": true,
+			},
+		},
+		{
 			name: "normalized repository identities",
 			repositories: []config.RepositorySpec{
 				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "ORANG-GABOETS", Name: "z-template"}},
@@ -1407,7 +1419,7 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 				managedTemplate("orang-gaboets", "a", "orang-gaboets", "b"),
 				managedTemplate("orang-gaboets", "b", "orang-gaboets", "a"),
 			},
-			wantOrder: []string{"orang-gaboets/b", "orang-gaboets/a"},
+			wantOrder: []string{"orang-gaboets/a", "orang-gaboets/b"},
 			wantExecutable: map[string]bool{
 				"orang-gaboets/a": false, "orang-gaboets/b": false,
 			},
@@ -1425,7 +1437,7 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 			},
 			teams:       []config.TeamSpec{team},
 			actualTeams: []state.Team{liveTeam},
-			wantOrder:   []string{"orang-gaboets/b", "orang-gaboets/a", "orang-gaboets/consumer", "platform/orang-gaboets/consumer"},
+			wantOrder:   []string{"orang-gaboets/a", "orang-gaboets/b", "orang-gaboets/consumer", "platform/orang-gaboets/consumer"},
 			wantExecutable: map[string]bool{
 				"orang-gaboets/a": false, "orang-gaboets/b": false, "orang-gaboets/consumer": false, "platform/orang-gaboets/consumer": false,
 			},

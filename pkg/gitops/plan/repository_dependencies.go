@@ -104,19 +104,52 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 	}
 
 	actions := make([]Action, 0, len(nodes)+len(actual))
-	emitted := make(map[string]struct{}, len(nodes))
-	var emit func(string)
-	emit = func(key string) {
-		if _, ok := emitted[key]; ok {
-			return
+	indegree := make(map[string]int, len(nodes))
+	dependents := make(map[string][]string, len(nodes))
+	for key, node := range nodes {
+		if node.dependency == "" {
+			continue
 		}
+		indegree[key] = 1
+		dependents[node.dependency] = append(dependents[node.dependency], key)
+	}
+
+	ready := make([]string, 0, len(nodes))
+	for _, key := range keys {
+		if indegree[key] == 0 {
+			ready = append(ready, key)
+		}
+	}
+	slices.SortFunc(ready, compareStrings)
+	order := make([]string, 0, len(nodes))
+	for len(ready) > 0 {
+		key := ready[0]
+		ready = ready[1:]
+		order = append(order, key)
+		for _, dependent := range dependents[key] {
+			indegree[dependent]--
+			if indegree[dependent] == 0 {
+				ready = append(ready, dependent)
+			}
+		}
+		slices.SortFunc(ready, compareStrings)
+	}
+
+	// A cycle has no ready node. Append its remaining nodes in normalized
+	// identity order so cycle diagnostics and plans remain deterministic.
+	emitted := make(map[string]struct{}, len(order))
+	for _, key := range order {
 		emitted[key] = struct{}{}
-		node := nodes[key]
-		if node.dependency != "" {
-			emit(node.dependency)
+	}
+	for _, key := range keys {
+		if _, ok := emitted[key]; !ok {
+			order = append(order, key)
 		}
+	}
+	for _, key := range order {
+		node := nodes[key]
 		if node.action == nil {
-			return
+			continue
 		}
 		action := *node.action
 		if action.Operation == ActionOperationCreate {
@@ -127,9 +160,6 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 			}
 		}
 		actions = append(actions, action)
-	}
-	for _, key := range keys {
-		emit(key)
 	}
 
 	orphans := make([]state.Repository, 0)
