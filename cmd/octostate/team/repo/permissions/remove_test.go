@@ -210,6 +210,20 @@ func TestRemoveTeamRepoPermissionRepoOrgCompatibility(t *testing.T) {
 	}
 }
 
+func TestRemoveTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeAuth(t *testing.T) {
+	c := permissionscmd.RemoveCmd(nil)
+	c.SilenceUsage = true
+	c.SetArgs([]string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api"})
+
+	err := c.Execute()
+	if err == nil || !strings.Contains(err.Error(), `repository owner "other-org" must match organization "o"`) {
+		t.Fatalf("expected owner mismatch error, got %v", err)
+	}
+	if errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("cross-org validation should happen before auth, got %v", err)
+	}
+}
+
 func TestRemoveTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *testing.T) {
 	t.Parallel()
 
@@ -222,7 +236,7 @@ func TestRemoveTeamRepoPermissionRejectsCrossOrgRepoOwnerBeforeSideEffects(t *te
 		configPath string
 	}{
 		{
-			name: "live path before auth",
+			name: "live path before GitHub call",
 			args: []string{"--org", "o", "--slug", "platform", "--repo-org", "other-org", "--repo", "api"},
 		},
 		{
