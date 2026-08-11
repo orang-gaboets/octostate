@@ -157,6 +157,31 @@ func TestReportNormalizeSortsActionsChangesAndSummary(t *testing.T) {
 	}
 }
 
+func TestReportNormalizePreservesEqualKeyNonRepositoryOrder(t *testing.T) {
+	t.Parallel()
+
+	actions := make([]Action, 0, 40)
+	want := make([]any, 0, 20)
+	for i := 0; i < 20; i++ {
+		actions = append(actions,
+			Action{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team", Changes: []FieldChange{{Field: "name", From: i, To: "Platform"}}},
+			Action{ResourceType: ActionResourceTypeOrganizationMember, Operation: ActionOperationCreate, ResourceID: string(rune('t' - i)), Executable: true, Message: "create member"},
+		)
+		want = append(want, i)
+	}
+	report := &Report{Actions: actions}
+
+	report.Normalize()
+
+	got := make([]any, 20)
+	for i := range got {
+		got[i] = report.Actions[i].Changes[0].From
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("equal-key action order changed: got %#v want %#v", got, want)
+	}
+}
+
 func TestReportJSONUsesStableFieldNames(t *testing.T) {
 	t.Parallel()
 

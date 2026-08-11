@@ -148,6 +148,13 @@ func (p planner) planTeamMembers() []Action {
 
 func (p planner) planTeamRepositoryPermissions(repoPlan repositoryPlan) []Action {
 	actions := make([]Action, 0)
+	repositoryAvailabilityForPermission := func(owner, name string) repositoryAvailability {
+		availability, ok := repoPlan.availability[repositoryKey(owner, name)]
+		if !ok {
+			availability.diagnostic = fmt.Sprintf("repository %s is absent from live and desired state", repositoryID(owner, name))
+		}
+		return availability
+	}
 	actualPermissions := make(map[string]state.TeamRepositoryPermission, len(p.actual.TeamRepositoryPermissions))
 	for _, permission := range p.actual.TeamRepositoryPermissions {
 		actualPermissions[teamRepositoryPermissionKey(permission.TeamSlug, permission.Owner, permission.Name)] = permission
@@ -159,8 +166,8 @@ func (p planner) planTeamRepositoryPermissions(repoPlan repositoryPlan) []Action
 			desiredPermissions[key] = permission
 			actualPermission, ok := actualPermissions[key]
 			if !ok {
-				availability, managed := repoPlan.availability[repositoryKey(permission.Owner, permission.Name)]
-				executable := !managed || availability.executable
+				availability := repositoryAvailabilityForPermission(permission.Owner, permission.Name)
+				executable := availability.executable
 				message := fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
 				if !executable {
 					message = fmt.Sprintf(
@@ -182,8 +189,8 @@ func (p planner) planTeamRepositoryPermissions(repoPlan repositoryPlan) []Action
 			if actualPermission.Permission == permission.Permission {
 				continue
 			}
-			availability, managed := repoPlan.availability[repositoryKey(permission.Owner, permission.Name)]
-			executable := !managed || availability.executable
+			availability := repositoryAvailabilityForPermission(permission.Owner, permission.Name)
+			executable := availability.executable
 			message := fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
 			if !executable {
 				message = fmt.Sprintf(

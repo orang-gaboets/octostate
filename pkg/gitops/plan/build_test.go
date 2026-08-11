@@ -359,8 +359,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    11,
-			NonExecutableActions: 8,
+			ExecutableActions:    9,
+			NonExecutableActions: 10,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,
@@ -383,8 +383,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: false, Message: "team membership platform/charlie requires organization member charlie to exist first", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in live state but is not declared in desired config", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: true, Message: "update team repository permission platform/orang-gaboets/octostate", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-extra requires repository orang-gaboets/repo-extra to be available: repository orang-gaboets/repo-extra is absent from live and desired state", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: false, Message: "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to be available: repository orang-gaboets/octostate is absent from live and desired state", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationRemove, ResourceID: "platform/orang-gaboets/repo-old", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-old exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 		},
 	}
@@ -1296,7 +1296,11 @@ func TestBuildUsesFinalManagedTemplateState(t *testing.T) {
 		{"existing template omitted", boolPtr(true), "", true},
 		{"existing template null", boolPtr(true), "is_template: null", true},
 		{"existing template false", boolPtr(true), "is_template: false", false},
-		{"existing template true", boolPtr(false), "is_template: true", true},
+		{"existing template true", boolPtr(true), "is_template: true", true},
+		{"existing non-template omitted", boolPtr(false), "", false},
+		{"existing non-template null", boolPtr(false), "is_template: null", false},
+		{"existing non-template false", boolPtr(false), "is_template: false", false},
+		{"existing non-template true", boolPtr(false), "is_template: true", true},
 		{"new template omitted", nil, "", false},
 		{"new template null", nil, "is_template: null", false},
 		{"new template false", nil, "is_template: false", false},
@@ -1317,11 +1321,279 @@ func TestBuildUsesFinalManagedTemplateState(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Build returned error: %v", err)
 			}
+			found := false
 			for _, action := range report.Actions {
 				if action.ResourceID == "orang-gaboets/consumer" && action.Executable != tt.executable {
 					t.Fatalf("consumer executable=%v want %v: %#v", action.Executable, tt.executable, report.Actions)
 				}
+				if action.ResourceID == "orang-gaboets/consumer" {
+					found = true
+				}
 			}
+			if !found {
+				t.Fatalf("consumer action not found: %#v", report.Actions)
+			}
+		})
+	}
+}
+
+func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
+	t.Parallel()
+
+	managedTemplate := func(owner, name, templateOwner, templateName string) config.RepositorySpec {
+		repository := config.RepositorySpec{Owner: owner, Name: name, Visibility: "private", Template: config.TemplateSpec{Owner: templateOwner, Name: templateName}}
+		repository.SetManagedIsTemplate(true)
+		return repository
+	}
+	team := config.TeamSpec{Slug: "platform", Name: "Platform", Privacy: "closed", Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "consumer", Permission: "push"}}}
+	liveTeam := state.Team{Slug: "platform", Name: "Platform", Privacy: "closed"}
+
+	tests := []struct {
+		name           string
+		repositories   []config.RepositorySpec
+		teams          []config.TeamSpec
+		actualTeams    []state.Team
+		wantOrder      []string
+		wantExecutable map[string]bool
+		wantMessage    map[string][]string
+	}{
+		{
+			name: "three repository chain",
+			repositories: []config.RepositorySpec{
+				managedTemplate("orang-gaboets", "source", "external", "base"),
+				managedTemplate("orang-gaboets", "middle", "orang-gaboets", "source"),
+				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "middle"}},
+			},
+			wantOrder: []string{"orang-gaboets/source", "orang-gaboets/middle", "orang-gaboets/consumer"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/source": true, "orang-gaboets/middle": true, "orang-gaboets/consumer": true,
+			},
+		},
+		{
+			name: "three repository chain in reversed yaml order",
+			repositories: []config.RepositorySpec{
+				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "middle"}},
+				managedTemplate("orang-gaboets", "middle", "orang-gaboets", "source"),
+				managedTemplate("orang-gaboets", "source", "external", "base"),
+			},
+			wantOrder: []string{"orang-gaboets/source", "orang-gaboets/middle", "orang-gaboets/consumer"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/source": true, "orang-gaboets/middle": true, "orang-gaboets/consumer": true,
+			},
+		},
+		{
+			name: "normalized repository identities",
+			repositories: []config.RepositorySpec{
+				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "ORANG-GABOETS", Name: "z-template"}},
+				managedTemplate("ORANG-GABOETS", "Z-Template", "external", "base"),
+			},
+			wantOrder: []string{"ORANG-GABOETS/Z-Template", "orang-gaboets/consumer"},
+			wantExecutable: map[string]bool{
+				"ORANG-GABOETS/Z-Template": true, "orang-gaboets/consumer": true,
+			},
+		},
+		{
+			name: "self reference",
+			repositories: []config.RepositorySpec{
+				managedTemplate("orang-gaboets", "self", "orang-gaboets", "self"),
+			},
+			wantOrder:      []string{"orang-gaboets/self"},
+			wantExecutable: map[string]bool{"orang-gaboets/self": false},
+			wantMessage:    map[string][]string{"orang-gaboets/self": {"template dependency cycle", "orang-gaboets/self -> orang-gaboets/self"}},
+		},
+		{
+			name: "cycle",
+			repositories: []config.RepositorySpec{
+				managedTemplate("orang-gaboets", "a", "orang-gaboets", "b"),
+				managedTemplate("orang-gaboets", "b", "orang-gaboets", "a"),
+			},
+			wantOrder: []string{"orang-gaboets/b", "orang-gaboets/a"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/a": false, "orang-gaboets/b": false,
+			},
+			wantMessage: map[string][]string{
+				"orang-gaboets/a": {"template dependency cycle", "orang-gaboets/a -> orang-gaboets/b -> orang-gaboets/a"},
+				"orang-gaboets/b": {"template dependency cycle", "orang-gaboets/a -> orang-gaboets/b -> orang-gaboets/a"},
+			},
+		},
+		{
+			name: "transitive cycle consumer and dependent team permission",
+			repositories: []config.RepositorySpec{
+				managedTemplate("orang-gaboets", "a", "orang-gaboets", "b"),
+				managedTemplate("orang-gaboets", "b", "orang-gaboets", "a"),
+				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "a"}},
+			},
+			teams:       []config.TeamSpec{team},
+			actualTeams: []state.Team{liveTeam},
+			wantOrder:   []string{"orang-gaboets/b", "orang-gaboets/a", "orang-gaboets/consumer", "platform/orang-gaboets/consumer"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/a": false, "orang-gaboets/b": false, "orang-gaboets/consumer": false, "platform/orang-gaboets/consumer": false,
+			},
+			wantMessage: map[string][]string{
+				"orang-gaboets/consumer":          {"required template orang-gaboets/a is unavailable", "orang-gaboets/a -> orang-gaboets/b -> orang-gaboets/a"},
+				"platform/orang-gaboets/consumer": {"required template orang-gaboets/a is unavailable", "orang-gaboets/a -> orang-gaboets/b -> orang-gaboets/a"},
+			},
+		},
+		{
+			name: "unsatisfied source and dependent team permission",
+			repositories: []config.RepositorySpec{
+				{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}},
+				{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}},
+			},
+			teams:       []config.TeamSpec{team},
+			actualTeams: []state.Team{liveTeam},
+			wantOrder:   []string{"orang-gaboets/source", "orang-gaboets/consumer", "platform/orang-gaboets/consumer"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/source": true, "orang-gaboets/consumer": false, "platform/orang-gaboets/consumer": false,
+			},
+			wantMessage: map[string][]string{
+				"orang-gaboets/consumer":          {"required template orang-gaboets/source is unavailable", "will not be a template"},
+				"platform/orang-gaboets/consumer": {"required template orang-gaboets/source is unavailable", "will not be a template"},
+			},
+		},
+		{
+			name: "cross organization template remains reference only",
+			repositories: []config.RepositorySpec{
+				{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "other-org", Name: "z-template"}},
+				managedTemplate("orang-gaboets", "z-template", "external", "base"),
+			},
+			wantOrder: []string{"orang-gaboets/a-consumer", "orang-gaboets/z-template"},
+			wantExecutable: map[string]bool{
+				"orang-gaboets/a-consumer": true, "orang-gaboets/z-template": true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			report, err := Build(context.Background(), Options{
+				Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: tt.repositories, Teams: tt.teams},
+				Actual:  &state.OrganizationState{Organization: "orang-gaboets", Teams: tt.actualTeams},
+			})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			gotOrder := make([]string, len(report.Actions))
+			for i, action := range report.Actions {
+				gotOrder[i] = action.ResourceID
+				if want, ok := tt.wantExecutable[action.ResourceID]; !ok {
+					t.Fatalf("unexpected action %#v", action)
+				} else if action.Executable != want {
+					t.Fatalf("action %s executable=%v want %v: %#v", action.ResourceID, action.Executable, want, report.Actions)
+				}
+				for _, fragment := range tt.wantMessage[action.ResourceID] {
+					if !strings.Contains(action.Message, fragment) {
+						t.Fatalf("action %s message %q does not contain %q", action.ResourceID, action.Message, fragment)
+					}
+				}
+			}
+			if !reflect.DeepEqual(gotOrder, tt.wantOrder) {
+				t.Fatalf("unexpected action order: got %#v want %#v", gotOrder, tt.wantOrder)
+			}
+		})
+	}
+}
+
+func TestBuildIssue210Reproducer(t *testing.T) {
+	t.Parallel()
+
+	desired := testconfig.LoadDesiredConfig(t, `
+organization: acme
+repositories:
+  - owner: acme
+    name: a-consumer
+    visibility: private
+    template: {owner: acme, name: z-template}
+  - owner: acme
+    name: z-template
+    visibility: private
+    is_template: true
+    template: {owner: shared-templates, name: base}
+teams:
+  - slug: platform
+    name: Platform
+    privacy: closed
+    repositories:
+      - owner: acme
+        name: a-consumer
+        permission: push
+invites: []
+`)
+	report, err := Build(context.Background(), Options{
+		Desired: desired,
+		Actual:  &state.OrganizationState{Organization: "acme", Teams: []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}}},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	wantOrder := []string{"acme/z-template", "acme/a-consumer", "platform/acme/a-consumer"}
+	gotOrder := make([]string, len(report.Actions))
+	for i, action := range report.Actions {
+		gotOrder[i] = action.ResourceID
+		if !action.Executable {
+			t.Fatalf("action should be executable: %#v", action)
+		}
+	}
+	if !reflect.DeepEqual(gotOrder, wantOrder) {
+		t.Fatalf("unexpected action order: got %#v want %#v", gotOrder, wantOrder)
+	}
+}
+
+func TestBuildTeamRepositoryPermissionUsesRepositoryAvailability(t *testing.T) {
+	t.Parallel()
+
+	executableRepository := config.RepositorySpec{Owner: "orang-gaboets", Name: "target", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	tests := []struct {
+		name         string
+		owner        string
+		desiredRepos []config.RepositorySpec
+		actualRepos  []state.Repository
+		executable   bool
+	}{
+		{name: "live-only same organization", owner: "orang-gaboets", actualRepos: []state.Repository{{Owner: "orang-gaboets", Name: "target"}}, executable: true},
+		{name: "missing same organization", owner: "orang-gaboets", executable: false},
+		{name: "executable same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{executableRepository}, executable: true},
+		{name: "non-executable same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "target", Visibility: "private"}}, executable: false},
+		{name: "live-only cross organization", owner: "shared", actualRepos: []state.Repository{{Owner: "shared", Name: "target"}}, executable: true},
+		{name: "missing cross organization", owner: "shared", executable: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			report, err := Build(context.Background(), Options{
+				Desired: config.OrganizationConfig{
+					Organization: "orang-gaboets",
+					Repositories: tt.desiredRepos,
+					Teams: []config.TeamSpec{{
+						Slug: "platform", Name: "Platform", Privacy: "closed",
+						Repositories: []config.TeamRepositorySpec{{Owner: tt.owner, Name: "target", Permission: "push"}},
+					}},
+				},
+				Actual: &state.OrganizationState{
+					Organization: "orang-gaboets",
+					Repositories: tt.actualRepos,
+					Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+				},
+			})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			permissionID := "platform/" + tt.owner + "/target"
+			for _, action := range report.Actions {
+				if action.ResourceID != permissionID {
+					continue
+				}
+				if action.Executable != tt.executable {
+					t.Fatalf("permission executable=%v want %v: %#v", action.Executable, tt.executable, report.Actions)
+				}
+				return
+			}
+			t.Fatalf("permission action %s not found: %#v", permissionID, report.Actions)
 		})
 	}
 }

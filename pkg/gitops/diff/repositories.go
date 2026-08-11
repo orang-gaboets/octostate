@@ -41,6 +41,9 @@ func (b builder) planRepositories() []Action {
 	organization := strings.TrimSpace(b.desired.Organization)
 	for _, key := range keys {
 		node := nodes[key]
+		if _, exists := actual[key]; exists {
+			continue
+		}
 		if !strings.EqualFold(strings.TrimSpace(node.repository.Owner), organization) || !strings.EqualFold(strings.TrimSpace(node.repository.Template.Owner), organization) {
 			continue
 		}

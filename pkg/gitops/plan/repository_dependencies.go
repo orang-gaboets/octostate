@@ -96,6 +96,12 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 	for _, key := range keys {
 		visit(key)
 	}
+	for key, repository := range actual {
+		if _, managed := nodes[key]; managed {
+			continue
+		}
+		availability[key] = repositoryAvailability{executable: true, usableAsTemplate: repository.IsTemplate}
+	}
 
 	actions := make([]Action, 0, len(nodes)+len(actual))
 	emitted := make(map[string]struct{}, len(nodes))

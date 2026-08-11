@@ -102,7 +102,7 @@ func (r *Report) Normalize() {
 		}
 		nonRepositoryActions = append(nonRepositoryActions, action)
 	}
-	slices.SortFunc(nonRepositoryActions, comparePlanActions)
+	slices.SortStableFunc(nonRepositoryActions, comparePlanActions)
 	r.Actions = append(repositoryActions, nonRepositoryActions...)
 	r.Summary = summarizeActions(r.Actions)
 }
