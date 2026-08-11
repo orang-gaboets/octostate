@@ -336,9 +336,6 @@ func teamAdoptKey(slug string) string {
 }
 
 func repositoryAdoptKey(organization, owner, name string) string {
-	keyOwner := strings.TrimSpace(owner)
-	if keyOwner == "" {
-		keyOwner = strings.TrimSpace(organization)
-	}
+	keyOwner := config.ResolveRepositoryOwner(owner, organization)
 	return strings.ToLower(keyOwner) + "\x00" + strings.ToLower(strings.TrimSpace(name))
 }
