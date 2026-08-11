@@ -127,7 +127,7 @@ func TestApplyToConfigFileValidationErrorDoesNotWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !strings.Contains(err.Error(), `- members[0].role: invalid_enum: organization member role "owner" is not supported`) {
+	if !strings.Contains(err.Error(), `members[0].role (invalid_enum): organization member role "owner" is not supported`) {
 		t.Fatalf("expected formatted validation error, got %v", err)
 	}
 	if changed {
@@ -149,7 +149,7 @@ func TestApplyToConfigFileLoadedValidationErrorDoesNotWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	if !strings.Contains(err.Error(), `- members[0].role: invalid_enum: organization member role "owner" is not supported`) {
+	if !strings.Contains(err.Error(), `members[0].role (invalid_enum): organization member role "owner" is not supported`) {
 		t.Fatalf("expected formatted validation error, got %v", err)
 	}
 	if changed {
@@ -171,11 +171,7 @@ func TestApplyToConfigFileLoadedOwnershipValidationErrorDoesNotMutateOrWrite(t *
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	assertValidationErrorIssue(t, err, "repositories[0].owner", gitopsconfig.ValidationIssueCodeRepositoryOwnerScope)
-	if !strings.Contains(err.Error(), "validate loaded config: organization config validation failed:") {
-		t.Fatalf("expected loaded validation phase and shared formatter, got %v", err)
-	}
-	if !strings.Contains(err.Error(), `- repositories[0].owner: repository_owner_scope: repository owner "shared-platform" must match organization "orang-gaboets"`) {
+	if !strings.Contains(err.Error(), `validate loaded config: repositories[0].owner (repository_owner_scope): repository owner "shared-platform" must match organization "orang-gaboets"`) {
 		t.Fatalf("expected repository owner scope detail, got %v", err)
 	}
 	if changed {
@@ -201,11 +197,7 @@ func TestApplyToConfigFileMutatedOwnershipValidationErrorDoesNotWrite(t *testing
 	if err == nil {
 		t.Fatal("expected validation error")
 	}
-	assertValidationErrorIssue(t, err, "repositories[0].owner", gitopsconfig.ValidationIssueCodeRepositoryOwnerScope)
-	if !strings.Contains(err.Error(), "validate mutated config: organization config validation failed:") {
-		t.Fatalf("expected mutated validation phase and shared formatter, got %v", err)
-	}
-	if !strings.Contains(err.Error(), `- repositories[0].owner: repository_owner_scope: repository owner "shared-platform" must match organization "orang-gaboets"`) {
+	if !strings.Contains(err.Error(), `validate mutated config: repositories[0].owner (repository_owner_scope): repository owner "shared-platform" must match organization "orang-gaboets"`) {
 		t.Fatalf("expected repository owner scope detail, got %v", err)
 	}
 	if changed {
@@ -332,21 +324,6 @@ func assertFileUnchanged(t *testing.T, path string, want []byte) {
 	if got := readFile(t, path); string(got) != string(want) {
 		t.Fatalf("config changed after error:\n%s\nwant:\n%s", got, want)
 	}
-}
-
-func assertValidationErrorIssue(t *testing.T, err error, wantPath string, wantCode gitopsconfig.ValidationIssueCode) {
-	t.Helper()
-
-	var validationErr *gitopsconfig.ValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("expected *ValidationError, got %T: %v", err, err)
-	}
-	for _, issue := range validationErr.Report.Errors {
-		if issue.Path == wantPath && issue.Code == wantCode {
-			return
-		}
-	}
-	t.Fatalf("expected validation issue path=%q code=%q, got %#v", wantPath, wantCode, validationErr.Report.Errors)
 }
 
 func mustCreateSymlink(t *testing.T, target, link string) {

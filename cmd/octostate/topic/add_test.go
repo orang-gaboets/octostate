@@ -210,7 +210,7 @@ repositories:
 	if err == nil {
 		t.Fatal("expected invalid topic error")
 	}
-	if !strings.Contains(err.Error(), "repositories[0].topics[1]: invalid_repository_topic") {
+	if !strings.Contains(err.Error(), "repositories[0].topics[1] (invalid_repository_topic)") {
 		t.Fatalf("expected invalid repository topic code, got %v", err)
 	}
 
