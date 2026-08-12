@@ -267,9 +267,9 @@ Plan preview fields:
 Action behavior:
 - `executable_actions` contains the supported changes that a later `config apply` command can carry out, such as `create` and `update`
 - `skipped_actions` contains unsupported live drift that is detected but not automatically reconciled, such as `delete` and `remove`
-- Managed same-organization repository dependencies are emitted in deterministic dependency-safe topological order, using normalized repository identity to break ready-action ties, so a source update or create precedes its consumers
+- Managed same-organization repository dependencies are emitted in deterministic dependency-safe topological order, using normalized repository identity to break ready-action ties, so a required source create or `is_template: true` enabling update precedes its consumers
 - Existing sources use their explicit final `is_template` value, or retain live state when the field is omitted or null; new sources are usable only with `is_template: true`. Unavailable sources propagate diagnostics transitively, and cycles report stable `template dependency cycle: ...` messages
-- External/cross-organization template references are not managed plan dependencies and remain apply-preflight concerns
+- External, cross-organization, live-only, and other non-managed template references are not managed plan dependencies and remain apply-preflight concerns
 - Team repository permission create/update actions reuse repository availability: they are executable only when the target exists or is available earlier in the dependency-safe plan; otherwise they remain in `skipped_actions`
 - Dependency metadata is internal; the public plan JSON has no dependency field
 - Both arrays keep deterministic action ordering so CI output and PR comments stay stable

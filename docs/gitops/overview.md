@@ -138,11 +138,12 @@ sort/summarize pass that defines the public plan ordering. Managed repositories
 in the desired organization form dependency edges when a missing repository is
 created from another managed repository in that same organization. The planner
 emits a deterministic dependency-safe topological order, using normalized
-repository identity to break ties among ready actions, so a source update or
-create precedes its consumers. External or
-cross-organization template references are not managed dependency edges; their
-availability remains an apply-preflight concern. Dependency metadata is
-internal and is not added to the public plan JSON.
+repository identity to break ties among ready actions, so a required source
+create or `is_template: true` enabling update precedes its consumers. External,
+cross-organization, live-only, and other non-managed template references are
+not managed dependency edges; their availability remains an apply-preflight
+concern. Dependency metadata is internal and is not added to the public plan
+JSON.
 
 For an existing source, an explicitly managed `is_template` value is the final
 state used by dependents; when it is omitted (or null at the planner layer), the
