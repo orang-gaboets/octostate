@@ -192,15 +192,45 @@ func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) 
 			remaining[key] = struct{}{}
 		}
 	}
+	cycleMembers := make([]string, 0, len(remaining))
 	for _, key := range keys {
 		if _, ok := remaining[key]; ok && repositoryCycleContains(key, nodes, remaining) {
-			order = append(order, key)
-			emitted[key] = struct{}{}
+			cycleMembers = append(cycleMembers, key)
 		}
 	}
-	for _, key := range keys {
-		if _, ok := emitted[key]; !ok {
+	for _, key := range cycleMembers {
+		order = append(order, key)
+		delete(remaining, key)
+	}
+	for len(remaining) > 0 {
+		ready := make([]string, 0, len(remaining))
+		for _, key := range keys {
+			if _, ok := remaining[key]; !ok {
+				continue
+			}
+			dependency := nodes[key].dependency
+			if dependency == "" {
+				ready = append(ready, key)
+				continue
+			}
+			if _, ok := remaining[dependency]; !ok {
+				ready = append(ready, key)
+			}
+		}
+		if len(ready) == 0 {
+			// All cycles should have been identified above. Keep a deterministic
+			// fallback if malformed input violates that assumption.
+			for _, key := range keys {
+				if _, ok := remaining[key]; ok {
+					order = append(order, key)
+				}
+			}
+			break
+		}
+		slices.SortFunc(ready, compareStrings)
+		for _, key := range ready {
 			order = append(order, key)
+			delete(remaining, key)
 		}
 	}
 	return order

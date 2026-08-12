@@ -1464,13 +1464,17 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 				managedTemplate("orang-gaboets", "z-a", "orang-gaboets", "z-b"),
 				managedTemplate("orang-gaboets", "z-b", "orang-gaboets", "z-a"),
 				{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-a"}},
+				{Owner: "orang-gaboets", Name: "z-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-a"}},
+				{Owner: "orang-gaboets", Name: "a-grandchild", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-consumer"}},
 			},
-			wantOrder: []string{"orang-gaboets/z-a", "orang-gaboets/z-b", "orang-gaboets/a-consumer"},
+			wantOrder: []string{"orang-gaboets/z-a", "orang-gaboets/z-b", "orang-gaboets/a-consumer", "orang-gaboets/z-consumer", "orang-gaboets/a-grandchild"},
 			wantExecutable: map[string]bool{
 				"orang-gaboets/z-a": false, "orang-gaboets/z-b": false, "orang-gaboets/a-consumer": false,
+				"orang-gaboets/z-consumer": false, "orang-gaboets/a-grandchild": false,
 			},
 			wantMessage: map[string][]string{
-				"orang-gaboets/a-consumer": {"required template orang-gaboets/z-a is unavailable", "orang-gaboets/z-a -> orang-gaboets/z-b -> orang-gaboets/z-a"},
+				"orang-gaboets/a-consumer":   {"required template orang-gaboets/z-a is unavailable", "orang-gaboets/z-a -> orang-gaboets/z-b -> orang-gaboets/z-a"},
+				"orang-gaboets/a-grandchild": {"required template orang-gaboets/z-consumer is unavailable"},
 			},
 		},
 		{
