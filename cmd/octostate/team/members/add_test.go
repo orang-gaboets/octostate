@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,37 @@ func (s *captureAddTeamMembershipBySlugService) AddTeamMembershipBySlug(_ contex
 		State: github.Ptr("active"),
 		Role:  github.Ptr(s.role),
 	}, &gh.Response{}, nil
+}
+
+// decodeEnvelope decodes the whole stdout buffer, proving stdout is exactly one
+// JSON envelope with no additional output before or after it.
+func decodeEnvelope(t *testing.T, stdout string, wantStatus string) (string, map[string]any) {
+	t.Helper()
+
+	decoder := json.NewDecoder(strings.NewReader(stdout))
+	var envelope struct {
+		Status  string         `json:"status"`
+		Message string         `json:"message"`
+		Data    map[string]any `json:"data"`
+	}
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("stdout is not a JSON envelope: %v; got %q", err, stdout)
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		t.Fatalf("expected exactly one envelope on stdout, got trailing content in %q", stdout)
+	}
+	if envelope.Status != wantStatus {
+		t.Fatalf("expected status %q, got %q", wantStatus, envelope.Status)
+	}
+	return envelope.Message, envelope.Data
+}
+
+func assertEnvelopeData(t *testing.T, data map[string]any, org, slug, username string) {
+	t.Helper()
+
+	if data["organization"] != org || data["slug"] != slug || data["username"] != username {
+		t.Fatalf("unexpected operation metadata: %#v", data)
+	}
 }
 
 func TestAddTeamMemberNoRequiredFlags(t *testing.T) {
@@ -123,15 +155,16 @@ func TestAddTeamMemberDryRunSkipsAddService(t *testing.T) {
 	if svc.addCalled {
 		t.Fatalf("expected add team membership service not to be called in dry-run mode")
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "dry-run"`) {
-		t.Fatalf("expected dry-run envelope, got %q", got)
+	message, data := decodeEnvelope(t, out.String(), "dry-run")
+	if message != `Dry run: would add user "u" to team o/s with role maintainer` {
+		t.Fatalf("unexpected dry-run message: %q", message)
 	}
-	if !strings.Contains(got, `Dry run: would add user \"u\" to team o/s with role maintainer`) {
-		t.Fatalf("unexpected dry-run message: %q", got)
+	assertEnvelopeData(t, data, "o", "s", "u")
+	if data["role"] != "maintainer" {
+		t.Fatalf("expected role in dry-run data, got %#v", data)
 	}
-	if !strings.Contains(got, `"role": "maintainer"`) || !strings.Contains(got, `"username": "u"`) {
-		t.Fatalf("expected dry-run metadata, got %q", got)
+	if _, present := data["membership"]; present {
+		t.Fatalf("dry-run must not report a membership response: %#v", data)
 	}
 }
 
@@ -144,18 +177,10 @@ func TestAddTeamMemberWritesJSONToStdout(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got := strings.TrimSpace(out.String())
-	if got == "" {
-		t.Fatalf("expected stdout output, got empty string")
-	}
-	if !strings.HasPrefix(got, "{") {
-		t.Fatalf("expected JSON object output, got %q", got)
-	}
-	if !strings.Contains(got, `"status": "success"`) {
-		t.Fatalf("expected success envelope, got %q", got)
-	}
-	if !strings.Contains(got, `"membership"`) {
-		t.Fatalf("expected membership under data, got %q", got)
+	_, data := decodeEnvelope(t, out.String(), "success")
+	assertEnvelopeData(t, data, "o", "s", "u")
+	if _, present := data["membership"]; !present {
+		t.Fatalf("successful live add must report the membership response: %#v", data)
 	}
 }
 
@@ -180,15 +205,17 @@ func TestAddTeamMemberUsesProvidedServiceAndRole(t *testing.T) {
 	if svc.role != "maintainer" {
 		t.Fatalf("expected role %q, got %q", "maintainer", svc.role)
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "success"`) {
-		t.Fatalf("expected success envelope, got %q", got)
+	_, data := decodeEnvelope(t, out.String(), "success")
+	assertEnvelopeData(t, data, "o", "s", "u")
+	if data["role"] != "maintainer" {
+		t.Fatalf("expected role in data, got %#v", data)
 	}
-	if !strings.Contains(got, `"role": "maintainer"`) || !strings.Contains(got, `"slug": "s"`) {
-		t.Fatalf("expected operation metadata, got %q", got)
+	membership, ok := data["membership"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected membership object under data, got %#v", data["membership"])
 	}
-	if !strings.Contains(got, `"Role": "maintainer"`) {
-		t.Fatalf("expected preserved membership object, got %q", got)
+	if membership["Role"] != "maintainer" {
+		t.Fatalf("expected preserved membership role, got %#v", membership)
 	}
 }
 

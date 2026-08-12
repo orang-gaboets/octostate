@@ -106,13 +106,11 @@ func TestRemoveTeamMemberDryRunSkipsRemoveService(t *testing.T) {
 	if svc.removeCalled {
 		t.Fatalf("expected remove team membership service not to be called in dry-run mode")
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "dry-run"`) {
-		t.Fatalf("expected dry-run envelope, got %q", got)
+	message, data := decodeEnvelope(t, out.String(), "dry-run")
+	if message != `Dry run: would remove user "u" from team o/s` {
+		t.Fatalf("unexpected dry-run message: %q", message)
 	}
-	if !strings.Contains(got, `Dry run: would remove user \"u\" from team o/s`) {
-		t.Fatalf("unexpected dry-run message: %q", got)
-	}
+	assertEnvelopeData(t, data, "o", "s", "u")
 }
 
 func TestRemoveTeamMemberWritesSuccessToStdout(t *testing.T) {
@@ -124,16 +122,11 @@ func TestRemoveTeamMemberWritesSuccessToStdout(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "success"`) {
-		t.Fatalf("expected success envelope, got %q", got)
+	message, data := decodeEnvelope(t, out.String(), "success")
+	if message != `Removed user "u" from team o/s` {
+		t.Fatalf("unexpected success message: %q", message)
 	}
-	if !strings.Contains(got, `Removed user \"u\" from team o/s`) {
-		t.Fatalf("unexpected success message: %q", got)
-	}
-	if !strings.Contains(got, `"username": "u"`) || !strings.Contains(got, `"slug": "s"`) {
-		t.Fatalf("expected operation metadata, got %q", got)
-	}
+	assertEnvelopeData(t, data, "o", "s", "u")
 }
 
 func TestRemoveTeamMemberUsesProvidedService(t *testing.T) {
@@ -154,13 +147,11 @@ func TestRemoveTeamMemberUsesProvidedService(t *testing.T) {
 	if svc.username != "u" {
 		t.Fatalf("expected trimmed username %q, got %q", "u", svc.username)
 	}
-	got := strings.TrimSpace(out.String())
-	if !strings.Contains(got, `"status": "success"`) {
-		t.Fatalf("expected success envelope, got %q", got)
+	message, data := decodeEnvelope(t, out.String(), "success")
+	if message != `Removed user "u" from team o/s` {
+		t.Fatalf("unexpected success message: %q", message)
 	}
-	if !strings.Contains(got, `Removed user \"u\" from team o/s`) {
-		t.Fatalf("unexpected success message: %q", got)
-	}
+	assertEnvelopeData(t, data, "o", "s", "u")
 }
 
 func TestRemoveTeamMemberToConfigRemovesTargetedMember(t *testing.T) {

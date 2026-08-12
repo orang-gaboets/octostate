@@ -170,7 +170,7 @@ func addTeamMemberToConfig(cmd *cobra.Command, path, org, slug, username, role s
 // teamMemberOperationData builds the stable operation metadata reported by the
 // live and dry-run membership paths. membership is attached only when the live
 // call returned one, so dry-run output never implies a GitHub response.
-func teamMemberOperationData(org, slug, username, role string, membership any) map[string]any {
+func teamMemberOperationData(org, slug, username, role string, membership *github.TeamMembership) map[string]any {
 	data := map[string]any{
 		"organization": org,
 		"slug":         slug,
