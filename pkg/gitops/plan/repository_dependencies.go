@@ -60,14 +60,29 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 		dependency := repositoryKey(node.repository.Template.Owner, node.repository.Template.Name)
 		if _, ok := nodes[dependency]; ok {
 			node.dependency = dependency
+		} else if _, ok := actual[dependency]; ok {
+			node.dependency = dependency
 		}
 	}
 
-	availability := make(map[string]repositoryAvailability, len(nodes))
+	availability := make(map[string]repositoryAvailability, len(nodes)+len(actual))
+	for key, repository := range actual {
+		if _, managed := nodes[key]; managed {
+			continue
+		}
+		status := repositoryAvailability{executable: true, usableAsTemplate: repository.IsTemplate}
+		if !repository.IsTemplate {
+			status.diagnostic = fmt.Sprintf("repository %s is not a template", repositoryID(repository.Owner, repository.Name))
+		}
+		availability[key] = status
+	}
 	colors := make(map[string]uint8, len(nodes))
 	stack := make([]string, 0, len(nodes))
 	var visit func(string)
 	visit = func(key string) {
+		if _, ok := nodes[key]; !ok {
+			return
+		}
 		switch colors[key] {
 		case 2:
 			return
@@ -95,12 +110,6 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 	}
 	for _, key := range keys {
 		visit(key)
-	}
-	for key, repository := range actual {
-		if _, managed := nodes[key]; managed {
-			continue
-		}
-		availability[key] = repositoryAvailability{executable: true, usableAsTemplate: repository.IsTemplate}
 	}
 
 	actions := make([]Action, 0, len(nodes)+len(actual))
@@ -141,6 +150,9 @@ func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) 
 	dependents := make(map[string][]string, len(nodes))
 	for key, node := range nodes {
 		if node.dependency == "" {
+			continue
+		}
+		if _, ok := nodes[node.dependency]; !ok {
 			continue
 		}
 		indegree[key] = 1

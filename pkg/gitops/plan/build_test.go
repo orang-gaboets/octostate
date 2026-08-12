@@ -1599,6 +1599,44 @@ invites: []
 	}
 }
 
+func TestBuildUsesLiveOnlyTemplateAvailability(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner: "orang-gaboets", Name: "consumer", Visibility: "private",
+			Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "live-source"},
+		}},
+		Teams: []config.TeamSpec{{
+			Slug: "platform", Name: "Platform", Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "consumer", Permission: "push"}},
+		}},
+	}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "live-source", IsTemplate: false}},
+		Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+
+	report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	for _, action := range report.Actions {
+		switch action.ResourceID {
+		case "orang-gaboets/consumer", "platform/orang-gaboets/consumer":
+			if action.Executable {
+				t.Fatalf("action should be non-executable when live-only source is not a template: %#v", action)
+			}
+			if !strings.Contains(action.Message, "live-source is not a template") {
+				t.Fatalf("action should explain live-only source failure: %#v", action)
+			}
+		}
+	}
+}
+
 func TestBuildTeamRepositoryPermissionUsesRepositoryAvailability(t *testing.T) {
 	t.Parallel()
 
