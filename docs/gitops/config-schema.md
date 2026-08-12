@@ -132,9 +132,10 @@ state:
 
 `template.owner` and `template.name` are required together when creating a
 repository from a template. A reference to another missing repository is a
-managed dependency only when both repositories belong to the configured
-organization. External or cross-organization references are checked during
-apply preflight instead.
+managed dependency only when the source is also a top-level desired repository
+in the configured organization. External, cross-organization, or live-only
+references remain reference-only and are checked during apply preflight
+instead.
 
 `config apply` currently creates repositories only through templates, so any
 repository that may need to be created must declare both `template.owner` and

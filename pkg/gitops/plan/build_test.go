@@ -1266,6 +1266,33 @@ func TestBuildDoesNotOrderExistingConsumerAfterReferencedTemplate(t *testing.T) 
 	}
 }
 
+func TestBuildReadyRepositoryActionsIgnoreNoOpTemplateSources(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "z-template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}}
+	independent := config.RepositorySpec{Owner: "orang-gaboets", Name: "b-independent", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, independent, source}},
+		Actual: &state.OrganizationState{Organization: "orang-gaboets", Repositories: []state.Repository{{
+			Owner: "orang-gaboets", Name: "z-template", Visibility: "private", IsTemplate: true,
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	want := []string{"orang-gaboets/a-consumer", "orang-gaboets/b-independent"}
+	got := make([]string, len(report.Actions))
+	for i, action := range report.Actions {
+		got[i] = action.ResourceID
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("no-op template source should not affect ready ordering: got %#v want %#v", got, want)
+	}
+}
+
 func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
 	t.Parallel()
 
@@ -1603,7 +1630,7 @@ invites: []
 	}
 }
 
-func TestBuildUsesLiveOnlyTemplateAvailability(t *testing.T) {
+func TestBuildLeavesLiveOnlyTemplateReferencesToApplyPreflight(t *testing.T) {
 	t.Parallel()
 
 	desired := config.OrganizationConfig{
@@ -1631,11 +1658,8 @@ func TestBuildUsesLiveOnlyTemplateAvailability(t *testing.T) {
 	for _, action := range report.Actions {
 		switch action.ResourceID {
 		case "orang-gaboets/consumer", "platform/orang-gaboets/consumer":
-			if action.Executable {
-				t.Fatalf("action should be non-executable when live-only source is not a template: %#v", action)
-			}
-			if !strings.Contains(action.Message, "live-source is not a template") {
-				t.Fatalf("action should explain live-only source failure: %#v", action)
+			if !action.Executable {
+				t.Fatalf("reference-only live source should not gate planning: %#v", action)
 			}
 		}
 	}

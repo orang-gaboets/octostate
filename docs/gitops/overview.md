@@ -145,7 +145,7 @@ availability remains an apply-preflight concern. Dependency metadata is
 internal and is not added to the public plan JSON.
 
 For an existing source, an explicitly managed `is_template` value is the final
-state used by dependants; when it is omitted (or null at the planner layer), the
+state used by dependents; when it is omitted (or null at the planner layer), the
 live template state is retained. A newly created source is usable as a template
 only when its final desired state explicitly sets `is_template: true`. A false,
 omitted, or null new-source state makes dependent creates non-executable.

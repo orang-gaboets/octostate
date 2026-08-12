@@ -60,8 +60,6 @@ func (p planner) computeRepositoryPlan() repositoryPlan {
 		dependency := repositoryKey(node.repository.Template.Owner, node.repository.Template.Name)
 		if _, ok := nodes[dependency]; ok {
 			node.dependency = dependency
-		} else if _, ok := actual[dependency]; ok {
-			node.dependency = dependency
 		}
 	}
 
@@ -152,7 +150,8 @@ func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) 
 		if node.dependency == "" {
 			continue
 		}
-		if _, ok := nodes[node.dependency]; !ok {
+		dependency, ok := nodes[node.dependency]
+		if !ok || !repositoryActionIsPrerequisite(dependency.action) {
 			continue
 		}
 		indegree[key] = 1
@@ -234,6 +233,24 @@ func repositoryActionOrder(nodes map[string]*repositoryPlanNode, keys []string) 
 		}
 	}
 	return order
+}
+
+func repositoryActionIsPrerequisite(action *Action) bool {
+	if action == nil {
+		return false
+	}
+	if action.Operation == ActionOperationCreate {
+		return true
+	}
+	if action.Operation != ActionOperationUpdate {
+		return false
+	}
+	for _, change := range action.Changes {
+		if change.Field == "is_template" && change.To == true {
+			return true
+		}
+	}
+	return false
 }
 
 func repositoryCycleContains(start string, nodes map[string]*repositoryPlanNode, remaining map[string]struct{}) bool {

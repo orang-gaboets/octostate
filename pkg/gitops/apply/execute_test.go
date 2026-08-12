@@ -1676,6 +1676,46 @@ func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *
 	}
 }
 
+func TestExecuteManagedTemplateCreateSettingsFailureStopsDependents(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{source, consumer}}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "source"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "consumer"), Executable: true},
+	}}
+	plan.Normalize()
+
+	var creates []string
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
+			if *request.Name == "source" {
+				return &gh.Repository{}, nil, nil
+			}
+			t.Fatal("consumer create must not run after source settings failure")
+			return nil, nil, nil
+		},
+		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			if owner == "orang-gaboets" && repo == "source" {
+				return nil, nil, errors.New("source template settings failed")
+			}
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err == nil || !strings.Contains(err.Error(), "source template settings failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"external/base->source"}; !reflect.DeepEqual(creates, want) {
+		t.Fatalf("unexpected repository writes: got %#v want %#v", creates, want)
+	}
+}
+
 func testApplyOptions(desired config.OrganizationConfig, actual *state.OrganizationState, plan *gitopsplan.Report, tweaks ...func(*Options)) Options {
 	opts := Options{
 		Desired:             desired,
