@@ -293,8 +293,9 @@ cross-organization managed owners:
 - managed repository actions use deterministic dependency-safe topological
   ordering; unavailable sources propagate diagnostics transitively and cycles
   report a stable `template dependency cycle: ...` path
-- team repository permissions reuse repository availability, while external
-  and cross-organization targets remain apply-preflight concerns
+- team repository permissions reuse repository availability; external,
+  cross-organization, live-only, and otherwise non-managed template references
+  remain apply-preflight concerns
 - the public plan JSON contains no dependency field
 - `config apply --check` uses the same dependency-safe order as `config apply`,
   and continues best-effort preflight to aggregate independent failures in plan
