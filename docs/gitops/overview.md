@@ -168,9 +168,12 @@ reported back as skipped state rather than being executed.
 apply preflight validation without mutating GitHub. Because it consumes the
 same dependency-safe plan order as `config apply`, a repository updated to
 `is_template: true` earlier in the plan is available to later same-plan
-repository creates that use it as a template. Check mode continues through
-independent actions and returns best-effort aggregate errors in plan order;
-it is not a transaction or a guarantee that a later apply will succeed.
+repository creates that use it as a template. Check mode continues best-effort
+through remaining executable actions and returns aggregate preflight errors
+deterministically. Dependent actions may report follow-on failures after an
+earlier dependency error, and resource-specific dependency handling can defer
+checks, so failures are not universally reported in plan order. It is not a
+transaction or a guarantee that a later apply will succeed.
 
 This check mode is best-effort: it validates the supported apply executor inputs
 against the collected live state and uses read-only GitHub probes for supported

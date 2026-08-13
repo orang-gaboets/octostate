@@ -121,9 +121,11 @@ Current collector concurrency limits:
 
 Check mode is best-effort. It consumes the same dependency-safe order as
 `config apply`, validates supported executor inputs, and adds read-only probes
-for supported apply targets. It continues checking independent actions and
-aggregates failures in plan order, but is not a guaranteed GitHub transaction
-dry-run and can miss GitHub-side failures such as permission changes,
+for supported apply targets. It continues through remaining executable actions
+and aggregates preflight failures deterministically. Repository-action failures
+are processed in plan order; resource-specific dependency handling may defer
+some checks. It is not a guaranteed GitHub transaction dry-run and can miss
+GitHub-side failures such as permission changes,
 organization policy, rate limits, races after collection, live state changes
 after preflight, or validation that only occurs during write-time execution.
 Same-plan template updates and repository creations are visible to later
