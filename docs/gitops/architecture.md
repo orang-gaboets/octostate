@@ -61,8 +61,9 @@ Current collector concurrency limits:
 - Compares desired config with live `OrganizationState`
 - Produces the structured reconciliation report used by `config plan`
   and `config apply`
-- Builds independent action phases concurrently, then appends them back in
-  fixed order before final normalization
+- Builds the repository plan first, then computes the five independent
+  non-repository action phases concurrently and appends them in fixed order
+  before final action normalization
 - Builds managed same-organization template dependency edges for missing
   repositories and emits them in deterministic dependency-safe topological
   order, using normalized repository identity to break ready-action ties
@@ -88,7 +89,8 @@ Current collector concurrency limits:
 ### `pkg/gitops/diff`
 - Compares desired config with the stored snapshot offline
 - Produces drift reports without live GitHub calls
-- Reuses the same action vocabulary and deterministic ordering model as plan
+- Reuses the same action vocabulary and deterministic reporting conventions as
+  plan, with offline repository ordering appropriate to snapshot diff
 
 ### `pkg/gitops/syncfromlive`
 - Builds desired-state proposals from live GitHub state

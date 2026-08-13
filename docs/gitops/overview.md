@@ -124,8 +124,9 @@ Important implementation rule:
 `config plan` compares desired state with live state and produces a structured
 `Report`.
 
-The planner computes independent action phases concurrently, then appends them
-in a fixed order:
+The planner computes the repository plan first, then computes the five
+independent non-repository action phases concurrently and appends all phases in
+a fixed order:
 1. repositories
 2. teams
 3. organization members
@@ -133,8 +134,9 @@ in a fixed order:
 5. team members
 6. team repository permissions
 
-`Report.Normalize()` stays sequential because it is the final global
-sort/summarize pass that defines the public plan ordering. Managed repositories
+`Report.Normalize()` stays sequential because it normalizes field changes,
+sorts non-repository actions, and recomputes the summary while preserving the
+planner's repository order. Managed repositories
 in the desired organization form dependency edges when a missing repository is
 created from another managed repository in that same organization. The planner
 emits a deterministic dependency-safe topological order, using normalized
