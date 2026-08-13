@@ -298,5 +298,6 @@ cross-organization managed owners:
   remain apply-preflight concerns
 - the public plan JSON contains no dependency field
 - `config apply --check` uses the same dependency-safe order as `config apply`,
-  and continues best-effort preflight to aggregate independent failures in plan
-  order
+  continues through remaining executable actions, and aggregates preflight
+  failures deterministically; resource-specific dependency handling may defer
+  some checks, so failures are not universally reported in plan order
