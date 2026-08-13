@@ -47,8 +47,8 @@ type Report struct {
 	Actions          []Action  `json:"actions"`
 }
 
-// Normalize initializes nil slices, sorts actions deterministically, and
-// recomputes summary counts using the shared planner ordering rules.
+// Normalize initializes nil slices, applies shared action normalization,
+// restores offline repository ordering, and recomputes summary counts.
 func (r *Report) Normalize() {
 	if r == nil {
 		return
