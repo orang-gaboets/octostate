@@ -71,7 +71,8 @@ Current collector concurrency limits:
   new sources require `is_template: true`
 - Propagates unavailable-source diagnostics transitively, reports stable cycle
   paths, and shares repository availability with team repository permissions
-- Leaves external and cross-organization template references to apply
+- Leaves external, cross-organization, live-only, and otherwise non-managed
+  template references to apply
   preflight; dependency edges are internal and are not fields in public plan
   JSON
 

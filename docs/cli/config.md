@@ -270,7 +270,7 @@ Action behavior:
 - Managed same-organization repository dependencies are emitted in deterministic dependency-safe topological order, using normalized repository identity to break ready-action ties, so a required source create or `is_template: true` enabling update precedes its consumers
 - Existing sources use their explicit final `is_template` value, or retain live state when the field is omitted or null; new sources are usable only with `is_template: true`. Unavailable sources propagate diagnostics transitively, and cycles report stable `template dependency cycle: ...` messages
 - External, cross-organization, live-only, and other non-managed template references are not managed plan dependencies and remain apply-preflight concerns
-- Team repository permission create/update actions reuse repository availability: they are executable only when the target exists or is available earlier in the dependency-safe plan; otherwise they remain in `skipped_actions`
+- Team repository permission create/update actions reuse repository availability: they are executable only when the target exists or is available earlier in the dependency-safe plan; otherwise they remain in `skipped_actions`. This does not relax the organization-only ownership rule for team repository permissions
 - Dependency metadata is internal; the public plan JSON has no dependency field
 - Both arrays keep deterministic action ordering so CI output and PR comments stay stable
 
