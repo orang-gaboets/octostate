@@ -95,13 +95,16 @@ func ResolveRepositoryOwner(owner, organization string) string {
 	return owner
 }
 
-// NormalizeRepositoryOwners returns a copy with managed repository owners
-// resolved without mutating the caller's config.
+// NormalizeRepositoryOwners returns a copy with managed repository identities
+// normalized without mutating the caller's config.
 func NormalizeRepositoryOwners(cfg OrganizationConfig) OrganizationConfig {
 	cfg.Organization = strings.TrimSpace(cfg.Organization)
 	cfg.Repositories = append([]RepositorySpec(nil), cfg.Repositories...)
 	for i := range cfg.Repositories {
 		cfg.Repositories[i].Owner = ResolveRepositoryOwner(cfg.Repositories[i].Owner, cfg.Organization)
+		cfg.Repositories[i].Name = strings.TrimSpace(cfg.Repositories[i].Name)
+		cfg.Repositories[i].Template.Owner = strings.TrimSpace(cfg.Repositories[i].Template.Owner)
+		cfg.Repositories[i].Template.Name = strings.TrimSpace(cfg.Repositories[i].Template.Name)
 	}
 
 	cfg.Teams = append([]TeamSpec(nil), cfg.Teams...)
@@ -109,6 +112,7 @@ func NormalizeRepositoryOwners(cfg OrganizationConfig) OrganizationConfig {
 		cfg.Teams[i].Repositories = append([]TeamRepositorySpec(nil), cfg.Teams[i].Repositories...)
 		for j := range cfg.Teams[i].Repositories {
 			cfg.Teams[i].Repositories[j].Owner = ResolveRepositoryOwner(cfg.Teams[i].Repositories[j].Owner, cfg.Organization)
+			cfg.Teams[i].Repositories[j].Name = strings.TrimSpace(cfg.Teams[i].Repositories[j].Name)
 		}
 	}
 

@@ -218,6 +218,34 @@ func TestBuildResolvesUnnormalizedRepositoryOwners(t *testing.T) {
 	}
 }
 
+func TestBuildResolvesWhitespaceNormalizedTemplateIdentity(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "z-template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: " ORANG-GABOETS ", Name: " z-template "}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
+
+	report, err := Build(context.Background(), Options{
+		Desired: desired,
+		Actual:  &state.OrganizationState{Organization: "orang-gaboets"},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	want := []string{"orang-gaboets/z-template", "orang-gaboets/a-consumer"}
+	got := make([]string, len(report.Actions))
+	for i, action := range report.Actions {
+		got[i] = action.ResourceID
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("whitespace-equivalent template identity should preserve dependency order: got %#v want %#v", got, want)
+	}
+	if desired.Repositories[0].Template.Owner != " ORANG-GABOETS " || desired.Repositories[0].Template.Name != " z-template " {
+		t.Fatalf("Build mutated the desired config: %#v", desired.Repositories[0])
+	}
+}
+
 func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
 	t.Parallel()
 
