@@ -1676,6 +1676,42 @@ func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *
 	}
 }
 
+func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{source, consumer}, Teams: []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed", Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "consumer", Permission: "push"}}}}}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationUpdate, ResourceID: repositoryResourceID("orang-gaboets", "source"), Executable: true, Changes: []gitopsplan.FieldChange{{Field: "is_template", From: false, To: true}}},
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "consumer"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "consumer"), Executable: true},
+	}}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+		if owner == "orang-gaboets" && repo == "source" {
+			return nil, nil, errors.New("source template enabling failed")
+		}
+		t.Fatal("dependent repository update must not run after source failure")
+		return nil, nil, nil
+	}}
+	teamSvc := &testTeamService{addTeamRepoBySlugFunc: func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+		t.Fatal("dependent team repository permission must not run after source failure")
+		return nil, nil
+	}}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: false}},
+		Teams:        []state.Team{{ID: 1, Slug: "platform"}},
+	}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if err == nil || !strings.Contains(err.Error(), "source template enabling failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestExecuteManagedTemplateCreateSettingsFailureStopsDependents(t *testing.T) {
 	t.Parallel()
 
