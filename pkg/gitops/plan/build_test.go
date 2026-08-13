@@ -1293,6 +1293,40 @@ func TestBuildReadyRepositoryActionsIgnoreNoOpTemplateSources(t *testing.T) {
 	}
 }
 
+func TestBuildReadyRepositoryActionsIgnoreUnrelatedTemplateSourceUpdates(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{
+		Owner:       "orang-gaboets",
+		Name:        "z-template",
+		Visibility:  "private",
+		Description: "new description",
+		Template:    config.TemplateSpec{Owner: "external", Name: "base"},
+	}
+	source.SetManagedDescription("new description")
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}}
+	independent := config.RepositorySpec{Owner: "orang-gaboets", Name: "b-independent", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+
+	report, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, independent, source}},
+		Actual: &state.OrganizationState{Organization: "orang-gaboets", Repositories: []state.Repository{
+			{Owner: "orang-gaboets", Name: "z-template", Visibility: "private", Description: "old description", IsTemplate: true},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	want := []string{"orang-gaboets/a-consumer", "orang-gaboets/b-independent", "orang-gaboets/z-template"}
+	got := make([]string, len(report.Actions))
+	for i, action := range report.Actions {
+		got[i] = action.ResourceID
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unrelated template source update should not gate consumers: got %#v want %#v", got, want)
+	}
+}
+
 func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
 	t.Parallel()
 
