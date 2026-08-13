@@ -1690,13 +1690,19 @@ func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *
 	}}
 	plan.Normalize()
 
-	repoSvc := &testRepoService{editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
-		if owner == "orang-gaboets" && repo == "source" {
-			return nil, nil, errors.New("source template enabling failed")
-		}
-		t.Fatal("dependent repository update must not run after source failure")
-		return nil, nil, nil
-	}}
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("consumer create must not run after source template enabling failure")
+			return nil, nil, nil
+		},
+		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			if owner == "orang-gaboets" && repo == "source" {
+				return nil, nil, errors.New("source template enabling failed")
+			}
+			t.Fatal("unexpected repository edit after source failure")
+			return nil, nil, nil
+		},
+	}
 	teamSvc := &testTeamService{addTeamRepoBySlugFunc: func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
 		t.Fatal("dependent team repository permission must not run after source failure")
 		return nil, nil
