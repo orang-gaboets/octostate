@@ -236,9 +236,15 @@ jobs:
             exit 0
           fi
 
-          if git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
-            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null; then
+          branch_status=0
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch already exists: $BRANCH_NAME" >&2
+            exit 1
+          fi
+          if [ "$branch_status" -ne 2 ]; then
+            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
             exit 1
           fi
 
@@ -358,9 +364,15 @@ jobs:
             exit 0
           fi
 
-          if git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
-            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null; then
+          branch_status=0
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
+            exit 1
+          fi
+          if [ "$branch_status" -ne 2 ]; then
+            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
             exit 1
           fi
 
@@ -452,9 +464,15 @@ jobs:
             exit 0
           fi
 
-          if git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
-            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null; then
+          branch_status=0
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
+            exit 1
+          fi
+          if [ "$branch_status" -ne 2 ]; then
+            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
             exit 1
           fi
 
