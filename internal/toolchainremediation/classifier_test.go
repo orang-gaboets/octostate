@@ -82,6 +82,18 @@ func TestClassify(t *testing.T) {
 			want:    Result{},
 		},
 		{
+			name:    "eligible plus cross minor fix",
+			fixture: "eligible_plus_cross_minor.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want:    Result{},
+		},
+		{
+			name:    "eligible plus non increasing fix",
+			fixture: "eligible_plus_non_increasing.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want:    Result{},
+		},
+		{
 			name:    "malformed trailing data",
 			fixture: "malformed_trailing_data.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},

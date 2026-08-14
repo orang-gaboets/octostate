@@ -115,6 +115,7 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 	haveTarget := false
 	sawStdlib := false
 	sawNonStdlib := false
+	sawIneligible := false
 
 	for {
 		msg, err := decodeMessage(dec)
@@ -144,6 +145,9 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 			continue
 		}
 		records[msg.Finding.OSV] = decision.record
+		if !decision.record.eligible {
+			sawIneligible = true
+		}
 		if decision.record.eligible {
 			eligibleIDs[msg.Finding.OSV] = struct{}{}
 			fixedVersion, err := parseVersion(decision.record.fixedVersion)
@@ -162,6 +166,9 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 	}
 	if sawStdlib && sawNonStdlib {
 		return Result{}, errors.New("mixed stdlib and third-party findings are not eligible for automated remediation")
+	}
+	if sawIneligible {
+		return Result{}, nil
 	}
 
 	if !haveTarget {
