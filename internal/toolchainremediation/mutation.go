@@ -65,8 +65,8 @@ func ApplyCandidate(repoRoot, goModPath, developmentDocPath string, target GoVer
 	if target.Major != state.toolchain.Major || target.Minor != state.toolchain.Minor {
 		return MutationResult{}, fmt.Errorf("target version %s crosses the current Go minor line", target.String())
 	}
-	if target.String() == state.toolchain.String() {
-		return MutationResult{}, fmt.Errorf("target version %s matches the current toolchain", target.String())
+	if target.Patch <= state.toolchain.Patch {
+		return MutationResult{}, fmt.Errorf("target version %s is not newer than the current toolchain %s", target.String(), state.toolchain.String())
 	}
 
 	docData, err := readRegularFile(developmentDocPath)

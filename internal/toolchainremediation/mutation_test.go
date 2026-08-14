@@ -169,6 +169,24 @@ func TestApplyCandidateAllowsIndependentGoAndToolchainVersions(t *testing.T) {
 	}
 }
 
+func TestApplyCandidateRejectsToolchainDowngrade(t *testing.T) {
+	t.Parallel()
+
+	repo := newMutationTestRepo(t)
+	_, err := ApplyCandidate(
+		repo,
+		filepath.Join(repo, "go.mod"),
+		filepath.Join(repo, "docs", "maintainers", "development.md"),
+		GoVersion{Major: 1, Minor: 25, Patch: 12},
+	)
+	if err == nil {
+		t.Fatal("ApplyCandidate returned nil error")
+	}
+	if !strings.Contains(err.Error(), "is not newer") {
+		t.Fatalf("error = %q, want non-increasing target error", err.Error())
+	}
+}
+
 func TestApplyCandidateRejectsAmbiguousDocumentationReplacement(t *testing.T) {
 	t.Parallel()
 
