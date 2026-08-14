@@ -252,9 +252,6 @@ func parseGoMod(data []byte) (goModState, error) {
 	if !sawToolchain {
 		return goModState{}, errors.New("missing toolchain directive")
 	}
-	if state.goVersion.Major != state.toolchain.Major || state.goVersion.Minor != state.toolchain.Minor {
-		return goModState{}, errors.New("conflicting go and toolchain directives")
-	}
 
 	return state, nil
 }

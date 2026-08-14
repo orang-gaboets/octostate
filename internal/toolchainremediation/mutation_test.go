@@ -51,7 +51,7 @@ func TestApplyCandidateReplacesExactTargets(t *testing.T) {
 	}
 }
 
-func TestApplyCandidateRejectsMalformedOrConflictingGoMod(t *testing.T) {
+func TestApplyCandidateRejectsMalformedGoMod(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -81,18 +81,6 @@ func TestApplyCandidateRejectsMalformedOrConflictingGoMod(t *testing.T) {
 				"",
 			}, "\n"),
 			want: "duplicate go directive",
-		},
-		{
-			name: "conflicting major minor",
-			goMod: strings.Join([]string{
-				"module example.com/test",
-				"",
-				"go 1.25.0",
-				"",
-				"toolchain go1.24.13",
-				"",
-			}, "\n"),
-			want: "conflicting go and toolchain directives",
 		},
 		{
 			name: "malformed toolchain directive",
@@ -151,6 +139,33 @@ func TestApplyCandidateRejectsMalformedOrConflictingGoMod(t *testing.T) {
 				t.Fatalf("error = %q, want substring %q", err.Error(), tc.want)
 			}
 		})
+	}
+}
+
+func TestApplyCandidateAllowsIndependentGoAndToolchainVersions(t *testing.T) {
+	t.Parallel()
+
+	repo := newMutationTestRepoWithGoMod(t, strings.Join([]string{
+		"module example.com/test",
+		"",
+		"go 1.24.0",
+		"",
+		"toolchain go1.25.13",
+		"",
+	}, "\n"))
+	goModPath := filepath.Join(repo, "go.mod")
+	docPath := filepath.Join(repo, "docs", "maintainers", "development.md")
+
+	if _, err := ApplyCandidate(repo, goModPath, docPath, GoVersion{Major: 1, Minor: 25, Patch: 14}); err != nil {
+		t.Fatalf("ApplyCandidate returned error: %v", err)
+	}
+
+	goMod := string(mustReadFile(t, goModPath))
+	if !strings.Contains(goMod, "go 1.24.0") {
+		t.Fatalf("go directive changed unexpectedly: %q", goMod)
+	}
+	if !strings.Contains(goMod, "toolchain go1.25.14") {
+		t.Fatalf("toolchain directive was not updated: %q", goMod)
 	}
 }
 
