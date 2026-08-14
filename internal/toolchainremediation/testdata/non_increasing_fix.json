@@ -1,0 +1,2 @@
+{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","db":"https://vuln.go.dev","go_version":"go1.24.6","scan_level":"symbol","scan_mode":"source"}}
+{"finding":{"osv":"GO-2025-0001","fixed_version":"1.24.6","trace":[{"module":"stdlib"}]}}
