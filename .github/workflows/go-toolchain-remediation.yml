@@ -186,7 +186,6 @@ jobs:
           EXPECTED_BOT: ${{ steps.app-bot.outputs.login }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           IDS_JSON: ${{ steps.classification.outputs.ids_json }}
-          PR_MARKER: ${{ env.PR_MARKER }}
           TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
         run: |
           set -euo pipefail
@@ -196,42 +195,21 @@ jobs:
             exit 1
           fi
 
-          open_prs="$(gh pr list \
+          gh pr list \
             --state open \
             --base main \
             --author "$EXPECTED_BOT" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
-            --limit 1000)"
-          remediation_prs="$(jq -c \
-            --arg marker "$PR_MARKER" \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg bot "$EXPECTED_BOT" \
-            '[.[] |
-              select(.baseRefName == "main") |
-              select(.headRepository.nameWithOwner == $repo) |
-              select(.author.login == $bot) |
-              select((.body // "") | contains($marker))]' <<< "$open_prs")"
-          other_urls="$(jq -r \
-            --arg current "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->" \
-            --arg target "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->" \
-            '.[] |
-              select((((.body // "") | contains($current)) and ((.body // "") | contains($target))) | not) |
-              .url' <<< "$remediation_prs")"
-          if [ -n "$other_urls" ]; then
-            echo "A different open bot-generated remediation PR already exists; maintainer intervention is required before automation can continue:" >&2
-            printf '%s\n' "$other_urls" >&2
-            exit 1
-          fi
-
-          duplicate_url="$(jq -r \
-            --arg current "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->" \
-            --arg target "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->" \
-            '.[] |
-              select((.body // "") | contains($current)) |
-              select((.body // "") | contains($target)) |
-              .url' <<< "$remediation_prs" | head -n 1)"
-          if [ -n "$duplicate_url" ]; then
-            echo "Existing matching remediation PR found: $duplicate_url"
+            --limit 1000 > open-remediation-prs.json
+          go run ./cmd/go-toolchain-remediation existing \
+            --prs open-remediation-prs.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --bot "$EXPECTED_BOT" \
+            --branch "$BRANCH_NAME" \
+            --current "$CURRENT_VERSION" \
+            --target "$TARGET_VERSION" > existing-work.json
+          if [ "$(jq -r '.proceed' existing-work.json)" != "true" ]; then
+            echo "Existing matching remediation PR found: $(jq -r '.duplicate_url // empty' existing-work.json)"
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -312,7 +290,6 @@ jobs:
           CURRENT_VERSION: ${{ steps.classification.outputs.current_version }}
           EXPECTED_BOT: ${{ steps.app-bot.outputs.login }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_MARKER: ${{ env.PR_MARKER }}
           TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
         run: |
           set -euo pipefail
@@ -324,42 +301,21 @@ jobs:
             exit 1
           fi
 
-          open_prs="$(gh pr list \
+          gh pr list \
             --state open \
             --base main \
             --author "$EXPECTED_BOT" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
-            --limit 1000)"
-          remediation_prs="$(jq -c \
-            --arg marker "$PR_MARKER" \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg bot "$EXPECTED_BOT" \
-            '[.[] |
-              select(.baseRefName == "main") |
-              select(.headRepository.nameWithOwner == $repo) |
-              select(.author.login == $bot) |
-              select((.body // "") | contains($marker))]' <<< "$open_prs")"
-          other_urls="$(jq -r \
-            --arg current "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->" \
-            --arg target "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->" \
-            '.[] |
-              select((((.body // "") | contains($current)) and ((.body // "") | contains($target))) | not) |
-              .url' <<< "$remediation_prs")"
-          if [ -n "$other_urls" ]; then
-            echo "A different open bot-generated remediation PR appeared before branch creation; maintainer intervention is required before automation can continue:" >&2
-            printf '%s\n' "$other_urls" >&2
-            exit 1
-          fi
-
-          duplicate_url="$(jq -r \
-            --arg current "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->" \
-            --arg target "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->" \
-            '.[] |
-              select((.body // "") | contains($current)) |
-              select((.body // "") | contains($target)) |
-              .url' <<< "$remediation_prs" | head -n 1)"
-          if [ -n "$duplicate_url" ]; then
-            echo "Matching remediation PR appeared before branch creation: $duplicate_url"
+            --limit 1000 > open-remediation-prs.json
+          go run ./cmd/go-toolchain-remediation existing \
+            --prs open-remediation-prs.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --bot "$EXPECTED_BOT" \
+            --branch "$BRANCH_NAME" \
+            --current "$CURRENT_VERSION" \
+            --target "$TARGET_VERSION" > existing-work.json
+          if [ "$(jq -r '.proceed' existing-work.json)" != "true" ]; then
+            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' existing-work.json)"
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -425,42 +381,21 @@ jobs:
             exit 1
           fi
 
-          open_prs="$(gh pr list \
+          gh pr list \
             --state open \
             --base main \
             --author "$BOT_LOGIN" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
-            --limit 1000)"
-          remediation_prs="$(jq -c \
-            --arg marker "$PR_MARKER" \
-            --arg repo "$GITHUB_REPOSITORY" \
-            --arg bot "$BOT_LOGIN" \
-            '[.[] |
-              select(.baseRefName == "main") |
-              select(.headRepository.nameWithOwner == $repo) |
-              select(.author.login == $bot) |
-              select((.body // "") | contains($marker))]' <<< "$open_prs")"
-          other_urls="$(jq -r \
-            --arg current "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->" \
-            --arg target "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->" \
-            '.[] |
-              select((((.body // "") | contains($current)) and ((.body // "") | contains($target))) | not) |
-              .url' <<< "$remediation_prs")"
-          if [ -n "$other_urls" ]; then
-            echo "A different open bot-generated remediation PR appeared before branch creation; maintainer intervention is required before automation can continue:" >&2
-            printf '%s\n' "$other_urls" >&2
-            exit 1
-          fi
-
-          duplicate_url="$(jq -r \
-            --arg current "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->" \
-            --arg target "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->" \
-            '.[] |
-              select((.body // "") | contains($current)) |
-              select((.body // "") | contains($target)) |
-              .url' <<< "$remediation_prs" | head -n 1)"
-          if [ -n "$duplicate_url" ]; then
-            echo "Matching remediation PR appeared before branch creation: $duplicate_url"
+            --limit 1000 > open-remediation-prs.json
+          go run ./cmd/go-toolchain-remediation existing \
+            --prs open-remediation-prs.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --bot "$BOT_LOGIN" \
+            --branch "$BRANCH_NAME" \
+            --current "$CURRENT_VERSION" \
+            --target "$TARGET_VERSION" > existing-work.json
+          if [ "$(jq -r '.proceed' existing-work.json)" != "true" ]; then
+            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' existing-work.json)"
             exit 0
           fi
 

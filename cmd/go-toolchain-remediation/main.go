@@ -29,7 +29,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func execute(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("expected one of: classify, apply, verify")
+		return errors.New("expected one of: classify, apply, existing, verify")
 	}
 
 	switch args[0] {
@@ -37,11 +37,58 @@ func execute(args []string, stdout io.Writer) error {
 		return runClassify(args[1:], stdout)
 	case "apply":
 		return runApply(args[1:], stdout)
+	case "existing":
+		return runExisting(args[1:], stdout)
 	case "verify":
 		return runVerify(args[1:], stdout)
 	default:
 		return fmt.Errorf("unknown subcommand %q", args[0])
 	}
+}
+
+func runExisting(args []string, stdout io.Writer) error {
+	var prsPath string
+	var repository string
+	var expectedBot string
+	var expectedBranch string
+	var currentVersion string
+	var targetVersion string
+
+	fs := flag.NewFlagSet("existing", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&prsPath, "prs", "", "path to open pull request JSON")
+	fs.StringVar(&repository, "repository", "", "expected head repository")
+	fs.StringVar(&expectedBot, "bot", "", "expected pull request author")
+	fs.StringVar(&expectedBranch, "branch", "", "expected pull request head branch")
+	fs.StringVar(&currentVersion, "current", "", "current Go toolchain version")
+	fs.StringVar(&targetVersion, "target", "", "target Go toolchain version")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if prsPath == "" || repository == "" || expectedBot == "" || expectedBranch == "" || currentVersion == "" || targetVersion == "" {
+		return errors.New("existing requires --prs, --repository, --bot, --branch, --current, and --target")
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("existing does not accept positional arguments: %v", fs.Args())
+	}
+
+	file, err := os.Open(prsPath)
+	if err != nil {
+		return fmt.Errorf("open pull request file: %w", err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	var prs []toolchainremediation.ExistingPR
+	if err := json.NewDecoder(file).Decode(&prs); err != nil {
+		return fmt.Errorf("decode pull request JSON: %w", err)
+	}
+	result, err := toolchainremediation.CheckExistingWork(prs, repository, expectedBot, expectedBranch, currentVersion, targetVersion)
+	if err != nil {
+		return err
+	}
+	return writeJSON(stdout, result)
 }
 
 func runClassify(args []string, stdout io.Writer) error {
