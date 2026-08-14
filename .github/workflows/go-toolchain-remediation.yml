@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
 
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          base_sha="$(git rev-parse --verify origin/main^{commit})"
+          base_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           git switch --detach "$base_sha"
 
           echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
@@ -312,7 +312,7 @@ jobs:
           set -euo pipefail
 
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          current_main_sha="$(git rev-parse --verify origin/main^{commit})"
+          current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
             echo "origin/main moved from $BASE_SHA to $current_main_sha; aborting remediation." >&2
             exit 1
@@ -407,7 +407,7 @@ jobs:
           } > "$body_file"
 
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          current_main_sha="$(git rev-parse --verify origin/main^{commit})"
+          current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
             echo "origin/main moved from $BASE_SHA to $current_main_sha before branch creation; aborting remediation." >&2
             exit 1
