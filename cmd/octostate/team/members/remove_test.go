@@ -106,9 +106,11 @@ func TestRemoveTeamMemberDryRunSkipsRemoveService(t *testing.T) {
 	if svc.removeCalled {
 		t.Fatalf("expected remove team membership service not to be called in dry-run mode")
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Dry run: would remove user "u" from team o/s`) {
-		t.Fatalf("unexpected dry-run output: %q", got)
+	message, data := decodeEnvelope(t, out.String(), "dry-run")
+	if message != `Dry run: would remove user "u" from team o/s` {
+		t.Fatalf("unexpected dry-run message: %q", message)
 	}
+	assertEnvelopeData(t, data, "o", "s", "u")
 }
 
 func TestRemoveTeamMemberWritesSuccessToStdout(t *testing.T) {
@@ -120,9 +122,11 @@ func TestRemoveTeamMemberWritesSuccessToStdout(t *testing.T) {
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Removed user "u" from team o/s`) {
-		t.Fatalf("unexpected success output: %q", got)
+	message, data := decodeEnvelope(t, out.String(), "success")
+	if message != `Removed user "u" from team o/s` {
+		t.Fatalf("unexpected success message: %q", message)
 	}
+	assertEnvelopeData(t, data, "o", "s", "u")
 }
 
 func TestRemoveTeamMemberUsesProvidedService(t *testing.T) {
@@ -143,9 +147,11 @@ func TestRemoveTeamMemberUsesProvidedService(t *testing.T) {
 	if svc.username != "u" {
 		t.Fatalf("expected trimmed username %q, got %q", "u", svc.username)
 	}
-	if got := strings.TrimSpace(out.String()); !strings.Contains(got, `Removed user "u" from team o/s`) {
-		t.Fatalf("unexpected success output: %q", got)
+	message, data := decodeEnvelope(t, out.String(), "success")
+	if message != `Removed user "u" from team o/s` {
+		t.Fatalf("unexpected success message: %q", message)
 	}
+	assertEnvelopeData(t, data, "o", "s", "u")
 }
 
 func TestRemoveTeamMemberToConfigRemovesTargetedMember(t *testing.T) {

@@ -53,14 +53,20 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
 			if dryRun {
-				_, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Dry run: would remove user %q from team %s/%s\n",
-					trimmedUsername,
-					trimmedOrg,
-					trimmedSlug,
+				return cmdoutput.PrintDryRun(
+					cmd,
+					fmt.Sprintf(
+						"Dry run: would remove user %q from team %s/%s",
+						trimmedUsername,
+						trimmedOrg,
+						trimmedSlug,
+					),
+					map[string]any{
+						"organization": trimmedOrg,
+						"slug":         trimmedSlug,
+						"username":     trimmedUsername,
+					},
 				)
-				return err
 			}
 
 			if cmd.Flags().Changed("to-config") {
@@ -87,8 +93,15 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 				return err
 			}
 
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "Removed user %q from team %s/%s\n", trimmedUsername, trimmedOrg, trimmedSlug)
-			return err
+			return cmdoutput.PrintSuccess(
+				cmd,
+				fmt.Sprintf("Removed user %q from team %s/%s", trimmedUsername, trimmedOrg, trimmedSlug),
+				map[string]any{
+					"organization": trimmedOrg,
+					"slug":         trimmedSlug,
+					"username":     trimmedUsername,
+				},
+			)
 		},
 	}
 

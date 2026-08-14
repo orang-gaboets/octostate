@@ -1,6 +1,7 @@
 package members_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -38,16 +39,34 @@ func TestListTeamMembersCmdPropagatesServiceError(t *testing.T) {
 
 func TestAddTeamMemberCmdPropagatesServiceError(t *testing.T) {
 	cmd := memberscmd.AddCmd(failingTeamMembersService{})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	// The root command sets SilenceUsage, so mirror real invocation here;
+	// otherwise cobra's usage text would mask the stdout contract.
+	cmd.SilenceUsage = true
 	cmd.SetArgs([]string{"--org", "o", "--slug", "s", "--username", "u"})
 	if err := cmd.Execute(); !errors.Is(err, errTeamMembersCommandDependency) {
 		t.Fatalf("expected dependency error, got %v", err)
+	}
+	// A failed mutation must not emit a success or dry-run envelope.
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output on error, got %q", out.String())
 	}
 }
 
 func TestRemoveTeamMemberCmdPropagatesServiceError(t *testing.T) {
 	cmd := memberscmd.RemoveCmd(failingTeamMembersService{})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	// The root command sets SilenceUsage, so mirror real invocation here;
+	// otherwise cobra's usage text would mask the stdout contract.
+	cmd.SilenceUsage = true
 	cmd.SetArgs([]string{"--org", "o", "--slug", "s", "--username", "u"})
 	if err := cmd.Execute(); !errors.Is(err, errTeamMembersCommandDependency) {
 		t.Fatalf("expected dependency error, got %v", err)
+	}
+	// A failed mutation must not emit a success or dry-run envelope.
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output on error, got %q", out.String())
 	}
 }

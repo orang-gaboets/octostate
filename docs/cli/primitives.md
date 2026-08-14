@@ -420,6 +420,13 @@ Flags:
 - `--slug` (required): Team slug (URL-friendly name)
 - `--role` (optional): Team member role filter (`all`, `member`, or `maintainer`; default is `all`)
 
+`team members add` and `team members remove` emit the standard
+`{status, message, data}` operation envelope in all three modes. Live and
+proposal results use `status: "success"` and dry-run uses `status: "dry-run"`.
+`data` always carries `organization`, `slug`, and `username`, plus `role` for
+`add`. A successful live `add` additionally returns the GitHub membership
+response under `data.membership`.
+
 ### `octostate team members add`
 
 ```bash
