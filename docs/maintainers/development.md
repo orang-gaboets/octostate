@@ -78,6 +78,13 @@ tool if it is not already cached.
 The `govulncheck` hook is manual so you can run it on demand without slowing
 every commit.
 
+The dedicated `.github/workflows/govulncheck.yml` workflow runs on pull
+requests targeting `main`, pushes to `main`, a daily schedule, and manual
+dispatch. It is detection-only: it queries the normal Go vulnerability
+database and fails visibly when reachable vulnerabilities are found. Handle
+remediation separately through the normal issue and pull-request workflow; the
+monitoring workflow does not modify dependencies or the Go toolchain.
+
 The race-detector check stays scoped to `pkg/gitops/...` because that tree
 contains the bounded-concurrency collector, planner, and apply packages. That
 keeps the check focused on the code most likely to hide shared-memory races
