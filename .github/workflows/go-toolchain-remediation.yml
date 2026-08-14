@@ -28,12 +28,6 @@ jobs:
           persist-credentials: false
           ref: main
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - name: Pin trusted main
         id: base
         shell: bash
@@ -46,6 +40,12 @@ jobs:
 
           echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "Pinned origin/main at $base_sha"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - name: Run structured govulncheck
         shell: bash
@@ -250,7 +250,7 @@ jobs:
           jq -e --argjson expected "$IDS_JSON" '.vulnerability_ids == $expected' classification.json > /dev/null
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Build and validate candidate
+      - name: Apply candidate
         if: steps.existing-work.outputs.proceed == 'true'
         shell: bash
         env:
@@ -263,6 +263,27 @@ jobs:
             --go-mod "$PWD/go.mod" \
             --development-doc "$PWD/docs/maintainers/development.md" \
             --target "$TARGET_VERSION" > mutation.json
+
+      - name: Set up candidate Go
+        if: steps.existing-work.outputs.proceed == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and validate candidate
+        if: steps.existing-work.outputs.proceed == 'true'
+        shell: bash
+        env:
+          TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
+        run: |
+          set -euo pipefail
+
+          actual_go_version="$(go env GOVERSION)"
+          if [ "$actual_go_version" != "$TARGET_VERSION" ]; then
+            echo "Candidate validation is using $actual_go_version instead of $TARGET_VERSION." >&2
+            exit 1
+          fi
 
           go test ./...
           go vet ./...
