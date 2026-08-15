@@ -73,11 +73,12 @@ GitHub App token is created. Its default workflow permissions remain
 `contents: read`, checkout disables persisted credentials, and the maintenance
 App token requests only `contents: write` and `pull-requests: write`.
 
-Repository configuration for this automation remains external and must be
-maintained separately:
+Organization-level Actions configuration for this automation remains external
+and must be maintained separately. Scope access to repositories approved to run
+this workflow:
 
-- Actions variable: `GO_TOOLCHAIN_REMEDIATION_APP_ID`
-- Actions secret: `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`
+- Organization Actions variable: `GO_TOOLCHAIN_REMEDIATION_APP_ID`
+- Organization Actions secret: `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`
 
 This repository documentation does not certify that the App is currently
 installed correctly, that the variable and secret are populated, or that any
