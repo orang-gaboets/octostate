@@ -368,7 +368,8 @@ jobs:
           scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
           mkdir -p "$scratch_dir"
 
-          commit_message="fix(go): update toolchain to ${TARGET_VERSION}"
+          numeric_target="${TARGET_VERSION#go}"
+          commit_message="ci: bump Go toolchain to ${numeric_target}"
 
           body_file="$(mktemp)"
           {
@@ -376,6 +377,7 @@ jobs:
             echo "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->"
             echo "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->"
             echo "<!-- octostate-go-toolchain-remediation-base:$BASE_SHA -->"
+            echo "Generated automatically by the Orang Gaboets Go Maintenance GitHub App."
             echo
             echo "Updates the pinned Go toolchain from \`$CURRENT_VERSION\` to \`$TARGET_VERSION\` for reachable standard-library vulnerabilities reported by govulncheck."
             echo
