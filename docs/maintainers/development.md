@@ -15,8 +15,8 @@
    go version
    ```
 
-   The module includes a `toolchain go1.25.12` directive, so Go commands will
-   automatically prefer the patched 1.25.12 toolchain when toolchain switching
+   The module includes a `toolchain go1.25.13` directive, so Go commands will
+   automatically prefer the patched 1.25.13 toolchain when toolchain switching
    is enabled.
 
 3. Install module dependencies:
