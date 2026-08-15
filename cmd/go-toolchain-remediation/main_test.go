@@ -21,7 +21,7 @@ func TestRunClassifyWritesDeterministicJSONToStdout(t *testing.T) {
 
 	writeTestFile(t, goModPath, "module example.com/test\n\ngo 1.25.0\n\ntoolchain go1.25.13\n")
 	writeTestFile(t, scanPath, "{"+
-		`"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.13"}`+
+		`"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.13","scan_level":"symbol","scan_mode":"source"}`+
 		"}\n")
 
 	var stdout bytes.Buffer
@@ -106,7 +106,7 @@ func TestRunApplyAndVerifyRoundTrip(t *testing.T) {
 	}
 
 	writeTestFile(t, scanPath, "{"+
-		`"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14"}`+
+		`"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14","scan_level":"symbol","scan_mode":"source"}`+
 		"}\n")
 
 	var verifyStdout bytes.Buffer

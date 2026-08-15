@@ -73,19 +73,15 @@ type findingMessage struct {
 }
 
 type findingFrame struct {
-	Module string `json:"module"`
+	Module   string `json:"module"`
+	Package  string `json:"package,omitempty"`
+	Function string `json:"function,omitempty"`
 }
 
 type findingRecord struct {
 	module       string
-	fixedVersion string
-	eligible     bool
-}
-
-type findingDecision struct {
-	module    string
-	record    findingRecord
-	duplicate bool
+	fixedVersion GoVersion
+	reachable    bool
 }
 
 // Classify consumes a govulncheck streaming JSON report and the current pinned
@@ -96,20 +92,10 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 		return Result{}, fmt.Errorf("invalid current Go version: %s", current.String())
 	}
 
-	dec := json.NewDecoder(r)
-
-	first, err := decodeMessage(dec)
+	records, err := scanRecords(r, current)
 	if err != nil {
 		return Result{}, err
 	}
-	if first.Config == nil {
-		return Result{}, errors.New("govulncheck stream must start with a config message")
-	}
-	if err := validateConfig(first.Config); err != nil {
-		return Result{}, err
-	}
-
-	records := make(map[string]findingRecord)
 	eligibleIDs := make(map[string]struct{})
 	var target GoVersion
 	haveTarget := false
@@ -117,53 +103,33 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 	sawNonStdlib := false
 	sawIneligible := false
 
-	for {
-		msg, err := decodeMessage(dec)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return Result{}, err
-		}
-		if msg.Config != nil {
-			return Result{}, errors.New("govulncheck config message must appear exactly once at the start of the stream")
-		}
-		if msg.Finding == nil {
-			continue
-		}
-
-		decision, err := classifyFinding(msg.Finding, current, records)
-		if err != nil {
-			return Result{}, err
-		}
-		if decision.module == stdlibModule {
+	for osv, record := range records {
+		if record.module == stdlibModule {
 			sawStdlib = true
 		} else {
 			sawNonStdlib = true
 		}
-		if decision.duplicate {
+		if !record.reachable {
+			sawIneligible = true
 			continue
 		}
-		records[msg.Finding.OSV] = decision.record
-		if !decision.record.eligible {
+
+		eligible := record.module == stdlibModule &&
+			record.fixedVersion.Major == current.Major &&
+			record.fixedVersion.Minor == current.Minor &&
+			record.fixedVersion.Patch > current.Patch
+		if !eligible {
 			sawIneligible = true
+			continue
 		}
-		if decision.record.eligible {
-			eligibleIDs[msg.Finding.OSV] = struct{}{}
-			fixedVersion, err := parseVersion(decision.record.fixedVersion)
-			if err != nil {
-				return Result{}, err
-			}
-			if !haveTarget || fixedVersion.Patch > target.Patch {
-				target = fixedVersion
-				haveTarget = true
-			}
+
+		eligibleIDs[osv] = struct{}{}
+		if !haveTarget || record.fixedVersion.Patch > target.Patch {
+			target = record.fixedVersion
+			haveTarget = true
 		}
 	}
 
-	if len(records) == 0 {
-		return Result{}, nil
-	}
 	if sawStdlib && sawNonStdlib {
 		return Result{}, errors.New("mixed stdlib and third-party findings are not eligible for automated remediation")
 	}
@@ -188,58 +154,115 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 	}, nil
 }
 
-func classifyFinding(finding *findingMessage, current GoVersion, records map[string]findingRecord) (findingDecision, error) {
-	if finding.OSV == "" {
-		return findingDecision{}, errors.New("finding message missing vulnerability id")
+func scanRecords(r io.Reader, current GoVersion) (map[string]findingRecord, error) {
+	dec := json.NewDecoder(r)
+
+	first, err := decodeMessage(dec)
+	if err != nil {
+		return nil, err
 	}
-	if finding.FixedVersion == "" {
-		return findingDecision{}, fmt.Errorf("finding %s missing fixed version", finding.OSV)
+	if first.Config == nil {
+		return nil, errors.New("govulncheck stream must start with a config message")
 	}
-	if len(finding.Trace) == 0 {
-		return findingDecision{}, fmt.Errorf("finding %s missing trace frame", finding.OSV)
+	if err := validateConfig(first.Config, current); err != nil {
+		return nil, err
 	}
 
-	fixedVersion, err := parseVersion(finding.FixedVersion)
+	records := make(map[string]findingRecord)
+	for {
+		msg, err := decodeMessage(dec)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return records, nil
+			}
+			return nil, err
+		}
+		if msg.Config != nil {
+			return nil, errors.New("govulncheck config message must appear exactly once at the start of the stream")
+		}
+		if msg.Finding == nil {
+			continue
+		}
+
+		record, err := parseFinding(msg.Finding)
+		if err != nil {
+			return nil, err
+		}
+		if prior, ok := records[msg.Finding.OSV]; ok {
+			if prior.module != record.module {
+				return nil, fmt.Errorf("finding %s has conflicting module identities %q and %q", msg.Finding.OSV, prior.module, record.module)
+			}
+			if prior.fixedVersion != record.fixedVersion {
+				return nil, fmt.Errorf("finding %s has conflicting fixed versions %q and %q", msg.Finding.OSV, prior.fixedVersion.String(), record.fixedVersion.String())
+			}
+			prior.reachable = prior.reachable || record.reachable
+			records[msg.Finding.OSV] = prior
+			continue
+		}
+		records[msg.Finding.OSV] = record
+	}
+}
+
+func parseFinding(finding *findingMessage) (findingRecord, error) {
+	if finding.OSV == "" {
+		return findingRecord{}, errors.New("finding message missing vulnerability id")
+	}
+	if finding.FixedVersion == "" {
+		return findingRecord{}, fmt.Errorf("finding %s missing fixed version", finding.OSV)
+	}
+	if len(finding.Trace) == 0 {
+		return findingRecord{}, fmt.Errorf("finding %s missing trace frame", finding.OSV)
+	}
+
+	fixedVersion, err := parseGovulncheckFixedVersion(finding.FixedVersion)
 	if err != nil {
-		return findingDecision{}, fmt.Errorf("finding %s has invalid fixed version %q: %w", finding.OSV, finding.FixedVersion, err)
+		return findingRecord{}, fmt.Errorf("finding %s has invalid fixed version %q: %w", finding.OSV, finding.FixedVersion, err)
 	}
 
 	module := finding.Trace[0].Module
 	if module == "" {
-		return findingDecision{}, fmt.Errorf("finding %s missing trace module", finding.OSV)
+		return findingRecord{}, fmt.Errorf("finding %s missing trace module", finding.OSV)
 	}
 
-	decision := findingDecision{
-		module: module,
-		record: findingRecord{
-			module:       module,
-			fixedVersion: fixedVersion.String(),
-		},
-	}
-	if prior, ok := records[finding.OSV]; ok {
-		if prior.module != module {
-			return findingDecision{}, fmt.Errorf("finding %s has conflicting module identities %q and %q", finding.OSV, prior.module, module)
+	reachable := false
+	for _, frame := range finding.Trace {
+		if frame.Module == "" {
+			return findingRecord{}, fmt.Errorf("finding %s has trace frame missing module", finding.OSV)
 		}
-		if prior.fixedVersion != fixedVersion.String() {
-			return findingDecision{}, fmt.Errorf("finding %s has conflicting fixed versions %q and %q", finding.OSV, prior.fixedVersion, fixedVersion.String())
+		if frame.Function != "" && frame.Package == "" {
+			return findingRecord{}, fmt.Errorf("finding %s has trace function without package", finding.OSV)
 		}
-		decision.duplicate = true
-		return decision, nil
+		if frame.Function != "" {
+			reachable = true
+		}
 	}
 
-	decision.record.eligible = module == stdlibModule &&
-		fixedVersion.Major == current.Major &&
-		fixedVersion.Minor == current.Minor &&
-		fixedVersion.Patch > current.Patch
-	return decision, nil
+	return findingRecord{
+		module:       module,
+		fixedVersion: fixedVersion,
+		reachable:    reachable,
+	}, nil
 }
 
-func validateConfig(cfg *configMessage) error {
+func validateConfig(cfg *configMessage, current GoVersion) error {
 	if cfg.ProtocolVersion != protocolVersion {
 		return fmt.Errorf("unsupported govulncheck protocol version %q", cfg.ProtocolVersion)
 	}
 	if cfg.ScannerName != supportedScannerName {
 		return fmt.Errorf("unsupported govulncheck scanner name %q", cfg.ScannerName)
+	}
+	if cfg.ScanLevel != "symbol" {
+		return fmt.Errorf("unsupported govulncheck scan level %q", cfg.ScanLevel)
+	}
+	if cfg.ScanMode != "source" {
+		return fmt.Errorf("unsupported govulncheck scan mode %q", cfg.ScanMode)
+	}
+	version, err := parseGovulncheckGoVersion(cfg.GoVersion)
+	if err != nil {
+		return fmt.Errorf("invalid govulncheck Go version %q: %w", cfg.GoVersion, err)
+	}
+	if version != current {
+		return fmt.Errorf("govulncheck Go version %s does not match current toolchain %s", version.String(), current.String())
 	}
 	return nil
 }
@@ -299,6 +322,22 @@ func parseVersion(raw string) (GoVersion, error) {
 	}
 
 	return GoVersion{Major: major, Minor: minor, Patch: patch}, nil
+}
+
+func parseGovulncheckFixedVersion(raw string) (GoVersion, error) {
+	s := strings.TrimSpace(raw)
+	if !strings.HasPrefix(s, "v") {
+		return GoVersion{}, fmt.Errorf("fixed version must use v prefix: %q", raw)
+	}
+	return parseVersion(strings.TrimPrefix(s, "v"))
+}
+
+func parseGovulncheckGoVersion(raw string) (GoVersion, error) {
+	s := strings.TrimSpace(raw)
+	if !strings.HasPrefix(s, "go") {
+		return GoVersion{}, fmt.Errorf("go version must use go prefix: %q", raw)
+	}
+	return parseVersion(s)
 }
 
 func parseVersionPart(raw string) (int, error) {

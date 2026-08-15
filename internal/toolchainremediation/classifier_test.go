@@ -24,6 +24,12 @@ func TestClassify(t *testing.T) {
 			want:    Result{},
 		},
 		{
+			name:    "module only finding is not reachable",
+			fixture: "module_only_finding.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want:    Result{},
+		},
+		{
 			name:    "one eligible finding",
 			fixture: "one_eligible.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
@@ -132,6 +138,24 @@ func TestClassify(t *testing.T) {
 		{
 			name:    "missing scanner name",
 			fixture: "missing_scanner_name.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported scan level",
+			fixture: "unsupported_scan_level.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported scan mode",
+			fixture: "unsupported_scan_mode.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			wantErr: true,
+		},
+		{
+			name:    "mismatched scan Go version",
+			fixture: "mismatched_scan_go_version.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
 			wantErr: true,
 		},

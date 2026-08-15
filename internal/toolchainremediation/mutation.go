@@ -2,10 +2,8 @@ package toolchainremediation
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -262,8 +260,12 @@ func parseGoDirectiveVersion(raw string) (GoVersion, error) {
 		return GoVersion{}, fmt.Errorf("language version must not use go prefix: %q", raw)
 	}
 	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
-		return GoVersion{}, fmt.Errorf("expected major.minor.patch language version, got %q", raw)
+	switch len(parts) {
+	case 2:
+		parts = append(parts, "0")
+	case 3:
+	default:
+		return GoVersion{}, fmt.Errorf("expected major.minor or major.minor.patch language version, got %q", raw)
 	}
 	return parseVersion(strings.Join(parts, "."))
 }
@@ -616,40 +618,14 @@ func validateCleanScan(scanPath string, target GoVersion) error {
 		return err
 	}
 
-	dec := json.NewDecoder(bytes.NewReader(data))
-	first, err := decodeMessage(dec)
+	records, err := scanRecords(bytes.NewReader(data), target)
 	if err != nil {
-		return fmt.Errorf("decode post-update scan: %w", err)
+		return fmt.Errorf("validate post-update scan: %w", err)
 	}
-	if first.Config == nil {
-		return errors.New("post-update scan must start with a config message")
-	}
-	if err := validateConfig(first.Config); err != nil {
-		return fmt.Errorf("validate post-update scan config: %w", err)
-	}
-	if first.Config.GoVersion != "" {
-		version, err := parseVersion(first.Config.GoVersion)
-		if err != nil {
-			return fmt.Errorf("invalid post-update scan Go version %q: %w", first.Config.GoVersion, err)
-		}
-		if version != target {
-			return fmt.Errorf("post-update scan Go version %s does not match expected target %s", version.String(), target.String())
-		}
-	}
-
-	for {
-		msg, err := decodeMessage(dec)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return fmt.Errorf("decode post-update scan: %w", err)
-		}
-		if msg.Config != nil {
-			return errors.New("post-update scan config message must appear exactly once at the start of the stream")
-		}
-		if msg.Finding != nil {
+	for _, record := range records {
+		if record.reachable {
 			return errors.New("post-update scan still reports findings")
 		}
 	}
+	return nil
 }

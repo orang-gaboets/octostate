@@ -169,6 +169,33 @@ func TestApplyCandidateAllowsIndependentGoAndToolchainVersions(t *testing.T) {
 	}
 }
 
+func TestApplyCandidateAcceptsGoDirectiveWithoutPatch(t *testing.T) {
+	t.Parallel()
+
+	repo := newMutationTestRepoWithGoMod(t, strings.Join([]string{
+		"module example.com/test",
+		"",
+		"go 1.25",
+		"",
+		"toolchain go1.25.13",
+		"",
+	}, "\n"))
+	goModPath := filepath.Join(repo, "go.mod")
+	docPath := filepath.Join(repo, "docs", "maintainers", "development.md")
+
+	if _, err := ApplyCandidate(repo, goModPath, docPath, GoVersion{Major: 1, Minor: 25, Patch: 14}); err != nil {
+		t.Fatalf("ApplyCandidate returned error: %v", err)
+	}
+
+	goMod := string(mustReadFile(t, goModPath))
+	if !strings.Contains(goMod, "go 1.25\n") {
+		t.Fatalf("go directive changed unexpectedly: %q", goMod)
+	}
+	if !strings.Contains(goMod, "toolchain go1.25.14") {
+		t.Fatalf("toolchain directive was not updated: %q", goMod)
+	}
+}
+
 func TestApplyCandidateRejectsToolchainDowngrade(t *testing.T) {
 	t.Parallel()
 
@@ -332,6 +359,29 @@ func TestVerifyCandidateRejectsDirtyPostUpdateScan(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "post-update scan still reports findings") {
 		t.Fatalf("error = %q, want dirty post-update scan message", err.Error())
+	}
+}
+
+func TestVerifyCandidateAcceptsUnreachablePostUpdateFinding(t *testing.T) {
+	t.Parallel()
+
+	repo := newCommittedMutationRepo(t)
+	goModPath := filepath.Join(repo, "go.mod")
+	docPath := filepath.Join(repo, "docs", "maintainers", "development.md")
+
+	if _, err := ApplyCandidate(repo, goModPath, docPath, GoVersion{Major: 1, Minor: 25, Patch: 14}); err != nil {
+		t.Fatalf("ApplyCandidate returned error: %v", err)
+	}
+
+	scanPath := filepath.Join(t.TempDir(), "scan.json")
+	writeScanFile(t, scanPath, unreachableFindingScan())
+
+	got, err := VerifyCandidate(repo, goModPath, docPath, scanPath, GoVersion{Major: 1, Minor: 25, Patch: 14})
+	if err != nil {
+		t.Fatalf("VerifyCandidate returned error: %v", err)
+	}
+	if !got.Verified {
+		t.Fatal("Verified = false, want true")
 	}
 }
 
@@ -583,7 +633,7 @@ func writeScanFile(t *testing.T, path string, contents string) {
 
 func cleanScan() string {
 	return strings.Join([]string{
-		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14"}}`,
+		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14","scan_level":"symbol","scan_mode":"source"}}`,
 		`{"progress":{"message":"scanning"}}`,
 		"",
 	}, "\n")
@@ -591,8 +641,16 @@ func cleanScan() string {
 
 func dirtyScan() string {
 	return strings.Join([]string{
-		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14"}}`,
-		`{"finding":{"osv":"GO-2026-0001","fixed_version":"go1.25.15","trace":[{"module":"stdlib"}]}}`,
+		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14","scan_level":"symbol","scan_mode":"source"}}`,
+		`{"finding":{"osv":"GO-2026-0001","fixed_version":"v1.25.15","trace":[{"module":"stdlib","package":"net/http","function":"Serve"}]}}`,
+		"",
+	}, "\n")
+}
+
+func unreachableFindingScan() string {
+	return strings.Join([]string{
+		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.14","scan_level":"symbol","scan_mode":"source"}}`,
+		`{"finding":{"osv":"GO-2026-0001","fixed_version":"v1.25.15","trace":[{"module":"stdlib"}]}}`,
 		"",
 	}, "\n")
 }
