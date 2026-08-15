@@ -52,7 +52,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./... > initial-govulncheck.json
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+          go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./... > "$scratch_dir/initial-govulncheck.json"
 
       - name: Classify remediation candidate
         id: classification
@@ -60,9 +62,11 @@ jobs:
         run: |
           set -euo pipefail
 
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
           if ! go run ./cmd/go-toolchain-remediation classify \
             --go-mod go.mod \
-            --scan initial-govulncheck.json > classification.json; then
+            --scan "$scratch_dir/initial-govulncheck.json" > "$scratch_dir/classification.json"; then
             echo "Initial govulncheck output could not be classified for automated remediation." >&2
             exit 1
           fi
@@ -74,14 +78,14 @@ jobs:
             (.target_version | type == "string") and
             (.vulnerability_ids | type == "array") and
             all(.vulnerability_ids[]; type == "string")
-          ' classification.json > /dev/null; then
+          ' "$scratch_dir/classification.json" > /dev/null; then
             echo "Classifier output has an unexpected shape." >&2
             exit 1
           fi
 
-          eligible="$(jq -r '.eligible' classification.json)"
-          current_version="$(jq -r '.current_version' classification.json)"
-          target_version="$(jq -r '.target_version' classification.json)"
+          eligible="$(jq -r '.eligible' "$scratch_dir/classification.json")"
+          current_version="$(jq -r '.current_version' "$scratch_dir/classification.json")"
+          target_version="$(jq -r '.target_version' "$scratch_dir/classification.json")"
 
           if [[ ! "$current_version" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid current Go version in classifier output." >&2
@@ -93,7 +97,7 @@ jobs:
               echo "Ineligible classifier output unexpectedly included a target version." >&2
               exit 1
             fi
-            if [ "$(jq '.vulnerability_ids | length' classification.json)" -ne 0 ]; then
+            if [ "$(jq '.vulnerability_ids | length' "$scratch_dir/classification.json")" -ne 0 ]; then
               echo "Ineligible classifier output unexpectedly included vulnerability IDs." >&2
               exit 1
             fi
@@ -106,11 +110,11 @@ jobs:
             echo "Invalid target Go version in classifier output." >&2
             exit 1
           fi
-          if [ "$(jq '.vulnerability_ids | length' classification.json)" -eq 0 ]; then
+          if [ "$(jq '.vulnerability_ids | length' "$scratch_dir/classification.json")" -eq 0 ]; then
             echo "Eligible classifier output did not include vulnerability IDs." >&2
             exit 1
           fi
-          if ! jq -e 'all(.vulnerability_ids[]; test("^GO-[0-9]{4}-[0-9]{4,}$"))' classification.json > /dev/null; then
+          if ! jq -e 'all(.vulnerability_ids[]; test("^GO-[0-9]{4}-[0-9]{4,}$"))' "$scratch_dir/classification.json" > /dev/null; then
             echo "Invalid vulnerability ID in classifier output." >&2
             exit 1
           fi
@@ -122,7 +126,7 @@ jobs:
           fi
 
           branch_name="ci/go-toolchain-${numeric_target}"
-          ids_json="$(jq -c '.vulnerability_ids' classification.json)"
+          ids_json="$(jq -c '.vulnerability_ids' "$scratch_dir/classification.json")"
 
           {
             echo "eligible=true"
@@ -190,6 +194,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
           if [[ ! "$BRANCH_NAME" =~ ^ci/go-toolchain-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Unexpected remediation branch name." >&2
             exit 1
@@ -200,16 +207,16 @@ jobs:
             --base main \
             --author "$EXPECTED_BOT" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
-            --limit 1000 > open-remediation-prs.json
+            --limit 1000 > "$scratch_dir/open-remediation-prs.json"
           go run ./cmd/go-toolchain-remediation existing \
-            --prs open-remediation-prs.json \
+            --prs "$scratch_dir/open-remediation-prs.json" \
             --repository "$GITHUB_REPOSITORY" \
             --bot "$EXPECTED_BOT" \
             --branch "$BRANCH_NAME" \
             --current "$CURRENT_VERSION" \
-            --target "$TARGET_VERSION" > existing-work.json
-          if [ "$(jq -r '.proceed' existing-work.json)" != "true" ]; then
-            echo "Existing matching remediation PR found: $(jq -r '.duplicate_url // empty' existing-work.json)"
+            --target "$TARGET_VERSION" > "$scratch_dir/existing-work.json"
+          if [ "$(jq -r '.proceed' "$scratch_dir/existing-work.json")" != "true" ]; then
+            echo "Existing matching remediation PR found: $(jq -r '.duplicate_url // empty' "$scratch_dir/existing-work.json")"
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -231,7 +238,7 @@ jobs:
             exit 1
           fi
 
-          jq -e --argjson expected "$IDS_JSON" '.vulnerability_ids == $expected' classification.json > /dev/null
+          jq -e --argjson expected "$IDS_JSON" '.vulnerability_ids == $expected' "$scratch_dir/classification.json" > /dev/null
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply candidate
@@ -242,11 +249,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
           go run ./cmd/go-toolchain-remediation apply \
             --repo-root "$PWD" \
             --go-mod "$PWD/go.mod" \
             --development-doc "$PWD/docs/maintainers/development.md" \
-            --target "$TARGET_VERSION" > mutation.json
+            --target "$TARGET_VERSION" > "$scratch_dir/mutation.json"
 
       - name: Set up candidate Go
         if: steps.existing-work.outputs.proceed == 'true'
@@ -263,6 +273,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
           actual_go_version="$(go env GOVERSION)"
           if [ "$actual_go_version" != "$TARGET_VERSION" ]; then
             echo "Candidate validation is using $actual_go_version instead of $TARGET_VERSION." >&2
@@ -271,14 +284,14 @@ jobs:
 
           go test ./...
           go vet ./...
-          go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./... > post-update-govulncheck.json
+          go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./... > "$scratch_dir/post-update-govulncheck.json"
 
           go run ./cmd/go-toolchain-remediation verify \
             --repo-root "$PWD" \
             --go-mod "$PWD/go.mod" \
             --development-doc "$PWD/docs/maintainers/development.md" \
-            --scan "$PWD/post-update-govulncheck.json" \
-            --target "$TARGET_VERSION" > verification.json
+            --scan "$scratch_dir/post-update-govulncheck.json" \
+            --target "$TARGET_VERSION" > "$scratch_dir/verification.json"
 
       - name: Re-check main and duplicate state
         if: steps.existing-work.outputs.proceed == 'true'
@@ -294,6 +307,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
@@ -306,16 +322,16 @@ jobs:
             --base main \
             --author "$EXPECTED_BOT" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
-            --limit 1000 > open-remediation-prs.json
+            --limit 1000 > "$scratch_dir/open-remediation-prs.json"
           go run ./cmd/go-toolchain-remediation existing \
-            --prs open-remediation-prs.json \
+            --prs "$scratch_dir/open-remediation-prs.json" \
             --repository "$GITHUB_REPOSITORY" \
             --bot "$EXPECTED_BOT" \
             --branch "$BRANCH_NAME" \
             --current "$CURRENT_VERSION" \
-            --target "$TARGET_VERSION" > existing-work.json
-          if [ "$(jq -r '.proceed' existing-work.json)" != "true" ]; then
-            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' existing-work.json)"
+            --target "$TARGET_VERSION" > "$scratch_dir/existing-work.json"
+          if [ "$(jq -r '.proceed' "$scratch_dir/existing-work.json")" != "true" ]; then
+            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' "$scratch_dir/existing-work.json")"
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -348,6 +364,9 @@ jobs:
           TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
         run: |
           set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
 
           commit_message="fix(go): update toolchain to ${TARGET_VERSION}"
 
@@ -386,16 +405,16 @@ jobs:
             --base main \
             --author "$BOT_LOGIN" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
-            --limit 1000 > open-remediation-prs.json
+            --limit 1000 > "$scratch_dir/open-remediation-prs.json"
           go run ./cmd/go-toolchain-remediation existing \
-            --prs open-remediation-prs.json \
+            --prs "$scratch_dir/open-remediation-prs.json" \
             --repository "$GITHUB_REPOSITORY" \
             --bot "$BOT_LOGIN" \
             --branch "$BRANCH_NAME" \
             --current "$CURRENT_VERSION" \
-            --target "$TARGET_VERSION" > existing-work.json
-          if [ "$(jq -r '.proceed' existing-work.json)" != "true" ]; then
-            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' existing-work.json)"
+            --target "$TARGET_VERSION" > "$scratch_dir/existing-work.json"
+          if [ "$(jq -r '.proceed' "$scratch_dir/existing-work.json")" != "true" ]; then
+            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' "$scratch_dir/existing-work.json")"
             exit 0
           fi
 
