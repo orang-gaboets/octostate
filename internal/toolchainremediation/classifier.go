@@ -104,14 +104,13 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 	sawIneligible := false
 
 	for osv, record := range records {
+		if !record.reachable {
+			continue
+		}
 		if record.module == stdlibModule {
 			sawStdlib = true
 		} else {
 			sawNonStdlib = true
-		}
-		if !record.reachable {
-			sawIneligible = true
-			continue
 		}
 
 		eligible := record.module == stdlibModule &&
@@ -225,15 +224,17 @@ func parseFinding(finding *findingMessage) (findingRecord, error) {
 	}
 
 	reachable := false
-	for _, frame := range finding.Trace {
+	for index, frame := range finding.Trace {
 		if frame.Module == "" {
 			return findingRecord{}, fmt.Errorf("finding %s has trace frame missing module", finding.OSV)
 		}
 		if frame.Function != "" && frame.Package == "" {
 			return findingRecord{}, fmt.Errorf("finding %s has trace function without package", finding.OSV)
 		}
-		if frame.Function != "" {
-			reachable = true
+		if index == 0 {
+			reachable = frame.Function != ""
+		} else if !reachable && frame.Function != "" {
+			return findingRecord{}, fmt.Errorf("finding %s has a non-symbol first trace frame followed by a function", finding.OSV)
 		}
 	}
 

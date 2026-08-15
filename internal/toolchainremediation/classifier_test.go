@@ -100,6 +100,26 @@ func TestClassify(t *testing.T) {
 			want:    Result{},
 		},
 		{
+			name:    "reachable eligible plus unreachable stdlib",
+			fixture: "eligible_plus_unreachable_stdlib.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.7",
+				VulnerabilityIDs: []string{"GO-2025-0001"},
+			},
+		},
+		{
+			name:    "reachable eligible plus unreachable third party",
+			fixture: "eligible_plus_unreachable_third_party.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.7",
+				VulnerabilityIDs: []string{"GO-2025-0001"},
+			},
+		},
+		{
 			name:    "malformed trailing data",
 			fixture: "malformed_trailing_data.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
@@ -168,6 +188,12 @@ func TestClassify(t *testing.T) {
 		{
 			name:    "prerelease fixed version",
 			fixture: "prerelease_fixed_version.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			wantErr: true,
+		},
+		{
+			name:    "non-first trace function",
+			fixture: "nonfirst_trace_function.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
 			wantErr: true,
 		},
