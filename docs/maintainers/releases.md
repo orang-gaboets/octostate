@@ -73,19 +73,23 @@ GitHub App token is created. Its default workflow permissions remain
 `contents: read`, checkout disables persisted credentials, and the maintenance
 App token requests only `contents: write` and `pull-requests: write`.
 
-Organization-level Actions configuration for this automation remains external
-and must be maintained separately. Scope access to repositories approved to run
+Actions configuration for this automation remains external and must be
+maintained separately. The workflow declares the protected
+`go-toolchain-remediation` environment. Configure that environment to allow
+deployments from `main` only, and scope access to repositories approved to run
 this workflow:
 
 - Organization Actions variable: `GO_TOOLCHAIN_REMEDIATION_APP_ID`
-- Organization Actions secret: `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`
+- Environment secret in `go-toolchain-remediation`:
+  `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`
 
-This repository documentation does not certify that the App is currently
-installed correctly, that the variable and secret are populated, or that any
-branch ruleset is configured a particular way. The required contract is
-negative: do not add the maintenance App as a branch or ruleset bypass actor.
-The workflow is designed to open a draft PR and then stop behind the normal
-review process rather than bypass it.
+After populating the environment secret, remove any old organization-level copy
+of the private key. This repository documentation does not certify that the
+environment, App installation, variable, or secret is currently configured, or
+that any branch ruleset is configured a particular way. The required contract
+is negative: do not add the maintenance App as a branch or ruleset bypass
+actor. The workflow is designed to open a draft PR and then stop behind the
+normal review process rather than bypass it.
 
 The mutable boundary is intentionally narrow:
 

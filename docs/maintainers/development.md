@@ -105,12 +105,17 @@ The remediation workflow pins the vulnerability scanner to
 post-update structured scans. Its write-capable token step uses
 `actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1`
 with only `contents: write` and `pull-requests: write`. Organization-level
-Actions configuration for that maintenance App stays external to this
-repository. The workflow expects the organization variable
-`GO_TOOLCHAIN_REMEDIATION_APP_ID` and organization secret
-`GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`, scoped to repositories approved to
-run this workflow. This documentation does not claim that the App installation,
-secret values, or any branch ruleset configuration have already been verified.
+Actions configuration for the maintenance App stays external to this
+repository. The workflow declares the protected `go-toolchain-remediation`
+environment and expects the organization variable
+`GO_TOOLCHAIN_REMEDIATION_APP_ID` plus the
+`GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY` secret in that environment. Configure
+the environment to allow deployments from `main` only, and remove any old
+organization-level copy of the private-key secret after the environment secret
+is populated. This documentation does not claim that the environment, App
+installation, secret values, or branch ruleset configuration have already been
+verified. The maintenance App must not be a `main` branch or ruleset bypass
+actor.
 
 When the classifier finds an eligible same-minor Go patch upgrade, the
 remediation workflow proposes a draft PR from a deterministic branch named
