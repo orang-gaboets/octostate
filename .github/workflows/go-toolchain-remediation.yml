@@ -375,7 +375,7 @@ jobs:
             echo "<!-- octostate-go-toolchain-remediation-base:$BASE_SHA -->"
             echo "Generated automatically by the Orang Gaboets Go Maintenance GitHub App."
             echo
-            echo "Updates the pinned Go toolchain from \`$CURRENT_VERSION\` to \`$TARGET_VERSION\` for reachable standard-library vulnerabilities reported by govulncheck."
+            echo "Updates the pinned Go toolchain from \`$CURRENT_VERSION\` to \`$TARGET_VERSION\` for reachable Go standard-library and toolchain vulnerabilities reported by govulncheck."
             echo
             echo "Vulnerability IDs:"
             jq -r '.[]' <<< "$IDS_JSON" | while IFS= read -r vulnerability_id; do
