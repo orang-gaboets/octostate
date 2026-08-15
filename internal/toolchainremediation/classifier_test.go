@@ -50,6 +50,32 @@ func TestClassify(t *testing.T) {
 			},
 		},
 		{
+			name:    "reachable toolchain finding",
+			fixture: "toolchain_eligible.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.7",
+				VulnerabilityIDs: []string{"GO-2026-4338"},
+			},
+		},
+		{
+			name:    "stdlib and toolchain findings",
+			fixture: "stdlib_plus_toolchain.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.8",
+				VulnerabilityIDs: []string{"GO-2025-0001", "GO-2026-4338"},
+			},
+		},
+		{
+			name:    "toolchain and third-party findings",
+			fixture: "toolchain_plus_third_party.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			wantErr: true,
+		},
+		{
 			name:    "same patch duplicates",
 			fixture: "same_patch_duplicates.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
@@ -112,6 +138,36 @@ func TestClassify(t *testing.T) {
 		{
 			name:    "reachable eligible plus unreachable third party",
 			fixture: "eligible_plus_unreachable_third_party.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.7",
+				VulnerabilityIDs: []string{"GO-2025-0001"},
+			},
+		},
+		{
+			name:    "reachable eligible plus unreachable missing fix",
+			fixture: "eligible_plus_unreachable_missing_fix.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.7",
+				VulnerabilityIDs: []string{"GO-2025-0001"},
+			},
+		},
+		{
+			name:    "reachable eligible plus unreachable invalid fix",
+			fixture: "eligible_plus_unreachable_invalid_fix.json",
+			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
+			want: Result{
+				Eligible:         true,
+				TargetVersion:    "go1.24.7",
+				VulnerabilityIDs: []string{"GO-2025-0001"},
+			},
+		},
+		{
+			name:    "unreachable then reachable same finding",
+			fixture: "unreachable_then_reachable_same_osv.json",
 			current: GoVersion{Major: 1, Minor: 24, Patch: 6},
 			want: Result{
 				Eligible:         true,

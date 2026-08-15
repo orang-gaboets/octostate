@@ -16,6 +16,7 @@ const (
 	protocolVersion      = "v1.0.0"
 	supportedScannerName = "govulncheck"
 	stdlibModule         = "stdlib"
+	toolchainModule      = "toolchain"
 )
 
 // GoVersion identifies the pinned Go toolchain version being classified.
@@ -79,9 +80,10 @@ type findingFrame struct {
 }
 
 type findingRecord struct {
-	module       string
-	fixedVersion GoVersion
-	reachable    bool
+	module          string
+	fixedVersion    GoVersion
+	hasFixedVersion bool
+	reachable       bool
 }
 
 // Classify consumes a govulncheck streaming JSON report and the current pinned
@@ -107,13 +109,13 @@ func Classify(r io.Reader, current GoVersion) (Result, error) {
 		if !record.reachable {
 			continue
 		}
-		if record.module == stdlibModule {
+		if isGoModule(record.module) {
 			sawStdlib = true
 		} else {
 			sawNonStdlib = true
 		}
 
-		eligible := record.module == stdlibModule &&
+		eligible := record.hasFixedVersion && isGoModule(record.module) &&
 			record.fixedVersion.Major == current.Major &&
 			record.fixedVersion.Minor == current.Minor &&
 			record.fixedVersion.Patch > current.Patch
@@ -191,10 +193,14 @@ func scanRecords(r io.Reader, current GoVersion) (map[string]findingRecord, erro
 			if prior.module != record.module {
 				return nil, fmt.Errorf("finding %s has conflicting module identities %q and %q", msg.Finding.OSV, prior.module, record.module)
 			}
-			if prior.fixedVersion != record.fixedVersion {
+			if prior.reachable && record.reachable && prior.fixedVersion != record.fixedVersion {
 				return nil, fmt.Errorf("finding %s has conflicting fixed versions %q and %q", msg.Finding.OSV, prior.fixedVersion.String(), record.fixedVersion.String())
 			}
 			prior.reachable = prior.reachable || record.reachable
+			if record.reachable {
+				prior.fixedVersion = record.fixedVersion
+				prior.hasFixedVersion = true
+			}
 			records[msg.Finding.OSV] = prior
 			continue
 		}
@@ -206,16 +212,8 @@ func parseFinding(finding *findingMessage) (findingRecord, error) {
 	if finding.OSV == "" {
 		return findingRecord{}, errors.New("finding message missing vulnerability id")
 	}
-	if finding.FixedVersion == "" {
-		return findingRecord{}, fmt.Errorf("finding %s missing fixed version", finding.OSV)
-	}
 	if len(finding.Trace) == 0 {
 		return findingRecord{}, fmt.Errorf("finding %s missing trace frame", finding.OSV)
-	}
-
-	fixedVersion, err := parseGovulncheckFixedVersion(finding.FixedVersion)
-	if err != nil {
-		return findingRecord{}, fmt.Errorf("finding %s has invalid fixed version %q: %w", finding.OSV, finding.FixedVersion, err)
 	}
 
 	module := finding.Trace[0].Module
@@ -238,11 +236,24 @@ func parseFinding(finding *findingMessage) (findingRecord, error) {
 		}
 	}
 
-	return findingRecord{
-		module:       module,
-		fixedVersion: fixedVersion,
-		reachable:    reachable,
-	}, nil
+	record := findingRecord{module: module, reachable: reachable}
+	if !reachable {
+		return record, nil
+	}
+	if finding.FixedVersion == "" {
+		return findingRecord{}, fmt.Errorf("finding %s missing fixed version", finding.OSV)
+	}
+	fixedVersion, err := parseGovulncheckFixedVersion(finding.FixedVersion)
+	if err != nil {
+		return findingRecord{}, fmt.Errorf("finding %s has invalid fixed version %q: %w", finding.OSV, finding.FixedVersion, err)
+	}
+	record.fixedVersion = fixedVersion
+	record.hasFixedVersion = true
+	return record, nil
+}
+
+func isGoModule(module string) bool {
+	return module == stdlibModule || module == toolchainModule
 }
 
 func validateConfig(cfg *configMessage, current GoVersion) error {
