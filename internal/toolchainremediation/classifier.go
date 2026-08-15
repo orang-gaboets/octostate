@@ -341,7 +341,11 @@ func parseGovulncheckFixedVersion(raw string) (GoVersion, error) {
 	if !strings.HasPrefix(s, "v") {
 		return GoVersion{}, fmt.Errorf("fixed version must use v prefix: %q", raw)
 	}
-	return parseVersion(strings.TrimPrefix(s, "v"))
+	s = strings.TrimPrefix(s, "v")
+	if strings.HasPrefix(s, "go") {
+		return GoVersion{}, fmt.Errorf("fixed version must not use go prefix: %q", raw)
+	}
+	return parseVersion(s)
 }
 
 func parseGovulncheckGoVersion(raw string) (GoVersion, error) {
