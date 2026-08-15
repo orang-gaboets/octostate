@@ -218,6 +218,14 @@ func TestRunExistingDecisions(t *testing.T) {
 			wantCode:  1,
 			wantError: "different open bot-generated remediation PR",
 		},
+		{
+			name: "markerless remediation branch fails closed",
+			prs: []toolchainremediation.ExistingPR{
+				newPR("https://github.com/orang-gaboets/octostate/pull/4", branch, "old automation body"),
+			},
+			wantCode:  1,
+			wantError: "different open bot-generated remediation PR",
+		},
 	}
 
 	for _, tc := range cases {

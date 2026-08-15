@@ -8,6 +8,8 @@ import (
 
 const remediationPRMarker = "<!-- octostate-go-toolchain-remediation:v1 -->"
 
+const remediationBranchPrefix = "ci/go-toolchain-"
+
 // ExistingPR contains the fields used to decide whether remediation work is
 // already open or conflicts with the candidate being proposed.
 type ExistingPR struct {
@@ -46,12 +48,16 @@ func CheckExistingWork(prs []ExistingPR, repository, expectedBot, expectedBranch
 	for _, pr := range prs {
 		if pr.BaseRefName != "main" ||
 			pr.HeadRepository.NameWithOwner != repository ||
-			pr.Author.Login != expectedBot ||
-			!strings.Contains(pr.Body, remediationPRMarker) {
+			pr.Author.Login != expectedBot {
+			continue
+		}
+		marked := strings.Contains(pr.Body, remediationPRMarker)
+		remediationBranch := strings.HasPrefix(pr.HeadRefName, remediationBranchPrefix)
+		if !marked && !remediationBranch {
 			continue
 		}
 
-		if pr.HeadRefName == expectedBranch &&
+		if marked && pr.HeadRefName == expectedBranch &&
 			strings.Contains(pr.Body, currentMarker) &&
 			strings.Contains(pr.Body, targetMarker) {
 			duplicates = append(duplicates, pr.URL)
