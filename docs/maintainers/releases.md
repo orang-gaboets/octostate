@@ -97,12 +97,13 @@ The mutable boundary is intentionally narrow:
   `docs/maintainers/development.md`
 
 For an eligible finding set, the workflow creates branch
-`ci/go-toolchain-X.Y.Z`, commits `fix(go): update toolchain to goX.Y.Z`, and
+`ci/go-toolchain-X.Y.Z`, commits `ci: bump Go toolchain to X.Y.Z`, and
 opens a draft PR with the same title against `main`. The PR body includes the
 stable marker `<!-- octostate-go-toolchain-remediation:v1 -->` together with
 current-version, target-version, and pinned-base markers. Duplicate detection
-uses the stable marker plus current/target metadata and the expected
-repository/base/author/head checks. The pinned-base marker is recorded for
+recognizes the stable marker or the deterministic branch prefix, while an exact
+duplicate still requires the expected repository, `main` base, App bot, head,
+and current/target metadata. The pinned-base marker is recorded for
 audit/recovery context, not used as the duplicate-match predicate.
 
 Duplicate handling and failure behavior are fail-closed:

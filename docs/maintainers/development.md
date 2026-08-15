@@ -115,15 +115,16 @@ secret values, or any branch ruleset configuration have already been verified.
 When the classifier finds an eligible same-minor Go patch upgrade, the
 remediation workflow proposes a draft PR from a deterministic branch named
 `ci/go-toolchain-X.Y.Z`. The generated commit and PR title are both
-`fix(go): update toolchain to goX.Y.Z`. Duplicate detection uses the stable PR
-marker `<!-- octostate-go-toolchain-remediation:v1 -->` plus current/target
-metadata and the expected repository/base/author/head checks. The pinned-base
-metadata comment is recorded for audit/recovery context only; it is not used as
-the duplicate-match predicate. A matching existing PR causes a no-op exit; a
-different open bot-generated remediation PR, an unexpected branch collision,
-changed `main`, invalid classifier output, failed validation, or any GitHub
-API/authentication problem fails closed without rewriting existing remediation
-work.
+`ci: bump Go toolchain to X.Y.Z`. Duplicate detection recognizes the stable PR
+marker `<!-- octostate-go-toolchain-remediation:v1 -->` or the deterministic
+`ci/go-toolchain-` branch prefix. Exact duplicates additionally require the
+expected repository, `main` base, App bot, head, and current/target metadata.
+The pinned-base metadata comment is recorded for audit/recovery context only; it
+is not used as the duplicate-match predicate. A matching existing PR causes a
+no-op exit; a different recognized remediation PR, an unexpected branch
+collision, changed `main`, invalid classifier output, failed validation, or any
+GitHub API/authentication problem fails closed without rewriting existing
+remediation work.
 
 If the workflow creates the remote branch but cannot open the draft PR, it
 fails and leaves orphan-branch recovery to a maintainer: confirm whether a
