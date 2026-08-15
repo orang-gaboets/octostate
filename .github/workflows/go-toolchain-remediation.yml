@@ -204,8 +204,6 @@ jobs:
 
           gh pr list \
             --state open \
-            --base main \
-            --author "$EXPECTED_BOT" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
             --limit 1000 > "$scratch_dir/open-remediation-prs.json"
           go run ./cmd/go-toolchain-remediation existing \
@@ -319,8 +317,6 @@ jobs:
 
           gh pr list \
             --state open \
-            --base main \
-            --author "$EXPECTED_BOT" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
             --limit 1000 > "$scratch_dir/open-remediation-prs.json"
           go run ./cmd/go-toolchain-remediation existing \
@@ -404,8 +400,6 @@ jobs:
 
           gh pr list \
             --state open \
-            --base main \
-            --author "$BOT_LOGIN" \
             --json number,url,body,headRefName,headRepository,baseRefName,author \
             --limit 1000 > "$scratch_dir/open-remediation-prs.json"
           go run ./cmd/go-toolchain-remediation existing \

@@ -208,7 +208,7 @@ func TestRunExistingDecisions(t *testing.T) {
 				newPR("https://github.com/orang-gaboets/octostate/pull/2", "ci/go-toolchain-1.25.15", "<!-- octostate-go-toolchain-remediation:v1 -->"),
 			},
 			wantCode:  1,
-			wantError: "different open bot-generated remediation PR",
+			wantError: "different open recognized remediation PR",
 		},
 		{
 			name: "matching metadata on unexpected head fails closed",
@@ -216,7 +216,7 @@ func TestRunExistingDecisions(t *testing.T) {
 				newPR("https://github.com/orang-gaboets/octostate/pull/3", "unexpected", matchingBody),
 			},
 			wantCode:  1,
-			wantError: "different open bot-generated remediation PR",
+			wantError: "different open recognized remediation PR",
 		},
 		{
 			name: "markerless remediation branch fails closed",
@@ -224,7 +224,27 @@ func TestRunExistingDecisions(t *testing.T) {
 				newPR("https://github.com/orang-gaboets/octostate/pull/4", branch, "old automation body"),
 			},
 			wantCode:  1,
-			wantError: "different open bot-generated remediation PR",
+			wantError: "different open recognized remediation PR",
+		},
+		{
+			name: "retargeted remediation PR fails closed",
+			prs: []toolchainremediation.ExistingPR{func() toolchainremediation.ExistingPR {
+				pr := newPR("https://github.com/orang-gaboets/octostate/pull/5", branch, matchingBody)
+				pr.BaseRefName = "release"
+				return pr
+			}()},
+			wantCode:  1,
+			wantError: "different open recognized remediation PR",
+		},
+		{
+			name: "former bot remediation PR fails closed",
+			prs: []toolchainremediation.ExistingPR{func() toolchainremediation.ExistingPR {
+				pr := newPR("https://github.com/orang-gaboets/octostate/pull/6", branch, matchingBody)
+				pr.Author.Login = "former-maintenance[bot]"
+				return pr
+			}()},
+			wantCode:  1,
+			wantError: "different open recognized remediation PR",
 		},
 	}
 

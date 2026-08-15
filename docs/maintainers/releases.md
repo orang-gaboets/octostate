@@ -109,7 +109,7 @@ audit/recovery context, not used as the duplicate-match predicate.
 Duplicate handling and failure behavior are fail-closed:
 
 - a matching open remediation PR exits cleanly without new mutation
-- a different open bot-generated remediation PR blocks new automation and
+- a different open recognized remediation PR blocks new automation and
   requires maintainer review
 - an existing target branch, changed `origin/main`, classifier/schema mismatch,
   failed candidate validation, or GitHub API/authentication failure aborts the

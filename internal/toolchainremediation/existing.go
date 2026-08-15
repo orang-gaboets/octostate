@@ -33,8 +33,8 @@ type ExistingWorkResult struct {
 }
 
 // CheckExistingWork applies the remediation PR identity and marker rules.
-// Any matching bot PR that is not the exact candidate is a conflict, so the
-// caller can fail closed rather than risk creating competing automation work.
+// Any recognized remediation PR that is not the exact candidate is a conflict,
+// so the caller can fail closed rather than risk creating competing work.
 func CheckExistingWork(prs []ExistingPR, repository, expectedBot, expectedBranch, currentVersion, targetVersion string) (ExistingWorkResult, error) {
 	if repository == "" || expectedBot == "" || expectedBranch == "" || currentVersion == "" || targetVersion == "" {
 		return ExistingWorkResult{}, fmt.Errorf("repository, bot, branch, current version, and target version are required")
@@ -46,9 +46,7 @@ func CheckExistingWork(prs []ExistingPR, repository, expectedBot, expectedBranch
 	var conflicts []string
 
 	for _, pr := range prs {
-		if pr.BaseRefName != "main" ||
-			pr.HeadRepository.NameWithOwner != repository ||
-			pr.Author.Login != expectedBot {
+		if pr.HeadRepository.NameWithOwner != repository {
 			continue
 		}
 		marked := strings.Contains(pr.Body, remediationPRMarker)
@@ -57,7 +55,8 @@ func CheckExistingWork(prs []ExistingPR, repository, expectedBot, expectedBranch
 			continue
 		}
 
-		if marked && pr.HeadRefName == expectedBranch &&
+		if marked && pr.BaseRefName == "main" && pr.Author.Login == expectedBot &&
+			pr.HeadRefName == expectedBranch &&
 			strings.Contains(pr.Body, currentMarker) &&
 			strings.Contains(pr.Body, targetMarker) {
 			duplicates = append(duplicates, pr.URL)
@@ -68,7 +67,7 @@ func CheckExistingWork(prs []ExistingPR, repository, expectedBot, expectedBranch
 
 	if len(conflicts) > 0 {
 		sort.Strings(conflicts)
-		return ExistingWorkResult{}, fmt.Errorf("a different open bot-generated remediation PR requires maintainer intervention: %s", strings.Join(conflicts, ", "))
+		return ExistingWorkResult{}, fmt.Errorf("a different open recognized remediation PR requires maintainer intervention: %s", strings.Join(conflicts, ", "))
 	}
 	if len(duplicates) > 0 {
 		sort.Strings(duplicates)
