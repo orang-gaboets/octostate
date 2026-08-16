@@ -1,0 +1,566 @@
+name: Go toolchain remediation
+
+on:
+  schedule:
+    - cron: "42 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: go-toolchain-remediation-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PR_MARKER: "<!-- octostate-go-toolchain-remediation:v1 -->"
+
+jobs:
+  remediate:
+    name: Propose Go toolchain remediation
+    if: github.ref == 'refs/heads/main'
+    environment: go-toolchain-remediation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+
+      - name: Pin trusted main
+        id: base
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          base_sha="$(git rev-parse --verify 'origin/main^{commit}')"
+          git switch --detach "$base_sha"
+
+          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "Pinned origin/main at $base_sha"
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run structured govulncheck
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+          go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./... > "$scratch_dir/initial-govulncheck.json"
+
+      - name: Classify remediation candidate
+        id: classification
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+          if ! go run ./cmd/go-toolchain-remediation classify \
+            --go-mod go.mod \
+            --scan "$scratch_dir/initial-govulncheck.json" > "$scratch_dir/classification.json"; then
+            echo "Initial govulncheck output could not be classified for automated remediation." >&2
+            exit 1
+          fi
+
+          if ! jq -e '
+            type == "object" and
+            (.eligible | type == "boolean") and
+            (.current_version | type == "string") and
+            (.target_version | type == "string") and
+            (.vulnerability_ids | type == "array") and
+            all(.vulnerability_ids[]; type == "string")
+          ' "$scratch_dir/classification.json" > /dev/null; then
+            echo "Classifier output has an unexpected shape." >&2
+            exit 1
+          fi
+
+          eligible="$(jq -r '.eligible' "$scratch_dir/classification.json")"
+          current_version="$(jq -r '.current_version' "$scratch_dir/classification.json")"
+          target_version="$(jq -r '.target_version' "$scratch_dir/classification.json")"
+
+          if [[ ! "$current_version" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid current Go version in classifier output." >&2
+            exit 1
+          fi
+
+          if [ "$eligible" != "true" ]; then
+            if [ -n "$target_version" ]; then
+              echo "Ineligible classifier output unexpectedly included a target version." >&2
+              exit 1
+            fi
+            if [ "$(jq '.vulnerability_ids | length' "$scratch_dir/classification.json")" -ne 0 ]; then
+              echo "Ineligible classifier output unexpectedly included vulnerability IDs." >&2
+              exit 1
+            fi
+            echo "No eligible Go toolchain remediation findings."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$target_version" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid target Go version in classifier output." >&2
+            exit 1
+          fi
+          if [ "$(jq '.vulnerability_ids | length' "$scratch_dir/classification.json")" -eq 0 ]; then
+            echo "Eligible classifier output did not include vulnerability IDs." >&2
+            exit 1
+          fi
+          if ! jq -e 'all(.vulnerability_ids[]; test("^GO-[0-9]{4}-[0-9]{4,}$"))' "$scratch_dir/classification.json" > /dev/null; then
+            echo "Invalid vulnerability ID in classifier output." >&2
+            exit 1
+          fi
+
+          numeric_target="${target_version#go}"
+          if [[ ! "$numeric_target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid numeric target Go version in classifier output." >&2
+            exit 1
+          fi
+
+          branch_name="ci/go-toolchain-${numeric_target}"
+          ids_json="$(jq -c '.vulnerability_ids' "$scratch_dir/classification.json")"
+
+          {
+            echo "eligible=true"
+            echo "current_version=$current_version"
+            echo "target_version=$target_version"
+            echo "branch_name=$branch_name"
+            echo "ids_json=$ids_json"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub App token
+        if: steps.classification.outputs.eligible == 'true'
+        id: app-token
+        # actions/create-github-app-token v3.2.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.GO_TOOLCHAIN_REMEDIATION_APP_ID }}
+          private-key: ${{ secrets.GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Validate App bot identity
+        if: steps.classification.outputs.eligible == 'true'
+        id: app-bot
+        shell: bash
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$APP_SLUG" =~ ^[A-Za-z0-9-]+$ ]]; then
+            echo "Unexpected GitHub App slug." >&2
+            exit 1
+          fi
+
+          bot_login="${APP_SLUG}[bot]"
+          if [[ ! "$bot_login" =~ ^[A-Za-z0-9-]+\[bot\]$ ]]; then
+            echo "Unexpected GitHub App bot login." >&2
+            exit 1
+          fi
+
+          bot_id="$(gh api "/users/$bot_login" --jq '.id')"
+          if [[ ! "$bot_id" =~ ^[0-9]+$ ]]; then
+            echo "Unexpected GitHub App bot user id." >&2
+            exit 1
+          fi
+
+          {
+            echo "login=$bot_login"
+            echo "id=$bot_id"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing remediation work
+        if: steps.classification.outputs.eligible == 'true'
+        id: existing-work
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          BRANCH_NAME: ${{ steps.classification.outputs.branch_name }}
+          CURRENT_VERSION: ${{ steps.classification.outputs.current_version }}
+          EXPECTED_BOT: ${{ steps.app-bot.outputs.login }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          IDS_JSON: ${{ steps.classification.outputs.ids_json }}
+          TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
+          if [[ ! "$BRANCH_NAME" =~ ^ci/go-toolchain-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected remediation branch name." >&2
+            exit 1
+          fi
+
+          gh pr list \
+            --state open \
+            --json number,url,body,headRefName,headRepository,baseRefName,author \
+            --limit 1000 > "$scratch_dir/open-remediation-prs.json"
+          go run ./cmd/go-toolchain-remediation existing \
+            --prs "$scratch_dir/open-remediation-prs.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --bot "$EXPECTED_BOT" \
+            --branch "$BRANCH_NAME" \
+            --current "$CURRENT_VERSION" \
+            --target "$TARGET_VERSION" > "$scratch_dir/existing-work.json"
+          if [ "$(jq -r '.proceed' "$scratch_dir/existing-work.json")" != "true" ]; then
+            echo "Existing matching remediation PR found: $(jq -r '.duplicate_url // empty' "$scratch_dir/existing-work.json")"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          branch_status=0
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          if [ "$branch_status" -eq 0 ]; then
+            echo "Target remediation branch already exists: $BRANCH_NAME" >&2
+            exit 1
+          fi
+          if [ "$branch_status" -ne 2 ]; then
+            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
+            exit 1
+          fi
+
+          if [ "$(git rev-parse --verify HEAD)" != "$BASE_SHA" ]; then
+            echo "Candidate is not based on the pinned main SHA." >&2
+            exit 1
+          fi
+
+          jq -e --argjson expected "$IDS_JSON" '.vulnerability_ids == $expected' "$scratch_dir/classification.json" > /dev/null
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Apply candidate
+        if: steps.existing-work.outputs.proceed == 'true'
+        shell: bash
+        env:
+          TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
+          go run ./cmd/go-toolchain-remediation apply \
+            --repo-root "$PWD" \
+            --go-mod "$PWD/go.mod" \
+            --development-doc "$PWD/docs/maintainers/development.md" \
+            --target "$TARGET_VERSION" > "$scratch_dir/mutation.json"
+
+      - name: Set up candidate Go
+        if: steps.existing-work.outputs.proceed == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and validate candidate
+        if: steps.existing-work.outputs.proceed == 'true'
+        shell: bash
+        env:
+          TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
+          actual_go_version="$(go env GOVERSION)"
+          if [ "$actual_go_version" != "$TARGET_VERSION" ]; then
+            echo "Candidate validation is using $actual_go_version instead of $TARGET_VERSION." >&2
+            exit 1
+          fi
+
+          go test ./...
+          go vet ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./... > "$scratch_dir/post-update-govulncheck.json"
+
+          go run ./cmd/go-toolchain-remediation verify \
+            --repo-root "$PWD" \
+            --go-mod "$PWD/go.mod" \
+            --development-doc "$PWD/docs/maintainers/development.md" \
+            --scan "$scratch_dir/post-update-govulncheck.json" \
+            --target "$TARGET_VERSION" > "$scratch_dir/verification.json"
+
+      - name: Re-check main and duplicate state
+        if: steps.existing-work.outputs.proceed == 'true'
+        id: final-preflight
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          BRANCH_NAME: ${{ steps.classification.outputs.branch_name }}
+          CURRENT_VERSION: ${{ steps.classification.outputs.current_version }}
+          EXPECTED_BOT: ${{ steps.app-bot.outputs.login }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
+          if [ "$current_main_sha" != "$BASE_SHA" ]; then
+            echo "origin/main moved from $BASE_SHA to $current_main_sha; aborting remediation." >&2
+            exit 1
+          fi
+
+          gh pr list \
+            --state open \
+            --json number,url,body,headRefName,headRepository,baseRefName,author \
+            --limit 1000 > "$scratch_dir/open-remediation-prs.json"
+          go run ./cmd/go-toolchain-remediation existing \
+            --prs "$scratch_dir/open-remediation-prs.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --bot "$EXPECTED_BOT" \
+            --branch "$BRANCH_NAME" \
+            --current "$CURRENT_VERSION" \
+            --target "$TARGET_VERSION" > "$scratch_dir/existing-work.json"
+          if [ "$(jq -r '.proceed' "$scratch_dir/existing-work.json")" != "true" ]; then
+            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' "$scratch_dir/existing-work.json")"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          branch_status=0
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          if [ "$branch_status" -eq 0 ]; then
+            echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
+            exit 1
+          fi
+          if [ "$branch_status" -ne 2 ]; then
+            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
+            exit 1
+          fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create branch and open draft PR
+        if: steps.final-preflight.outputs.proceed == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+          BOT_LOGIN: ${{ steps.app-bot.outputs.login }}
+          BRANCH_NAME: ${{ steps.classification.outputs.branch_name }}
+          CURRENT_VERSION: ${{ steps.classification.outputs.current_version }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          IDS_JSON: ${{ steps.classification.outputs.ids_json }}
+          PR_MARKER: ${{ env.PR_MARKER }}
+          TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
+        run: |
+          set -euo pipefail
+
+          scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
+          mkdir -p "$scratch_dir"
+
+          numeric_target="${TARGET_VERSION#go}"
+          commit_message="ci: bump Go toolchain to ${numeric_target}"
+
+          body_file="$(mktemp)"
+          {
+            echo "$PR_MARKER"
+            echo "<!-- octostate-go-toolchain-remediation-current:$CURRENT_VERSION -->"
+            echo "<!-- octostate-go-toolchain-remediation-target:$TARGET_VERSION -->"
+            echo "<!-- octostate-go-toolchain-remediation-base:$BASE_SHA -->"
+            echo "Generated automatically by the Orang Gaboets Go Maintenance GitHub App."
+            echo
+            echo "Updates the pinned Go toolchain from \`$CURRENT_VERSION\` to \`$TARGET_VERSION\` for reachable Go standard-library and toolchain vulnerabilities reported by govulncheck."
+            echo
+            echo "Vulnerability IDs:"
+            jq -r '.[]' <<< "$IDS_JSON" | while IFS= read -r vulnerability_id; do
+              printf -- "- \`%s\`\n" "$vulnerability_id"
+            done
+            echo
+            echo "Validation:"
+            echo "- \`go test ./...\`"
+            echo "- \`go vet ./...\`"
+            echo "- \`go run golang.org/x/vuln/cmd/govulncheck@v1.5.0 -json ./...\`"
+            echo "- \`go run ./cmd/go-toolchain-remediation verify ...\`"
+            echo
+            echo "This PR is intentionally draft-only and must not be auto-approved, marked ready, merged, force-updated, deleted, or rewritten by automation."
+          } > "$body_file"
+
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
+          if [ "$current_main_sha" != "$BASE_SHA" ]; then
+            echo "origin/main moved from $BASE_SHA to $current_main_sha before branch creation; aborting remediation." >&2
+            exit 1
+          fi
+
+          gh pr list \
+            --state open \
+            --json number,url,body,headRefName,headRepository,baseRefName,author \
+            --limit 1000 > "$scratch_dir/open-remediation-prs.json"
+          go run ./cmd/go-toolchain-remediation existing \
+            --prs "$scratch_dir/open-remediation-prs.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --bot "$BOT_LOGIN" \
+            --branch "$BRANCH_NAME" \
+            --current "$CURRENT_VERSION" \
+            --target "$TARGET_VERSION" > "$scratch_dir/existing-work.json"
+          if [ "$(jq -r '.proceed' "$scratch_dir/existing-work.json")" != "true" ]; then
+            echo "Matching remediation PR appeared before branch creation: $(jq -r '.duplicate_url // empty' "$scratch_dir/existing-work.json")"
+            exit 0
+          fi
+
+          branch_status=0
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          if [ "$branch_status" -eq 0 ]; then
+            echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
+            exit 1
+          fi
+          if [ "$branch_status" -ne 2 ]; then
+            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
+            exit 1
+          fi
+
+          ref_name="refs/heads/$BRANCH_NAME"
+          if [[ ! "$ref_name" =~ ^refs/heads/ci/go-toolchain-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected remediation ref name." >&2
+            exit 1
+          fi
+
+          base_tree_sha="$(gh api \
+            "/repos/$GITHUB_REPOSITORY/git/commits/$BASE_SHA" \
+            --jq '.tree.sha')"
+          if [[ ! "$base_tree_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unexpected base tree SHA returned by GitHub." >&2
+            exit 1
+          fi
+
+          go_mod_content="$(base64 -w 0 go.mod)"
+          go_mod_blob_payload="$(mktemp)"
+          jq -n \
+            --arg content "$go_mod_content" \
+            '{content: $content, encoding: "base64"}' > "$go_mod_blob_payload"
+          go_mod_blob_sha="$(gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/git/blobs" \
+            --input "$go_mod_blob_payload" \
+            --jq '.sha')"
+          if [[ ! "$go_mod_blob_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unexpected go.mod blob SHA returned by GitHub." >&2
+            exit 1
+          fi
+
+          development_doc_content="$(base64 -w 0 docs/maintainers/development.md)"
+          development_doc_blob_payload="$(mktemp)"
+          jq -n \
+            --arg content "$development_doc_content" \
+            '{content: $content, encoding: "base64"}' > "$development_doc_blob_payload"
+          development_doc_blob_sha="$(gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/git/blobs" \
+            --input "$development_doc_blob_payload" \
+            --jq '.sha')"
+          if [[ ! "$development_doc_blob_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unexpected development.md blob SHA returned by GitHub." >&2
+            exit 1
+          fi
+
+          tree_payload="$(mktemp)"
+          jq -n \
+            --arg base_tree "$base_tree_sha" \
+            --arg go_mod_sha "$go_mod_blob_sha" \
+            --arg development_doc_sha "$development_doc_blob_sha" \
+            '{
+              base_tree: $base_tree,
+              tree: [
+                {
+                  path: "go.mod",
+                  mode: "100644",
+                  type: "blob",
+                  sha: $go_mod_sha
+                },
+                {
+                  path: "docs/maintainers/development.md",
+                  mode: "100644",
+                  type: "blob",
+                  sha: $development_doc_sha
+                }
+              ]
+            }' > "$tree_payload"
+          tree_response="$(gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/git/trees" \
+            --input "$tree_payload")"
+          tree_sha="$(jq -r '.sha' <<< "$tree_response")"
+          if [[ ! "$tree_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unexpected tree SHA returned by GitHub." >&2
+            exit 1
+          fi
+          jq -e \
+            --arg go_mod_sha "$go_mod_blob_sha" \
+            --arg development_doc_sha "$development_doc_blob_sha" \
+            '(.tree | map({(.path): .sha}) | add) as $entries |
+              $entries["go.mod"] == $go_mod_sha and
+              $entries["docs/maintainers/development.md"] == $development_doc_sha' \
+            <<< "$tree_response" > /dev/null
+
+          commit_payload="$(mktemp)"
+          jq -n \
+            --arg message "$commit_message" \
+            --arg tree "$tree_sha" \
+            --arg parent "$BASE_SHA" \
+            '{message: $message, tree: $tree, parents: [$parent]}' > "$commit_payload"
+          commit_response="$(gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/git/commits" \
+            --input "$commit_payload")"
+          remote_commit_sha="$(jq -r '.sha' <<< "$commit_response")"
+          if [[ ! "$remote_commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Unexpected commit SHA returned by GitHub." >&2
+            exit 1
+          fi
+          jq -e \
+            --arg message "$commit_message" \
+            --arg tree "$tree_sha" \
+            --arg parent "$BASE_SHA" \
+            '.message == $message and
+              .tree.sha == $tree and
+              (.parents | length) == 1 and
+              .parents[0].sha == $parent' \
+            <<< "$commit_response" > /dev/null
+
+          ref_payload="$(mktemp)"
+          jq -n \
+            --arg ref "$ref_name" \
+            --arg sha "$remote_commit_sha" \
+            '{ref: $ref, sha: $sha}' > "$ref_payload"
+          ref_response="$(gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/git/refs" \
+            --input "$ref_payload")"
+          jq -e \
+            --arg ref "$ref_name" \
+            --arg sha "$remote_commit_sha" \
+            '.ref == $ref and
+              .object.type == "commit" and
+              .object.sha == $sha' \
+            <<< "$ref_response" > /dev/null
+
+          if ! pr_url="$(gh pr create \
+            --draft \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "$commit_message" \
+            --body-file "$body_file")"; then
+            echo "Remote branch $BRANCH_NAME was created, but draft PR creation failed." >&2
+            echo "Recovery: inspect the branch, confirm no matching PR exists, then either create a draft PR manually with the marker $PR_MARKER or delete the orphan branch after verifying it has no associated PR. Do not force-push or rewrite remediation work." >&2
+            exit 1
+          fi
+
+          echo "Created draft remediation PR: $pr_url"

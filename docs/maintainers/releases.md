@@ -52,6 +52,84 @@ and major releases should always use full readiness. The historical
 [`v1.0.0-readiness.md`](v1.0.0-readiness.md) file is retained as evidence for
 the first stable release.
 
+## Go Toolchain Remediation Automation
+
+Go toolchain vulnerability remediation is separate from the release-please
+automation above. The authoritative workflow file is
+`.github/workflows/go-toolchain-remediation.yml`.
+
+Keep the trust boundary from #223 intact:
+
+- `.github/workflows/govulncheck.yml` stays detection-only and read-only.
+- `.github/workflows/go-toolchain-remediation.yml` is the only workflow that
+  may create a remediation branch and draft PR.
+- The remediation workflow does not run on `pull_request`; it runs only on its
+  schedule and on `workflow_dispatch`, and the remediation job itself is gated
+  to `refs/heads/main`.
+
+The remediation workflow checks out `main`, fetches `origin/main`, and pins the
+candidate run to the exact detached `origin/main` SHA before any write-capable
+GitHub App token is created. Its default workflow permissions remain
+`contents: read`, checkout disables persisted credentials, and the maintenance
+App token requests only `contents: write` and `pull-requests: write`.
+
+Actions configuration for this automation remains external and must be
+maintained separately. The workflow declares the protected
+`go-toolchain-remediation` environment. Configure that environment to allow
+deployments from `main` only, and scope access to repositories approved to run
+this workflow:
+
+- Organization Actions variable: `GO_TOOLCHAIN_REMEDIATION_APP_ID`
+- Environment secret in `go-toolchain-remediation`:
+  `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`
+
+After populating the environment secret, remove any old organization-level copy
+of the private key. This repository documentation does not certify that the
+environment, App installation, variable, or secret is currently configured, or
+that any branch ruleset is configured a particular way. The required contract
+is negative: do not add the maintenance App as a branch or ruleset bypass
+actor. The workflow is designed to open a draft PR and then stop behind the
+normal review process rather than bypass it.
+
+The mutable boundary is intentionally narrow:
+
+- write-capable token minting is pinned to immutable
+  `actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1`
+- vulnerability scanning is pinned to
+  `golang.org/x/vuln/cmd/govulncheck@v1.5.0`
+- the candidate diff must stay limited to `go.mod` and
+  `docs/maintainers/development.md`
+
+For an eligible finding set, the workflow creates branch
+`ci/go-toolchain-X.Y.Z`, commits `ci: bump Go toolchain to X.Y.Z`, and
+opens a draft PR with the same title against `main`. The PR body includes the
+stable marker `<!-- octostate-go-toolchain-remediation:v1 -->` together with
+current-version, target-version, and pinned-base markers. Duplicate detection
+recognizes the stable marker or the deterministic branch prefix, while an exact
+duplicate still requires the expected repository, `main` base, App bot, head,
+and current/target metadata. The pinned-base marker is recorded for
+audit/recovery context, not used as the duplicate-match predicate.
+
+Duplicate handling and failure behavior are fail-closed:
+
+- a matching open remediation PR exits cleanly without new mutation
+- a different open recognized remediation PR blocks new automation and
+  requires maintainer review
+- an existing target branch, changed `origin/main`, classifier/schema mismatch,
+  failed candidate validation, or GitHub API/authentication failure aborts the
+  run without force-updating existing remediation work
+
+Recovery is also maintainer-driven. If the remote remediation branch is created
+but `gh pr create --draft` fails, inspect the branch first, confirm that no
+matching PR already exists, then either create the draft PR manually with the
+same marker comments or delete the orphan branch after confirming it has no
+associated PR. Do not force-push, rewrite, or recycle an older remediation
+branch or PR automatically.
+
+Human review begins at the draft PR. The automation never approves its own PR,
+marks it ready for review, enables auto-merge, merges it, deletes it, or
+rewrites it after maintainers have started reviewing.
+
 ## Release PR Merge
 
 This repository also uses `.github/workflows/automerge-release-please.yml` to

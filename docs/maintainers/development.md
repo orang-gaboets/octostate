@@ -85,6 +85,60 @@ database and fails visibly when reachable vulnerabilities are found. Handle
 remediation separately through the normal issue and pull-request workflow; the
 monitoring workflow does not modify dependencies or the Go toolchain.
 
+The separate `.github/workflows/go-toolchain-remediation.yml` workflow is the
+only repository automation that may propose Go toolchain remediation. It does
+not change #223's detection-only contract. The remediation workflow runs only
+on its own daily schedule and `workflow_dispatch`, and the remediation job
+itself exits unless `github.ref` is exactly `refs/heads/main`. It checks out
+trusted `main`, fetches `origin/main`, and switches to the exact detached
+`origin/main` commit before it runs the classifier or mints any write-capable
+token.
+
+`go.mod` remains the source of truth for the pinned toolchain directive, and
+this development guide is the designated duplicate maintainer reference for
+that value. The remediation workflow updates only `go.mod` and this file's
+setup section when it proposes a patch-line toolchain bump; it must leave the
+`go` language-version directive unchanged.
+
+The remediation workflow pins the vulnerability scanner to
+`golang.org/x/vuln/cmd/govulncheck@v1.5.0` for both the initial and
+post-update structured scans. Its write-capable token step uses
+`actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1`
+with only `contents: write` and `pull-requests: write`. Organization-level
+Actions configuration for the maintenance App stays external to this
+repository. The workflow declares the protected `go-toolchain-remediation`
+environment and expects the organization variable
+`GO_TOOLCHAIN_REMEDIATION_APP_ID` plus the
+`GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY` secret in that environment. Configure
+the environment to allow deployments from `main` only, and remove any old
+organization-level copy of the private-key secret after the environment secret
+is populated. This documentation does not claim that the environment, App
+installation, secret values, or branch ruleset configuration have already been
+verified. The maintenance App must not be a `main` branch or ruleset bypass
+actor.
+
+When the classifier finds an eligible same-minor Go patch upgrade, the
+remediation workflow proposes a draft PR from a deterministic branch named
+`ci/go-toolchain-X.Y.Z`. The generated commit and PR title are both
+`ci: bump Go toolchain to X.Y.Z`. Duplicate detection recognizes the stable PR
+marker `<!-- octostate-go-toolchain-remediation:v1 -->` or the deterministic
+`ci/go-toolchain-` branch prefix. Exact duplicates additionally require the
+expected repository, `main` base, App bot, head, and current/target metadata.
+The pinned-base metadata comment is recorded for audit/recovery context only; it
+is not used as the duplicate-match predicate. A matching existing PR causes a
+no-op exit; a different recognized remediation PR, an unexpected branch
+collision, changed `main`, invalid classifier output, failed validation, or any
+GitHub API/authentication problem fails closed without rewriting existing
+remediation work.
+
+If the workflow creates the remote branch but cannot open the draft PR, it
+fails and leaves orphan-branch recovery to a maintainer: confirm whether a
+matching draft PR already exists, then either create the draft PR manually
+with the same marker or delete the orphan branch after verifying that no PR is
+attached to it. The automation never force-pushes, approves, marks ready,
+merges, deletes, or rewrites remediation branches or PRs; human review starts
+only after the draft PR exists.
+
 The race-detector check stays scoped to `pkg/gitops/...` because that tree
 contains the bounded-concurrency collector, planner, and apply packages. That
 keeps the check focused on the code most likely to hide shared-memory races
