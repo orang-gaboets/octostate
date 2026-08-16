@@ -936,7 +936,7 @@ func TestValidateRepositoryOptionalBooleansExplicitFalseAreValid(t *testing.T) {
 	}
 }
 
-func TestValidateRepositoryOptionalNullFieldsAreInvalid(t *testing.T) {
+func TestValidateRepositoryOptionalNullFields(t *testing.T) {
 	t.Parallel()
 
 	cfg := validOrganizationConfig()
@@ -956,7 +956,11 @@ func TestValidateRepositoryOptionalNullFieldsAreInvalid(t *testing.T) {
 	assertHasIssueAtPathAndCode(t, report, "repositories[0].homepage", ValidationIssueCodeInvalidFieldValue)
 	assertHasIssueAtPathAndCode(t, report, "repositories[0].allow_forking", ValidationIssueCodeInvalidFieldValue)
 	assertHasIssueAtPathAndCode(t, report, "repositories[0].archived", ValidationIssueCodeInvalidFieldValue)
-	assertHasIssueAtPathAndCode(t, report, "repositories[0].is_template", ValidationIssueCodeInvalidFieldValue)
+	for _, issue := range report.Errors {
+		if issue.Path == "repositories[0].is_template" {
+			t.Fatalf("expected repository is_template null to be accepted, got %#v", issue)
+		}
+	}
 }
 
 func TestValidateSlugNameMismatch(t *testing.T) {
@@ -1111,8 +1115,8 @@ func TestNormalizeTeamNameExported(t *testing.T) {
 func TestNormalizeRepositoryOwnersDoesNotMutateConfig(t *testing.T) {
 	original := OrganizationConfig{
 		Organization: " org-a ",
-		Repositories: []RepositorySpec{{Owner: "", Name: "service"}},
-		Teams:        []TeamSpec{{Repositories: []TeamRepositorySpec{{Owner: " ORG-A ", Name: "service", Permission: "push"}}}},
+		Repositories: []RepositorySpec{{Owner: "", Name: " service ", Template: TemplateSpec{Owner: " external ", Name: " base "}}},
+		Teams:        []TeamSpec{{Repositories: []TeamRepositorySpec{{Owner: " ORG-A ", Name: " service ", Permission: "push"}}}},
 	}
 
 	normalized := NormalizeRepositoryOwners(original)
@@ -1122,11 +1126,17 @@ func TestNormalizeRepositoryOwnersDoesNotMutateConfig(t *testing.T) {
 	if normalized.Repositories[0].Owner != "org-a" {
 		t.Fatalf("normalized repository owner = %q, want %q", normalized.Repositories[0].Owner, "org-a")
 	}
+	if normalized.Repositories[0].Name != "service" || normalized.Repositories[0].Template.Owner != "external" || normalized.Repositories[0].Template.Name != "base" {
+		t.Fatalf("normalized repository identity = %#v", normalized.Repositories[0])
+	}
 	if normalized.Teams[0].Repositories[0].Owner != "org-a" {
 		t.Fatalf("normalized team repository owner = %q, want %q", normalized.Teams[0].Repositories[0].Owner, "org-a")
 	}
+	if normalized.Teams[0].Repositories[0].Name != "service" {
+		t.Fatalf("normalized team repository name = %q, want %q", normalized.Teams[0].Repositories[0].Name, "service")
+	}
 
-	if original.Organization != " org-a " || original.Repositories[0].Owner != "" || original.Teams[0].Repositories[0].Owner != " ORG-A " {
+	if original.Organization != " org-a " || original.Repositories[0].Owner != "" || original.Repositories[0].Name != " service " || original.Repositories[0].Template.Owner != " external " || original.Teams[0].Repositories[0].Owner != " ORG-A " || original.Teams[0].Repositories[0].Name != " service " {
 		t.Fatalf("normalization mutated the original config: %#v", original)
 	}
 }

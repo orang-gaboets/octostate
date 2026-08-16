@@ -61,12 +61,21 @@ Current collector concurrency limits:
 - Compares desired config with live `OrganizationState`
 - Produces the structured reconciliation report used by `config plan`
   and `config apply`
-- Builds independent action phases concurrently, then appends them back in
-  fixed order before final normalization
-- Normalizes repository actions so repository updates sort before repository
-  creates, keeping same-plan template-state updates visible to later creates
-- Normalizes repository keys so mixed-case same-plan references continue to
-  resolve to the same planned repository during dependency checks
+- Builds the repository plan first, then computes the five independent
+  non-repository action phases concurrently and appends them in fixed order
+  before final action normalization
+- Builds managed same-organization template dependency edges for missing
+  repositories and emits them in deterministic dependency-safe topological
+  order, using normalized repository identity to break ready-action ties
+- Uses final template state for dependency availability: existing sources use
+  an explicitly managed `is_template` value or retain live state when omitted;
+  new sources require `is_template: true`
+- Propagates unavailable-source diagnostics transitively, reports stable cycle
+  paths, and shares repository availability with team repository permissions
+- Leaves external, cross-organization, live-only, and otherwise non-managed
+  template references to apply
+  preflight; dependency edges are internal and are not fields in public plan
+  JSON
 
 ### `pkg/gitops/apply`
 - Executes the supported executable subset of the plan
@@ -80,7 +89,8 @@ Current collector concurrency limits:
 ### `pkg/gitops/diff`
 - Compares desired config with the stored snapshot offline
 - Produces drift reports without live GitHub calls
-- Reuses the same action vocabulary and deterministic ordering model as plan
+- Reuses the same action vocabulary and deterministic reporting conventions as
+  plan, with offline repository ordering appropriate to snapshot diff
 
 ### `pkg/gitops/syncfromlive`
 - Builds desired-state proposals from live GitHub state
@@ -109,18 +119,18 @@ Current collector concurrency limits:
 4. Run apply preflight validation without mutating GitHub
 5. Print the preflight result as JSON
 
-Check mode is best-effort. It validates the supported apply executor inputs
-against the collected live state and adds read-only probes for supported apply
-targets, but it is not a guaranteed GitHub transaction dry-run and can still
-miss GitHub-side failures such as permission changes, organization policy, rate
-limits, races after collection, live state changes after preflight, or
-GitHub-side validation that only occurs during write-time execution. Because
-`config apply --check` consumes the same normalized plan as `config apply`, a
-repository updated to `is_template: true` earlier in the same plan is visible
-to later create preflight checks that use it as a template. The same normalized
-keying also keeps mixed-case repository references aligned across plan and
-preflight, and same-plan team repository permissions can see repositories
-created earlier in the same plan.
+Check mode is best-effort. It consumes the same dependency-safe order as
+`config apply`, validates supported executor inputs, and adds read-only probes
+for supported apply targets. It continues through remaining executable actions
+and aggregates preflight failures deterministically. Repository-action failures
+are processed in plan order; resource-specific dependency handling may defer
+some checks. It is not a guaranteed GitHub transaction dry-run and can miss
+GitHub-side failures such as permission changes,
+organization policy, rate limits, races after collection, live state changes
+after preflight, or validation that only occurs during write-time execution.
+Same-plan template updates and repository creations are visible to later
+preflight checks; team repository permissions use the same repository
+availability gate.
 
 ### `octostate audit pull`
 1. Load desired state to determine the target organization

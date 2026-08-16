@@ -744,12 +744,6 @@ func TestExecuteRepositoryUpdateToTemplateRunsBeforeLaterSamePlanCreate(t *testi
 		Actions: []gitopsplan.Action{
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
-				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
-				Executable:   true,
-			},
-			{
-				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationUpdate,
 				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
 				Executable:   true,
@@ -758,6 +752,12 @@ func TestExecuteRepositoryUpdateToTemplateRunsBeforeLaterSamePlanCreate(t *testi
 					From:  false,
 					To:    true,
 				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
+				Executable:   true,
 			},
 		},
 	}
@@ -1610,6 +1610,151 @@ func TestExecuteFailsWhenExecutableTeamCreatesAreNotContiguous(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "executable team create actions must be contiguous") {
 		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestExecuteManagedTemplateCreatePrecedesConsumer(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	var creates []string
+	repoSvc := &testRepoService{createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+		creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
+		return &gh.Repository{}, nil, nil
+	}}
+	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if want := []string{"external/base->source", "orang-gaboets/source->consumer"}; !reflect.DeepEqual(creates, want) {
+		t.Fatalf("unexpected repository write order: got %#v want %#v", creates, want)
+	}
+}
+
+func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{source, consumer}, Teams: []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed", Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "consumer", Permission: "push"}}}}}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "source"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "consumer"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "consumer"), Executable: true},
+	}}
+	plan.Normalize()
+
+	var creates []string
+	repoSvc := &testRepoService{createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+		creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
+		if *request.Name == "source" {
+			return nil, nil, errors.New("source write failed")
+		}
+		t.Fatal("consumer create must not run after source failure")
+		return nil, nil, nil
+	}}
+	teamSvc := &testTeamService{addTeamRepoBySlugFunc: func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+		t.Fatal("dependent team repository permission must not run after source failure")
+		return nil, nil
+	}}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 1, Slug: "platform"}}}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if err == nil || !strings.Contains(err.Error(), "source write failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"external/base->source"}; !reflect.DeepEqual(creates, want) {
+		t.Fatalf("unexpected repository writes: got %#v want %#v", creates, want)
+	}
+}
+
+func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{source, consumer}, Teams: []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed", Repositories: []config.TeamRepositorySpec{{Owner: "orang-gaboets", Name: "consumer", Permission: "push"}}}}}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationUpdate, ResourceID: repositoryResourceID("orang-gaboets", "source"), Executable: true, Changes: []gitopsplan.FieldChange{{Field: "is_template", From: false, To: true}}},
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "consumer"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeamRepositoryPermission, Operation: gitopsplan.ActionOperationCreate, ResourceID: teamRepoPermissionResourceID("platform", "orang-gaboets", "consumer"), Executable: true},
+	}}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("consumer create must not run after source template enabling failure")
+			return nil, nil, nil
+		},
+		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			if owner == "orang-gaboets" && repo == "source" {
+				return nil, nil, errors.New("source template enabling failed")
+			}
+			t.Fatal("unexpected repository edit after source failure")
+			return nil, nil, nil
+		},
+	}
+	teamSvc := &testTeamService{addTeamRepoBySlugFunc: func(context.Context, string, string, string, string, *gh.TeamAddTeamRepoOptions) (*gh.Response, error) {
+		t.Fatal("dependent team repository permission must not run after source failure")
+		return nil, nil
+	}}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: false}},
+		Teams:        []state.Team{{ID: 1, Slug: "platform"}},
+	}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	if err == nil || !strings.Contains(err.Error(), "source template enabling failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecuteManagedTemplateCreateSettingsFailureStopsDependents(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{source, consumer}}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "source"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "consumer"), Executable: true},
+	}}
+	plan.Normalize()
+
+	var creates []string
+	repoSvc := &testRepoService{
+		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
+			if *request.Name == "source" {
+				return &gh.Repository{}, nil, nil
+			}
+			t.Fatal("consumer create must not run after source settings failure")
+			return nil, nil, nil
+		},
+		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			if owner == "orang-gaboets" && repo == "source" {
+				return nil, nil, errors.New("source template settings failed")
+			}
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err == nil || !strings.Contains(err.Error(), "source template settings failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := []string{"external/base->source"}; !reflect.DeepEqual(creates, want) {
+		t.Fatalf("unexpected repository writes: got %#v want %#v", creates, want)
 	}
 }
 

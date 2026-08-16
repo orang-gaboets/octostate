@@ -267,8 +267,11 @@ Plan preview fields:
 Action behavior:
 - `executable_actions` contains the supported changes that a later `config apply` command can carry out, such as `create` and `update`
 - `skipped_actions` contains unsupported live drift that is detected but not automatically reconciled, such as `delete` and `remove`
-- Repository updates are ordered before repository creates in the normalized plan, so a repository updated to `is_template: true` earlier in the same plan can be used as a template by a later create
-- Team repository permission create/update actions are only executable when the target repository already exists or is created earlier in the same plan; otherwise they remain in `skipped_actions`
+- Managed same-organization repository dependencies are emitted in deterministic dependency-safe topological order, using normalized repository identity to break ready-action ties, so a required source create or `is_template: true` enabling update precedes its consumers
+- Existing sources use their explicit final `is_template` value, or retain live state when the field is omitted or null; new sources are usable only with `is_template: true`. Unavailable sources propagate diagnostics transitively, and cycles report stable `template dependency cycle: ...` messages
+- External, cross-organization, live-only, and other non-managed template references are not managed plan dependencies and remain apply-preflight concerns
+- Team repository permission create/update actions reuse repository availability: they are executable only when the target exists or is available earlier in the dependency-safe plan; otherwise they remain in `skipped_actions`. This does not relax the organization-only ownership rule for team repository permissions
+- Dependency metadata is internal; the public plan JSON has no dependency field
 - Both arrays keep deterministic action ordering so CI output and PR comments stay stable
 
 Example use:
@@ -304,9 +307,9 @@ Behavior:
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
 - `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, username-based invites, invitation team slugs, and team repository permission targets
 - `--check` inherits the same repository dependency gate for team repository permission targets, so a permission is only preflighted when its repository already exists or is created earlier in the same plan
-- `--check` consumes the same normalized repository ordering as `config apply`, so a repository updated to `is_template: true` earlier in the same plan is visible to later create preflight checks that use it as a template
+- `--check` consumes the same dependency-safe action order as `config apply`, so final same-plan template state and newly created repositories are visible to later create preflight checks
 - `--check` also uses normalized repository keys, so mixed-case same-plan repository references resolve to the same planned repository during preflight
-- `--check` is a best-effort preflight. It validates the supported apply executor inputs plus these live read probes, but it is not a guaranteed GitHub transaction dry-run
+- `--check` is a best-effort preflight: it continues through remaining executable actions and aggregates preflight failures deterministically. Repository-action failures are processed in plan order, while resource-specific dependency handling may defer other checks. It validates the supported apply executor inputs plus live read probes, but it is not a guaranteed GitHub transaction dry-run
 - `--dry-run` prints the same split executable/skipped view as `config plan` without performing writes or read-only preflight probes
 - `--check` does not pre-resolve top-level `members:` usernames, team-member changes, or email invites before apply; `user_id` invites can still trigger a login lookup during planning when they are matched against desired members or pending invitations, so `--check` and `--dry-run` can still fail before the live apply phase
 - `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, live state changes after preflight, or other GitHub-side validation that only occurs during write-time execution

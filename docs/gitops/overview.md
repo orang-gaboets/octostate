@@ -124,8 +124,9 @@ Important implementation rule:
 `config plan` compares desired state with live state and produces a structured
 `Report`.
 
-The planner computes independent action phases concurrently, then appends them
-in a fixed order:
+The planner computes the repository plan first, then computes the five
+independent non-repository action phases concurrently and appends all phases in
+a fixed order:
 1. repositories
 2. teams
 3. organization members
@@ -133,12 +134,31 @@ in a fixed order:
 5. team members
 6. team repository permissions
 
-`Report.Normalize()` stays sequential because it is the final global
-sort/summarize pass that defines the public plan ordering. Repository updates
-sort before repository creates in that normalized ordering, which lets a
-same-plan template-state update become visible to a later repository create.
-Repository identity is normalized the same way, so mixed-case references still
-resolve to the same planned repository key during same-plan dependency checks.
+`Report.Normalize()` stays sequential because it normalizes field changes,
+sorts non-repository actions, and recomputes the summary while preserving the
+planner's repository order. Managed repositories
+in the desired organization form dependency edges when a missing repository is
+created from another managed repository in that same organization. The planner
+emits a deterministic dependency-safe topological order, using normalized
+repository identity to break ties among ready actions, so a required source
+create or `is_template: true` enabling update precedes its consumers. External,
+cross-organization, live-only, and other non-managed template references are
+not managed dependency edges; their availability remains an apply-preflight
+concern. Dependency metadata is internal and is not added to the public plan
+JSON.
+
+For an existing source, an explicitly managed `is_template` value is the final
+state used by dependents; when it is omitted (or null at the planner layer), the
+live template state is retained. A newly created source is usable as a template
+only when its final desired state explicitly sets `is_template: true`. A false,
+omitted, or null new-source state makes dependent creates non-executable.
+Explicit `is_template: null` is accepted by CLI validation and is treated as
+unmanaged by the planner.
+
+Availability failures propagate transitively to dependent creates and team
+repository permissions. Cycles produce stable diagnostics such as `template
+dependency cycle: org/a -> org/b -> org/a`. Team permissions reuse the same
+repository availability gate, including its diagnostics.
 
 `config apply` then executes only the supported executable `create` and
 `update` actions from that plan. Unsupported `delete` and `remove` drift is
@@ -146,9 +166,14 @@ reported back as skipped state rather than being executed.
 
 `config apply --check` runs the same live read and plan build, then performs
 apply preflight validation without mutating GitHub. Because it consumes the
-same normalized plan as `config apply`, a repository updated to
+same dependency-safe plan order as `config apply`, a repository updated to
 `is_template: true` earlier in the plan is available to later same-plan
-repository creates that use it as a template.
+repository creates that use it as a template. Check mode continues best-effort
+through remaining executable actions and returns aggregate preflight errors
+deterministically. Dependent actions may report follow-on failures after an
+earlier dependency error, and resource-specific dependency handling can defer
+checks, so failures are not universally reported in plan order. It is not a
+transaction or a guarantee that a later apply will succeed.
 
 This check mode is best-effort: it validates the supported apply executor inputs
 against the collected live state and uses read-only GitHub probes for supported

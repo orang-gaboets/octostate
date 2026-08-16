@@ -116,6 +116,49 @@ func TestCheckRejectsInvalidDesiredConfig(t *testing.T) {
 	assertValidationErrorHasIssue(t, err, "teams[0].repositories[0].owner", config.ValidationIssueCodeRepositoryOwnerScope)
 }
 
+func TestCheckAggregatesManagedSourceAndConsumerFailuresInPlanOrder(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{source, consumer}}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "source"), Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationCreate, ResourceID: repositoryResourceID("orang-gaboets", "consumer"), Executable: true},
+	}}
+	plan.Normalize()
+
+	var lookups []string
+	repoSvc := &testRepoService{getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+		lookups = append(lookups, repositoryResourceID(owner, repo))
+		switch repositoryResourceID(owner, repo) {
+		case "external/base":
+			return githubRepository(owner, repo, false), nil, nil
+		case "orang-gaboets/source":
+			return nil, nil, githubNotFoundError("source not found")
+		default:
+			t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			return nil, nil, nil
+		}
+	}}
+
+	_, err := Check(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err == nil {
+		t.Fatal("expected aggregate preflight failure")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "create repository orang-gaboets/source") || !strings.Contains(message, "create repository orang-gaboets/consumer") {
+		t.Fatalf("expected source and consumer failures, got %v", err)
+	}
+	if strings.Index(message, "orang-gaboets/source") > strings.Index(message, "orang-gaboets/consumer") {
+		t.Fatalf("expected failures in plan order, got %v", err)
+	}
+	if want := []string{"external/base", "orang-gaboets/source"}; !reflect.DeepEqual(lookups, want) {
+		t.Fatalf("unexpected preflight lookup order: got %#v want %#v", lookups, want)
+	}
+}
+
 func TestCheckPreflightsTeamCreatesAndInviteDependenciesWithoutMutations(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "orang-gaboets",
@@ -352,12 +395,6 @@ func TestCheckAllowsRepositoryUpdateToTemplateBeforeLaterSamePlanCreate(t *testi
 		Actions: []gitopsplan.Action{
 			{
 				ResourceType: gitopsplan.ActionResourceTypeRepository,
-				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
-				Executable:   true,
-			},
-			{
-				ResourceType: gitopsplan.ActionResourceTypeRepository,
 				Operation:    gitopsplan.ActionOperationUpdate,
 				ResourceID:   repositoryResourceID("orang-gaboets", "zzz-template"),
 				Executable:   true,
@@ -366,6 +403,12 @@ func TestCheckAllowsRepositoryUpdateToTemplateBeforeLaterSamePlanCreate(t *testi
 					From:  false,
 					To:    true,
 				}},
+			},
+			{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("orang-gaboets", "aaa-app"),
+				Executable:   true,
 			},
 		},
 	}
