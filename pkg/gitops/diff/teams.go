@@ -158,16 +158,16 @@ func (b builder) planTeamRepositoryPermissions() []Action {
 		desiredRepositories[repositoryKey(repository.Owner, repository.Name)] = repository
 	}
 	repositoryAvailabilityForPermission := func(owner, name string) (bool, string) {
-		repositoryID := repositoryID(owner, name)
+		id := repositoryID(owner, name)
 		if _, ok := snapshotRepositories[repositoryKey(owner, name)]; ok {
 			return true, ""
 		}
 		desiredRepository, ok := desiredRepositories[repositoryKey(owner, name)]
 		if !ok {
-			return false, fmt.Sprintf("repository %s is absent from snapshot and desired state", repositoryID)
+			return false, fmt.Sprintf("repository %s is absent from snapshot and desired state", id)
 		}
 		if strings.TrimSpace(desiredRepository.Template.Owner) == "" || strings.TrimSpace(desiredRepository.Template.Name) == "" {
-			return false, fmt.Sprintf("repository %s is declared in desired state but is not creatable: template configuration is missing", repositoryID)
+			return false, fmt.Sprintf("repository %s is declared in desired state but is not creatable: template configuration is missing", id)
 		}
 		return true, ""
 	}
