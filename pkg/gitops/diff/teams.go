@@ -2,7 +2,6 @@ package diff
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
@@ -166,7 +165,7 @@ func (b builder) planTeamRepositoryPermissions() []Action {
 		if !ok {
 			return false, fmt.Sprintf("repository %s is absent from snapshot and desired state", id)
 		}
-		if strings.TrimSpace(desiredRepository.Template.Owner) == "" || strings.TrimSpace(desiredRepository.Template.Name) == "" {
+		if !repositoryCreatable(desiredRepository) {
 			return false, fmt.Sprintf("repository %s is declared in desired state but is not creatable: template configuration is missing", id)
 		}
 		return true, ""
