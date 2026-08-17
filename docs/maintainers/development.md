@@ -107,10 +107,12 @@ post-update structured scans. Its write-capable token step uses
 with only `contents: write` and `pull-requests: write`. Organization-level
 Actions configuration for the maintenance App stays external to this
 repository. The workflow declares the protected `go-toolchain-remediation`
-environment and expects the organization variable
+environment with deployment record creation disabled because the environment
+is used for credential scoping and access control rather than application
+deployment. It expects the organization variable
 `GO_TOOLCHAIN_REMEDIATION_APP_ID` plus the
 `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY` secret in that environment. Configure
-the environment to allow deployments from `main` only, and remove any old
+the environment's branch policy to allow `main` only, and remove any old
 organization-level copy of the private-key secret after the environment secret
 is populated. This documentation does not claim that the environment, App
 installation, secret values, or branch ruleset configuration have already been
@@ -193,8 +195,9 @@ go test ./... -cover -coverprofile=coverage.out
 ## Command Output Conventions
 
 When developing or reviewing commands, remember:
-- diagnostic logs belong on stderr
-- command results belong on stdout, with JSON as the default for most commands
-- documented exceptions may use a different stdout format; for example, `octostate config sync-from-live` outputs YAML by default unless `--write` is used
-- query/list/get commands return resource payloads
-- mutating commands return an operation envelope with `status`, `message`, and `data`
+
+* diagnostic logs belong on stderr
+* command results belong on stdout, with JSON as the default for most commands
+* documented exceptions may use a different stdout format; for example, `octostate config sync-from-live` outputs YAML by default unless `--write` is used
+* query/list/get commands return resource payloads
+* mutating commands return an operation envelope with `status`, `message`, and `data`

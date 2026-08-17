@@ -19,7 +19,9 @@ jobs:
   remediate:
     name: Propose Go toolchain remediation
     if: github.ref == 'refs/heads/main'
-    environment: go-toolchain-remediation
+    environment:
+      name: go-toolchain-remediation
+      deployment: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
