@@ -431,6 +431,17 @@ func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
 			wantNonExecutable:     1,
 		},
 		{
+			name:                  "snapshot takes precedence over missing template",
+			target:                "snapshot-repo",
+			snapshotRepositories:  []state.Repository{{Owner: "org-a", Name: "snapshot-repo", Visibility: "private"}},
+			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "snapshot-repo", Visibility: "private"}},
+			wantOperation:         ActionOperationCreate,
+			wantExecutable:        true,
+			wantActions:           1,
+			wantExecutableActions: 1,
+			wantNonExecutable:     0,
+		},
+		{
 			name:                  "desired creatable create",
 			target:                "desired-repo",
 			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private", Template: config.TemplateSpec{Owner: "org-a", Name: "template"}}},
