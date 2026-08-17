@@ -91,6 +91,9 @@ Current collector concurrency limits:
 - Produces drift reports without live GitHub calls
 - Reuses the same action vocabulary and deterministic reporting conventions as
   plan, with offline repository ordering appropriate to snapshot diff
+- Gates team repository permission create/update actions on repository presence
+  in the snapshot or complete desired template configuration; managed template
+  dependency resolution remains plan-only
 
 ### `pkg/gitops/syncfromlive`
 - Builds desired-state proposals from live GitHub state

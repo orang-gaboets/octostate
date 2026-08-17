@@ -11,6 +11,7 @@ import (
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/internal/testconfig"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 	"github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -371,6 +372,245 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	}
 }
 
+func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                  string
+		target                string
+		snapshotRepositories  []state.Repository
+		desiredRepositories   []config.RepositorySpec
+		actualPermission      *state.TeamRepositoryPermission
+		wantOperation         ActionOperation
+		wantExecutable        bool
+		wantActions           int
+		wantExecutableActions int
+		wantNonExecutable     int
+		wantMessage           string
+	}{
+		{
+			name:                  "absent create",
+			target:                "ghost-repo",
+			wantOperation:         ActionOperationCreate,
+			wantExecutable:        false,
+			wantActions:           1,
+			wantExecutableActions: 0,
+			wantNonExecutable:     1,
+			wantMessage:           "repository org-a/ghost-repo is absent from snapshot and desired state",
+		},
+		{
+			name:                  "absent update",
+			target:                "ghost-repo",
+			actualPermission:      &state.TeamRepositoryPermission{TeamSlug: "platform", Owner: "org-a", Name: "ghost-repo", Permission: "pull"},
+			wantOperation:         ActionOperationUpdate,
+			wantExecutable:        false,
+			wantActions:           1,
+			wantExecutableActions: 0,
+			wantNonExecutable:     1,
+			wantMessage:           "repository org-a/ghost-repo is absent from snapshot and desired state",
+		},
+		{
+			name:                  "snapshot only create",
+			target:                "snapshot-repo",
+			snapshotRepositories:  []state.Repository{{Owner: "org-a", Name: "snapshot-repo"}},
+			wantOperation:         ActionOperationCreate,
+			wantExecutable:        true,
+			wantActions:           2,
+			wantExecutableActions: 1,
+			wantNonExecutable:     1,
+		},
+		{
+			name:                  "snapshot only update",
+			target:                "snapshot-repo",
+			snapshotRepositories:  []state.Repository{{Owner: "org-a", Name: "snapshot-repo"}},
+			actualPermission:      &state.TeamRepositoryPermission{TeamSlug: "platform", Owner: "org-a", Name: "snapshot-repo", Permission: "pull"},
+			wantOperation:         ActionOperationUpdate,
+			wantExecutable:        true,
+			wantActions:           2,
+			wantExecutableActions: 1,
+			wantNonExecutable:     1,
+		},
+		{
+			name:                  "desired creatable create",
+			target:                "desired-repo",
+			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private", Template: config.TemplateSpec{Owner: "org-a", Name: "template"}}},
+			wantOperation:         ActionOperationCreate,
+			wantExecutable:        true,
+			wantActions:           2,
+			wantExecutableActions: 2,
+			wantNonExecutable:     0,
+		},
+		{
+			name:                  "desired creatable update",
+			target:                "desired-repo",
+			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private", Template: config.TemplateSpec{Owner: "org-a", Name: "template"}}},
+			actualPermission:      &state.TeamRepositoryPermission{TeamSlug: "platform", Owner: "org-a", Name: "desired-repo", Permission: "pull"},
+			wantOperation:         ActionOperationUpdate,
+			wantExecutable:        true,
+			wantActions:           2,
+			wantExecutableActions: 2,
+			wantNonExecutable:     0,
+		},
+		{
+			name:                  "desired missing template create",
+			target:                "desired-repo",
+			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private"}},
+			wantOperation:         ActionOperationCreate,
+			wantExecutable:        false,
+			wantActions:           2,
+			wantExecutableActions: 0,
+			wantNonExecutable:     2,
+			wantMessage:           "repository org-a/desired-repo is declared in desired state but is not creatable: template configuration is missing",
+		},
+		{
+			name:                  "desired missing template update",
+			target:                "desired-repo",
+			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private"}},
+			actualPermission:      &state.TeamRepositoryPermission{TeamSlug: "platform", Owner: "org-a", Name: "desired-repo", Permission: "pull"},
+			wantOperation:         ActionOperationUpdate,
+			wantExecutable:        false,
+			wantActions:           2,
+			wantExecutableActions: 0,
+			wantNonExecutable:     2,
+			wantMessage:           "repository org-a/desired-repo is declared in desired state but is not creatable: template configuration is missing",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			actual := state.OrganizationState{
+				Organization: "org-a",
+				Repositories: tt.snapshotRepositories,
+				Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+			}
+			if tt.actualPermission != nil {
+				actual.TeamRepositoryPermissions = []state.TeamRepositoryPermission{*tt.actualPermission}
+			}
+
+			snap := snapshot.NewActualSnapshot(time.Date(2026, 8, 17, 9, 0, 0, 0, time.UTC), &actual)
+			report, err := Build(Options{
+				Desired: config.OrganizationConfig{
+					Organization: "org-a",
+					Repositories: tt.desiredRepositories,
+					Teams: []config.TeamSpec{{
+						Slug:    "platform",
+						Name:    "Platform",
+						Privacy: "closed",
+						Repositories: []config.TeamRepositorySpec{{
+							Owner:      "org-a",
+							Name:       tt.target,
+							Permission: "push",
+						}},
+					}},
+				},
+				Snapshot: &snap,
+			})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+
+			var permissionAction *Action
+			for index := range report.Actions {
+				if report.Actions[index].ResourceType == ActionResourceTypeTeamRepositoryPermission {
+					permissionAction = &report.Actions[index]
+					break
+				}
+			}
+			if permissionAction == nil {
+				t.Fatalf("team repository permission action not found: %#v", report.Actions)
+			}
+			if permissionAction.Operation != tt.wantOperation {
+				t.Fatalf("operation = %q, want %q", permissionAction.Operation, tt.wantOperation)
+			}
+			if permissionAction.Executable != tt.wantExecutable {
+				t.Fatalf("executable = %t, want %t; action=%#v", permissionAction.Executable, tt.wantExecutable, *permissionAction)
+			}
+			if tt.wantMessage != "" && !strings.Contains(permissionAction.Message, tt.wantMessage) {
+				t.Fatalf("message = %q, want substring %q", permissionAction.Message, tt.wantMessage)
+			}
+			if report.Summary.Actions != tt.wantActions {
+				t.Fatalf("summary actions = %d, want %d", report.Summary.Actions, tt.wantActions)
+			}
+			if report.Summary.ExecutableActions != tt.wantExecutableActions {
+				t.Fatalf("summary executable actions = %d, want %d", report.Summary.ExecutableActions, tt.wantExecutableActions)
+			}
+			if report.Summary.NonExecutableActions != tt.wantNonExecutable {
+				t.Fatalf("summary non-executable actions = %d, want %d", report.Summary.NonExecutableActions, tt.wantNonExecutable)
+			}
+		})
+	}
+}
+
+func TestBuildTeamRepositoryPermissionDiffDoesNotModelPlanOnlyDependencies(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "org-a",
+		Repositories: []config.RepositorySpec{
+			{Owner: "org-a", Name: "base", Visibility: "private"},
+			{Owner: "org-a", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "org-a", Name: "base"}},
+		},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Repositories: []config.TeamRepositorySpec{{
+				Owner:      "org-a",
+				Name:       "consumer",
+				Permission: "push",
+			}},
+		}},
+	}
+	actual := state.OrganizationState{
+		Organization: "org-a",
+		Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 8, 17, 9, 0, 0, 0, time.UTC), &actual)
+	diffReport, err := Build(Options{
+		Desired:  desired,
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("diff Build returned error: %v", err)
+	}
+	planReport, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: &actual})
+	if err != nil {
+		t.Fatalf("plan Build returned error: %v", err)
+	}
+
+	findPermissionAction := func(actions []Action) *Action {
+		for index := range actions {
+			if actions[index].ResourceType == ActionResourceTypeTeamRepositoryPermission {
+				return &actions[index]
+			}
+		}
+		return nil
+	}
+	findPlanPermissionAction := func(actions []gitopsplan.Action) *gitopsplan.Action {
+		for index := range actions {
+			if actions[index].ResourceType == gitopsplan.ActionResourceTypeTeamRepositoryPermission {
+				return &actions[index]
+			}
+		}
+		return nil
+	}
+	diffPermission := findPermissionAction(diffReport.Actions)
+	planPermission := findPlanPermissionAction(planReport.Actions)
+	if diffPermission == nil || planPermission == nil {
+		t.Fatalf("missing team repository permission action: diff=%#v plan=%#v", diffReport.Actions, planReport.Actions)
+	}
+	if !diffPermission.Executable {
+		t.Fatalf("diff permission should remain executable for offline-creatable repository: %#v", *diffPermission)
+	}
+	if planPermission.Executable {
+		t.Fatalf("plan permission should be blocked by unavailable managed template dependency: %#v", *planPermission)
+	}
+}
+
 func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 	t.Parallel()
 
@@ -486,8 +726,8 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    11,
-			NonExecutableActions: 8,
+			ExecutableActions:    9,
+			NonExecutableActions: 10,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,
@@ -510,8 +750,8 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationCreate, ResourceID: "platform/charlie", Executable: false, Message: "team membership platform/charlie requires organization member charlie to exist first", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationUpdate, ResourceID: "platform/alice", Executable: true, Message: "update team membership platform/alice", Changes: []FieldChange{{Field: "role", From: "member", To: "maintainer"}}},
 			{ResourceType: ActionResourceTypeTeamMember, Operation: ActionOperationRemove, ResourceID: "platform/bob", Executable: false, Message: "team membership platform/bob exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: true, Message: "create team repository permission platform/orang-gaboets/repo-extra", Changes: []FieldChange{}},
-			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: true, Message: "update team repository permission platform/orang-gaboets/octostate", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationCreate, ResourceID: "platform/orang-gaboets/repo-extra", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-extra requires repository orang-gaboets/repo-extra to be available: repository orang-gaboets/repo-extra is absent from snapshot and desired state", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: false, Message: "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to be available: repository orang-gaboets/octostate is absent from snapshot and desired state", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationRemove, ResourceID: "platform/orang-gaboets/repo-old", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-old exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 		},
 	}
