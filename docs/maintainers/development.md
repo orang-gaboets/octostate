@@ -195,9 +195,8 @@ go test ./... -cover -coverprofile=coverage.out
 ## Command Output Conventions
 
 When developing or reviewing commands, remember:
-
-* diagnostic logs belong on stderr
-* command results belong on stdout, with JSON as the default for most commands
-* documented exceptions may use a different stdout format; for example, `octostate config sync-from-live` outputs YAML by default unless `--write` is used
-* query/list/get commands return resource payloads
-* mutating commands return an operation envelope with `status`, `message`, and `data`
+- diagnostic logs belong on stderr
+- command results belong on stdout, with JSON as the default for most commands
+- documented exceptions may use a different stdout format; for example, `octostate config sync-from-live` outputs YAML by default unless `--write` is used
+- query/list/get commands return resource payloads
+- mutating commands return an operation envelope with `status`, `message`, and `data`
