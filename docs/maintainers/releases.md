@@ -217,4 +217,3 @@ the release state before merging another release PR:
   stale release PR
 - Re-run the `Release Please` workflow manually and confirm it does not recreate
   the stale release PR
-  
