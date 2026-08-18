@@ -145,7 +145,7 @@ an authorized maintainer.
 - Unauthorized `release: ready` labels are removed automatically
 - Unauthorized approval attempts leave a PR comment from the release-please app bot
 - If `release-please` updates the PR head after approval, the stale `release: ready` label is removed and must be re-applied
-- The workflow waits for the `CI` and `CodeQL` release checks to complete before merging
+- The workflow waits for the `CI`, `CodeQL Security`, and `Go vulnerability monitoring` release checks to complete before merging; see [Code scanning and Code Quality](code-scanning.md) for the ownership and identity guide
 - The workflow uses the configured GitHub App token to merge the release PR directly
 - Human-authored PRs are intentionally ignored
 
