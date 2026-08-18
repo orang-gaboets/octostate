@@ -20,8 +20,8 @@ The following state was verified on 2026-08-18 against `main` at commit
 - `.github/workflows/codeql.yml` was active with workflow name `CodeQL` and job
   name `Analyze Go`.
 - GitHub's generated workflow `dynamic/github-code-scanning/codeql` was active
-  and produced `Code Quality: PR #...` and `Code Quality: Push on main` runs
-  with job name `Analyze (go)`.
+  and produced `Code Quality: PR #...`, `Code Quality: Push on main`, and
+  `Code Quality: Scheduled` runs with job name `Analyze (go)`.
 - The CodeQL default-setup API reported `state: not-configured`; this is not a
   separate active default-setup scan for the repository.
 - Repository-managed CodeQL analyses were present, and the observed analyses
@@ -47,7 +47,7 @@ scanning. This repository change does not modify GitHub settings.
 | Path and owner | Triggers | Workflow/job or run identity | Purpose and results | Configuration control |
 |---|---|---|---|---|
 | [`.github/workflows/codeql.yml`](../../.github/workflows/codeql.yml) — repository-managed | Pushes and pull requests targeting `main`; weekly schedule at `24 3 * * 1` | Workflow `CodeQL Security`; job/check `Analyze Go` | Advanced CodeQL for Go with a manual `go build ./...`; uploads security code-scanning results | The tracked workflow file and its pinned action versions |
-| `dynamic/github-code-scanning/codeql` — GitHub-managed | Pull requests and pushes to the default branch, as observed in recent runs | Workflow metadata may say `CodeQL`; run labels are `Code Quality: PR #...` or `Code Quality: Push on main`; job `Analyze (go)` | CodeQL-powered Code Quality analysis; findings appear in the repository's Code Quality/security views and pull-request annotations | GitHub repository Code Quality / Advanced Security settings; no generated workflow file is tracked here |
+| `dynamic/github-code-scanning/codeql` — GitHub-managed | Pull requests, pushes to the default branch, and scheduled runs, as observed in recent runs | Workflow metadata may say `CodeQL`; run labels are `Code Quality: PR #...`, `Code Quality: Push on main`, or `Code Quality: Scheduled`; job `Analyze (go)` | CodeQL-powered Code Quality analysis; findings appear in the repository's Code Quality/security views and pull-request annotations | GitHub repository Code Quality / Advanced Security settings; no generated workflow file is tracked here |
 | CodeQL default setup — GitHub setting | Not active in the verified snapshot | API state `not-configured` | No separate default-setup execution path was identified | Repository Advanced Security settings and the default-setup API |
 
 GitHub documents that Code Quality and code scanning can both use the workflow
