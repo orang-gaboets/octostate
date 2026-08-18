@@ -76,6 +76,13 @@ The release auto-merge workflow relies on the repository workflow identity
 `CodeQL Security`. It must continue to require that workflow together with `CI`
 and `Go vulnerability monitoring`.
 
+Those three workflow names are required to appear; they are not an allowlist of
+the only checks the workflow evaluates. After the required checks are present,
+the workflow rejects any reported relevant check that fails or is cancelled,
+and waits for any reported relevant check that is pending. GitHub-managed Code
+Quality is therefore not required to appear, but a reported Code Quality check
+can still block release auto-merge until it completes successfully.
+
 When default setup is enabled or changed, inspect whether GitHub has disabled
 or overridden an existing advanced CodeQL workflow. See [Configuring default
 setup for code scanning](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning)
