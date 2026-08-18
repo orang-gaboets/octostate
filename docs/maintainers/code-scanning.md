@@ -122,13 +122,18 @@ Run these read-only checks when GitHub settings or workflow identities change:
 ```bash
 gh api repos/orang-gaboets/octostate/code-scanning/default-setup
 gh api 'repos/orang-gaboets/octostate/actions/workflows?per_page=100'
+gh api repos/orang-gaboets/octostate/rules/branches/main
 gh api 'repos/orang-gaboets/octostate/rulesets?includes_parents=true'
 gh api repos/orang-gaboets/octostate/branches/main/protection
-gh api 'orgs/orang-gaboets/rulesets?includes_parents=true'
+gh api 'orgs/orang-gaboets/rulesets?per_page=100'
 gh pr checks <release-pr> --json name,workflow,bucket
 ```
 
-The organization-ruleset query may require `admin:org`; record that limitation
-instead of assuming that no organization-level rule exists. Confirm the Code
-Quality/default-setup setting in the repository's GitHub Advanced Security UI
-when the API does not expose the setting.
+Use `rules/branches/main` as the primary check: it returns the effective active
+rules applying to `main`, including rules inherited from an organization. The
+repository ruleset list is useful for identifying the owning ruleset, but its
+list entries are summaries rather than the effective rule details. The
+organization-ruleset inventory is optional and may require `admin:org`; record
+that limitation instead of assuming that no organization-level rule exists.
+Confirm the Code Quality/default-setup setting in the repository's GitHub
+Advanced Security UI when the API does not expose the setting.
