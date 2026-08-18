@@ -48,7 +48,7 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
-	opt.Desired = config.NormalizeRepositoryOwners(opt.Desired)
+	opt.Desired = config.NormalizeDesiredState(opt.Desired)
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}

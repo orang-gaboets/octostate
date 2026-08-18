@@ -95,30 +95,6 @@ func ResolveRepositoryOwner(owner, organization string) string {
 	return owner
 }
 
-// NormalizeRepositoryOwners returns a copy with managed repository identities
-// normalized without mutating the caller's config.
-func NormalizeRepositoryOwners(cfg OrganizationConfig) OrganizationConfig {
-	cfg.Organization = strings.TrimSpace(cfg.Organization)
-	cfg.Repositories = append([]RepositorySpec(nil), cfg.Repositories...)
-	for i := range cfg.Repositories {
-		cfg.Repositories[i].Owner = ResolveRepositoryOwner(cfg.Repositories[i].Owner, cfg.Organization)
-		cfg.Repositories[i].Name = strings.TrimSpace(cfg.Repositories[i].Name)
-		cfg.Repositories[i].Template.Owner = strings.TrimSpace(cfg.Repositories[i].Template.Owner)
-		cfg.Repositories[i].Template.Name = strings.TrimSpace(cfg.Repositories[i].Template.Name)
-	}
-
-	cfg.Teams = append([]TeamSpec(nil), cfg.Teams...)
-	for i := range cfg.Teams {
-		cfg.Teams[i].Repositories = append([]TeamRepositorySpec(nil), cfg.Teams[i].Repositories...)
-		for j := range cfg.Teams[i].Repositories {
-			cfg.Teams[i].Repositories[j].Owner = ResolveRepositoryOwner(cfg.Teams[i].Repositories[j].Owner, cfg.Organization)
-			cfg.Teams[i].Repositories[j].Name = strings.TrimSpace(cfg.Teams[i].Repositories[j].Name)
-		}
-	}
-
-	return cfg
-}
-
 func (r *ValidationReport) addError(path string, code ValidationIssueCode, format string, args ...any) {
 	r.Errors = append(r.Errors, ValidationIssue{
 		Path:    path,
