@@ -148,6 +148,28 @@ func (b builder) planTeamMembers() []Action {
 
 func (b builder) planTeamRepositoryPermissions() []Action {
 	actions := make([]Action, 0)
+	snapshotRepositories := make(map[string]struct{}, len(b.actual.Repositories))
+	for _, repository := range b.actual.Repositories {
+		snapshotRepositories[repositoryKey(repository.Owner, repository.Name)] = struct{}{}
+	}
+	desiredRepositories := make(map[string]config.RepositorySpec, len(b.desired.Repositories))
+	for _, repository := range b.desired.Repositories {
+		desiredRepositories[repositoryKey(repository.Owner, repository.Name)] = repository
+	}
+	repositoryAvailabilityForPermission := func(owner, name string) (bool, string) {
+		id := repositoryID(owner, name)
+		if _, ok := snapshotRepositories[repositoryKey(owner, name)]; ok {
+			return true, ""
+		}
+		desiredRepository, ok := desiredRepositories[repositoryKey(owner, name)]
+		if !ok {
+			return false, fmt.Sprintf("repository %s is absent from snapshot and desired state", id)
+		}
+		if !repositoryCreatable(desiredRepository) {
+			return false, fmt.Sprintf("repository %s is declared in desired state but is not creatable: template configuration is missing", id)
+		}
+		return true, ""
+	}
 	actualPermissions := make(map[string]state.TeamRepositoryPermission, len(b.actual.TeamRepositoryPermissions))
 	for _, permission := range b.actual.TeamRepositoryPermissions {
 		actualPermissions[teamRepositoryPermissionKey(permission.TeamSlug, permission.Owner, permission.Name)] = permission
@@ -160,24 +182,44 @@ func (b builder) planTeamRepositoryPermissions() []Action {
 			desiredPermissions[key] = permission
 			actualPermission, ok := actualPermissions[key]
 			if !ok {
+				executable, diagnostic := repositoryAvailabilityForPermission(permission.Owner, permission.Name)
+				message := fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
+				if !executable {
+					message = fmt.Sprintf(
+						"team repository permission %s requires repository %s to be available: %s",
+						teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
+						repositoryID(permission.Owner, permission.Name),
+						diagnostic,
+					)
+				}
 				actions = append(actions, Action{
 					ResourceType: ActionResourceTypeTeamRepositoryPermission,
 					Operation:    ActionOperationCreate,
 					ResourceID:   teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
-					Executable:   true,
-					Message:      fmt.Sprintf("create team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name)),
+					Executable:   executable,
+					Message:      message,
 				})
 				continue
 			}
 			if actualPermission.Permission == permission.Permission {
 				continue
 			}
+			executable, diagnostic := repositoryAvailabilityForPermission(permission.Owner, permission.Name)
+			message := fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name))
+			if !executable {
+				message = fmt.Sprintf(
+					"team repository permission %s requires repository %s to be available: %s",
+					teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
+					repositoryID(permission.Owner, permission.Name),
+					diagnostic,
+				)
+			}
 			actions = append(actions, Action{
 				ResourceType: ActionResourceTypeTeamRepositoryPermission,
 				Operation:    ActionOperationUpdate,
 				ResourceID:   teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name),
-				Executable:   true,
-				Message:      fmt.Sprintf("update team repository permission %s", teamRepositoryPermissionID(team.Slug, permission.Owner, permission.Name)),
+				Executable:   executable,
+				Message:      message,
 				Changes: []FieldChange{{
 					Field: "permission",
 					From:  actualPermission.Permission,
