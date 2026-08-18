@@ -32,6 +32,12 @@ The following state was verified on 2026-08-18 against `main` at commit
   current permissions. An organization administrator must re-check them before
   approving a future status-check identity change.
 
+Representative evidence for the snapshot includes the successful [scheduled
+Code Quality run](https://github.com/orang-gaboets/octostate/actions/runs/32096044550)
+(run `32096044550`, job `Analyze (go)`). Re-run the commands below when
+revalidating the configuration instead of treating this dated snapshot as
+current state.
+
 This branch changes only the repository-managed workflow display name to
 `CodeQL Security`. Its job remains `Analyze Go`; the generated Code Quality job
 remains `Analyze (go)`.
