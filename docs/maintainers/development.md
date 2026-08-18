@@ -107,10 +107,12 @@ post-update structured scans. Its write-capable token step uses
 with only `contents: write` and `pull-requests: write`. Organization-level
 Actions configuration for the maintenance App stays external to this
 repository. The workflow declares the protected `go-toolchain-remediation`
-environment and expects the organization variable
+environment with deployment record creation disabled because the environment
+is used for credential scoping and access control rather than application
+deployment. It expects the organization variable
 `GO_TOOLCHAIN_REMEDIATION_APP_ID` plus the
 `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY` secret in that environment. Configure
-the environment to allow deployments from `main` only, and remove any old
+the environment's branch policy to allow `main` only, and remove any old
 organization-level copy of the private-key secret after the environment secret
 is populated. This documentation does not claim that the environment, App
 installation, secret values, or branch ruleset configuration have already been

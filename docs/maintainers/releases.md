@@ -75,8 +75,10 @@ App token requests only `contents: write` and `pull-requests: write`.
 
 Actions configuration for this automation remains external and must be
 maintained separately. The workflow declares the protected
-`go-toolchain-remediation` environment. Configure that environment to allow
-deployments from `main` only, and scope access to repositories approved to run
+`go-toolchain-remediation` environment with deployment record creation
+disabled because the environment is used for credential scoping and access
+control rather than application deployment. Configure the environment's branch
+policy to allow `main` only, and scope access to repositories approved to run
 this workflow:
 
 - Organization Actions variable: `GO_TOOLCHAIN_REMEDIATION_APP_ID`
