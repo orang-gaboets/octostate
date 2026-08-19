@@ -1,162 +1,163 @@
 # octostate
 
-`octostate` is a GitHub organization operations CLI and GitOps engine.
+[![CI](https://github.com/orang-gaboets/octostate/actions/workflows/ci.yml/badge.svg)](https://github.com/orang-gaboets/octostate/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/orang-gaboets/octostate?sort=semver)](https://github.com/orang-gaboets/octostate/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/orang-gaboets/octostate)](https://github.com/orang-gaboets/octostate/blob/main/go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-It provides two main layers:
-- **API primitives** for direct GitHub operations on organizations,
-  repositories, topics, teams, and users
-- **GitOps commands** for validating desired state, building plans, applying
-  supported changes, pulling snapshots, and diffing drift
+Manage a GitHub organization as version-controlled desired state.
 
-This repository is the **engine** (CLI + reusable automation building blocks).
-A separate admin or control repository should own the organization-specific
-approval workflow and automation policy around that engine.
+`octostate` is the GitHub organization operations CLI and GitOps engine that
+validates desired state, previews reconciliation, preflights supported changes,
+applies approved updates, and detects drift.
 
-## Current Scope
+This repository is the engine: a CLI and reusable automation building blocks.
+A separate admin or control repository should own organization-specific
+approval workflow, branching policy, notifications, and automation around the
+engine.
 
-Shipped command groups:
-- `config validate`
-- `config sync-from-live --mode bootstrap`
-- `config sync-from-live --mode adopt`
-- `config sync-from-live --mode materialize`
-- `config plan`
-- `config apply`
-- `audit pull`
-- `audit diff`
-- primitive `organization`, `repo`, `topic`, `team`, and `user` commands
+## Why Octostate?
 
-## Installation
+- Version-controlled organization state that can be reviewed like code
+- Deterministic reconciliation plans for repeatable automation
+- Read-only preflight before supported mutations
+- Snapshot-based drift detection and offline diffing
+- JSON-first output for CI and control-repository workflows
+
+## GitOps at a glance
+
+```text
+desired state
+    ↓
+validate
+    ↓
+plan
+    ↓
+apply --check
+    ↓
+review / approval
+    ↓
+apply
+    ↓
+audit
+```
+
+A minimal desired-state file looks like this:
+
+```yaml
+organization: example-org
+members:
+  - username: alice
+    role: member
+```
+
+The values are fictional; replace them before running commands that contact
+GitHub.
+
+The complete newcomer walkthrough, including a fuller example, is in
+[Getting started](docs/getting-started.md).
+
+## Install
+
+Go 1.25.0 or newer is required. The module declares its language version in
+`go.mod` and may select the patched toolchain automatically when toolchain
+switching is enabled.
+
+For a local installation:
 
 ```bash
 go install github.com/orang-gaboets/octostate/cmd/octostate@latest
 ```
 
+Automation and control repositories should use an explicitly selected release
+instead of `@latest` so their behavior is reproducible.
+
 ## Authentication
 
-All commands that talk to GitHub require exactly one auth method:
+Commands that contact GitHub require exactly one authentication method:
+
 - `--token`
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
-Most examples use `$GITHUB_TOKEN` for brevity, but every live command can also
-use GitHub App authentication with `--app-id`, `--installation-id`, and
-`--app-key-path`.
+Examples use `$GITHUB_TOKEN` as a placeholder. Do not put tokens, private keys,
+or installation secrets in configuration files or documentation.
 
-`octostate config validate` and `octostate audit diff` are offline once
-their required files are present.
+`config validate` and `audit diff` are offline once their required files exist.
+The other GitOps commands read live GitHub state, and `config apply` can mutate
+supported resources.
 
-## CLI Basics
+## GitOps quick start
 
-This README and the docs use canonical command names (for example
-`organization`, `create-from-template`, `delete-by-slug`, and `get-by-slug`).
-Common aliases such as `org`, `repo create`, `team delete`, and `team get`
-also work.
-
-Use `--verbose` (or `-v`) to enable diagnostic logs on stderr while keeping
-command results on stdout.
-
-Most command results are written to stdout as JSON:
-- query/list/get commands return resource payloads
-- mutating commands return an operation envelope with `status`, `message`, and
-  `data`
-- documented exceptions may use a different stdout format; for example,
-  `config sync-from-live` outputs YAML by default unless `--write` is used
-
-Example mutating output:
-
-```json
-{
-  "status": "success",
-  "message": "Created repository acme/new-repo from template acme/template",
-  "data": {
-    "owner": "acme",
-    "name": "new-repo"
-  }
-}
-```
-
-Errors and diagnostics (including `--verbose` logs) are written to stderr.
-
-## GitOps Quickstart
-
-If you are using `octostate` as a GitOps engine, the normal flow is:
-
-1. Start with `config/organization.yaml`
-2. Validate it offline
-3. Preview the live plan, including executable actions and skipped drift
-4. Run `config apply --check` as a read-only preflight before approval
-5. Apply supported changes after approval
-6. Pull a snapshot and use offline diff where needed
-
-For the field-by-field desired-state schema, see
-[Config schema](docs/gitops/config-schema.md).
-
-Example flow:
+Create `config/organization.yaml`, then run the read-only path:
 
 ```bash
-# Validate desired state offline
+# Validate desired state without contacting GitHub
 octostate config validate --config-dir ./config
 
-# Preview live reconciliation, including executable actions and skipped drift
+# Preview the live reconciliation plan
 octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 
-# Run read-only apply preflight checks before approval
+# Run best-effort, non-mutating apply preflight
 octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
-
-# Apply supported create/update actions
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
-
-# Refresh the stored actual-state snapshot
-octostate audit pull --config-dir ./config --state-dir ./state --token "$GITHUB_TOKEN"
-
-# Compare desired state against the stored snapshot offline
-octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 ```
 
-`config apply --check` is a best-effort preflight. It helps catch supported
-apply-path problems before approval, but it is not a transactional dry-run and
-cannot guarantee that a later live apply will succeed.
+Review the plan and preflight result before intentionally applying supported
+create/update actions:
 
-For the full command behavior and workflow details, see the
-[GitOps overview](docs/gitops/overview.md), the
-[Control-repo integration](docs/gitops/control-repo-integration.md), and the
-[GitOps architecture](docs/gitops/architecture.md).
+```bash
+octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+```
 
-If you are starting from existing live GitHub state, `config sync-from-live`
-can generate or update `config/organization.yaml` for bootstrap, adopt, or
-materialize flows.
+`config apply --check` is best-effort preflight, not a transactional GitHub dry
+run, and cannot guarantee that a later apply will succeed. Unsupported
+destructive drift, such as `delete` and `remove` actions, is reported rather
+than silently executed.
 
-## Engine vs Control Repo
+For the complete first-time workflow, including snapshots and offline drift
+checks, see [Getting started](docs/getting-started.md).
+
+## Engine and control-repository boundary
 
 This repository documents the engine contract:
-- desired-state input: `config/organization.yaml`
-- live planning and apply behavior
-- actual-state snapshot shape and offline diff behavior
-- deterministic output and CLI contracts
 
-The detailed admin or control-repo workflow should live in the control repo,
-not here. That includes approval policy, branching strategy, notifications, and
-workflow orchestration around when `validate`, `plan`, `apply`, `pull`, and
-`diff` run.
+- desired state in `config/organization.yaml`;
+- live planning and supported apply behavior;
+- actual-state snapshots and offline diffing; and
+- deterministic command output.
 
-## Docs
+The control repository should own approval policy, branch strategy,
+notifications, and workflow orchestration around `validate`, `plan`, `apply`,
+`pull`, and `diff`.
 
-### CLI Reference
+## Documentation
+
+Start with the [documentation index](docs/README.md) or the
+[getting-started guide](docs/getting-started.md).
+
+### CLI reference
+
 - [Config commands](docs/cli/config.md)
 - [Audit commands](docs/cli/audit.md)
 - [Primitive commands](docs/cli/primitives.md)
 
 ### GitOps
+
 - [Config schema](docs/gitops/config-schema.md)
 - [GitOps overview](docs/gitops/overview.md)
 - [GitOps architecture](docs/gitops/architecture.md)
-- [Control-repo integration](docs/gitops/control-repo-integration.md)
+- [Control-repository integration](docs/gitops/control-repo-integration.md)
 
 ### Maintainers
+
 - [Development](docs/maintainers/development.md)
 - [Releases](docs/maintainers/releases.md)
 - [Release readiness](docs/maintainers/release-readiness.md)
 
+### Security
+
+- [Security policy](SECURITY.md)
+
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE)
-file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for
+details.
