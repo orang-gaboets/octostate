@@ -116,7 +116,10 @@ Replace:
 Set a token without placing it in the configuration file:
 
 ```bash
-export GITHUB_TOKEN='replace-with-your-token'
+printf 'GitHub token: '
+read -r -s GITHUB_TOKEN
+printf '\n'
+export GITHUB_TOKEN
 ```
 
 Run validation again after replacing the fictional values:
