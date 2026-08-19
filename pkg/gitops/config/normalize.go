@@ -42,8 +42,8 @@ func (cfg OrganizationConfig) clone() OrganizationConfig {
 }
 
 // cloneSlice copies src, leaving a nil slice nil so the copy is an exact
-// starting point for normalize. normalize decides what a nil collection means:
-// it materializes the top-level ones as empty slices and leaves the rest alone.
+// starting point for normalize. normalize decides the canonical representation
+// of nil collections.
 func cloneSlice[T any](src []T) []T {
 	if src == nil {
 		return nil
