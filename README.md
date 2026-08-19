@@ -153,6 +153,7 @@ workflow orchestration around when `validate`, `plan`, `apply`, `pull`, and
 
 ### Maintainers
 - [Development](docs/maintainers/development.md)
+- [Code scanning and Code Quality](docs/maintainers/code-scanning.md)
 - [Releases](docs/maintainers/releases.md)
 - [Release readiness](docs/maintainers/release-readiness.md)
 

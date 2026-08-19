@@ -217,7 +217,7 @@ jobs:
             relevant_check_count="$(jq 'length' <<<"$relevant_checks_json")"
 
             missing_required_workflows=""
-            for required_workflow in CI CodeQL "Go vulnerability monitoring"; do
+            for required_workflow in CI "CodeQL Security" "Go vulnerability monitoring"; do
               if ! jq -e --arg workflow "$required_workflow" 'any(.[]; .workflow == $workflow)' <<<"$relevant_checks_json" >/dev/null; then
                 missing_required_workflows="${missing_required_workflows}${required_workflow}"$'\n'
               fi
