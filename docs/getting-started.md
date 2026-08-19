@@ -124,7 +124,8 @@ Run validation again after replacing the fictional values:
 octostate config validate --config-dir ./config
 ```
 
-The live commands below are read-only until the optional `config apply` step.
+The live commands below are read-only against GitHub until the optional
+`config apply` step; `audit pull` still writes the local snapshot.
 
 ## Inspect the live plan
 
