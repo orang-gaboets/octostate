@@ -50,7 +50,7 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
-	desired := config.NormalizeRepositoryOwners(opt.Desired)
+	desired := config.NormalizeDesiredState(opt.Desired)
 
 	planner := planner{
 		ctx:            ctx,

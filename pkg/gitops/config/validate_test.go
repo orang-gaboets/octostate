@@ -1112,14 +1112,14 @@ func TestNormalizeTeamNameExported(t *testing.T) {
 	}
 }
 
-func TestNormalizeRepositoryOwnersDoesNotMutateConfig(t *testing.T) {
+func TestNormalizeDesiredStateResolvesRepositoryIdentitiesWithoutMutating(t *testing.T) {
 	original := OrganizationConfig{
 		Organization: " org-a ",
 		Repositories: []RepositorySpec{{Owner: "", Name: " service ", Template: TemplateSpec{Owner: " external ", Name: " base "}}},
 		Teams:        []TeamSpec{{Repositories: []TeamRepositorySpec{{Owner: " ORG-A ", Name: " service ", Permission: "push"}}}},
 	}
 
-	normalized := NormalizeRepositoryOwners(original)
+	normalized := NormalizeDesiredState(original)
 	if normalized.Organization != "org-a" {
 		t.Fatalf("normalized organization = %q, want %q", normalized.Organization, "org-a")
 	}

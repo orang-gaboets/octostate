@@ -49,7 +49,7 @@ func Build(opt Options) (*Report, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
-	desired := config.NormalizeRepositoryOwners(opt.Desired)
+	desired := config.NormalizeDesiredState(opt.Desired)
 
 	var rawResolvedInviteUserIDsByUsername map[string]int64
 	var err error

@@ -11,8 +11,7 @@ import (
 // EncodeYAML renders one canonical organization.yaml document from desired
 // configuration.
 func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
-	normalized := cfg
-	normalize(&normalized)
+	normalized := NormalizeDesiredState(cfg)
 
 	document := &yaml.Node{
 		Kind: yaml.DocumentNode,

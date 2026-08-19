@@ -39,7 +39,10 @@ flowchart LR
 - Loads `config/organization.yaml`
 - Uses strict YAML decoding
 - Applies safe load-time normalization
-- Leaves semantic validation as a separate step
+- Exposes `NormalizeDesiredState` so callers that build desired state in memory
+  get the same canonical form without mutating their own value
+- Leaves semantic validation as a separate step: normalization makes equivalent
+  declarations compare equal, it never repairs an invalid one
 
 ### `pkg/gitops/state`
 - Defines the normalized in-memory model of actual GitHub organization state
@@ -151,7 +154,9 @@ availability gate.
 
 The GitOps engine relies on a few consistent rules to keep CI output and review
 artifacts stable:
-- normalize desired config after loading
+- normalize desired config at every reconciliation entry point, not only after
+  loading, so configuration built in memory reconciles like configuration read
+  from disk
 - normalize actual state after collection
 - normalize snapshots before writing
 - normalize plan and diff outputs before printing
