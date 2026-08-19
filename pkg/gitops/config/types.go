@@ -7,8 +7,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// OrganizationConfig contains the normalized desired-state configuration loaded
-// from organization.yaml.
+// OrganizationConfig is the desired-state configuration for one GitHub
+// organization. LoadFile and LoadDir return it already normalized; a value
+// built programmatically is not, and callers should canonicalize it with
+// NormalizeDesiredState so it reconciles like its YAML equivalent.
 type OrganizationConfig struct {
 	Organization string                   `yaml:"organization"`
 	Members      []OrganizationMemberSpec `yaml:"members"`

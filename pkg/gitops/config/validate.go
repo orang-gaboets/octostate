@@ -342,8 +342,12 @@ func validateInvites(report *ValidationReport, invites []InviteSpec, teamIndex m
 		usernameDeclared := invite.Username.Present
 		emailDeclared := invite.Email.Present
 		userIDDeclared := invite.UserID.Present
-		username := invite.Username.Value
-		email := invite.Email.Value
+		// Trimmed to match load-time normalization, so an identity declared
+		// programmatically is judged by the same effective value the YAML path
+		// would have produced. Trimming narrows nothing: a whitespace-only
+		// identity trims to empty and is still rejected below.
+		username := strings.TrimSpace(invite.Username.Value)
+		email := strings.TrimSpace(invite.Email.Value)
 		userID := invite.UserID.Value
 
 		identityCount := 0
