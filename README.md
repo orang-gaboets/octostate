@@ -29,17 +29,17 @@ engine.
 ```text
 desired state
     ↓
-validate
+config validate
     ↓
-plan
+config plan
     ↓
-apply --check
+config apply --check
     ↓
 review / approval
     ↓
-apply
+config apply
     ↓
-audit
+audit pull / audit diff
 ```
 
 A minimal desired-state file looks like this:
