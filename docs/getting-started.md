@@ -29,6 +29,9 @@ Install the latest release locally:
 go install github.com/orang-gaboets/octostate/cmd/octostate@latest
 ```
 
+Ensure Go's install directory (`$(go env GOPATH)/bin`, unless `GOBIN` is set)
+is on `PATH`.
+
 For automation or a control repository, replace `@latest` with an explicitly
 selected release so the workflow is reproducible.
 
