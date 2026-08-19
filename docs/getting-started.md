@@ -71,9 +71,8 @@ teams:
         role: maintainer
 ```
 
-The example is valid against the current schema. `alice` is declared as an
-organization member before being assigned to the `platform` team, as required
-by the schema.
+The example is valid against the current schema. `alice` is also declared in
+top-level `members` before being assigned to the `platform` team.
 
 ## Understand the operation boundaries
 
