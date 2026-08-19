@@ -144,3 +144,57 @@ func TestExecuteSendsNormalizedValuesToGitHub(t *testing.T) {
 			gotSlug, gotOwner, gotRepo, gotPermission)
 	}
 }
+
+// Check indexes desired state by resource ID, so an un-normalized team slug
+// makes the lookup miss the plan's action entirely. Unlike the non-mutation
+// tests above, this one fails if the NormalizeDesiredState call is removed.
+func TestCheckResolvesDesiredStateByNormalizedResourceID(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "org-a",
+		Teams: []config.TeamSpec{{
+			Slug:        " platform ",
+			Name:        " Platform ",
+			Description: " Platform team ",
+			Privacy:     " closed ",
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "org-a",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeTeam,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   "platform",
+			Executable:   true,
+			Changes:      []gitopsplan.FieldChange{{Field: "description", From: "old", To: "Platform team"}},
+		}},
+	}
+	plan.Normalize()
+
+	actual := &state.OrganizationState{
+		Organization: "org-a",
+		Teams:        []state.Team{{ID: 1, Slug: "platform", Name: "Platform", Description: "old", Privacy: "closed"}},
+	}
+
+	var lookedUpSlug string
+	teamSvc := &testTeamService{
+		getTeamBySlugFunc: func(_ context.Context, _, slug string) (*gh.Team, *gh.Response, error) {
+			lookedUpSlug = slug
+			return &gh.Team{ID: gh.Ptr(int64(1)), Slug: gh.Ptr("platform")}, nil, nil
+		},
+	}
+
+	opts := testApplyOptions(desired, actual, plan)
+	opts.TeamService = teamSvc
+	result, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Check must resolve the padded team through normalized desired state: %v", err)
+	}
+	if lookedUpSlug != "platform" {
+		t.Fatalf("Check preflighted team slug %q, want %q", lookedUpSlug, "platform")
+	}
+	if len(result.CheckedActions) != 1 {
+		t.Fatalf("expected the padded team action to be checked, got %#v", result.CheckedActions)
+	}
+}

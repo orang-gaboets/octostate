@@ -19,6 +19,10 @@ func paddedDesired() config.OrganizationConfig {
 		Members: []config.OrganizationMemberSpec{
 			{Username: " alice ", Role: " admin "},
 		},
+		Invites: []config.InviteSpec{
+			{Username: config.OptionalString{Present: true, Value: " octocat "}, Role: " direct_member ", TeamSlugs: []string{" platform "}},
+			{Email: config.OptionalString{Present: true, Value: " dev@example.com "}, Role: " direct_member "},
+		},
 		Repositories: []config.RepositorySpec{{
 			Name:       " service ",
 			Visibility: " private ",
@@ -43,6 +47,10 @@ func liveState() *state.OrganizationState {
 	return &state.OrganizationState{
 		Organization: "orang-gaboets",
 		Members:      []state.OrganizationMember{{Username: "alice", Role: "admin"}},
+		PendingInvitations: []state.PendingInvitation{
+			{ID: 1, Username: "octocat", Role: "direct_member", TeamSlugs: []string{"platform"}},
+			{ID: 2, Email: "dev@example.com", Role: "direct_member", TeamSlugs: []string{}},
+		},
 		Repositories: []state.Repository{{
 			Owner: "orang-gaboets", Name: "service", Visibility: "private",
 			Topics: []string{"go", "gitops"},
@@ -91,6 +99,12 @@ func TestBuildProducesSameReportForLoadedAndConstructedConfig(t *testing.T) {
 members:
   - username: " alice "
     role: " admin "
+invites:
+  - username: " octocat "
+    role: " direct_member "
+    team_slugs: [" platform "]
+  - email: " dev@example.com "
+    role: " direct_member "
 repositories:
   - name: " service "
     visibility: " private "
