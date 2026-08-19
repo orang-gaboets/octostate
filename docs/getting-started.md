@@ -203,8 +203,9 @@ octostate audit diff \
 ```
 
 The audit path can run after an intentional apply or independently to inspect
-current drift. If apply was skipped, drift is expected whenever the live
-organization differs from the desired state.
+current drift. `audit diff` requires an existing snapshot from `audit pull`.
+If apply was skipped, drift is expected whenever the live organization differs
+from the desired state.
 
 ## Already have an existing organization?
 
