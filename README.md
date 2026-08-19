@@ -5,7 +5,9 @@
 [![Go version](https://img.shields.io/github/go-mod/go-version/orang-gaboets/octostate)](https://github.com/orang-gaboets/octostate/blob/main/go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Manage a GitHub organization as version-controlled desired state.
+> **GitOps for GitHub organizations.**
+>
+> Manage desired state in Git, preview changes, approve safely, and audit drift.
 
 `octostate` is the GitHub organization operations CLI and GitOps engine that
 validates desired state, previews reconciliation, preflights supported changes,
@@ -19,30 +21,25 @@ engine.
 
 ## Why Octostate?
 
-- Version-controlled organization state that can be reviewed like code
-- Deterministic reconciliation plans for repeatable automation
-- Read-only preflight before supported mutations
-- Snapshot-based drift detection and offline diffing
-- JSON-first output for CI and control-repository workflows
+- **Reviewable state** — version-controlled organization changes can be
+  reviewed like code
+- **Deterministic plans** — repeatable reconciliation previews for automation
+- **Safe preflight** — read-only checks before supported mutations
+- **Drift visibility** — snapshot-based detection and offline diffing
+- **CI-friendly output** — JSON-first results for CI and control-repository
+  workflows
 
 ## GitOps at a glance
 
-```text
-desired state
-    ↓
-config validate
-    ↓
-config plan
-    ↓
-config apply --check
-    ↓
-review / approval
-    ↓
-config apply
-    ↓
-audit pull
-    ↓
-audit diff (offline)
+```mermaid
+flowchart LR
+    desired["Desired state"] --> validate["config validate"]
+    validate --> plan["config plan"]
+    plan --> check["config apply --check"]
+    check --> review["Review / approval"]
+    review --> apply["config apply"]
+    apply --> pull["audit pull (optional)"]
+    pull --> diff["audit diff (offline)"]
 ```
 
 A minimal desired-state file looks like this:
@@ -89,9 +86,10 @@ or installation secrets in configuration files or documentation.
 The other GitOps commands read live GitHub state, and `config apply` can mutate
 supported resources.
 
-## GitOps quick start
+## Try it safely
 
-Create `config/organization.yaml`, then run the read-only path:
+Create `config/organization.yaml`, then run the read-only path. The first three
+commands do not mutate GitHub:
 
 ```bash
 # Validate desired state without contacting GitHub
@@ -114,10 +112,11 @@ create/update actions:
 octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
-`config apply --check` is best-effort preflight, not a transactional GitHub dry
-run, and cannot guarantee that a later apply will succeed. Unsupported
-destructive drift, such as `delete` and `remove` actions, is reported rather
-than silently executed.
+> [!WARNING]
+> `config apply --check` is best-effort, non-mutating preflight. It is not a
+> transactional GitHub dry run and cannot guarantee that a later apply will
+> succeed. Unsupported destructive drift, such as `delete` and `remove`, is
+> reported rather than silently executed.
 
 For the complete first-time workflow, including snapshots and offline drift
 checks, see [Getting started](docs/getting-started.md).
