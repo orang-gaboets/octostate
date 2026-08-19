@@ -157,8 +157,7 @@ GitHub dry run and cannot guarantee that a later apply will succeed because
 permissions, organization policy, rate limits, races, and GitHub-side
 validation can change afterward.
 
-Review the preflight result before proceeding. Unsupported destructive drift is
-reported rather than silently executed.
+Review the preflight result before proceeding.
 
 ## Optional: intentionally apply changes
 
