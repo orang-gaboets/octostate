@@ -214,7 +214,8 @@ octostate audit diff \
   --state-dir ./state
 ```
 
-When finished, remove the token from the environment:
+If a command fails or you stop it with Ctrl-C, remove the token before
+continuing. When finished, remove the token from the environment:
 
 ```bash
 unset GITHUB_TOKEN
