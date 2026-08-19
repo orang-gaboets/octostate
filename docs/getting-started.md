@@ -122,6 +122,10 @@ printf '\n'
 export GITHUB_TOKEN
 ```
 
+The commands below pass the token through `--token`, so it may be visible to
+process inspection or diagnostics on a shared system. Use a short-lived,
+least-privilege credential and avoid running these commands on shared systems.
+
 Run validation again after replacing the fictional values:
 
 ```bash
@@ -200,6 +204,12 @@ Compare desired state with that snapshot offline:
 octostate audit diff \
   --config-dir ./config \
   --state-dir ./state
+```
+
+When finished, remove the token from the environment:
+
+```bash
+unset GITHUB_TOKEN
 ```
 
 The audit path can run after an intentional apply or independently to inspect
