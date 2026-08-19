@@ -22,6 +22,9 @@ intend to inspect.
 For automation, GitHub App authentication is also supported. The complete
 authentication flags are documented in the [config reference](cli/config.md).
 
+The shell snippets below use Bash/POSIX syntax. On Windows, use the equivalent
+PowerShell commands for `PATH` and environment variables.
+
 ## Install and verify the CLI
 
 Install the latest release locally:
