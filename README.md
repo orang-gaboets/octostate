@@ -156,6 +156,7 @@ Start with the [documentation index](docs/README.md) or the
 
 - [Development](docs/maintainers/development.md)
 - [Code scanning and Code Quality](docs/maintainers/code-scanning.md)
+- [Contributor showcase](docs/maintainers/contributors.md)
 - [Releases](docs/maintainers/releases.md)
 - [Release readiness](docs/maintainers/release-readiness.md)
 
@@ -166,6 +167,21 @@ Start with the [documentation index](docs/README.md) or the
 ### Security
 
 - [Security policy](SECURITY.md)
+
+## Contributors
+
+Thanks to everyone who has contributed to Octostate.
+
+<!-- contributors:start -->
+<p>
+  <a href="https://github.com/FerdiHS" title="FerdiHS"><img src="https://github.com/FerdiHS.png?size=100" width="100" height="100" alt="FerdiHS" /></a>
+  <a href="https://github.com/hansenidden18" title="hansenidden18"><img src="https://github.com/hansenidden18.png?size=100" width="100" height="100" alt="hansenidden18" /></a>
+</p>
+<!-- contributors:end -->
+
+This list is generated - see the
+[contributor showcase guide](docs/maintainers/contributors.md) for how it is
+maintained.
 
 ## License
 
