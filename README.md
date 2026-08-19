@@ -101,6 +101,9 @@ octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
 ```
 
+Commands that pass `--token` may expose the token through process inspection.
+Use a short-lived, least-privilege credential and avoid shared systems.
+
 Review the plan and preflight result before intentionally applying supported
 create/update actions:
 
