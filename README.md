@@ -39,7 +39,9 @@ review / approval
     ↓
 config apply
     ↓
-audit pull / audit diff
+audit pull
+    ↓
+audit diff (offline)
 ```
 
 A minimal desired-state file looks like this:
