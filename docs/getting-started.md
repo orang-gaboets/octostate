@@ -198,6 +198,10 @@ This reads GitHub without mutating it and writes:
 state/actual/snapshot.json
 ```
 
+Snapshots contain organization-sensitive data such as members, invitations,
+teams, repositories, and related metadata. Keep them in a private control
+repository and do not publish them unintentionally.
+
 Compare desired state with that snapshot offline:
 
 ```bash
