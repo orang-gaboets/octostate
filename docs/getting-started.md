@@ -34,7 +34,9 @@ Ensure Go's install directory is on `PATH`: use `$(go env GOBIN)` when it is
 non-empty; otherwise use `$(go env GOPATH)/bin`.
 
 ```bash
-export PATH="${GOBIN:-$(go env GOPATH)/bin}:$PATH"
+go_bin="$(go env GOBIN)"
+[ -n "$go_bin" ] || go_bin="$(go env GOPATH)/bin"
+export PATH="$go_bin:$PATH"
 ```
 
 For automation or a control repository, replace `@latest` with an explicitly
