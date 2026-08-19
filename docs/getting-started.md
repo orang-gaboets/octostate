@@ -102,9 +102,10 @@ It checks the YAML structure and semantic rules before any live operation.
 
 ## Prepare the live example
 
-Stop before running a live command. The live commands derive the target
-organization from `config/organization.yaml`; they do not accept a separate
-`--org` flag.
+Stop before running a live command. The plan, apply, and audit-pull commands
+below derive the target organization from `config/organization.yaml`; they do
+not accept a separate `--org` flag. The separate `sync-from-live` workflows
+use `--org` and are documented in the [config reference](cli/config.md).
 
 Replace:
 
