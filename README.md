@@ -11,7 +11,8 @@ Manage a GitHub organization as version-controlled desired state.
 validates desired state, previews reconciliation, preflights supported changes,
 applies approved updates, and detects drift.
 
-This repository is the engine: a CLI and reusable automation building blocks.
+This repository is the engine: a CLI and reusable building blocks for
+automation.
 A separate admin or control repository should own organization-specific
 approval workflow, branching policy, notifications, and automation around the
 engine.
