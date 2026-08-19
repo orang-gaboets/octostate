@@ -33,6 +33,10 @@ go install github.com/orang-gaboets/octostate/cmd/octostate@latest
 Ensure Go's install directory is on `PATH`: use `$(go env GOBIN)` when it is
 non-empty; otherwise use `$(go env GOPATH)/bin`.
 
+```bash
+export PATH="${GOBIN:-$(go env GOPATH)/bin}:$PATH"
+```
+
 For automation or a control repository, replace `@latest` with an explicitly
 selected release so the workflow is reproducible.
 
