@@ -126,8 +126,8 @@ This repository documents the engine contract:
 - deterministic command output.
 
 The control repository should own approval policy, branch strategy,
-notifications, and workflow orchestration around `validate`, `plan`, `apply`,
-`pull`, and `diff`.
+notifications, and workflow orchestration around `config validate`,
+`config plan`, `config apply`, `audit pull`, and `audit diff`.
 
 ## Documentation
 
