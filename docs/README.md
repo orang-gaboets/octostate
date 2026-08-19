@@ -14,8 +14,8 @@ documentation.
 
 ## Using the CLI
 
-- [Config commands](cli/config.md) — validate, sync, plan, and apply desired
-  state.
+- [Config commands](cli/config.md) — validate, sync-from-live, plan, and apply
+  desired state.
 - [Audit commands](cli/audit.md) — pull actual-state snapshots and diff them
   offline.
 - [Primitive commands](cli/primitives.md) — direct organization, repository,
