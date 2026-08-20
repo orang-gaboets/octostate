@@ -28,6 +28,37 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+## Compatibility Notes for Releases
+
+When a release includes a concrete upgrade adaptation for existing
+configuration, scripts, or consuming integrations, keep the detailed guidance
+in a versioned compatibility document under `docs/maintainers/`. For `v1.2.0`,
+the canonical example is
+[`v1.2.0-compatibility.md`](v1.2.0-compatibility.md).
+
+Only create one of these documents when an upgrading user must change released
+configuration, a released script, or a consuming integration. Ordinary bug
+fixes, internal implementation changes, and other user-invisible adjustments do
+not need compatibility notes.
+
+`release-please` remains the source of truth for generated changelog content,
+but its commit-subject summaries are not enough to carry migration guidance on
+their own. Each generated release surface for a qualifying release must include
+a direct pointer to the versioned compatibility document so the detailed notes
+are reachable from the generated release PR and the published GitHub Release.
+
+Keep the generated changelog entry itself short. Do not move the detailed
+compatibility prose into `CHANGELOG.md`, and do not restore a permanent
+free-floating `Unreleased` section for hand-maintained migration text. The
+versioned compatibility document is the canonical detailed home; release
+surfaces should link to it rather than duplicate it.
+
+If the generated release PR or release body does not already contain that
+pointer, an authorized maintainer must add it as a separate handoff step after
+the versioned document exists and the generated release surface is available.
+That remote edit is outside the local documentation change here and must be
+performed and verified separately.
+
 The release-please GitHub App installation also needs these permissions for the
 release approval workflow:
 
