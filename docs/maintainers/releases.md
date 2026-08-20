@@ -53,11 +53,16 @@ free-floating `Unreleased` section for hand-maintained migration text. The
 versioned compatibility document is the canonical detailed home; release
 surfaces should link to it rather than duplicate it.
 
-If the generated release PR or release body does not already contain that
-pointer, an authorized maintainer must add it as a separate handoff step after
-the versioned document exists and the generated release surface is available.
-That remote edit is outside the local documentation change here and must be
-performed and verified separately.
+Before an authorized publisher or maintainer applies `release: ready` or
+otherwise merges a qualifying generated release PR, add the exact
+compatibility-document pointer to the generated release PR body and read the
+PR body back to confirm it persisted. For `v1.2.0`, that pointer is
+`Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v1.2.0-compatibility.md`.
+
+After publication, read back the GitHub Release body and confirm the same
+pointer is present before considering issue #218 closed. Those remote writes
+and read-backs are outside the local documentation change here and must be
+performed separately.
 
 The release-please GitHub App installation also needs these permissions for the
 release approval workflow:
