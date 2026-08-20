@@ -43,9 +43,9 @@ not need compatibility notes.
 
 `release-please` remains the source of truth for generated changelog content,
 but its commit-subject summaries are not enough to carry migration guidance on
-their own. Each generated release surface for a qualifying release must include
-a direct pointer to the versioned compatibility document so the detailed notes
-are reachable from the generated release PR and the published GitHub Release.
+their own. The release PR and published GitHub Release for a qualifying release
+must each include a direct pointer to the versioned compatibility document so
+the detailed notes are reachable from both release surfaces.
 
 Keep the generated changelog entry itself short. Do not move the detailed
 compatibility prose into `CHANGELOG.md`, and do not restore a permanent
@@ -56,13 +56,15 @@ surfaces should link to it rather than duplicate it.
 Before an authorized publisher or maintainer applies `release: ready` or
 otherwise merges a qualifying generated release PR, add the exact
 compatibility-document pointer to the generated release PR body and read the
-PR body back to confirm it persisted. For `v1.2.0`, that pointer is
+PR body back to confirm it persisted. If `release-please` regenerates the PR
+body, repeat this checkpoint after the final update. For `v1.2.0`, that pointer is
 `Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v1.2.0-compatibility.md`.
 
 After publication, read back the GitHub Release body and confirm the same
-pointer is present before considering issue #218 closed. Those remote writes
-and read-backs are outside the local documentation change here and must be
-performed separately.
+pointer is present. If it is missing, an authorized publisher must add the
+pointer to the GitHub Release body and read it back before considering issue
+#218 closed. Those remote writes and read-backs are outside the local
+documentation change here and must be performed separately.
 
 The release-please GitHub App installation also needs these permissions for the
 release approval workflow:
