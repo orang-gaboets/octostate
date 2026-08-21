@@ -88,9 +88,13 @@ A pull request that coherently resolves several issues may use more than one
 ## Commit and pull-request titles
 
 Commits that land on `main` must stay compatible with the repository's
-Conventional Commit and release-please workflow. Because pull requests are
-commonly squash-merged, **the pull-request title is usually the subject that
-lands**, so it is the one to get right:
+Conventional Commit and release-please workflow.
+
+**The contract is the final commit subject that lands on `main`.** Which text
+that ends up being depends on the pull request: with the repository's current
+squash-merge settings a single-commit pull request defaults to that commit's
+title, while a multi-commit pull request defaults to the pull-request title.
+Write both in the same style and the distinction stops mattering:
 
 ```text
 feat: add ...
@@ -104,7 +108,7 @@ chore: maintain ...
 ```
 
 You do not need to read the full Conventional Commits specification. Matching
-the shape above is enough. Local commits may follow the same convention.
+the shape above is enough.
 
 ### Do not hand-manage release state
 
@@ -133,8 +137,8 @@ maintenance automation, not by normal development.
 ### Pre-commit
 
 The repository ships a pre-commit configuration and it is a convenient local
-workflow, but installing it is not a prerequisite for contributing. CI remains
-authoritative for required checks.
+workflow, but installing it is optional and not a prerequisite for
+contributing. CI remains authoritative for required checks.
 
 ## Validation
 
