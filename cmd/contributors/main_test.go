@@ -9,7 +9,7 @@ import (
 func TestSplitRepositoryRejectsMalformedInput(t *testing.T) {
 	t.Parallel()
 
-	for _, repository := range []string{"", "octostate", "/name", "owner/", "   "} {
+	for _, repository := range []string{"", "octostate", "/name", "owner/", "   ", "owner/repo/extra", "owner//name"} {
 		if _, _, err := splitRepository(repository); err == nil {
 			t.Fatalf("expected %q to be rejected", repository)
 		}

@@ -18,6 +18,10 @@ jobs:
   update:
     name: Refresh contributor showcase
     runs-on: ubuntu-latest
+    # A manual dispatch can select any ref. This job runs repository code with a
+    # write-capable token, so it is restricted to main and checks main out
+    # explicitly rather than trusting the dispatched ref.
+    if: github.ref == 'refs/heads/main'
     permissions:
       # Push the update branch.
       contents: write
@@ -26,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: main
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -55,7 +61,18 @@ jobs:
           git checkout -B "$branch"
           git add README.md
           git commit -m "docs: refresh contributor showcase"
-          git push --force-with-lease origin "$branch"
+
+          # The checkout only fetches main, so there is no remote-tracking ref
+          # for the automation branch and a bare --force-with-lease would be
+          # rejected as "stale info". Read the current remote value and pass it
+          # as the explicit lease instead, which keeps the safety property: a
+          # push that raced with this run is still rejected.
+          remote_sha="$(git ls-remote --heads origin "$branch" | cut -f1)"
+          if [[ -n "$remote_sha" ]]; then
+            git push --force-with-lease="${branch}:${remote_sha}" origin "$branch"
+          else
+            git push origin "$branch"
+          fi
 
           # Reuse the open pull request when one already exists so repeated
           # scheduled runs do not accumulate duplicates.

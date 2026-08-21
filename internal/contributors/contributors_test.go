@@ -168,6 +168,7 @@ func TestApplyRejectsMalformedMarkers(t *testing.T) {
 		{"missing end", "# Title\n" + startMarker + "\n"},
 		{"reversed", "# Title\n" + endMarker + "\n" + startMarker + "\n"},
 		{"duplicate start", "# Title\n" + startMarker + "\n" + startMarker + "\n" + endMarker + "\n"},
+		{"duplicate end", "# Title\n" + startMarker + "\n" + endMarker + "\n" + endMarker + "\n"},
 	}
 
 	for _, tt := range tests {

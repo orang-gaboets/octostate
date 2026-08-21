@@ -102,8 +102,14 @@ func fetch(ctx context.Context, owner, name string) ([]contributors.Contributor,
 }
 
 func splitRepository(repository string) (string, string, error) {
-	owner, name, found := strings.Cut(strings.TrimSpace(repository), "/")
-	if !found || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
+	// Split rather than Cut so a trailing path segment is rejected instead of
+	// being absorbed into the repository name.
+	parts := strings.Split(strings.TrimSpace(repository), "/")
+	if len(parts) != 2 {
+		return "", "", errors.New("repository must be in owner/name form")
+	}
+	owner, name := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	if owner == "" || name == "" {
 		return "", "", errors.New("repository must be in owner/name form")
 	}
 	return owner, name, nil

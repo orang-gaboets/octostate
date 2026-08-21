@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -78,7 +79,7 @@ func TestUpdateReportsChangeAndWritesTheShowcase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `href="https://github.com/alice"`; !contains(string(body), want) {
+	if want := `href="https://github.com/alice"`; !strings.Contains(string(body), want) {
 		t.Fatalf("README missing %s:\n%s", want, body)
 	}
 }
@@ -121,15 +122,4 @@ func TestUpdateFailsWhenTheReadmeHasNoMarkers(t *testing.T) {
 	if _, err := Update(path, []Contributor{{Login: "alice"}}, Config{}); err == nil {
 		t.Fatal("expected an error rather than silently leaving the README unchanged")
 	}
-}
-
-func contains(haystack, needle string) bool {
-	return len(haystack) >= len(needle) && (func() bool {
-		for i := 0; i+len(needle) <= len(haystack); i++ {
-			if haystack[i:i+len(needle)] == needle {
-				return true
-			}
-		}
-		return false
-	})()
 }

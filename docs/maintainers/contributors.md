@@ -48,10 +48,15 @@ a pull request, and nothing more. There is no third-party action, GitHub App, or
 external service in this path: it uses the repository's own Go tool plus `git`
 and `gh`, so no additional trust is delegated.
 
-One consequence worth knowing: pull requests created with `GITHUB_TOKEN` do not
-trigger workflow runs. That is acceptable here because the change is confined to
-generated Markdown, but close and reopen the pull request if you want CI to run
-on it.
+One consequence worth knowing: a pull request created or updated with
+`GITHUB_TOKEN` is an exception to the usual rule that `GITHUB_TOKEN` events do
+not start workflows. The `pull_request` run is created, but in an
+approval-required state — the pull request shows a banner and anyone with write
+access can start it with **Approve workflows to run**.
+
+That approval step is worth keeping. Swapping in a personal access token or a
+GitHub App to avoid it would hand broader credentials to a presentation feature,
+which is a poor trade for one click on an occasional automated pull request.
 
 ## Fixing attribution
 
