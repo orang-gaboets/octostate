@@ -28,6 +28,44 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+## Compatibility Notes for Releases
+
+When a release includes a concrete upgrade adaptation for existing
+configuration, scripts, or consuming integrations, keep the detailed guidance
+in a versioned compatibility document under `docs/maintainers/`. For `v1.2.0`,
+the canonical example is
+[`v1.2.0-compatibility.md`](v1.2.0-compatibility.md).
+
+Only create one of these documents when an upgrading user must change released
+configuration, a released script, or a consuming integration. Ordinary bug
+fixes, internal implementation changes, and other user-invisible adjustments do
+not need compatibility notes.
+
+`release-please` remains the source of truth for generated changelog content,
+but its commit-subject summaries are not enough to carry migration guidance on
+their own. The release PR and published GitHub Release for a qualifying release
+must each include a direct pointer to the versioned compatibility document so
+the detailed notes are reachable from both release surfaces.
+
+Keep the generated changelog entry itself short. Do not move the detailed
+compatibility prose into `CHANGELOG.md`, and do not restore a permanent
+free-floating `Unreleased` section for hand-maintained migration text. The
+versioned compatibility document is the canonical detailed home; release
+surfaces should link to it rather than duplicate it.
+
+Before an authorized publisher or maintainer applies `release: ready` or
+otherwise merges a qualifying generated release PR, add the exact
+compatibility-document pointer to the generated release PR body and read the
+PR body back to confirm it persisted. If `release-please` regenerates the PR
+body, repeat this checkpoint after the final update. For `v1.2.0`, that pointer is
+`Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v1.2.0-compatibility.md`.
+
+After publication, read back the GitHub Release body and confirm the same
+pointer is present. If it is missing, an authorized publisher must add the
+pointer to the GitHub Release body and read it back before considering issue
+#218 closed. Those remote writes and read-backs are outside the local
+documentation change here and must be performed separately.
+
 The release-please GitHub App installation also needs these permissions for the
 release approval workflow:
 
