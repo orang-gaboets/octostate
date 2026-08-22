@@ -67,9 +67,13 @@ jobs:
           # rejected as "stale info". Read the current remote value and pass it
           # as the explicit lease instead, which keeps the safety property: a
           # push that raced with this run is still rejected.
-          remote_sha="$(git ls-remote --heads origin "$branch" | cut -f1)"
+          # Query the fully qualified ref: ls-remote patterns match the tail
+          # of a ref name, so a bare "$branch" would also match something like
+          # refs/heads/foo/$branch and return two SHAs, which is not a usable
+          # lease value.
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${branch}" | cut -f1)"
           if [[ -n "$remote_sha" ]]; then
-            git push --force-with-lease="${branch}:${remote_sha}" origin "$branch"
+            git push --force-with-lease="refs/heads/${branch}:${remote_sha}" origin "$branch"
           else
             git push origin "$branch"
           fi
