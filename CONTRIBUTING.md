@@ -94,7 +94,9 @@ Conventional Commit and release-please workflow.
 that ends up being depends on the pull request: with the repository's current
 squash-merge settings a single-commit pull request defaults to that commit's
 title, while a multi-commit pull request defaults to the pull-request title.
-Write both in the same style and the distinction stops mattering:
+Keep the pull-request title and relevant commit titles Conventional
+Commit-compatible **and semantically aligned**, so the release classification is
+the same whichever one lands:
 
 ```text
 feat: add ...
@@ -107,8 +109,10 @@ ci: update ...
 chore: maintain ...
 ```
 
-You do not need to read the full Conventional Commits specification. Matching
-the shape above is enough.
+You do not need to read the full Conventional Commits specification; the
+prefixes above cover almost everything. Do take care with the prefix itself
+though — `fix:` and `feat:` are both valid but classify the release
+differently.
 
 ### Do not hand-manage release state
 
