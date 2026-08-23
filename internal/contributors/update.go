@@ -30,6 +30,18 @@ func LoadConfig(path string) (Config, error) {
 	if err := decoder.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return Config{}, fmt.Errorf("parse contributor overrides %s: %w", path, err)
 	}
+
+	// Decode returns one document per call, so a second one would be dropped in
+	// silence - an override moved below a stray separator would simply stop
+	// applying. Reject it, matching how the GitOps config loader treats a
+	// multi-document organization.yaml.
+	var extra yaml.Node
+	if err := decoder.Decode(&extra); err == nil {
+		return Config{}, fmt.Errorf("parse contributor overrides %s: multiple YAML documents are not allowed", path)
+	} else if !errors.Is(err, io.EOF) {
+		return Config{}, fmt.Errorf("parse contributor overrides %s: %w", path, err)
+	}
+
 	return cfg, nil
 }
 

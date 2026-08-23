@@ -123,3 +123,37 @@ func TestUpdateFailsWhenTheReadmeHasNoMarkers(t *testing.T) {
 		t.Fatal("expected an error rather than silently leaving the README unchanged")
 	}
 }
+
+// The loader uses KnownFields(true) so a misspelled key fails loudly. A second
+// YAML document being dropped in silence would defeat that: an override moved
+// below a stray separator would simply stop applying.
+func TestLoadConfigRejectsTrailingDocuments(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "contributors.yml")
+	body := "exclude: []\n---\ninclude:\n  - login: someone\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("a trailing YAML document must be rejected, not silently ignored")
+	}
+}
+
+func TestLoadConfigAcceptsASingleDocumentWithATrailingSeparator(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "contributors.yml")
+	if err := os.WriteFile(path, []byte("exclude:\n  - mallory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("a single document must still load: %v", err)
+	}
+	if len(cfg.Exclude) != 1 {
+		t.Fatalf("exclude = %#v", cfg.Exclude)
+	}
+}
