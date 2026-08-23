@@ -159,6 +159,10 @@ Start with the [documentation index](docs/README.md) or the
 - [Releases](docs/maintainers/releases.md)
 - [Release readiness](docs/maintainers/release-readiness.md)
 
+### Contributing
+
+- [Contribution guide](CONTRIBUTING.md)
+
 ### Security
 
 - [Security policy](SECURITY.md)

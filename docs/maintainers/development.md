@@ -25,7 +25,9 @@
    go mod tidy
    ```
 
-4. Install `pre-commit`:
+4. Optionally install `pre-commit` for the recommended local hook workflow.
+   It is not required to build, test, or contribute; CI remains authoritative
+   for required checks:
 
    ```bash
    pip install pre-commit

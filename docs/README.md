@@ -43,6 +43,11 @@ documentation.
 - [Release readiness](maintainers/release-readiness.md) — release validation
   evidence and readiness checks.
 
+## Contributing
+
+See the [contribution guide](../CONTRIBUTING.md) for the issue-first workflow,
+branch and pull-request conventions, and validation expectations.
+
 ## Reporting a vulnerability
 
 See the repository’s [security policy](../SECURITY.md) for responsible
