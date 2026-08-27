@@ -72,6 +72,37 @@ maintainer must verify them through the appropriate GitHub settings surface.
 Do not infer installability, installation scope, repository selection, or
 permissions from a successful CLI authentication check.
 
+## Future mutation and restoration contract
+
+#247's verification and setup/authentication smoke checks remain non-mutating.
+Any later mutation must be separately authorized, target only a designated test
+resource, and prefer one small, reversible repository-metadata change. It must
+not require repository deletion, visibility changes, archive/unarchive,
+template conversion, real-user invitations, member mutations, or unrelated
+organization-setting changes.
+
+The final deliberate mutation, convergence check, restoration, and exact
+v1.2.0 release-candidate evidence remain owned by #243. An authorized future
+mutation follows this sequence:
+
+1. verify the documented baseline;
+2. record the original state;
+3. perform the controlled mutation;
+4. verify the changed state and convergence;
+5. restore the original state; and
+6. verify restoration and convergence.
+
+### Dirty-sandbox recovery
+
+This recovery procedure applies only when an authorized mutating operation has
+started and its resulting state or restoration cannot be verified:
+
+1. stop further mutating tests;
+2. preserve enough non-secret evidence to identify the observed state;
+3. do not silently reset or continue; and
+4. require a trusted maintainer to restore and independently re-verify the
+   documented baseline.
+
 ## Verification procedure
 
 Verify the established state in this order, using read-only operations:
@@ -106,9 +137,10 @@ repository content, branches, pull requests, or the final reversible test
 state. Never run bare `config apply` for #247.
 
 Timeouts, network interruptions, partial or ambiguous results, or lost
-authentication enter dirty-sandbox recovery. Stop all further writes and
-require a trusted maintainer to restore and independently re-verify the
-complete baseline before anything continues.
+authentication during read-only verification do not by themselves dirty the
+sandbox. They block completion until the state can be read and verified
+reliably. If an authorized mutation has started, use the dirty-sandbox recovery
+procedure above when its resulting state or restoration is uncertain.
 
 ## Non-mutating setup and authentication smoke checks
 
@@ -176,6 +208,7 @@ Record a compact, sanitized evidence entry containing:
 
 - verification date and operator;
 - observation time and source for each remote fact;
+- authentication type: dedicated GitHub App;
 - organization login and immutable ID;
 - fixture name and immutable ID;
 - expected and observed baseline;
@@ -187,14 +220,6 @@ Record a compact, sanitized evidence entry containing:
 - complete verification of the documented baseline.
 
 When no mismatch exists, explicitly record `no remote write performed`.
-
-If the fixture is dirty or restoration cannot be verified:
-
-1. stop further mutating tests;
-2. preserve enough non-secret evidence to identify the observed state;
-3. do not silently reset or continue; and
-4. require a trusted maintainer to restore and re-verify the documented
-   baseline.
 
 ## Ownership and release treatment
 
