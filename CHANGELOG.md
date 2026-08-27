@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.2.0](https://github.com/orang-gaboets/octostate/compare/v1.1.1...v1.2.0) (2026-08-27)
+
+
+### Features
+
+* **cli:** add config-only proposals for repository and topic mutations ([#195](https://github.com/orang-gaboets/octostate/issues/195)) ([2f82471](https://github.com/orang-gaboets/octostate/commit/2f82471453d82439b84138fa709dcc4a0aedf3bb))
+* **cli:** add shared config-only mutation helper ([#191](https://github.com/orang-gaboets/octostate/issues/191)) ([375b286](https://github.com/orang-gaboets/octostate/commit/375b2865d814f282582c4f906f4b65f02c1340a3))
+* **config:** validate repository topic constraints ([#198](https://github.com/orang-gaboets/octostate/issues/198)) ([6c6a6d3](https://github.com/orang-gaboets/octostate/commit/6c6a6d3f1b41a58c0136d84fd5aeacce1528eacc))
+* **delete:** add config-only repository and team deletion proposals ([#206](https://github.com/orang-gaboets/octostate/issues/206)) ([21f9a1e](https://github.com/orang-gaboets/octostate/commit/21f9a1efdb082293a5c07f14d858e5f6910b88af))
+* **organization:** add config-only organization invite proposals ([#202](https://github.com/orang-gaboets/octostate/issues/202)) ([ec574ab](https://github.com/orang-gaboets/octostate/commit/ec574ab916505debc207037e30b5d65e1bdb7067))
+* **team:** add config-only team create and edit proposals ([#197](https://github.com/orang-gaboets/octostate/issues/197)) ([8f63612](https://github.com/orang-gaboets/octostate/commit/8f63612b042c036e97b1d337da518770e31657b1))
+* **team:** add config-only team membership proposals ([#199](https://github.com/orang-gaboets/octostate/issues/199)) ([b1838ed](https://github.com/orang-gaboets/octostate/commit/b1838ed646c5e073b76fe9a46506821fa4878fbf))
+* **team:** add config-only team repository permission proposals ([#200](https://github.com/orang-gaboets/octostate/issues/200)) ([5665fb5](https://github.com/orang-gaboets/octostate/commit/5665fb51a7bb251d08f0a0dfe5204dce475efc78))
+
+
+### Bug Fixes
+
+* **cli:** align team members mutation output with operation envelopes ([#215](https://github.com/orang-gaboets/octostate/issues/215)) ([cc2ff81](https://github.com/orang-gaboets/octostate/commit/cc2ff814ab9923429e0997c6abbdea8b1edc21f7))
+* **config:** enforce organization-local repository ownership ([#213](https://github.com/orang-gaboets/octostate/issues/213)) ([0502605](https://github.com/orang-gaboets/octostate/commit/05026055648df7f727c95b2e0acdc172d2b10b2f))
+* **config:** normalize programmatic desired state before reconciliation ([#235](https://github.com/orang-gaboets/octostate/issues/235)) ([5dcea99](https://github.com/orang-gaboets/octostate/commit/5dcea99e75878ad8bcef63b48e3329614c3dec7d))
+* **config:** reject duplicate invite identities during validation ([#209](https://github.com/orang-gaboets/octostate/issues/209)) ([c052b37](https://github.com/orang-gaboets/octostate/commit/c052b3775b1b775224d5395397013d2d4120135f))
+* **diff:** gate team repository permission availability ([#227](https://github.com/orang-gaboets/octostate/issues/227)) ([7710ed2](https://github.com/orang-gaboets/octostate/commit/7710ed20855bfa52319a314e25c5224016f0bad6))
+* **plan:** honor managed repository template dependencies ([#216](https://github.com/orang-gaboets/octostate/issues/216)) ([5523c6f](https://github.com/orang-gaboets/octostate/commit/5523c6fc0c1cf1b106ee42479426e8abe748b768))
+* **team:** align proposal casing and document role downgrade ([#212](https://github.com/orang-gaboets/octostate/issues/212)) ([090c75d](https://github.com/orang-gaboets/octostate/commit/090c75d295fa9e31202688dec2f1a267cedee308))
+
 ## [1.1.1](https://github.com/orang-gaboets/octostate/compare/v1.1.0...v1.1.1) (2026-07-29)
 
 
