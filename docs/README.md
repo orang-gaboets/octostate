@@ -38,6 +38,8 @@ documentation.
 ## Developing or maintaining Octostate
 
 - [Development](maintainers/development.md) — local setup, checks, and testing.
+- [Live integration sandbox](maintainers/live-integration-sandbox.md) — the
+  dedicated `octostate-test` sandbox contract, verification, and recovery.
 - [Releases](maintainers/releases.md) — release automation and maintainer
   procedures.
 - [Release readiness](maintainers/release-readiness.md) — release validation
