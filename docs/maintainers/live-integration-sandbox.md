@@ -114,7 +114,8 @@ complete baseline before anything continues.
 
 Use a fresh temporary configuration directory. The configuration declares the
 fixture only and intentionally leaves organization members, invitations, and
-teams undeclared:
+teams undeclared. Save it as
+`$OCTOSTATE_TEST_CONFIG_DIR/organization.yaml`:
 
 ```yaml
 organization: octostate-test
@@ -155,7 +156,7 @@ Expected results:
 - `config plan` reports top-level `organization` `octostate-test`,
   `plan_summary.executable_actions == 0`, and
   `executable_actions == []`; and
-- `config apply --check` reports organization `octostate-test`,
+- `config apply --check` reports `data.organization == "octostate-test"`,
   `data.plan_summary.executable_actions == 0`, and
   `data.checked_actions == []`.
 
