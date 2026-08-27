@@ -42,6 +42,8 @@ documentation.
   procedures.
 - [Release readiness](maintainers/release-readiness.md) — release validation
   evidence and readiness checks.
+- [Contributor showcase](maintainers/contributors.md) — how the generated
+  README contributor section is maintained.
 
 ## Contributing
 

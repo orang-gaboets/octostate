@@ -1,0 +1,14 @@
+# Overrides for the README contributor showcase.
+#
+# The showcase is generated from the repository's GitHub contributor list. Use
+# this file only when automatic discovery gets attribution wrong. See
+# docs/maintainers/contributors.md.
+#
+# exclude:
+#   - login-to-hide
+#
+# include:
+#   - login: someone
+#     name: Someone Example
+exclude: []
+include: []
