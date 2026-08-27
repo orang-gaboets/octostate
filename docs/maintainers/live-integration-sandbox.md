@@ -90,79 +90,23 @@ Verify the established state in this order, using read-only operations:
    not block v1.2.0.
 7. Run the non-mutating setup/authentication smoke checks below.
 
-### Conditional remote remediation
+### Mismatch handling
 
-The default path is non-mutating:
+#247 is verification/documentation-only. If any organization, fixture, App,
+installation, ownership/access, or baseline value does not match, stop before
+any write and record the sanitized expected value, observed value, source, and
+timestamp. Report the mismatch for separate authorization and scope; do not
+repair it from this issue and do not perform a proactive write-capability test.
 
-```text
-Verify established #247 sandbox state read-only
-        |
-        v
-Everything matches?
-   +----+----+
-   |         |
-  Yes        No
-   |         |
-no remote    classify the mismatch
-write        |
-   |         v
-continue  required by #247?
-evidence    +---------+---------+
-            |                   |
-           No                  Yes
-            |                   |
-       stop/report       eligible field-level
-       out of scope       correction on the
-                          exact established resource?
-                              +---------+---------+
-                              |                   |
-                             No                  Yes
-                              |                   |
-                         stop/report       stop before mutation;
-                         for separate      report exact mismatch;
-                         authorization     require explicit approval;
-                                           apply smallest correction;
-                                           re-read and re-verify;
-                                           continue only if restored
-```
+Do not correct identity, ownership, default branch, refs, branch content,
+organization membership, invitations, teams, production or legacy resources,
+repository content, branches, pull requests, or the final reversible test
+state. Never run bare `config apply` for #247.
 
-An eligible correction is limited to one or more explicitly approved fields
-from this finite allowlist, on a resource whose identity and owner have already
-been verified:
-
-- fixture repository ID `1347356483`: `visibility`, `description`, `topics`,
-  `archived`, and `is_template`, changed only to the documented baseline;
-- App ID `4726852` and installation ID `156749227`: installability, selected
-  repository, and the named permission values, changed only to the documented
-  exact values.
-
-A wrong or missing organization, repository, App, installation, owner, or ID is
-a terminal report-only condition. Do not correct identity, ownership, default
-branch, refs, branch content, organization membership, invitations, teams,
-production or legacy resources, repository content, branches, pull requests,
-or the final reversible test state. Any operation outside the allowlist, or any
-operation requiring broad or destructive reconfiguration, must be reported for
-separate authorization and scope.
-
-The issue, this plan, and successful smoke checks do not constitute write
-approval. Before a permitted correction, a named maintainer authorized to
-administer the sandbox and App settings must record approval containing:
-
-- resource and immutable ID;
-- field and expected value;
-- observed value and exact proposed operation; and
-- approver identity, timestamp, and approval reference.
-
-After an approved correction, record the pre-state, exact field-level operation,
-safe post-write response summary, actor/time, and post-state. Re-read every
-organization, App, installation, identity, and fixture-baseline field—not only
-the changed field—and rerun the smoke checks. Continue only when the complete
-baseline is restored. Do not retry automatically.
-
-Timeouts, network interruptions, partial or ambiguous write results, or lost
+Timeouts, network interruptions, partial or ambiguous results, or lost
 authentication enter dirty-sandbox recovery. Stop all further writes and
-require a trusted maintainer to independently read and re-verify the complete
-baseline before anything continues.
+require a trusted maintainer to restore and independently re-verify the
+complete baseline before anything continues.
 
 ## Non-mutating setup and authentication smoke checks
 
@@ -221,8 +165,7 @@ transactional dry-run, and neither command authorizes a later write.
 
 An identity or baseline mismatch, unexpected executable action, fixture
 creation/update proposal, authentication or collection failure, or failed
-post-correction re-read blocks completion. Never run bare `config apply` for
-#247.
+verification blocks completion.
 
 ## Evidence and recovery
 
@@ -236,8 +179,8 @@ Record a compact, sanitized evidence entry containing:
 - App ID, installation ID, owner, installability, account, repository scope,
   and permissions;
 - command names, exit codes, and relevant output fields;
-- whether a conditional correction was approved and performed; and
-- complete post-correction verification when applicable.
+- whether a mismatch was found and reported; and
+- complete verification of the documented baseline.
 
 When no mismatch exists, explicitly record `no remote write performed`.
 
