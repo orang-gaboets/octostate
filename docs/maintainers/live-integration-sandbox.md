@@ -77,18 +77,20 @@ permissions from a successful CLI authentication check.
 Verify the established state in this order, using read-only operations:
 
 1. Confirm the organization login and immutable organization ID.
-2. Confirm the fixture repository name, owner, immutable repository ID, default
+2. Verify organization ownership and ordinary administrative access are limited
+   to trusted Octostate maintainers, and record a sanitized result.
+3. Confirm the fixture repository name, owner, immutable repository ID, default
    branch, visibility, archive/template flags, topics, and description.
-3. Confirm the App owner, App ID, installation ID, installability boundary,
+4. Confirm the App owner, App ID, installation ID, installability boundary,
    installation account, selected repository, permissions, and absence from
    production.
-4. Confirm that the historical organization and control repository are not
+5. Confirm that the historical organization and control repository are not
    targets of the work.
-5. Confirm that #243 remains the owner of final live mutation,
+6. Confirm that #243 remains the owner of final live mutation,
    convergence/restoration, and exact release-candidate evidence.
-6. Confirm that #248 remains future automated live integration work and does
+7. Confirm that #248 remains future automated live integration work and does
    not block v1.2.0.
-7. Run the non-mutating setup/authentication smoke checks below.
+8. Run the non-mutating setup/authentication smoke checks below.
 
 ### Mismatch handling
 
@@ -176,6 +178,7 @@ Record a compact, sanitized evidence entry containing:
 - organization login and immutable ID;
 - fixture name and immutable ID;
 - expected and observed baseline;
+- sanitized organization ownership/access verification result;
 - App ID, installation ID, owner, installability, account, repository scope,
   and permissions;
 - command names, exit codes, and relevant output fields;
