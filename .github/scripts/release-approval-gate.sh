@@ -53,18 +53,22 @@ release_gate_remove_approval() {
   return 1
 }
 
-release_gate_invalidate_missing_lifecycle() {
+release_gate_invalidate_approval() {
   if ! release_gate_has_label "$RELEASE_GATE_PR_JSON" "$RELEASE_READY_LABEL"; then
     echo "The configured release approval label is absent; merge is aborted." >&2
     return 1
   fi
 
-  echo "$RELEASE_LIFECYCLE_LABEL is absent while $RELEASE_READY_LABEL is present; invalidating stale approval." >&2
   if ! release_gate_remove_approval; then
     return 1
   fi
   echo "Fresh publisher approval is required after Release Please lifecycle state is repaired." >&2
   return 0
+}
+
+release_gate_invalidate_missing_lifecycle() {
+  echo "$RELEASE_LIFECYCLE_LABEL is absent while $RELEASE_READY_LABEL is present; invalidating stale approval." >&2
+  release_gate_invalidate_approval
 }
 
 release_gate_require_labels() {
@@ -177,7 +181,7 @@ release_approval_gate_initial() {
       fi
       if ! release_gate_event_has_label "${EVENT_LABELS_JSON:-[]}" "$RELEASE_LIFECYCLE_LABEL"; then
         echo "The approval was applied while $RELEASE_LIFECYCLE_LABEL was absent; invalidating stale approval." >&2
-        if ! release_gate_invalidate_missing_lifecycle; then
+        if ! release_gate_invalidate_approval; then
           release_gate_write_output "$should_merge"
           return 1
         fi

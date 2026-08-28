@@ -173,6 +173,11 @@ run_gate release_approval_gate_initial
 assert_status 1 "$GATE_STATUS"
 assert_contains 'pr edit' "$GH_LOG"
 assert_contains 'approval was applied while autorelease: pending was absent' "$TEST_ROOT/stderr"
+if grep -F 'autorelease: pending is absent while' "$TEST_ROOT/stderr" >/dev/null; then
+  echo "event-time invalidation emitted a live-state diagnostic" >&2
+  cat "$TEST_ROOT/stderr" >&2
+  exit 1
+fi
 EVENT_LABELS_JSON="$both_labels"
 
 EVENT_LABEL=other
