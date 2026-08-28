@@ -8,9 +8,9 @@ on:
       - synchronize
 
 concurrency:
-  # Only release-ready approval events share the cancellation bucket.
+  # Approval and lifecycle transitions share the cancellation bucket.
   # Unrelated label noise and bot cleanup events run separately.
-  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'labeled' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'unlabeled' && github.event.sender.type != 'Bot' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'unlabeled' && 'bot-cleanup' || github.event.action == 'labeled' && 'other-label' || 'other-unlabel' }}"
+  group: "release-please-auto-merge-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'labeled' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'unlabeled' && github.event.sender.type != 'Bot' && 'approval' || github.event.label.name == 'autorelease: pending' && 'approval' || github.event.label.name == (vars.RELEASE_READY_LABEL || 'release: ready') && github.event.action == 'unlabeled' && 'bot-cleanup' || github.event.action == 'labeled' && 'other-label' || 'other-unlabel' }}"
   cancel-in-progress: true
 
 permissions:
@@ -57,6 +57,13 @@ jobs:
           echo "RELEASE_PLEASE_APP_ID and RELEASE_PLEASE_APP_PRIVATE_KEY must be configured for release PR auto-merge." >&2
           exit 1
 
+      - name: Check out trusted workflow helpers
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Verify release-please PR actor
         env:
           EXPECTED_BOT: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
@@ -76,104 +83,22 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           EVENT_ACTION: ${{ github.event.action }}
           EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
           EVENT_SENDER: ${{ github.event.sender.login }}
           EXPECTED_BOT: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
-          PR_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_BASE_BRANCH: main
+          EXPECTED_HEAD_BRANCH_PREFIX: release-please--branches--
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RELEASE_APPROVER_ORG: ${{ env.RELEASE_APPROVER_ORG }}
           RELEASE_APPROVER_TEAM: ${{ env.RELEASE_APPROVER_TEAM }}
           RELEASE_READY_LABEL: ${{ env.RELEASE_READY_LABEL }}
         run: |
           set -euo pipefail
-
-          should_merge=false
-          has_release_ready=false
-          if jq -e --arg label "$RELEASE_READY_LABEL" 'any(.[]; .name == $label)' <<<"$PR_LABELS_JSON" >/dev/null; then
-            has_release_ready=true
-          fi
-
-          case "$EVENT_ACTION" in
-            labeled)
-              if [ "$EVENT_LABEL" != "$RELEASE_READY_LABEL" ]; then
-                echo "Ignoring label event for $EVENT_LABEL; only $RELEASE_READY_LABEL can approve a release PR."
-                echo "should_merge=$should_merge" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-
-              authorized=false
-              if [ "$EVENT_SENDER" != "$EXPECTED_BOT" ]; then
-                team_stderr="$(mktemp)"
-                team_status=0
-                gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM" --jq '.slug' > /dev/null 2>"$team_stderr" || team_status=$?
-                if [ "$team_status" -ne 0 ]; then
-                  echo "Failed to verify release approver team @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM." >&2
-                  echo "Confirm the team slug is correct and the release-please app has Members: read." >&2
-                  cat "$team_stderr" >&2
-                  rm -f "$team_stderr"
-                  exit 1
-                fi
-                rm -f "$team_stderr"
-
-                membership_stderr="$(mktemp)"
-                membership_status=0
-                team_state="$(gh api "/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM/memberships/$EVENT_SENDER" --jq '.state' 2>"$membership_stderr")" || membership_status=$?
-                if [ "$membership_status" -eq 0 ] && [ "$team_state" = "active" ]; then
-                  authorized=true
-                elif [ "$membership_status" -ne 0 ]; then
-                  if ! grep -q "(HTTP 404)" "$membership_stderr"; then
-                    echo "Failed to verify whether @$EVENT_SENDER is a release approver." >&2
-                    echo "Leaving $RELEASE_READY_LABEL in place; confirm the app token can read organization members and retry." >&2
-                    cat "$membership_stderr" >&2
-                    rm -f "$membership_stderr"
-                    exit 1
-                  fi
-                fi
-                rm -f "$membership_stderr"
-              fi
-
-              if [ "$authorized" != true ]; then
-                echo "$RELEASE_READY_LABEL was applied by @$EVENT_SENDER, but only active members of @$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM may approve release auto-merge." >&2
-                label_removed=false
-                if gh pr edit "$PR_URL" --remove-label "$RELEASE_READY_LABEL"; then
-                  label_removed=true
-                else
-                  echo "Failed to remove unauthorized $RELEASE_READY_LABEL label from PR #$PR_NUMBER." >&2
-                fi
-
-                if [ "$label_removed" = true ]; then
-                  comment_status="The label was removed automatically and this PR was not merged."
-                else
-                  comment_status="This PR was not merged. The workflow also failed to remove the label automatically, so a maintainer should remove it manually."
-                fi
-
-                printf -v comment_body '%s\n\n%s\n\n%s\n' \
-                  "\`$RELEASE_READY_LABEL\` was applied by @$EVENT_SENDER, but only active members of [@$RELEASE_APPROVER_ORG/$RELEASE_APPROVER_TEAM](https://github.com/orgs/$RELEASE_APPROVER_ORG/teams/$RELEASE_APPROVER_TEAM) may approve release auto-merge." \
-                  "$comment_status" \
-                  "An authorized Octostate Publisher should review the release PR and re-apply \`$RELEASE_READY_LABEL\` if it is ready to publish."
-
-                if ! gh pr comment "$PR_URL" --body "$comment_body"; then
-                  echo "Failed to post unauthorized approval comment on PR #$PR_NUMBER." >&2
-                fi
-                exit 1
-              fi
-
-              should_merge=true
-              ;;
-            synchronize)
-              if [ "$has_release_ready" = true ]; then
-                echo "Removing stale $RELEASE_READY_LABEL approval after PR update."
-                gh pr edit "$PR_URL" --remove-label "$RELEASE_READY_LABEL"
-              fi
-              ;;
-            unlabeled)
-              ;;
-            *)
-              echo "Ignoring unsupported release approval event: $EVENT_ACTION"
-              ;;
-          esac
-
-          echo "should_merge=$should_merge" >> "$GITHUB_OUTPUT"
+          source .github/scripts/release-approval-gate.sh
+          release_approval_gate_initial
 
       - name: Wait for release checks
         if: ${{ steps.release-approval.outputs.should_merge == 'true' }}
@@ -259,8 +184,28 @@ jobs:
             sleep "$poll_interval_seconds"
           done
 
-      - name: Merge release-please PR
+      - name: Revalidate release PR before merge
+        id: final-release-state
         if: ${{ steps.release-approval.outputs.should_merge == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_BASE_BRANCH: main
+          EXPECTED_HEAD_BRANCH_PREFIX: release-please--branches--
+          EXPECTED_BOT: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RELEASE_READY_LABEL: ${{ env.RELEASE_READY_LABEL }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/release-approval-gate.sh
+          release_approval_gate_final
+          echo "merge_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Merge release-please PR
+        if: ${{ steps.release-approval.outputs.should_merge == 'true' && steps.final-release-state.outputs.merge_ready == 'true' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}

@@ -40,6 +40,9 @@ jobs:
       - name: Run actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
+      - name: Test release approval gate
+        run: bash .github/scripts/release-approval-gate.test.sh
+
   build:
     runs-on: ubuntu-latest
     steps:
