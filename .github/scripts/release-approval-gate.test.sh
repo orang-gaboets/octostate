@@ -93,6 +93,7 @@ export RELEASE_READY_LABEL="release: ready"
 export EVENT_ACTION=labeled
 export EVENT_LABEL="release: ready"
 export EVENT_SENDER="publisher"
+export EVENT_LABELS_JSON='[{"name":"release: ready"},{"name":"autorelease: pending"}]'
 
 source "$SCRIPT_DIR/release-approval-gate.sh"
 
@@ -161,6 +162,14 @@ write_pr "$both_labels"
 run_gate release_approval_gate_initial
 assert_status 0 "$GATE_STATUS"
 assert_contains 'should_merge=true' "$GITHUB_OUTPUT"
+
+EVENT_LABELS_JSON='[{"name":"release: ready"}]'
+write_pr "$both_labels"
+run_gate release_approval_gate_initial
+assert_status 1 "$GATE_STATUS"
+assert_contains 'pr edit' "$GH_LOG"
+assert_contains 'approval was applied while autorelease: pending was absent' "$TEST_ROOT/stderr"
+EVENT_LABELS_JSON="$both_labels"
 
 EVENT_LABEL=other
 run_gate release_approval_gate_initial

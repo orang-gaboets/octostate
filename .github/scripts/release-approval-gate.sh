@@ -16,6 +16,13 @@ release_gate_has_label() {
   jq -e --arg label "$label" 'any(.labels[]?; .name == $label)' <<<"$pr_json" >/dev/null
 }
 
+release_gate_event_has_label() {
+  local labels_json="$1"
+  local label="$2"
+
+  jq -e --arg label "$label" 'any(.[]?; .name == $label)' <<<"$labels_json" >/dev/null
+}
+
 release_gate_read_pr() {
   local stderr_file
   local read_status=0
@@ -165,6 +172,15 @@ release_approval_gate_initial() {
       fi
 
       if ! release_gate_read_pr; then
+        release_gate_write_output "$should_merge"
+        return 1
+      fi
+      if ! release_gate_event_has_label "${EVENT_LABELS_JSON:-[]}" "$RELEASE_LIFECYCLE_LABEL"; then
+        echo "The approval was applied while $RELEASE_LIFECYCLE_LABEL was absent; invalidating stale approval." >&2
+        if ! release_gate_invalidate_missing_lifecycle; then
+          release_gate_write_output "$should_merge"
+          return 1
+        fi
         release_gate_write_output "$should_merge"
         return 1
       fi

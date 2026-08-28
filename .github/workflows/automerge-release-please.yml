@@ -83,6 +83,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           EVENT_ACTION: ${{ github.event.action }}
           EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
           EVENT_SENDER: ${{ github.event.sender.login }}
           EXPECTED_BOT: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
           EXPECTED_REPOSITORY: ${{ github.repository }}
