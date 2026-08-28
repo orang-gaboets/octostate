@@ -24,6 +24,10 @@ case "${1:-}" in
           echo "gh: simulated pull request read failure" >&2
           exit 1
         fi
+        if [ "${GH_STUB_MODE:-}" = "invalid-json" ]; then
+          echo "not-json"
+          exit 0
+        fi
         cat "$GH_STUB_PR_JSON"
         ;;
       /orgs/*/teams/*/memberships/*)
@@ -182,6 +186,7 @@ write_pr '[{"name":"release: ready"}]'
 run_gate release_approval_gate_initial
 assert_status 1 "$GATE_STATUS"
 assert_contains 'pr edit' "$GH_LOG"
+assert_contains '--remove-label release: ready' "$GH_LOG"
 assert_contains 'autorelease: pending is absent' "$TEST_ROOT/stderr"
 
 write_pr '[{"name":"autorelease: pending"}]'
@@ -230,6 +235,7 @@ write_pr '[{"name":"release: ready"}]'
 run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
 assert_contains 'pr edit' "$GH_LOG"
+assert_contains '--remove-label release: ready' "$GH_LOG"
 
 write_pr '[{"name":"autorelease: pending"}]'
 run_gate release_approval_gate_final
@@ -242,6 +248,14 @@ run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
 assert_no_gh_mutation
 assert_contains 'preserving release: ready' "$TEST_ROOT/stderr"
+unset GH_STUB_MODE
+
+export GH_STUB_MODE=invalid-json
+write_pr "$both_labels"
+run_gate release_approval_gate_final
+assert_status 1 "$GATE_STATUS"
+assert_no_gh_mutation
+assert_contains 'not valid JSON' "$TEST_ROOT/stderr"
 unset GH_STUB_MODE
 
 export GH_STUB_REMOVE_MODE=fail
@@ -276,6 +290,14 @@ run_gate release_approval_gate_initial
 assert_status 1 "$GATE_STATUS"
 assert_contains 'pr edit' "$GH_LOG"
 assert_contains 'pr comment' "$GH_LOG"
+unset GH_STUB_MODE
+
+export GH_STUB_MODE=team-failure
+write_pr "$both_labels"
+run_gate release_approval_gate_initial
+assert_status 1 "$GATE_STATUS"
+assert_no_gh_mutation
+assert_contains 'Failed to verify release approver team' "$TEST_ROOT/stderr"
 unset GH_STUB_MODE
 
 export GH_STUB_MODE=membership-failure
