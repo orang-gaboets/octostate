@@ -204,6 +204,19 @@ release_approval_gate_initial() {
       fi
       ;;
     unlabeled)
+      if [ "$EVENT_LABEL" = "$RELEASE_LIFECYCLE_LABEL" ]; then
+        if ! release_gate_read_pr; then
+          release_gate_write_output "$should_merge"
+          return 1
+        fi
+        if release_gate_has_label "$RELEASE_GATE_PR_JSON" "$RELEASE_READY_LABEL"; then
+          echo "$RELEASE_LIFECYCLE_LABEL was removed while $RELEASE_READY_LABEL was present; invalidating stale approval." >&2
+          if ! release_gate_remove_approval; then
+            release_gate_write_output "$should_merge"
+            return 1
+          fi
+        fi
+      fi
       ;;
     *)
       echo "Ignoring unsupported release approval event: $EVENT_ACTION"

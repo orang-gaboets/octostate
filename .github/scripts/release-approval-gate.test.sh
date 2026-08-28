@@ -211,6 +211,17 @@ assert_contains 'pr edit' "$GH_LOG"
 assert_contains 'should_merge=false' "$GITHUB_OUTPUT"
 EVENT_ACTION=labeled
 
+EVENT_ACTION=unlabeled
+EVENT_LABEL="$RELEASE_LIFECYCLE_LABEL"
+write_pr "$both_labels"
+run_gate release_approval_gate_initial
+assert_status 0 "$GATE_STATUS"
+assert_contains 'pr edit' "$GH_LOG"
+assert_contains '--remove-label release: ready' "$GH_LOG"
+assert_contains 'should_merge=false' "$GITHUB_OUTPUT"
+EVENT_ACTION=labeled
+EVENT_LABEL="$RELEASE_READY_LABEL"
+
 write_pr "$both_labels"
 run_gate release_approval_gate_final
 assert_status 0 "$GATE_STATUS"
