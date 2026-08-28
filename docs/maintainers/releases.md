@@ -189,6 +189,7 @@ an authorized maintainer.
 - Unauthorized approval attempts leave a PR comment from the release-please app bot
 - If `release-please` updates the PR head after approval, the stale configured approval label is removed and must be re-applied
 - The workflow requires both the configured approval label and `autorelease: pending` before merging
+- The workflow fails closed if either required label is absent
 - The workflow revalidates the live PR state immediately before merging; confirmed missing lifecycle state invalidates approval, while unreadable state fails closed without removing approval
 - Apply the configured approval label additively; do not replace existing labels or remove Release Please lifecycle labels
 - Release Please owns the normal transition from `autorelease: pending` to its post-publication lifecycle state
