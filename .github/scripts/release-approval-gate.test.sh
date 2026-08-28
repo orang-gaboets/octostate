@@ -232,6 +232,16 @@ assert_contains 'should_merge=false' "$GITHUB_OUTPUT"
 EVENT_ACTION=labeled
 EVENT_LABEL="$RELEASE_READY_LABEL"
 
+EVENT_LABEL="$RELEASE_LIFECYCLE_LABEL"
+write_pr "$both_labels"
+run_gate release_approval_gate_initial
+assert_status 0 "$GATE_STATUS"
+assert_contains 'pr edit' "$GH_LOG"
+assert_contains '--remove-label release: ready' "$GH_LOG"
+assert_contains 'was restored while release: ready was present' "$TEST_ROOT/stderr"
+assert_contains 'should_merge=false' "$GITHUB_OUTPUT"
+EVENT_LABEL="$RELEASE_READY_LABEL"
+
 write_pr "$both_labels"
 run_gate release_approval_gate_final
 assert_status 0 "$GATE_STATUS"

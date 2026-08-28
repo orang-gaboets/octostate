@@ -157,6 +157,27 @@ release_approval_gate_initial() {
 
   case "$EVENT_ACTION" in
     labeled)
+      if [ "$EVENT_LABEL" = "$RELEASE_LIFECYCLE_LABEL" ]; then
+        if ! release_gate_read_pr; then
+          release_gate_write_output "$should_merge"
+          return 1
+        fi
+        if release_gate_has_label "$RELEASE_GATE_PR_JSON" "$RELEASE_READY_LABEL"; then
+          if release_gate_has_label "$RELEASE_GATE_PR_JSON" "$RELEASE_LIFECYCLE_LABEL"; then
+            echo "$RELEASE_LIFECYCLE_LABEL was restored while $RELEASE_READY_LABEL was present; invalidating stale approval." >&2
+            if ! release_gate_invalidate_approval; then
+              release_gate_write_output "$should_merge"
+              return 1
+            fi
+          elif ! release_gate_invalidate_missing_lifecycle; then
+            release_gate_write_output "$should_merge"
+            return 1
+          fi
+        fi
+        release_gate_write_output "$should_merge"
+        return 0
+      fi
+
       if [ "$EVENT_LABEL" != "$RELEASE_READY_LABEL" ]; then
         echo "Ignoring label event for $EVENT_LABEL; only $RELEASE_READY_LABEL can approve a release PR."
         release_gate_write_output "$should_merge"
