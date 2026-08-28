@@ -62,6 +62,11 @@ The standard readiness pass should include:
 - release automation checks pass
 - evidence is recorded in the relevant PR or maintainer doc
 
+Before applying the configured release approval label, verify that
+`autorelease: pending` is present. After the configured release approval label
+is applied, both labels must be present, and the workflow must re-check the
+live state before merging.
+
 ### Major releases: `vX.0.0`
 
 Major releases should always receive a full readiness pass.

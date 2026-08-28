@@ -53,9 +53,10 @@ free-floating `Unreleased` section for hand-maintained migration text. The
 versioned compatibility document is the canonical detailed home; release
 surfaces should link to it rather than duplicate it.
 
-Before an authorized publisher or maintainer applies `release: ready` or
-otherwise merges a qualifying generated release PR, add the exact
-compatibility-document pointer to the generated release PR body and read the
+Before an authorized publisher or maintainer applies the configured release
+approval label (default `release: ready`) or otherwise merges a qualifying
+generated release PR, add the exact compatibility-document pointer to the
+generated release PR body and read the
 PR body back to confirm it persisted. If `release-please` regenerates the PR
 body, repeat this checkpoint after the final update. For `v1.2.0`, that pointer is
 `Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v1.2.0-compatibility.md`.
@@ -176,22 +177,28 @@ This repository also uses `.github/workflows/automerge-release-please.yml` to
 merge `release-please` PRs after an explicit approval label has been applied by
 an authorized maintainer.
 
-- The approval label is `release: ready`
-- Only active members of `@orang-gaboets/octostate-publishers` may apply that label to approve a release
+- The approval label is configured by the `RELEASE_READY_LABEL` Actions
+  variable, which defaults to `release: ready`; references to `release: ready`
+  below describe that current/default value
+- Only active members of `@orang-gaboets/octostate-publishers` may apply the configured approval label to approve a release
 - The workflow only targets same-repository PRs into `main`
 - The workflow only targets release branches created by `release-please` (`release-please--branches--*`)
 - The workflow verifies the PR author is the configured GitHub App bot
 - The workflow verifies the label actor against the `octostate-publishers` team
-- Unauthorized `release: ready` labels are removed automatically
+- Unauthorized configured approval labels are removed automatically
 - Unauthorized approval attempts leave a PR comment from the release-please app bot
-- If `release-please` updates the PR head after approval, the stale `release: ready` label is removed and must be re-applied
+- If `release-please` updates the PR head after approval, the stale configured approval label is removed and must be re-applied
+- The workflow requires both the configured approval label and `autorelease: pending` before merging
+- The workflow revalidates the live PR state immediately before merging; confirmed missing lifecycle state invalidates approval, while unreadable state fails closed without removing approval
+- Apply the configured approval label additively; do not replace existing labels or remove Release Please lifecycle labels
+- Release Please owns the normal transition from `autorelease: pending` to its post-publication lifecycle state
 - The workflow waits for the `CI`, `CodeQL Security`, and `Go vulnerability monitoring` release checks to complete before merging; see [Code scanning and Code Quality](code-scanning.md) for the ownership and identity guide
 - The workflow uses the configured GitHub App token to merge the release PR directly
 - Human-authored PRs are intentionally ignored
 
-The `release: ready` label belongs to this repository's approval gate. The
-`autorelease:*` labels belong to `release-please` and should not be manually
-edited during normal release flow:
+The configured release approval label belongs to this repository's approval
+gate. The `autorelease:*` labels belong to `release-please` and should not be
+manually edited during normal release flow:
 
 - `autorelease: pending`
 - `autorelease: tagged`
@@ -206,7 +213,7 @@ PR branches itself.
 
 If the approval label ever changes, set the repository Actions variable
 `RELEASE_READY_LABEL` to the new label name so runtime checks and workflow
-concurrency cancellation use the same value.
+concurrency cancellation use the same configured value.
 
 The configured GitHub App must be able to:
 
@@ -222,7 +229,7 @@ relying on this workflow; otherwise the direct merge can still fail with
 
 ## Release Approval Recovery
 
-If `release: ready` is applied by someone who is not in
+If the configured release approval label is applied by someone who is not in
 [@orang-gaboets/octostate-publishers](https://github.com/orgs/orang-gaboets/teams/octostate-publishers),
 the workflow removes the label and fails before merge. It also leaves a PR
 comment explaining why the approval was rejected and what an authorized
@@ -235,7 +242,7 @@ If the release-please app cannot verify team membership, confirm that the app
 installation has `Members: read` and that the
 [`octostate-publishers`](https://github.com/orgs/orang-gaboets/teams/octostate-publishers)
 team exists. Configuration or GitHub API failures fail closed without removing
-the `release: ready` label, so maintainers can retry after fixing the setup.
+the configured approval label, so maintainers can retry after fixing the setup.
 
 ## Release State Repair
 
