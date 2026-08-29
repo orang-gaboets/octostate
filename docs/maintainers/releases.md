@@ -78,6 +78,9 @@ release approval workflow:
 - `Checks: read` and `Commit statuses: read` so the app bot can wait for
   required release checks before merging
 - `Members: read` so the app bot can verify the approver team
+- Repository or organization Actions Client ID variable:
+  `RELEASE_PLEASE_APP_CLIENT_ID`
+- Actions secret: `RELEASE_PLEASE_APP_PRIVATE_KEY`
 
 Unlike the release-please workflow above, the release approval auto-merge
 workflow requires this GitHub App token and fails closed if the token cannot be
@@ -120,7 +123,7 @@ control rather than application deployment. Configure the environment's branch
 policy to allow `main` only, and scope access to repositories approved to run
 this workflow:
 
-- Organization Actions variable: `GO_TOOLCHAIN_REMEDIATION_APP_ID`
+- Organization Actions Client ID variable: `GO_TOOLCHAIN_REMEDIATION_APP_CLIENT_ID`
 - Environment secret in `go-toolchain-remediation`:
   `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY`
 
