@@ -99,6 +99,7 @@ export EVENT_LABEL="release: ready"
 export EVENT_SENDER="publisher"
 export EVENT_LABELS_JSON='[{"name":"release: ready"},{"name":"autorelease: pending"}]'
 
+# shellcheck source=./release-approval-gate.sh
 source "$SCRIPT_DIR/release-approval-gate.sh"
 
 assert_status() {
