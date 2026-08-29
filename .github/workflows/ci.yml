@@ -48,7 +48,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Verify Bash syntax
-        run: bash -n .github/scripts/release-approval-gate.sh .github/scripts/release-approval-gate.test.sh
+        run: |
+          bash -n .github/scripts/release-approval-gate.sh
+          bash -n .github/scripts/release-approval-gate.test.sh
 
       - name: Run ShellCheck v0.11.0
         run: >
