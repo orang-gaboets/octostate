@@ -37,12 +37,12 @@ jobs:
       - name: Generate GitHub App token
         id: app-token
         env:
-          RELEASE_PLEASE_APP_ID: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          RELEASE_PLEASE_APP_CLIENT_ID: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
           RELEASE_PLEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
-        if: env.RELEASE_PLEASE_APP_ID != '' && env.RELEASE_PLEASE_APP_PRIVATE_KEY != ''
+        if: env.RELEASE_PLEASE_APP_CLIENT_ID != '' && env.RELEASE_PLEASE_APP_PRIVATE_KEY != ''
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-checks: read
@@ -54,7 +54,7 @@ jobs:
       - name: Fail if app credentials are unavailable
         if: ${{ steps.app-token.outputs.token == '' }}
         run: |
-          echo "RELEASE_PLEASE_APP_ID and RELEASE_PLEASE_APP_PRIVATE_KEY must be configured for release PR auto-merge." >&2
+          echo "RELEASE_PLEASE_APP_CLIENT_ID and RELEASE_PLEASE_APP_PRIVATE_KEY must be configured for release PR auto-merge." >&2
           exit 1
 
       - name: Check out trusted workflow helpers

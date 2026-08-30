@@ -111,8 +111,8 @@ Actions configuration for the maintenance App stays external to this
 repository. The workflow declares the protected `go-toolchain-remediation`
 environment with deployment record creation disabled because the environment
 is used for credential scoping and access control rather than application
-deployment. It expects the organization variable
-`GO_TOOLCHAIN_REMEDIATION_APP_ID` plus the
+deployment. It expects the organization Client ID variable
+`GO_TOOLCHAIN_REMEDIATION_APP_CLIENT_ID` plus the
 `GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY` secret in that environment. Configure
 the environment's branch policy to allow `main` only, and remove any old
 organization-level copy of the private-key secret after the environment secret

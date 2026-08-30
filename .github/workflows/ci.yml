@@ -40,6 +40,29 @@ jobs:
       - name: Run actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
+  release-approval-gate:
+    name: Release approval gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify Bash syntax
+        run: |
+          bash -n .github/scripts/release-approval-gate.sh
+          bash -n .github/scripts/release-approval-gate.test.sh
+
+      - name: Run ShellCheck v0.11.0
+        run: >
+          docker run --rm
+          --volume "$PWD:/mnt"
+          --workdir /mnt
+          koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+          -x
+          -P SCRIPTDIR
+          .github/scripts/release-approval-gate.sh
+          .github/scripts/release-approval-gate.test.sh
+
       - name: Test release approval gate
         run: bash .github/scripts/release-approval-gate.test.sh
 
