@@ -51,22 +51,62 @@ jobs:
         run: |
           set -euo pipefail
 
-          workflow_files="$(rg --files .github/workflows -g '*.yml' -g '*.yaml')"
-          while IFS= read -r workflow; do
-            if ! rg -q \
-              '^[[:space:]]+[[:alnum:]_-]+:[[:space:]]+write([[:space:]]|$)|^[[:space:]]*permissions:[[:space:]]+write-all([[:space:]]|$)|secrets\.[[:alnum:]_-]+|permission-[[:alnum:]_-]+:[[:space:]]+write([[:space:]]|$)' \
-              "$workflow"; then
-              continue
-            fi
+          ruby -ryaml <<'RUBY'
+          def write_permission?(value)
+            case value
+            when String
+              %w[write write-all].include?(value)
+            when Hash
+              value.values.any? { |entry| write_permission?(entry) }
+            else
+              false
+            end
+          end
 
-            while IFS= read -r action; do
-              action_ref="${action##*@}"
-              if [[ ! "$action_ref" =~ ^[0-9a-f]{40}$ ]]; then
-                echo "$workflow contains an unpinned privileged Action: $action" >&2
-                exit 1
-              fi
-            done < <(rg -No '^[[:space:]]*uses:[[:space:]]+[^[:space:]@]+@[^[:space:]]+' "$workflow")
-          done <<< "$workflow_files"
+          def privileged?(node)
+            case node
+            when Hash
+              node.any? do |key, value|
+                (key.to_s == "permissions" && write_permission?(value)) ||
+                  (key.to_s == "secrets" && (value == "inherit" || value.is_a?(Hash))) ||
+                  privileged?(value)
+              end
+            when Array
+              node.any? { |entry| privileged?(entry) }
+            when String
+              node.include?("secrets.")
+            else
+              false
+            end
+          end
+
+          def action_refs(node)
+            case node
+            when Hash
+              node.each_with_object([]) do |(key, value), refs|
+                refs << value if key.to_s == "uses" && value.is_a?(String)
+                refs.concat(action_refs(value))
+              end
+            when Array
+              node.flat_map { |entry| action_refs(entry) }
+            else
+              []
+            end
+          end
+
+          Dir[".github/workflows/*.{yml,yaml}"].sort.each do |path|
+            workflow = YAML.safe_load(File.read(path), aliases: true)
+            next unless privileged?(workflow)
+
+            action_refs(workflow).each do |action|
+              next if action.start_with?("./")
+              ref = action.split("@", 2)[1]
+              next if ref&.match?(/\A[0-9a-f]{40}\z/)
+
+              abort "#{path} contains an unpinned privileged Action: #{action}"
+            end
+          end
+          RUBY
 
           app_token_action='actions/create-github-app-token'
           if ! action_refs="$(
