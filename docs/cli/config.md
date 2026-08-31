@@ -21,6 +21,10 @@ Set `OCTOSTATE_GITHUB_TOKEN` before the PAT-authenticated examples below. The
 same live commands also support GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
 
+When both PAT sources are set, a non-empty `--token` value takes precedence
+over `OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
+`GITHUB_TOKEN`.
+
 ## Command Comparison
 
 Use these commands at different points in the GitOps workflow:

@@ -84,6 +84,10 @@ Set `OCTOSTATE_GITHUB_TOKEN` in the environment for a PAT without placing it in
 the Octostate process arguments. Do not put tokens, private keys, or
 installation secrets in configuration files or documentation.
 
+When both PAT sources are set, a non-empty `--token` value takes precedence
+over `OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
+`GITHUB_TOKEN`.
+
 `config validate` and `audit diff` are offline once their required files exist.
 The other GitOps commands read live GitHub state, and `config apply` can mutate
 supported resources.
