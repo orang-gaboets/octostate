@@ -119,7 +119,7 @@ octostate organization get-by-name --app-id <app-id> --installation-id <installa
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -132,7 +132,7 @@ octostate organization list-repos --app-id <app-id> --installation-id <installat
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -146,7 +146,7 @@ octostate organization list-members --app-id <app-id> --installation-id <install
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -160,7 +160,7 @@ octostate organization list-teams --app-id <app-id> --installation-id <installat
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -173,7 +173,7 @@ octostate organization list-invitations --app-id <app-id> --installation-id <ins
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -186,7 +186,7 @@ octostate organization invite --app-id <app-id> --installation-id <installation-
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -205,7 +205,7 @@ octostate repo get --app-id <app-id> --installation-id <installation-id> --app-k
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -219,7 +219,7 @@ octostate repo create-from-template --app-id <app-id> --installation-id <install
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -248,7 +248,7 @@ octostate repo delete --org <org> --name <repo-name> --dry-run
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -265,7 +265,7 @@ octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -289,7 +289,7 @@ octostate topic add --app-id <app-id> --installation-id <installation-id> --app-
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -306,7 +306,7 @@ octostate topic list --app-id <app-id> --installation-id <installation-id> --app
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -320,7 +320,7 @@ octostate topic replace --app-id <app-id> --installation-id <installation-id> --
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -339,7 +339,7 @@ octostate team create --app-id <app-id> --installation-id <installation-id> --ap
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -358,7 +358,7 @@ octostate team edit --app-id <app-id> --installation-id <installation-id> --app-
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -386,7 +386,7 @@ octostate team delete-by-slug --org <org> --slug <team-slug> --dry-run
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -403,7 +403,7 @@ octostate team get-by-slug --app-id <app-id> --installation-id <installation-id>
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -417,7 +417,7 @@ octostate team members list --app-id <app-id> --installation-id <installation-id
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -439,7 +439,7 @@ octostate team members add --app-id <app-id> --installation-id <installation-id>
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -457,7 +457,7 @@ octostate team members remove --app-id <app-id> --installation-id <installation-
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -474,7 +474,7 @@ octostate team repo permissions list --app-id <app-id> --installation-id <instal
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -488,7 +488,7 @@ octostate team repo permissions add --app-id <app-id> --installation-id <install
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -507,7 +507,7 @@ octostate team repo permissions remove --app-id <app-id> --installation-id <inst
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -527,7 +527,7 @@ octostate user get-by-id --app-id <app-id> --installation-id <installation-id> -
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -540,7 +540,7 @@ octostate user get-by-username --app-id <app-id> --installation-id <installation
 ```
 
 Flags:
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
