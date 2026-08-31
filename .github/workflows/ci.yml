@@ -137,7 +137,8 @@ jobs:
           touch "$metadata_root/$app_token_action/dist/main.cjs" \
             "$metadata_root/$app_token_action/dist/post.cjs"
 
-          for workflow in .github/workflows/*.yml; do
+          for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [[ -f "$workflow" ]] || continue
             sed "s#${app_token_action}@$action_sha#./$app_token_action#g" \
               "$workflow" > "$metadata_root/.github/workflows/$(basename "$workflow")"
           done
