@@ -35,14 +35,10 @@ jobs:
       - name: Pin trusted main
         id: base
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          source .github/scripts/git-remote-auth.sh
 
-          git_with_app_token "$GH_TOKEN" \
-            fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           base_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           git switch --detach "$base_sha"
 
@@ -320,8 +316,7 @@ jobs:
           scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
           mkdir -p "$scratch_dir"
 
-          git_with_app_token "$GH_TOKEN" \
-            fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
             echo "origin/main moved from $BASE_SHA to $current_main_sha; aborting remediation." >&2
@@ -405,8 +400,7 @@ jobs:
             echo "This PR is intentionally draft-only and must not be auto-approved, marked ready, merged, force-updated, deleted, or rewritten by automation."
           } > "$body_file"
 
-          git_with_app_token "$GH_TOKEN" \
-            fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
             echo "origin/main moved from $BASE_SHA to $current_main_sha before branch creation; aborting remediation." >&2
