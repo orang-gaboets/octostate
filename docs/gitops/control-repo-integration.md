@@ -164,6 +164,9 @@ input accepts a release-style tag such as `v1.2.0` or a full 40-character
 commit SHA. Branch names and `latest` are rejected. Use an immutable commit
 SHA for the strongest reproducibility, and use a release tag only when the
 repository's normal release process is the intended compatibility boundary.
+The selected CLI revision must build with Go `1.25.13`; the workflow sets
+`GOTOOLCHAIN=local`, so an incompatible revision fails during installation
+instead of downloading a newer toolchain automatically.
 
 ### Contract and safety boundaries
 
