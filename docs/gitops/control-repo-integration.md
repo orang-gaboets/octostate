@@ -177,8 +177,11 @@ instead of downloading a newer toolchain automatically.
   App installation token; this workflow does not mint credentials or accept a
   private key.
 - The caller-supplied token must have the organization, repository, team, and
-  other read/preflight capabilities needed by the declared configuration. The
-  workflow's `contents: read` permission controls its automatic repository
+  other read/preflight capabilities needed by the declared configuration.
+- The caller must grant `contents: read` so the reusable workflow can check out
+  the control repository. Reusable workflows cannot elevate a more restrictive
+  `GITHUB_TOKEN` permission set supplied by the caller.
+- The workflow's `contents: read` permission controls its automatic repository
   token and does not reduce or expand the separate caller-supplied token.
 - Use a short-lived, least-privilege token. Because the current CLI accepts
   authentication through `--token`, the token can be visible to process
