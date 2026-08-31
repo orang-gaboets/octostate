@@ -201,11 +201,9 @@ or command sequences. This workflow is intentionally one common Octostate
 automation pattern; it does not establish a reusable wrapper for every CLI
 command or flag combination.
 
-This optional consumer workflow is separate from the trusted live-integration
-sandbox tracked by [issue #248](https://github.com/orang-gaboets/octostate/issues/248)
-and does not depend on that issue's #247 prerequisite. It does not provide
-mutation credentials, test the `octostate-test` organization, or replace that
-maintainer-operated workflow.
+This reusable consumer workflow is limited to non-mutating configuration review
+and is not a substitute for Octostate's maintainer-operated live-integration
+testing.
 
 ## Example Layout
 
