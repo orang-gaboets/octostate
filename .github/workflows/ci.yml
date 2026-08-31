@@ -51,6 +51,23 @@ jobs:
         run: |
           set -euo pipefail
 
+          workflow_files="$(rg --files .github/workflows -g '*.yml' -g '*.yaml')"
+          while IFS= read -r workflow; do
+            if ! rg -q \
+              '^[[:space:]]+[[:alnum:]_-]+:[[:space:]]+write([[:space:]]|$)|^[[:space:]]*permissions:[[:space:]]+write-all([[:space:]]|$)|secrets\.[[:alnum:]_-]+|permission-[[:alnum:]_-]+:[[:space:]]+write([[:space:]]|$)' \
+              "$workflow"; then
+              continue
+            fi
+
+            while IFS= read -r action; do
+              action_ref="${action##*@}"
+              if [[ ! "$action_ref" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "$workflow contains an unpinned privileged Action: $action" >&2
+                exit 1
+              fi
+            done < <(rg -No '^[[:space:]]*uses:[[:space:]]+[^[:space:]@]+@[^[:space:]]+' "$workflow")
+          done <<< "$workflow_files"
+
           app_token_action='actions/create-github-app-token'
           if ! action_refs="$(
             rg -No "uses: ${app_token_action}@[^[:space:]]+" .github/workflows \
