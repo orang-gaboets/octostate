@@ -13,8 +13,8 @@ Set `OCTOSTATE_GITHUB_TOKEN` in the environment before a PAT-authenticated
 command. The `--token` flag remains supported, but its value may be visible
 through process inspection.
 
-When both PAT sources are set, a non-empty `--token` value takes precedence
-over `OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
+When `--token` is supplied, including as `--token=`, it takes precedence over
+`OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
 `GITHUB_TOKEN`.
 
 Mutating commands support `--dry-run` where noted. Live destructive delete
