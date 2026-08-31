@@ -9,5 +9,5 @@ git_with_app_token() {
   GIT_CONFIG_COUNT=1 \
     GIT_CONFIG_KEY_0='http.https://github.com/.extraheader' \
     GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer $token" \
-    git ls-remote "$@"
+    git "$@"
 }

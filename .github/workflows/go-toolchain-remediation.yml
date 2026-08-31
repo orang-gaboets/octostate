@@ -39,6 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          source .github/scripts/git-remote-auth.sh
 
           git_with_app_token "$GH_TOKEN" \
             fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main

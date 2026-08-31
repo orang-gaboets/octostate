@@ -12,7 +12,7 @@ fail() {
 }
 
 git() {
-	[[ ${1:-} == "ls-remote" ]] || fail "expected ls-remote, got ${1:-}"
+	[[ ${1:-} == "ls-remote" || ${1:-} == "fetch" ]] || fail "unexpected Git command: ${1:-}"
 	((stub_calls += 1))
 
 	[[ ${GIT_CONFIG_COUNT:-} == "1" ]] || fail "GIT_CONFIG_COUNT was not scoped to git"
@@ -40,7 +40,10 @@ for expected_status in 0 2 7; do
 	[[ $actual_status == "$expected_status" ]] || fail "expected status $expected_status, got $actual_status"
 done
 
-[[ $stub_calls == 3 ]] || fail "expected three Git calls, got $stub_calls"
+stub_status=0
+git_with_app_token "$token" fetch --no-tags origin main || fail "fetch failed"
+
+[[ $stub_calls == 4 ]] || fail "expected four Git calls, got $stub_calls"
 [[ -z ${GIT_CONFIG_COUNT:-} ]] || fail "GIT_CONFIG_COUNT leaked into the parent shell"
 [[ -z ${GIT_CONFIG_KEY_0:-} ]] || fail "GIT_CONFIG_KEY_0 leaked into the parent shell"
 [[ -z ${GIT_CONFIG_VALUE_0:-} ]] || fail "GIT_CONFIG_VALUE_0 leaked into the parent shell"
