@@ -147,7 +147,7 @@ on:
 
 jobs:
   config-review:
-    uses: orang-gaboets/octostate/.github/workflows/config-review.yml@v1.2.0
+    uses: orang-gaboets/octostate/.github/workflows/config-review.yml@cc31d1e2332e71006f4d1cc7c70fa337ce7b8598
     permissions:
       contents: read
     with:
@@ -157,7 +157,7 @@ jobs:
       octostate_token: ${{ secrets.OCTOSTATE_TOKEN }}
 ```
 
-The `@v1.2.0` reference selects the reusable workflow file. The
+The immutable commit reference selects the reusable workflow file. The
 `octostate_version` input selects the CLI installed by that workflow; the two
 pins are independent and must be kept at compatible, trusted revisions. The
 input accepts a release-style tag such as `v1.2.0` or a full 40-character
