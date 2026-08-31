@@ -28,7 +28,7 @@ func ListOrgInvitationsCmd(svc organizations.Service) *cobra.Command {
 		Short:   "List pending invitations in a GitHub organization",
 		Long:    "Retrieve and display all pending invitations for a specified GitHub organization.",
 		Example: `
-			octostate organization list-invitations --token <token> --org <org-name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate organization list-invitations --org <org-name>
 			octostate organization list-invitations --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

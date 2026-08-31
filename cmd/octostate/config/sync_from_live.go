@@ -68,12 +68,12 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
-			octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
-			octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
-			octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
-			octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
-			octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
-			octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --write
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --write
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --write
 			octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir /path/to/control-repo/config --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --write`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			yamlBytes, writeResult, err := syncFromLiveConfig(

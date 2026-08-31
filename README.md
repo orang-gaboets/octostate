@@ -76,11 +76,13 @@ instead of `@latest` so their behavior is reproducible.
 
 Commands that contact GitHub require exactly one authentication method:
 
-- `--token`
+- `OCTOSTATE_GITHUB_TOKEN` (preferred for PAT authentication)
+- `--token` (supported for compatibility; the value can be visible through process inspection)
 - `--app-id`, `--installation-id`, and `--app-key-path`
 
-Examples use `$GITHUB_TOKEN` as a placeholder. Do not put tokens, private keys,
-or installation secrets in configuration files or documentation.
+Set `OCTOSTATE_GITHUB_TOKEN` in the environment for a PAT without placing it in
+the Octostate process arguments. Do not put tokens, private keys, or
+installation secrets in configuration files or documentation.
 
 `config validate` and `audit diff` are offline once their required files exist.
 The other GitOps commands read live GitHub state, and `config apply` can mutate
@@ -95,21 +97,25 @@ commands do not mutate GitHub:
 # Validate desired state without contacting GitHub
 octostate config validate --config-dir ./config
 
+# Prefer the environment-backed token source for live commands
+export OCTOSTATE_GITHUB_TOKEN="<token>"
+
 # Preview the live reconciliation plan
-octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config plan --config-dir ./config
 
 # Run best-effort, non-mutating apply preflight
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+octostate config apply --config-dir ./config --check
 ```
 
-Commands that pass `--token` may expose the token through process inspection.
-Use a short-lived, least-privilege credential and avoid shared systems.
+Use a short-lived, least-privilege credential and avoid shared systems. The
+legacy `--token` flag remains supported, but may expose the token through
+process inspection.
 
 Review the plan and preflight result before intentionally applying supported
 create/update actions:
 
 ```bash
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config
 ```
 
 > [!WARNING]

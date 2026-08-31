@@ -42,7 +42,7 @@ func PlanConfigCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
-			octostate config plan --token <token> --config-dir ./config
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config plan --config-dir ./config
 			octostate config plan --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			report, err := planConfig(

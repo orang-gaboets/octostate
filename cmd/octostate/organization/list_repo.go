@@ -28,7 +28,7 @@ func ListOrgReposCmd(svc repos.Service) *cobra.Command {
 		Short:   "List repositories in a GitHub organization",
 		Long:    "Retrieve and display all repositories belonging to a specified GitHub organization.",
 		Example: `
-			octostate organization list-repos --token <token> --org <org-name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate organization list-repos --org <org-name>
 			octostate organization list-repos --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --type all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

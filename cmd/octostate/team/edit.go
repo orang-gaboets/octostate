@@ -39,9 +39,9 @@ func EditTeamCmd(svc teams.Service) *cobra.Command {
 		Short:   "Edit an existing GitHub team",
 		Long:    "Edit an existing GitHub team by updating its name, description, privacy, and parent team.",
 		Example: `
-			octostate team edit --token <token> --org <org> --slug <team-slug> --desc "Updated description"
-			octostate team edit --token <token> --org <org> --slug <team-slug> --parent <parent-team-slug>
-			octostate team edit --token <token> --org <org> --slug <team-slug> --clear-parent --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team edit --org <org> --slug <team-slug> --desc "Updated description"
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team edit --org <org> --slug <team-slug> --parent <parent-team-slug>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team edit --org <org> --slug <team-slug> --clear-parent --dry-run
 			octostate team edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --name <new-team-name> --secret=false`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

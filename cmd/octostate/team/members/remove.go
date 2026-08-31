@@ -35,8 +35,8 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 		Short:   "Remove a user from a GitHub team",
 		Long:    "Remove a user's membership from a GitHub team by slug.",
 		Example: `
-			octostate team members remove --token <token> --org <org-name> --slug <team-slug> --username <username>
-			octostate team members remove --token <token> --org <org-name> --slug <team-slug> --username <username> --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team members remove --org <org-name> --slug <team-slug> --username <username>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team members remove --org <org-name> --slug <team-slug> --username <username> --dry-run
 			octostate team members remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug> --username <username>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

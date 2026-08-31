@@ -35,7 +35,7 @@ func AddTopicsCmd(svc topics.Service) *cobra.Command {
 		Short:   "Add topics to a GitHub repository",
 		Long:    "Add topics to a GitHub repository. This command adds new topics to the existing topics associated with a specified GitHub repository.",
 		Example: `
-			octostate topic add --token <token> --org <org> --name <name> --topics <topic1,topic2>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate topic add --org <org> --name <name> --topics <topic1,topic2>
 			octostate topic add --org <org> --name <name> --topics <topic1,topic2> --dry-run
 			octostate topic add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <name> --topics <topic1,topic2>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

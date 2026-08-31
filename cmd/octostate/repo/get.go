@@ -28,7 +28,7 @@ func GetRepoCmd(svc repos.Service) *cobra.Command {
 		Short:   "Get a GitHub repository",
 		Long:    "Retrieve details of a GitHub repository by owner and repository name.",
 		Example: `
-			octostate repo get --token <token> --org <org> --name <repo-name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate repo get --org <org> --name <repo-name>
 			octostate repo get --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

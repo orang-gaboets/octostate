@@ -37,8 +37,8 @@ func AddCmd(svc teams.Service) *cobra.Command {
 		Short:   "Grant repository permission to a GitHub team",
 		Long:    "Grant or update a GitHub team's permission on a repository.",
 		Example: `
-			octostate team repo permissions add --token <token> --org <org-name> --slug <team-slug> --repo <repo-name> --permission push
-			octostate team repo permissions add --token <token> --org <org-name> --slug <team-slug> --repo-org <repo-org> --repo <repo-name> --permission maintain --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team repo permissions add --org <org-name> --slug <team-slug> --repo <repo-name> --permission push
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team repo permissions add --org <org-name> --slug <team-slug> --repo-org <repo-org> --repo <repo-name> --permission maintain --dry-run
 			octostate team repo permissions add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug> --repo <repo-name> --permission pull`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

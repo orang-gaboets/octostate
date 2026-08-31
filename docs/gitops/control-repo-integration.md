@@ -96,23 +96,25 @@ A typical control-repo PR workflow is:
 
 ## Example CI Sequence
 
-The examples below use `$GITHUB_TOKEN` as a placeholder for a token with the
-required organization, repository, and team permissions. In some control
-repos, that may need to be a GitHub App installation token or PAT stored as a
-secret rather than the default Actions `GITHUB_TOKEN`.
+The examples below use `OCTOSTATE_GITHUB_TOKEN` for a token with the required
+organization, repository, and team permissions. In CI, map the appropriate
+short-lived PAT or GitHub App installation token into that environment variable
+instead of passing the secret through a command-line flag. The source may be a
+PAT stored as a secret rather than the default Actions `GITHUB_TOKEN`.
 
 For pull requests that change `config/organization.yaml`, a control repo can run:
 
 ```bash
+export OCTOSTATE_GITHUB_TOKEN="<token>"
 octostate config validate --config-dir ./config
-octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+octostate config plan --config-dir ./config
+octostate config apply --config-dir ./config --check
 ```
 
 After the PR is approved and merged, a post-merge workflow can run:
 
 ```bash
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config
 ```
 
 ## Example Layout

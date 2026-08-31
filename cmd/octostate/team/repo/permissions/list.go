@@ -28,7 +28,7 @@ func ListCmd(svc teams.Service) *cobra.Command {
 		Short:   "List repository permissions for a GitHub team",
 		Long:    "Retrieve repositories that a GitHub team can access, including the team's permissions for each repository.",
 		Example: `
-			octostate team repo permissions list --token <token> --org <org-name> --slug <team-slug>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team repo permissions list --org <org-name> --slug <team-slug>
 			octostate team repo permissions list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

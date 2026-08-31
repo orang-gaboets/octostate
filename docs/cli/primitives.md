@@ -5,8 +5,13 @@ instead of going through the desired-state file (`config/organization.yaml` in
 the common layout).
 
 Live primitive operations require GitHub authentication. Supply exactly one of:
-- `--token`
+- `OCTOSTATE_GITHUB_TOKEN` for the preferred non-argv PAT path
+- `--token` for compatibility with existing callers
 - `--app-id`, `--installation-id`, and `--app-key-path`
+
+Set `OCTOSTATE_GITHUB_TOKEN` in the environment before a PAT-authenticated
+command. The `--token` flag remains supported, but its value may be visible
+through process inspection.
 
 Mutating commands support `--dry-run` where noted. Live destructive delete
 commands require GitHub authentication and explicit `--yes`; delete proposal

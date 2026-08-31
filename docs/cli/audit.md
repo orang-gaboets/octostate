@@ -9,8 +9,8 @@ Authentication rules:
 - `octostate audit pull` requires GitHub auth.
 - `octostate audit diff` is fully offline once the snapshot exists.
 
-Examples below use `$GITHUB_TOKEN` where a live read is required, but
-`audit pull` also supports GitHub App authentication with `--app-id`,
+For PAT authentication, export `OCTOSTATE_GITHUB_TOKEN` before running a live
+read. `audit pull` also supports GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
 
 ## `octostate audit pull`
@@ -18,7 +18,8 @@ Examples below use `$GITHUB_TOKEN` where a live read is required, but
 Pull an actual-state snapshot from live GitHub.
 
 ```bash
-octostate audit pull --config-dir ./config --state-dir ./state --token <token>
+export OCTOSTATE_GITHUB_TOKEN="<token>"
+octostate audit pull --config-dir ./config --state-dir ./state
 ```
 
 Flags:
