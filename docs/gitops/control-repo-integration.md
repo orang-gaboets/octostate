@@ -115,6 +115,92 @@ After the PR is approved and merged, a post-merge workflow can run:
 octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
 ```
 
+## Optional Reusable Configuration-Review Workflow
+
+Octostate publishes
+`.github/workflows/config-review.yml` as optional convenience infrastructure
+for the common pre-merge review sequence. It is a public integration contract,
+not a replacement for the control repository's workflow policy.
+
+The called workflow runs these steps in order:
+
+1. `config validate`
+2. `config plan`
+3. `config apply --check`
+
+It never runs live `config apply`, creates repository objects, or emits
+workflow artifacts or custom outputs. The existing Octostate stdout, stderr,
+and exit-code behavior remains visible in the individual workflow steps.
+
+### Caller example
+
+The caller chooses when the review runs and pins both the workflow
+implementation and the CLI version:
+
+```yaml
+name: Configuration review
+
+on:
+  pull_request:
+    paths:
+      - config/**
+
+jobs:
+  config-review:
+    uses: orang-gaboets/octostate/.github/workflows/config-review.yml@v1.2.0
+    permissions:
+      contents: read
+    with:
+      config_dir: ./config
+      octostate_version: v1.2.0
+    secrets:
+      octostate_token: ${{ secrets.OCTOSTATE_TOKEN }}
+```
+
+The `@v1.2.0` reference selects the reusable workflow file. The
+`octostate_version` input selects the CLI installed by that workflow; the two
+pins are independent and must be kept at compatible, trusted revisions. The
+input accepts a release-style tag such as `v1.2.0` or a full 40-character
+commit SHA. Branch names and `latest` are rejected. Use an immutable commit
+SHA for the strongest reproducibility, and use a release tag only when the
+repository's normal release process is the intended compatibility boundary.
+
+### Contract and safety boundaries
+
+- `config_dir` is optional and defaults to `./config`; it must contain the
+  desired-state `organization.yaml` required by Octostate.
+- `octostate_token` is required and is passed explicitly as `--token` only to
+  the live plan and preflight steps. It may be a PAT or a pre-created GitHub
+  App installation token; this workflow does not mint credentials or accept a
+  private key.
+- The caller-supplied token must have the organization, repository, team, and
+  other read/preflight capabilities needed by the declared configuration. The
+  workflow's `contents: read` permission controls its automatic repository
+  token and does not reduce or expand the separate caller-supplied token.
+- Use a short-lived, least-privilege token. Because the current CLI accepts
+  authentication through `--token`, the token can be visible to process
+  inspection on a shared runner even though it is not echoed or persisted by
+  this workflow.
+- The caller owns triggers, trusted refs, fork-PR handling, approvals, branch
+  protection, environments, notifications, and any later live apply. Do not
+  check out an untrusted pull-request head while exposing
+  `octostate_token` to the job.
+- `config apply --check` is best-effort, non-mutating preflight. It is not a
+  transactional dry run and does not guarantee that a later `config apply`
+  will succeed.
+
+Advanced consumers may continue invoking the CLI directly when they need
+custom triggers, authentication handling, output persistence, approval policy,
+or command sequences. This workflow is intentionally one common Octostate
+automation pattern; it does not establish a reusable wrapper for every CLI
+command or flag combination.
+
+This optional consumer workflow is separate from the trusted live-integration
+sandbox tracked by [issue #248](https://github.com/orang-gaboets/octostate/issues/248)
+and does not depend on that issue's #247 prerequisite. It does not provide
+mutation credentials, test the `octostate-test` organization, or replace that
+maintainer-operated workflow.
+
 ## Example Layout
 
 A control repo could use a layout like this:
