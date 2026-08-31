@@ -50,7 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Verify Bash syntax
         run: |
@@ -70,6 +71,9 @@ jobs:
 
       - name: Test release approval gate
         run: bash .github/scripts/release-approval-gate.test.sh
+
+      - name: Test Git remote authentication helper
+        run: bash .github/scripts/git-remote-auth.test.sh
 
   build:
     runs-on: ubuntu-latest
