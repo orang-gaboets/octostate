@@ -32,7 +32,7 @@ source "$script_dir/git-remote-auth.sh"
 
 for expected_status in 0 2 7; do
 	stub_status=$expected_status
-	if git_ls_remote_with_app_token "$token" --exit-code --heads origin main; then
+	if git_with_app_token "$token" ls-remote --exit-code --heads origin main; then
 		actual_status=0
 	else
 		actual_status=$?

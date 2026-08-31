@@ -35,10 +35,13 @@ jobs:
       - name: Pin trusted main
         id: base
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git_with_app_token "$GH_TOKEN" \
+            fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           base_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           git switch --detach "$base_sha"
 
@@ -226,8 +229,8 @@ jobs:
           fi
 
           branch_status=0
-          git_ls_remote_with_app_token "$GH_TOKEN" \
-            --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          git_with_app_token "$GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
           if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch already exists: $BRANCH_NAME" >&2
             exit 1
@@ -316,7 +319,8 @@ jobs:
           scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
           mkdir -p "$scratch_dir"
 
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git_with_app_token "$GH_TOKEN" \
+            fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
             echo "origin/main moved from $BASE_SHA to $current_main_sha; aborting remediation." >&2
@@ -341,8 +345,8 @@ jobs:
           fi
 
           branch_status=0
-          git_ls_remote_with_app_token "$GH_TOKEN" \
-            --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          git_with_app_token "$GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
           if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
             exit 1
@@ -400,7 +404,8 @@ jobs:
             echo "This PR is intentionally draft-only and must not be auto-approved, marked ready, merged, force-updated, deleted, or rewritten by automation."
           } > "$body_file"
 
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git_with_app_token "$GH_TOKEN" \
+            fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           current_main_sha="$(git rev-parse --verify 'origin/main^{commit}')"
           if [ "$current_main_sha" != "$BASE_SHA" ]; then
             echo "origin/main moved from $BASE_SHA to $current_main_sha before branch creation; aborting remediation." >&2
@@ -424,8 +429,8 @@ jobs:
           fi
 
           branch_status=0
-          git_ls_remote_with_app_token "$GH_TOKEN" \
-            --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
+          git_with_app_token "$GH_TOKEN" \
+            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
           if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
             exit 1
