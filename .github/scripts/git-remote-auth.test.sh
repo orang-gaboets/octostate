@@ -27,6 +27,7 @@ git() {
 }
 
 unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+# shellcheck source=./git-remote-auth.sh
 source "$script_dir/git-remote-auth.sh"
 
 for expected_status in 0 2 7; do
