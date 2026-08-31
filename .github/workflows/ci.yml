@@ -45,6 +45,51 @@ jobs:
       - name: Run actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
+      - name: Validate pinned GitHub App action inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          app_token_action='actions/create-github-app-token'
+          if ! action_refs="$(
+            rg -No "uses: ${app_token_action}@[^[:space:]]+" .github/workflows \
+              | sed 's/.*@//' \
+              | sort -u
+          )"; then
+            echo 'Expected at least one create-github-app-token use.' >&2
+            exit 1
+          fi
+          if [ -z "$action_refs" ] || [[ "$action_refs" == *$'\n'* ]]; then
+            echo "Expected exactly one pinned create-github-app-token ref." >&2
+            exit 1
+          fi
+          action_sha="$action_refs"
+          if [[ ! "$action_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "create-github-app-token must use a full commit SHA, got $action_sha." >&2
+            exit 1
+          fi
+
+          metadata_root="$(mktemp -d)"
+          trap 'rm -rf "$metadata_root"' EXIT
+          mkdir -p "$metadata_root/.git" "$metadata_root/.github/workflows" "$metadata_root/$app_token_action/dist"
+          gh api \
+            "repos/$app_token_action/contents/action.yml?ref=$action_sha" \
+            --jq '.content' \
+            | base64 --decode > "$metadata_root/$app_token_action/action.yml"
+          touch "$metadata_root/$app_token_action/dist/main.cjs" \
+            "$metadata_root/$app_token_action/dist/post.cjs"
+
+          for workflow in .github/workflows/*.yml; do
+            sed "s#${app_token_action}@$action_sha#./$app_token_action#g" \
+              "$workflow" > "$metadata_root/.github/workflows/$(basename "$workflow")"
+          done
+
+          (
+            cd "$metadata_root"
+            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          )
+
   release-approval-gate:
     name: Release approval gate
     runs-on: ubuntu-latest
