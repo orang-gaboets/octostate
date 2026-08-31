@@ -22,6 +22,8 @@ type Client interface {
 	Users() users.Service
 }
 
+const githubTokenEnv = "OCTOSTATE_GITHUB_TOKEN"
+
 type githubClientWrapper struct {
 	*gh.Client
 }
@@ -101,6 +103,9 @@ func ResetClients() {
 // Exactly one authentication method must be supplied: either a personal access token
 // or a GitHub App's credentials.
 func NewClient(ctx context.Context, token string, appID, installationID int64, appKeyPath string) (Client, error) {
+	if token == "" {
+		token = os.Getenv(githubTokenEnv)
+	}
 	tokenProvided := token != ""
 	appProvided := appID > 0 || installationID > 0 || appKeyPath != ""
 

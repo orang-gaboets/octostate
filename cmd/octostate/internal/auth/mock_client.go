@@ -217,6 +217,7 @@ func mockNewAppClient(_, _ int64, _ string) (Client, error) {
 func PrepareClient(t *testing.T) {
 	t.Helper()
 	t.Cleanup(ResetClients)
+	t.Setenv(githubTokenEnv, "")
 
 	SetNewPATClient(mockNewPATClient)
 	SetNewAppClient(mockNewAppClient)
