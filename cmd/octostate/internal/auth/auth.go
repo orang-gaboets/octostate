@@ -103,10 +103,11 @@ func ResetClients() {
 // Exactly one authentication method must be supplied: either a personal access token
 // or a GitHub App's credentials.
 func NewClient(ctx context.Context, token string, appID, installationID int64, appKeyPath string) (Client, error) {
+	tokenProvided := token != "" && token != explicitEmptyToken
 	if token == "" {
 		token = os.Getenv(githubTokenEnv)
+		tokenProvided = token != ""
 	}
-	tokenProvided := token != ""
 	appProvided := appID > 0 || installationID > 0 || appKeyPath != ""
 
 	switch {

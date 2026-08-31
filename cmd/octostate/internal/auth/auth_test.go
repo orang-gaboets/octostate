@@ -9,6 +9,7 @@ import (
 	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	githubclient "github.com/orang-gaboets/octostate/pkg/github/client"
+	"github.com/spf13/cobra"
 )
 
 func TestNewClientPATConstructorError(t *testing.T) {
@@ -86,6 +87,30 @@ func TestNewClientExplicitTokenTakesPrecedenceOverEnvironment(t *testing.T) {
 	}
 	if gotToken != "explicit-token" {
 		t.Fatalf("expected explicit token, got %q", gotToken)
+	}
+}
+
+func TestAddFlagsExplicitEmptyTokenDoesNotUseEnvironment(t *testing.T) {
+	t.Setenv("OCTOSTATE_GITHUB_TOKEN", "environment-token")
+	t.Cleanup(ResetClients)
+	SetNewPATClient(func(_ context.Context, token string) (Client, error) {
+		t.Fatalf("unexpected PAT client construction with token %q", token)
+		return nil, nil
+	})
+
+	var token string
+	cmd := &cobra.Command{
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := NewClient(cmd.Context(), token, 0, 0, "")
+			return err
+		},
+	}
+	AddFlags(cmd, &token, new(int64), new(int64), new(string))
+	cmd.SetArgs([]string{"--token="})
+
+	err := cmd.Execute()
+	if !errors.Is(err, github.ErrNoValidCredentials) {
+		t.Fatalf("expected %v, got %v", github.ErrNoValidCredentials, err)
 	}
 }
 
