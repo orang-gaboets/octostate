@@ -105,7 +105,7 @@ jobs:
 
           app_token_action='actions/create-github-app-token'
           if ! action_refs="$(
-            rg -No "uses: ${app_token_action}@[^[:space:]]+" .github/workflows \
+            grep -RhoE "uses: ${app_token_action}@[^[:space:]]+" .github/workflows \
               | sed 's/.*@//' \
               | sort -u
           )"; then
