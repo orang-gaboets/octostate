@@ -74,7 +74,7 @@ jobs:
             when Array
               node.any? { |entry| privileged?(entry) }
             when String
-              node.include?("secrets.")
+              node.match?(/\bsecrets(?:\.|\[)/)
             else
               false
             end
