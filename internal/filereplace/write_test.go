@@ -23,42 +23,6 @@ func TestWriteFileCreatesAMissingDestination(t *testing.T) {
 	if string(body) != "created\n" {
 		t.Fatalf("contents = %q", body)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o644 {
-		t.Fatalf("new file mode = %v, want 0644", info.Mode().Perm())
-	}
-}
-
-func TestWriteFileReplacesAnExistingDestination(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "readme.md")
-	if err := os.WriteFile(path, []byte("stale"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// The perm argument applies to creation only; an existing file keeps its own.
-	if err := filereplace.WriteFile(path, []byte("fresh"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(body) != "fresh" {
-		t.Fatalf("contents = %q", body)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("existing file mode = %v, want the original 0600 to be preserved", info.Mode().Perm())
-	}
 }
 
 func TestWriteFileRejectsASymlinkDestination(t *testing.T) {

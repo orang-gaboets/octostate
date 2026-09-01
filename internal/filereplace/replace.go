@@ -47,7 +47,7 @@ func Replace(path string, contents []byte) error {
 		return err
 	}
 
-	return writeAtomic(path, contents, info.Mode().Perm())
+	return writeAtomic(path, contents, info.Mode().Perm(), true)
 }
 
 // WriteFile atomically writes contents to path, creating the file when it does
@@ -63,6 +63,7 @@ func WriteFile(path string, contents []byte, perm os.FileMode) error {
 		return fmt.Errorf("path is required")
 	}
 
+	destinationExists := false
 	switch _, err := os.Lstat(path); {
 	case err == nil:
 		existing, statErr := StatExistingRegularFile(path)
@@ -70,18 +71,19 @@ func WriteFile(path string, contents []byte, perm os.FileMode) error {
 			return statErr
 		}
 		perm = existing.Mode().Perm()
+		destinationExists = true
 	case errors.Is(err, fs.ErrNotExist):
 		// Creating the destination; perm applies as given.
 	default:
 		return fmt.Errorf("stat destination %s: %w", path, err)
 	}
 
-	return writeAtomic(path, contents, perm)
+	return writeAtomic(path, contents, perm, destinationExists)
 }
 
 // writeAtomic stages contents in a same-directory temporary file and commits it
 // over path, so a reader never observes a partially written file.
-func writeAtomic(path string, contents []byte, perm os.FileMode) error {
+func writeAtomic(path string, contents []byte, perm os.FileMode, destinationExists bool) error {
 	dir := filepath.Dir(path)
 	tempFile, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
 	if err != nil {
@@ -113,9 +115,18 @@ func writeAtomic(path string, contents []byte, perm os.FileMode) error {
 		return fmt.Errorf("close temporary file %s: %w", tempPath, err)
 	}
 
-	if keepTemp, err := replaceFile(tempPath, path); err != nil {
-		keepTempOnFailure = keepTemp
-		return fmt.Errorf("replace existing file %s: %w", path, err)
+	if destinationExists {
+		if keepTemp, err := replaceFile(tempPath, path); err != nil {
+			keepTempOnFailure = keepTemp
+			return fmt.Errorf("replace existing file %s: %w", path, err)
+		}
+	} else {
+		// Windows ReplaceFileW requires an existing destination, so it cannot
+		// commit a newly created file. A plain rename is the correct commit
+		// here and is atomic on both platforms.
+		if err := os.Rename(tempPath, path); err != nil {
+			return fmt.Errorf("create file %s: %w", path, err)
+		}
 	}
 	replaced = true
 
