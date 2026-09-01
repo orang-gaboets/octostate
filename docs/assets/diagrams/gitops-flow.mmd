@@ -1,0 +1,9 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#f6f8fa","primaryColor":"#ffffff","primaryTextColor":"#24292f","primaryBorderColor":"#57606a","lineColor":"#57606a","fontFamily":"Arial, Helvetica, sans-serif"}}}%%
+flowchart TB
+    desired["Desired state"] --> validate["config validate"]
+    validate --> plan["config plan"]
+    plan --> check["config apply --check"]
+    check --> review["Review / approval"]
+    review --> apply["config apply"]
+    apply --> pull["audit pull (optional)"]
+    pull --> diff["audit diff (offline)"]

@@ -31,16 +31,7 @@ engine.
 
 ## GitOps at a glance
 
-```mermaid
-flowchart LR
-    desired["Desired state"] --> validate["config validate"]
-    validate --> plan["config plan"]
-    plan --> check["config apply --check"]
-    check --> review["Review / approval"]
-    review --> apply["config apply"]
-    apply --> pull["audit pull (optional)"]
-    pull --> diff["audit diff (offline)"]
-```
+![Octostate GitOps flow from desired state through validation, planning, preflight, review, apply, and audit](docs/assets/diagrams/gitops-flow.svg)
 
 A minimal desired-state file looks like this:
 
