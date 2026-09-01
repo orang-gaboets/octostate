@@ -27,7 +27,7 @@ func GetOrgByNameCmd(svc organizations.Service) *cobra.Command {
 		Short:   "Get organization details by name",
 		Long:    "Retrieve details of a GitHub organization by its name.",
 		Example: `
-			octostate organization get-by-name --token <token> --org <org-name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate organization get-by-name --org <org-name>
 			octostate organization get-by-name --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

@@ -13,12 +13,17 @@ For the canonical field-by-field schema, see
 Authentication rules:
 - `octostate config validate` is fully offline and does not require GitHub auth.
 - The other `config` commands require exactly one auth method:
-  - `--token`
+  - `OCTOSTATE_GITHUB_TOKEN` (preferred for PAT authentication)
+  - `--token` (supported for compatibility)
   - `--app-id`, `--installation-id`, and `--app-key-path`
 
-Examples below mostly use `$GITHUB_TOKEN` for brevity, but the same live
-commands also support GitHub App authentication with `--app-id`,
+Set `OCTOSTATE_GITHUB_TOKEN` before the PAT-authenticated examples below. The
+same live commands also support GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
+
+When `--token` is supplied, including as `--token=`, it takes precedence over
+`OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
+`GITHUB_TOKEN`.
 
 ## Command Comparison
 
@@ -100,8 +105,9 @@ Build or update desired state from live GitHub.
 ### Bootstrap desired-state config from live GitHub state
 
 ```bash
-octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token>
-octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token <token> --write
+export OCTOSTATE_GITHUB_TOKEN="<token>"
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --write
 ```
 
 Flags:
@@ -109,7 +115,7 @@ Flags:
 - `--org` (required): GitHub organization to read from live state
 - `--config-dir` (required): Path to the config directory containing or receiving `organization.yaml`
 - `--write`: Write the generated `organization.yaml` into `--config-dir` instead of printing YAML to stdout
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -141,20 +147,20 @@ Write behavior:
 Example print-to-stdout use:
 
 ```bash
-octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config
 ```
 
 Example write use:
 
 ```bash
-octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --write
 ```
 
 ### Adopt supported live state into an existing desired config
 
 ```bash
-octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token>
-octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token <token> --write
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --write
 ```
 
 Behavior:
@@ -183,20 +189,20 @@ Adopt rules:
 Example print-to-stdout use:
 
 ```bash
-octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config
 ```
 
 Example write use:
 
 ```bash
-octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./config --write
 ```
 
 ### Materialize unmanaged repository fields in an existing desired config
 
 ```bash
-octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token>
-octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token <token> --write
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --write
 ```
 
 Behavior:
@@ -225,13 +231,13 @@ Materialize rules:
 Example print-to-stdout use:
 
 ```bash
-octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config
 ```
 
 Example write use:
 
 ```bash
-octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --token "$GITHUB_TOKEN" --write
+octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config --write
 ```
 
 ## `octostate config plan`
@@ -239,12 +245,12 @@ octostate config sync-from-live --mode materialize --org orang-gaboets --config-
 Preview the live reconciliation plan.
 
 ```bash
-octostate config plan --config-dir ./config --token <token>
+octostate config plan --config-dir ./config
 ```
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -277,7 +283,7 @@ Action behavior:
 Example use:
 
 ```bash
-octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config plan --config-dir ./config
 ```
 
 ## `octostate config apply`
@@ -285,16 +291,16 @@ octostate config plan --config-dir ./config --token "$GITHUB_TOKEN"
 Apply supported reconciliation changes.
 
 ```bash
-octostate config apply --config-dir ./config --token <token> --check
-octostate config apply --config-dir ./config --token <token> --dry-run
-octostate config apply --config-dir ./config --token <token>
+octostate config apply --config-dir ./config --check
+octostate config apply --config-dir ./config --dry-run
+octostate config apply --config-dir ./config
 ```
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--check`: Run apply preflight validation without mutating GitHub
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
-- `--token`: GitHub personal access token (required if using PAT authentication)
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
@@ -353,17 +359,17 @@ Exit codes:
 Example check:
 
 ```bash
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --check
+octostate config apply --config-dir ./config --check
 ```
 
 Example dry-run:
 
 ```bash
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN" --dry-run
+octostate config apply --config-dir ./config --dry-run
 ```
 
 Example live apply:
 
 ```bash
-octostate config apply --config-dir ./config --token "$GITHUB_TOKEN"
+octostate config apply --config-dir ./config
 ```

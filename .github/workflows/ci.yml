@@ -40,6 +40,109 @@ jobs:
       - name: Run actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
+      - name: Validate pinned GitHub App action inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ruby -ryaml <<'RUBY'
+          def write_permission?(value)
+            case value
+            when String
+              %w[write write-all].include?(value)
+            when Hash
+              value.values.any? { |entry| write_permission?(entry) }
+            else
+              false
+            end
+          end
+
+          def privileged?(node)
+            case node
+            when Hash
+              node.any? do |key, value|
+                (key.to_s == "permissions" && write_permission?(value)) ||
+                  (key.to_s == "secrets" && (value == "inherit" || value.is_a?(Hash))) ||
+                  privileged?(value)
+              end
+            when Array
+              node.any? { |entry| privileged?(entry) }
+            when String
+              node.match?(/\$\{\{[^}]*\bsecrets(?:\.|\[)/)
+            else
+              false
+            end
+          end
+
+          def action_refs(node)
+            case node
+            when Hash
+              node.each_with_object([]) do |(key, value), refs|
+                refs << value if key.to_s == "uses" && value.is_a?(String)
+                refs.concat(action_refs(value))
+              end
+            when Array
+              node.flat_map { |entry| action_refs(entry) }
+            else
+              []
+            end
+          end
+
+          Dir[".github/workflows/*.{yml,yaml}"].sort.each do |path|
+            workflow = YAML.safe_load(File.read(path), aliases: true)
+            next unless privileged?(workflow)
+
+            action_refs(workflow).each do |action|
+              next if action.start_with?("./")
+              ref = action.split("@", 2)[1]
+              next if ref&.match?(/\A[0-9a-f]{40}\z/)
+
+              abort "#{path} contains an unpinned privileged Action: #{action}"
+            end
+          end
+          RUBY
+
+          app_token_action='actions/create-github-app-token'
+          if ! action_refs="$(
+            grep -RhoE "uses: ${app_token_action}@[^[:space:]]+" .github/workflows \
+              | sed 's/.*@//' \
+              | sort -u
+          )"; then
+            echo 'Expected at least one create-github-app-token use.' >&2
+            exit 1
+          fi
+          if [ -z "$action_refs" ] || [[ "$action_refs" == *$'\n'* ]]; then
+            echo "Expected exactly one pinned create-github-app-token ref." >&2
+            exit 1
+          fi
+          action_sha="$action_refs"
+          if [[ ! "$action_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "create-github-app-token must use a full commit SHA, got $action_sha." >&2
+            exit 1
+          fi
+
+          metadata_root="$(mktemp -d)"
+          trap 'rm -rf "$metadata_root"' EXIT
+          mkdir -p "$metadata_root/.git" "$metadata_root/.github/workflows" "$metadata_root/$app_token_action/dist"
+          gh api \
+            "repos/$app_token_action/contents/action.yml?ref=$action_sha" \
+            --jq '.content' \
+            | base64 --decode > "$metadata_root/$app_token_action/action.yml"
+          touch "$metadata_root/$app_token_action/dist/main.cjs" \
+            "$metadata_root/$app_token_action/dist/post.cjs"
+
+          for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [[ -f "$workflow" ]] || continue
+            sed "s#${app_token_action}@$action_sha#./$app_token_action#g" \
+              "$workflow" > "$metadata_root/.github/workflows/$(basename "$workflow")"
+          done
+
+          (
+            cd "$metadata_root"
+            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          )
+
   release-approval-gate:
     name: Release approval gate
     runs-on: ubuntu-latest
@@ -51,6 +154,8 @@ jobs:
         run: |
           bash -n .github/scripts/release-approval-gate.sh
           bash -n .github/scripts/release-approval-gate.test.sh
+          bash -n .github/scripts/git-remote-auth.sh
+          bash -n .github/scripts/git-remote-auth.test.sh
 
       - name: Run ShellCheck v0.11.0
         run: >
@@ -62,9 +167,14 @@ jobs:
           -P SCRIPTDIR
           .github/scripts/release-approval-gate.sh
           .github/scripts/release-approval-gate.test.sh
+          .github/scripts/git-remote-auth.sh
+          .github/scripts/git-remote-auth.test.sh
 
       - name: Test release approval gate
         run: bash .github/scripts/release-approval-gate.test.sh
+
+      - name: Test Git remote authentication helper
+        run: bash .github/scripts/git-remote-auth.test.sh
 
   build:
     runs-on: ubuntu-latest

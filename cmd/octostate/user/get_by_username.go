@@ -27,7 +27,7 @@ func GetUserByUsernameCmd(svc users.Service) *cobra.Command {
 		Short:   "Get user details by username",
 		Long:    "Retrieve details of a GitHub user by their username.",
 		Example: `
-			octostate user get-by-username --token <token> --username <username>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate user get-by-username --username <username>
 			octostate user get-by-username --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --username <username>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

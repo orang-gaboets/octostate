@@ -40,7 +40,7 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 		Short:   "Create GitHub repositories from a template",
 		Long:    "Create a new GitHub repository from a template repository, optionally specifying organization, name, description, topics, and privacy settings.",
 		Example: `
-			octostate repo create-from-template --token <token> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate repo create-from-template --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true
 			octostate repo create-from-template --org <org> --template-name <template-name> --name <new-repo-name> --dry-run
 			octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

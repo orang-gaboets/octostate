@@ -121,6 +121,11 @@ installation, secret values, or branch ruleset configuration have already been
 verified. The maintenance App must not be a `main` branch or ruleset bypass
 actor.
 
+The remediation workflow sources `.github/scripts/git-remote-auth.sh` for its
+three authenticated branch-existence checks. The helper supplies the App token
+through Git's environment-backed configuration, keeping it out of the `git`
+process argument list and limiting the credential to each command invocation.
+
 When the classifier finds an eligible same-minor Go patch upgrade, the
 remediation workflow proposes a draft PR from a deterministic branch named
 `ci/go-toolchain-X.Y.Z`. The generated commit and PR title are both

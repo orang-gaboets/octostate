@@ -26,7 +26,7 @@ func GetTeamBySlugCmd(svc teams.Service) *cobra.Command {
 		Short:   "Get a GitHub team by its slug",
 		Long:    "Retrieve a GitHub team by its slug within an organization.",
 		Example: `
-			octostate team get-by-slug --token <token> --org <org> --slug <team-slug>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team get-by-slug --org <org> --slug <team-slug>
 			octostate team get-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

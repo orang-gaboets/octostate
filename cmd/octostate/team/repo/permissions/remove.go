@@ -36,8 +36,8 @@ func RemoveCmd(svc teams.Service) *cobra.Command {
 		Short:   "Remove repository permission from a GitHub team",
 		Long:    "Remove a GitHub team's access to a repository.",
 		Example: `
-			octostate team repo permissions remove --token <token> --org <org-name> --slug <team-slug> --repo <repo-name>
-			octostate team repo permissions remove --token <token> --org <org-name> --slug <team-slug> --repo-org <repo-org> --repo <repo-name> --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team repo permissions remove --org <org-name> --slug <team-slug> --repo <repo-name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team repo permissions remove --org <org-name> --slug <team-slug> --repo-org <repo-org> --repo <repo-name> --dry-run
 			octostate team repo permissions remove --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug> --repo <repo-name>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

@@ -39,7 +39,7 @@ func DeleteRepoCmd(svc repos.Service) *cobra.Command {
 			octostate repo delete --org <org> --name <repo-name> --to-config <path-to-organization.yaml>
 
 			# Live mode (auth required; --yes required)
-			octostate repo delete --token <token> --org <org> --name <repo-name> --yes
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate repo delete --org <org> --name <repo-name> --yes
 			octostate repo delete --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> --yes
 
 			# Dry-run mode (no auth or --yes; not with --to-config)

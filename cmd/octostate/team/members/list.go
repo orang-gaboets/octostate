@@ -29,7 +29,7 @@ func ListCmd(svc teams.Service) *cobra.Command {
 		Short:   "List members in a GitHub team",
 		Long:    "Retrieve and display members belonging to a specified GitHub team.",
 		Example: `
-			octostate team members list --token <token> --org <org-name> --slug <team-slug>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team members list --org <org-name> --slug <team-slug>
 			octostate team members list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug> --role maintainer`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

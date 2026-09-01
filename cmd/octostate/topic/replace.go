@@ -35,7 +35,7 @@ func ReplaceAllTopicsCmd(svc topics.Service) *cobra.Command {
 		Short:   "Replace all topics in a GitHub repository",
 		Long:    "Replace all topics in a GitHub repository. This command replaces the existing topics associated with a specified GitHub repository with new ones.",
 		Example: `
-			octostate topic replace --token <token> --org <org> --name <name> --topics <topic1,topic2>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate topic replace --org <org> --name <name> --topics <topic1,topic2>
 			octostate topic replace --org <org> --name <name> --topics <topic1,topic2> --dry-run
 			octostate topic replace --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <name> --topics <topic1,topic2>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

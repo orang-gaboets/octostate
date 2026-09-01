@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -45,7 +46,8 @@ jobs:
           echo "Pinned origin/main at $base_sha"
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        # actions/setup-go v7.0.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
           cache: true
@@ -196,6 +198,7 @@ jobs:
           TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
         run: |
           set -euo pipefail
+          source .github/scripts/git-remote-auth.sh
 
           scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
           mkdir -p "$scratch_dir"
@@ -223,7 +226,7 @@ jobs:
           fi
 
           branch_status=0
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+          git_with_app_token "$GH_TOKEN" \
             ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
           if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch already exists: $BRANCH_NAME" >&2
@@ -261,7 +264,8 @@ jobs:
 
       - name: Set up candidate Go
         if: steps.existing-work.outputs.proceed == 'true'
-        uses: actions/setup-go@v7
+        # actions/setup-go v7.0.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version-file: go.mod
           cache: true
@@ -307,6 +311,7 @@ jobs:
           TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
         run: |
           set -euo pipefail
+          source .github/scripts/git-remote-auth.sh
 
           scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
           mkdir -p "$scratch_dir"
@@ -336,7 +341,7 @@ jobs:
           fi
 
           branch_status=0
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+          git_with_app_token "$GH_TOKEN" \
             ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
           if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
@@ -363,6 +368,7 @@ jobs:
           TARGET_VERSION: ${{ steps.classification.outputs.target_version }}
         run: |
           set -euo pipefail
+          source .github/scripts/git-remote-auth.sh
 
           scratch_dir="${RUNNER_TEMP}/go-toolchain-remediation"
           mkdir -p "$scratch_dir"
@@ -418,7 +424,7 @@ jobs:
           fi
 
           branch_status=0
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+          git_with_app_token "$GH_TOKEN" \
             ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
           if [ "$branch_status" -eq 0 ]; then
             echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2

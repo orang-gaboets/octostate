@@ -39,7 +39,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 		Short: "Edit an existing GitHub repository",
 		Long:  "Edit an existing GitHub repository by updating its description, homepage, privacy settings, template status, archived status, and forking permissions.",
 		Example: `
-			octostate repo edit --token <token> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate repo edit --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true
 			octostate repo edit --org <org> --name <repo-name> --desc "New description" --dry-run
 			octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

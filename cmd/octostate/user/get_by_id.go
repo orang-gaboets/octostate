@@ -25,7 +25,7 @@ func GetUserByIDCmd(svc users.Service) *cobra.Command {
 		Short:   "Get user details by ID",
 		Long:    "Retrieve details of a GitHub user by their ID.",
 		Example: `
-			octostate user get-by-id --token <token> --id <user-id>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate user get-by-id --id <user-id>
 			octostate user get-by-id --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --id <user-id>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

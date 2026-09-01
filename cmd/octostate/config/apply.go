@@ -56,9 +56,9 @@ func ApplyConfigCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
-			octostate config apply --token <token> --config-dir ./config --check
-			octostate config apply --token <token> --config-dir ./config --dry-run
-			octostate config apply --token <token> --config-dir ./config
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --check
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config
 			octostate config apply --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if check && dryRun {

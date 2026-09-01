@@ -49,7 +49,7 @@ func PullCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
-			octostate audit pull --token <token> --config-dir ./config --state-dir ./state
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate audit pull --config-dir ./config --state-dir ./state
 			octostate audit pull --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config --state-dir /path/to/control-repo/state`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			result, err := pullActualState(

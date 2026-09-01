@@ -126,14 +126,16 @@ Set a token without placing it in the configuration file:
 
 ```bash
 printf 'GitHub token: '
-read -r -s GITHUB_TOKEN
+read -r -s OCTOSTATE_GITHUB_TOKEN
 printf '\n'
-export GITHUB_TOKEN
+export OCTOSTATE_GITHUB_TOKEN
 ```
 
-The commands below pass the token through `--token`, so it may be visible to
-process inspection or diagnostics on a shared system. Use a short-lived,
+The commands below use the environment-backed token source, so the token is
+not placed in the Octostate process arguments. Use a short-lived,
 least-privilege credential and avoid running these commands on shared systems.
+The supported `--token` flag remains available for compatibility, but its value
+may be visible to process inspection or diagnostics.
 
 Run validation again after replacing the fictional values:
 
@@ -150,8 +152,7 @@ Build a deterministic reconciliation preview:
 
 ```bash
 octostate config plan \
-  --config-dir ./config \
-  --token "$GITHUB_TOKEN"
+  --config-dir ./config
 ```
 
 Review the executable actions and skipped drift. A plan is a preview; it does
@@ -164,7 +165,6 @@ Run the supported apply-path checks before considering any write:
 ```bash
 octostate config apply \
   --config-dir ./config \
-  --token "$GITHUB_TOKEN" \
   --check
 ```
 
@@ -183,8 +183,7 @@ are correct:
 
 ```bash
 octostate config apply \
-  --config-dir ./config \
-  --token "$GITHUB_TOKEN"
+  --config-dir ./config
 ```
 
 `config apply` executes the supported create/update portion of the plan. It does
@@ -197,8 +196,7 @@ Pull a normalized actual-state snapshot:
 ```bash
 octostate audit pull \
   --config-dir ./config \
-  --state-dir ./state \
-  --token "$GITHUB_TOKEN"
+  --state-dir ./state
 ```
 
 This reads GitHub without mutating it and writes:
@@ -223,7 +221,7 @@ If a command fails or you stop it with Ctrl-C, remove the token before
 continuing. When finished, remove the token from the environment:
 
 ```bash
-unset GITHUB_TOKEN
+unset OCTOSTATE_GITHUB_TOKEN
 ```
 
 The audit path can run after an intentional apply or independently to inspect

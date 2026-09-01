@@ -37,7 +37,7 @@ func CreateTeamCmd(svc teams.Service) *cobra.Command {
 		Short:   "Create a new GitHub team",
 		Long:    "Create a new team in a GitHub organization.",
 		Example: `
-			octostate team create --token <token> --org <org> --name <team-name> --desc "Team description" --secret=false --parent <parent-team-slug>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team create --org <org> --name <team-name> --desc "Team description" --secret=false --parent <parent-team-slug>
 			octostate team create --org <org> --name <team-name> --dry-run
 			octostate team create --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <team-name> --desc "Team description" --secret=false --parent <parent-team-slug>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

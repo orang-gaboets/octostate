@@ -26,7 +26,7 @@ func ListAllTopicsCmd(svc topics.Service) *cobra.Command {
 		Short:   "List all topics in a GitHub repository",
 		Long:    "List all topics in a GitHub repository. This command retrieves and displays all topics associated with a specified GitHub repository.",
 		Example: `
-			octostate topic list --token <token> --org <org> --name <name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate topic list --org <org> --name <name>
 			octostate topic list --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <name>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

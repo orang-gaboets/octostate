@@ -36,8 +36,8 @@ func AddCmd(svc teams.Service) *cobra.Command {
 		Short:   "Add or update a user in a GitHub team",
 		Long:    "Add a user to a GitHub team by slug, or update their team membership role.",
 		Example: `
-			octostate team members add --token <token> --org <org-name> --slug <team-slug> --username <username>
-			octostate team members add --token <token> --org <org-name> --slug <team-slug> --username <username> --role maintainer --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team members add --org <org-name> --slug <team-slug> --username <username>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team members add --org <org-name> --slug <team-slug> --username <username> --role maintainer --dry-run
 			octostate team members add --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --slug <team-slug> --username <username> --role member`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()

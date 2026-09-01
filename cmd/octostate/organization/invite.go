@@ -36,7 +36,7 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 		Short:   "Invite a user to an organization",
 		Long:    "Invite a user to a GitHub organization by their user ID or username.",
 		Example: `
-			octostate organization invite --token <token> --org <org-name> --id <user-id>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate organization invite --org <org-name> --id <user-id>
 			octostate organization invite --org <org-name> --username <username> --dry-run
 			octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --username <username>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {

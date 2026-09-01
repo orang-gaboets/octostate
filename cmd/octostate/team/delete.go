@@ -39,7 +39,7 @@ func DeleteTeamBySlugCmd(svc teams.Service) *cobra.Command {
 			octostate team delete-by-slug --org <org> --slug <team-slug> --to-config <path-to-organization.yaml>
 
 			# Live mode (auth required; --yes required)
-			octostate team delete-by-slug --token <token> --org <org> --slug <team-slug> --yes
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate team delete-by-slug --org <org> --slug <team-slug> --yes
 			octostate team delete-by-slug --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --slug <team-slug> --yes
 
 			# Dry-run mode (no auth or --yes; not with --to-config)

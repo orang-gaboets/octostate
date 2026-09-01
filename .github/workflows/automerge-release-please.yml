@@ -40,7 +40,8 @@ jobs:
           RELEASE_PLEASE_APP_CLIENT_ID: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
           RELEASE_PLEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
         if: env.RELEASE_PLEASE_APP_CLIENT_ID != '' && env.RELEASE_PLEASE_APP_PRIVATE_KEY != ''
-        uses: actions/create-github-app-token@v3
+        # actions/create-github-app-token v3.2.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
@@ -58,7 +59,8 @@ jobs:
           exit 1
 
       - name: Check out trusted workflow helpers
-        uses: actions/checkout@v7
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1

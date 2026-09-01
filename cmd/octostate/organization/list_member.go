@@ -28,7 +28,7 @@ func ListOrgMembersCmd(svc organizations.Service) *cobra.Command {
 		Short:   "List members in a GitHub organization",
 		Long:    "Retrieve and display all members belonging to a specified GitHub organization.",
 		Example: `
-			octostate organization list-members --token <token> --org <org-name>
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate organization list-members --org <org-name>
 			octostate organization list-members --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --role all`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
