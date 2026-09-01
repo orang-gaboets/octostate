@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/filereplace"
+	"github.com/orang-gaboets/octostate/internal/filereplace"
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 

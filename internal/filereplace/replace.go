@@ -1,8 +1,10 @@
 package filereplace
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -30,6 +32,11 @@ func StatExistingRegularFile(path string) (os.FileInfo, error) {
 
 // Replace writes contents to a same-directory temporary file and atomically
 // replaces the destination file.
+//
+// The destination must already exist as a regular file. That strictness is
+// deliberate: callers such as sync-from-live rely on it to refuse writing
+// through a symbolic link. Use WriteFile when the destination may legitimately
+// be absent.
 func Replace(path string, contents []byte) error {
 	if path == "" {
 		return fmt.Errorf("path is required")
@@ -40,6 +47,41 @@ func Replace(path string, contents []byte) error {
 		return err
 	}
 
+	return writeAtomic(path, contents, info.Mode().Perm())
+}
+
+// WriteFile atomically writes contents to path, creating the file when it does
+// not exist and replacing it when it does.
+//
+// perm applies only when creating. An existing file keeps its own mode, so
+// writing a generated file never silently widens or narrows its permissions.
+//
+// An existing destination must be a regular file: a symbolic link or any other
+// non-regular target is refused rather than followed, matching Replace.
+func WriteFile(path string, contents []byte, perm os.FileMode) error {
+	if path == "" {
+		return fmt.Errorf("path is required")
+	}
+
+	switch _, err := os.Lstat(path); {
+	case err == nil:
+		existing, statErr := StatExistingRegularFile(path)
+		if statErr != nil {
+			return statErr
+		}
+		perm = existing.Mode().Perm()
+	case errors.Is(err, fs.ErrNotExist):
+		// Creating the destination; perm applies as given.
+	default:
+		return fmt.Errorf("stat destination %s: %w", path, err)
+	}
+
+	return writeAtomic(path, contents, perm)
+}
+
+// writeAtomic stages contents in a same-directory temporary file and commits it
+// over path, so a reader never observes a partially written file.
+func writeAtomic(path string, contents []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	tempFile, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
 	if err != nil {
@@ -61,7 +103,7 @@ func Replace(path string, contents []byte) error {
 		return fmt.Errorf("write temporary file %s: %w", tempPath, io.ErrShortWrite)
 	}
 
-	if err := tempFile.Chmod(info.Mode().Perm()); err != nil {
+	if err := tempFile.Chmod(perm); err != nil {
 		return fmt.Errorf("set temporary file mode %s: %w", tempPath, err)
 	}
 	if err := tempFile.Sync(); err != nil {

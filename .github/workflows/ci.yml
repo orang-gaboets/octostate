@@ -235,4 +235,4 @@ jobs:
           cache: true
 
       - name: Test config replacement packages
-        run: go test ./cmd/octostate/internal/filereplace ./cmd/octostate/internal/configproposal ./cmd/octostate/config
+        run: go test ./internal/filereplace ./cmd/octostate/internal/configproposal ./cmd/octostate/config
