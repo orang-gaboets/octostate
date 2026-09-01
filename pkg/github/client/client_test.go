@@ -11,18 +11,24 @@ import (
 	gh "github.com/google/go-github/v88/github"
 )
 
-func TestNew_DefaultTimeout(t *testing.T) {
+func TestNewPAT_DefaultTimeout(t *testing.T) {
 	ctx := context.Background()
-	c := New(ctx, "token")
+	c, err := NewPAT(ctx, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.Client().Timeout != DefaultTimeout {
 		t.Fatalf("expected timeout %v, got %v", DefaultTimeout, c.Client().Timeout)
 	}
 }
 
-func TestNew_WithTimeout(t *testing.T) {
+func TestNewPAT_WithTimeout(t *testing.T) {
 	ctx := context.Background()
 	timeout := 10 * time.Second
-	c := New(ctx, "token", WithTimeout(timeout))
+	c, err := NewPAT(ctx, "token", WithTimeout(timeout))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.Client().Timeout != timeout {
 		t.Fatalf("expected timeout %v, got %v", timeout, c.Client().Timeout)
 	}
