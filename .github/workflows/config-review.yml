@@ -1,0 +1,103 @@
+name: Octostate Config Review
+
+on:
+  workflow_call:
+    inputs:
+      config_dir:
+        description: Directory containing organization.yaml
+        required: false
+        default: ./config
+        type: string
+      octostate_version:
+        description: Octostate release tag or full commit SHA to install
+        required: true
+        type: string
+    secrets:
+      octostate_token:
+        description: Token for live Octostate plan and apply preflight operations
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  config-review:
+    name: Validate, plan, and preflight configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25.13'
+          cache: false
+
+      - name: Install Octostate
+        env:
+          OCTOSTATE_VERSION: ${{ inputs.octostate_version }}
+          OCTOSTATE_BIN_DIR: ${{ runner.temp }}/octostate-bin
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$OCTOSTATE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ && ! "$OCTOSTATE_VERSION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "octostate_version must be a release tag or full 40-character commit SHA" >&2
+            exit 1
+          fi
+
+          mkdir -p "$OCTOSTATE_BIN_DIR"
+          GOBIN="$OCTOSTATE_BIN_DIR" go install "github.com/orang-gaboets/octostate/cmd/octostate@${OCTOSTATE_VERSION}"
+          echo "$OCTOSTATE_BIN_DIR" >> "$GITHUB_PATH"
+          go version -m "$OCTOSTATE_BIN_DIR/octostate"
+
+      - name: Validate configuration
+        env:
+          CONFIG_DIR: ${{ inputs.config_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CONFIG_DIR" ]]; then
+            echo "config_dir must not be empty" >&2
+            exit 1
+          fi
+
+          octostate config validate --config-dir "$CONFIG_DIR"
+
+      - name: Plan configuration
+        env:
+          CONFIG_DIR: ${{ inputs.config_dir }}
+          OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$OCTOSTATE_TOKEN" ]]; then
+            echo "octostate_token is required for config plan" >&2
+            exit 1
+          fi
+
+          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN"
+
+      - name: Preflight configuration apply
+        env:
+          CONFIG_DIR: ${{ inputs.config_dir }}
+          OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$OCTOSTATE_TOKEN" ]]; then
+            echo "octostate_token is required for config apply --check" >&2
+            exit 1
+          fi
+
+          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check
