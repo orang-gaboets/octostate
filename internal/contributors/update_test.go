@@ -157,3 +157,66 @@ func TestLoadConfigAcceptsASingleDocumentWithATrailingSeparator(t *testing.T) {
 		t.Fatalf("exclude = %#v", cfg.Exclude)
 	}
 }
+
+// The README is written in place, so a crash mid-write must not be able to
+// leave a truncated file behind. Update stages through the shared atomic
+// writer rather than writing the destination directly.
+func TestUpdateLeavesNoTemporaryFileBehind(t *testing.T) {
+	t.Parallel()
+
+	path := writeReadme(t, "# Title\n\n"+startMarker+"\n"+endMarker+"\n")
+	if _, err := Update(path, []Contributor{{Login: "alice"}}, Config{}); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "README.md" {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("expected only README.md to remain, got %v", names)
+	}
+}
+
+func TestUpdatePreservesTheExistingFileMode(t *testing.T) {
+	t.Parallel()
+
+	path := writeReadme(t, "# Title\n\n"+startMarker+"\n"+endMarker+"\n")
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Update(path, []Contributor{{Login: "alice"}}, Config{}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v, want the original 0600 preserved", info.Mode().Perm())
+	}
+}
+
+func TestUpdateRefusesASymlinkedReadme(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real.md")
+	if err := os.WriteFile(target, []byte("# Title\n\n"+startMarker+"\n"+endMarker+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "README.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := Update(link, []Contributor{{Login: "alice"}}, Config{}); err == nil {
+		t.Fatal("writing the README through a symlink must be refused")
+	}
+}
