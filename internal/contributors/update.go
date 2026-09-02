@@ -64,9 +64,11 @@ func Update(path string, discovered []Contributor, cfg Config) (bool, error) {
 		return false, nil
 	}
 
-	// Staged through the shared atomic writer so an interrupted run cannot
-	// leave a truncated README behind. The existing file's mode is preserved.
-	if err := filereplace.WriteFile(path, []byte(updated), 0o644); err != nil {
+	// Replace rather than WriteFile: the README was read above, so it must
+	// already exist. Replace keeps that requirement, so a file removed between
+	// the read and the write fails instead of being recreated from contents
+	// that are now stale.
+	if err := filereplace.Replace(path, []byte(updated)); err != nil {
 		return false, fmt.Errorf("write %s: %w", path, err)
 	}
 	return true, nil

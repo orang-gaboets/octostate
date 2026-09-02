@@ -8,10 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/orang-gaboets/octostate/internal/filereplace"
 	"time"
 
+	"github.com/orang-gaboets/octostate/internal/filereplace"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -121,7 +120,10 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	// does not, so add it back to keep the file byte-identical.
 	encoded = append(encoded, '\n')
 
-	if err := filereplace.WriteFile(path, encoded, 0o644); err != nil {
+	// 0600 matches what the previous os.CreateTemp path produced on first
+	// write. The snapshot carries organization member and invitation data,
+	// so first creation must not widen it.
+	if err := filereplace.WriteFile(path, encoded, 0o600); err != nil {
 		return "", fmt.Errorf("write snapshot: %w", err)
 	}
 

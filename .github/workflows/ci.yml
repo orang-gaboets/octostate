@@ -222,7 +222,7 @@ jobs:
         run: go test -race ./pkg/gitops/...
 
   windows-config:
-    name: Windows config replacement
+    name: Windows file replacement
     runs-on: windows-latest
     steps:
       - name: Checkout

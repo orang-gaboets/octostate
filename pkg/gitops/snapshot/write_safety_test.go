@@ -1,6 +1,8 @@
 package snapshot
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +17,8 @@ func sampleSnapshot() ActualSnapshot {
 }
 
 // The snapshot file is machine-consumed by audit diff, so switching to the
-// shared writer must not alter a single byte of its encoding.
+// shared writer must not alter a single byte of its encoding. This reproduces
+// the previous json.Encoder path and compares the whole document.
 func TestWriteActualOutputIsUnchangedByteForByte(t *testing.T) {
 	t.Parallel()
 
@@ -24,18 +27,24 @@ func TestWriteActualOutputIsUnchangedByteForByte(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Encoded with two-space indentation and a trailing newline, exactly as the
-	// previous json.Encoder path produced.
-	if len(got) == 0 || got[len(got)-1] != '\n' {
-		t.Fatalf("snapshot must end with a newline, got %q", got)
+
+	normalized := sampleSnapshot()
+	if err := normalizeActualSnapshot(&normalized); err != nil {
+		t.Fatal(err)
 	}
-	if !containsSeq(got, []byte("\n  \"organization\": \"acme\",")) {
-		t.Fatalf("snapshot indentation changed:\n%s", got)
+	var want bytes.Buffer
+	enc := json.NewEncoder(&want)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(normalized); err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(got, want.Bytes()) {
+		t.Fatalf("snapshot encoding changed:\ngot:\n%s\nwant:\n%s", got, want.Bytes())
 	}
 }
 
@@ -70,7 +79,7 @@ func TestWriteActualReplacesAnExistingSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsSeq(body, []byte(`"organization": "beta"`)) {
+	if !bytes.Contains(body, []byte(`"organization": "beta"`)) {
 		t.Fatalf("snapshot was not replaced:\n%s", body)
 	}
 }
@@ -125,13 +134,4 @@ func TestWriteActualRefusesASymlinkedSnapshot(t *testing.T) {
 	if string(body) != "{}" {
 		t.Fatalf("symlink target was overwritten: %q", body)
 	}
-}
-
-func containsSeq(haystack, needle []byte) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if string(haystack[i:i+len(needle)]) == string(needle) {
-			return true
-		}
-	}
-	return false
 }

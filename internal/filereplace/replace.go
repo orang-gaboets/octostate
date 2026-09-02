@@ -50,8 +50,13 @@ func Replace(path string, contents []byte) error {
 	return writeAtomic(path, contents, info.Mode().Perm(), true)
 }
 
-// WriteFile atomically writes contents to path, creating the file when it does
-// not exist and replacing it when it does.
+// WriteFile writes contents to path, creating the file when it does not exist
+// and replacing it when it does.
+//
+// Replacing an existing file is atomic, through the same staged path Replace
+// uses. Creating a new one commits with os.Rename, which Go does not guarantee
+// to be atomic on non-Unix platforms; there is no existing destination to
+// protect from a partial write in that case.
 //
 // perm applies only when creating. An existing file keeps its own mode, so
 // writing a generated file never silently widens or narrows its permissions.
@@ -122,8 +127,8 @@ func writeAtomic(path string, contents []byte, perm os.FileMode, destinationExis
 		}
 	} else {
 		// Windows ReplaceFileW requires an existing destination, so it cannot
-		// commit a newly created file. A plain rename is the correct commit
-		// here and is atomic on both platforms.
+		// commit a newly created file. Use os.Rename for the initial commit;
+		// Go does not guarantee Rename is atomic on non-Unix platforms.
 		if err := os.Rename(tempPath, path); err != nil {
 			return fmt.Errorf("create file %s: %w", path, err)
 		}
