@@ -194,7 +194,7 @@ committed SVG from the repository root:
 npx --yes --package @mermaid-js/mermaid-cli@11.12.0 mmdc \
   -i docs/assets/diagrams/gitops-flow.mmd \
   -o docs/assets/diagrams/gitops-flow.svg \
-  --backgroundColor "#f6f8fa"
+  --backgroundColor transparent
 ```
 
 ## Testing
