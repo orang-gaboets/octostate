@@ -52,6 +52,9 @@ type captureCreateRepoFromTemplateService struct {
 	lastTemplateRepo string
 	lastTemplateOrg  string
 	lastRequest      *gh.TemplateRepoRequest
+	lastCreateOwner  string
+	lastCreateRepo   *gh.Repository
+	lastTopics       []string
 	createCalled     bool
 	ordinaryCalled   bool
 }
@@ -59,17 +62,42 @@ type captureCreateRepoFromTemplateService struct {
 func TestCreateRepoCmdSupportsOrdinaryCreation(t *testing.T) {
 	service := &captureCreateRepoFromTemplateService{}
 	cmd := reposcmd.CreateRepoCmd(service)
-	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--private"})
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--desc", "description", "--topics", "go,cli", "--private"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("ordinary create returned error: %v", err)
 	}
 	if !service.ordinaryCalled || service.createCalled {
 		t.Fatalf("ordinary create used the wrong service path: %#v", service)
 	}
+	if service.lastCreateOwner != "org" || service.lastCreateRepo.GetName() != "service" || service.lastCreateRepo.GetDescription() != "description" || !service.lastCreateRepo.GetPrivate() {
+		t.Fatalf("unexpected ordinary create request: owner=%q repo=%#v", service.lastCreateOwner, service.lastCreateRepo)
+	}
+	if got, want := strings.Join(service.lastTopics, ","), "go,cli"; got != want {
+		t.Fatalf("unexpected ordinary create topics: got %q want %q", got, want)
+	}
 }
 
-func (m *captureCreateRepoFromTemplateService) Create(_ context.Context, _ string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+func TestCreateRepoCmdDryRunSkipsOrdinaryCreation(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ordinary dry-run returned error: %v", err)
+	}
+	if service.ordinaryCalled || service.createCalled {
+		t.Fatalf("ordinary dry-run called a create service: %#v", service)
+	}
+	if !strings.Contains(out.String(), `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run output, got %q", out.String())
+	}
+}
+
+func (m *captureCreateRepoFromTemplateService) Create(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 	m.ordinaryCalled = true
+	m.lastCreateOwner = owner
+	m.lastCreateRepo = repository
 	return &gh.Repository{}, nil, nil
 }
 
@@ -97,7 +125,8 @@ func (*captureCreateRepoFromTemplateService) ListByOrg(_ context.Context, _ stri
 	return nil, nil, nil
 }
 
-func (*captureCreateRepoFromTemplateService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+func (m *captureCreateRepoFromTemplateService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+	m.lastTopics = append([]string(nil), topics...)
 	return topics, nil, nil
 }
 
