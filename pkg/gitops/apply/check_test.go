@@ -87,6 +87,56 @@ func TestCheckSkipsNonExecutableDriftWithoutMutations(t *testing.T) {
 	}
 }
 
+func TestCheckPreflightsOrdinaryRepositoryCreateWithoutMutation(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Owner:      "orang-gaboets",
+			Name:       "new-repository",
+			Visibility: "private",
+		}},
+	}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID("orang-gaboets", "new-repository"),
+			Executable:   true,
+		}},
+	}
+	plan.Normalize()
+
+	repoSvc := &testRepoService{
+		createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("ordinary repository creation should not run during check")
+			return nil, nil, nil
+		},
+		editFunc: func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("repository edit should not run during check")
+			return nil, nil, nil
+		},
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			if owner != "orang-gaboets" || repo != "new-repository" {
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			}
+			return nil, nil, githubNotFoundError("repository not found")
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(result.CheckedActions, plan.Actions) {
+		t.Fatalf("unexpected checked actions: %#v", result.CheckedActions)
+	}
+	if len(result.SkippedActions) != 0 {
+		t.Fatalf("unexpected skipped actions: %#v", result.SkippedActions)
+	}
+}
+
 func TestCheckRejectsInvalidDesiredConfig(t *testing.T) {
 	t.Parallel()
 
