@@ -102,17 +102,14 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 		case "topics":
 			topicsChanged = true
 		case "allow_forking":
-			private, err := visibilityPrivateFlag(repository.Visibility)
-			if err != nil {
+			if _, err := visibilityPrivateFlag(repository.Visibility); err != nil {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
 			if !config.IsPrivateVisibility(repository.Visibility) {
 				break
 			}
-			if private {
-				editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
-				editNeeded = true
-			}
+			editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
+			editNeeded = true
 		case "archived":
 			editOptions.Archived = githubpkg.Ptr(repository.Archived)
 			editNeeded = true
