@@ -853,7 +853,15 @@ func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 	}
 	plan.Normalize()
 
+	createCalled := false
 	repoSvc := &testRepoService{
+		createFunc: func(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			createCalled = true
+			if owner != "orang-gaboets" || repository == nil || repository.GetName() != "octostate" || !repository.GetPrivate() {
+				t.Fatalf("unexpected ordinary create request: owner=%q repository=%#v", owner, repository)
+			}
+			return &gh.Repository{}, nil, nil
+		},
 		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 			t.Fatal("create from template should not be called when template is missing")
 			return nil, nil, nil
@@ -870,6 +878,9 @@ func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !createCalled {
+		t.Fatal("expected ordinary repository creation")
 	}
 }
 
