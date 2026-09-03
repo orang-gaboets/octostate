@@ -4,7 +4,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/internal/resourceid"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -17,8 +16,8 @@ func repositoryKey(owner, name string) string {
 	return resourceid.RepositoryKey(owner, name)
 }
 
-func repositoryCreatable(repository config.RepositorySpec) bool {
-	return strings.TrimSpace(repository.Template.Owner) != "" && strings.TrimSpace(repository.Template.Name) != ""
+func repositoryCreatable() bool {
+	return true
 }
 
 func teamID(slug string) string {

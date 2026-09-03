@@ -19,7 +19,7 @@ func bootstrapRepositories(organization string, repositories []state.Repository)
 		}
 		repo.SetManagedDescription(repository.Description)
 		repo.SetManagedHomepage(repository.Homepage)
-		if !strings.EqualFold(strings.TrimSpace(repository.Visibility), "private") {
+		if config.IsPrivateVisibility(repository.Visibility) {
 			repo.SetManagedAllowForking(repository.AllowForking)
 		}
 		repo.SetManagedArchived(repository.Archived)

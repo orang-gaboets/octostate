@@ -238,6 +238,15 @@ Flags:
 - `--to-config` (optional): Add the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository creation without creating it
 
+### `octostate repo create`
+
+`repo create` (alias `repo new`) creates an ordinary organization repository
+when `--template-name` is omitted. Supplying `--template-name` selects the
+template-based path; `--template-org` defaults to `--org`. It supports the
+same live, `--dry-run`, and `--to-config` modes. `--include-all-branches` is
+valid only with a template. Existing `repo create-from-template` invocations
+remain available for explicit template creation.
+
 ### `octostate repo delete`
 
 ```bash

@@ -137,6 +137,12 @@ type RepositorySpec struct {
 	isTemplate   OptionalBool   `yaml:"-"`
 }
 
+// IsPrivateVisibility reports whether visibility makes private-repository
+// settings applicable.
+func IsPrivateVisibility(visibility string) bool {
+	return strings.EqualFold(strings.TrimSpace(visibility), "private")
+}
+
 // TemplateSpec identifies the template repository used to create a repository.
 type TemplateSpec struct {
 	Owner              string `yaml:"owner"`

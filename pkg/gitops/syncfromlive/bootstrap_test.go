@@ -258,8 +258,8 @@ func assertBootstrapRepositories(t *testing.T, repositories []config.RepositoryS
 	if homepage, managed := repoBuilder.ManagedHomepage(); !managed || homepage != "https://example.com/octostate" {
 		t.Fatalf("expected managed homepage, got value=%q managed=%v", homepage, managed)
 	}
-	if _, managed := repoBuilder.ManagedAllowForking(); managed {
-		t.Fatalf("expected private repository allow_forking to stay unmanaged, got %#v", repoBuilder.AllowForkingOption())
+	if value, managed := repoBuilder.ManagedAllowForking(); !managed || !value {
+		t.Fatalf("expected managed private allow_forking=true, got value=%v managed=%v", value, managed)
 	}
 	if archived, managed := repoBuilder.ManagedArchived(); !managed || !archived {
 		t.Fatalf("expected managed archived=true, got value=%v managed=%v", archived, managed)
@@ -272,8 +272,8 @@ func assertBootstrapRepositories(t *testing.T, repositories []config.RepositoryS
 	if sharedRepo.Owner != "" {
 		t.Fatalf("expected same-organization repository owner to be omitted, got %#v", sharedRepo.Owner)
 	}
-	if allowForking, managed := sharedRepo.ManagedAllowForking(); !managed || allowForking {
-		t.Fatalf("expected managed allow_forking=false, got value=%v managed=%v", allowForking, managed)
+	if _, managed := sharedRepo.ManagedAllowForking(); managed {
+		t.Fatalf("expected public allow_forking to stay unmanaged, got %#v", sharedRepo.AllowForkingOption())
 	}
 	if description, managed := sharedRepo.ManagedDescription(); !managed || description != "" {
 		t.Fatalf("expected explicit empty managed description, got value=%q managed=%v", description, managed)

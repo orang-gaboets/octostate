@@ -81,6 +81,11 @@ func (MockRepoService) CreateFromTemplate(_ context.Context, _, _ string, _ *gh.
 	return &gh.Repository{}, nil, nil
 }
 
+// Create mocks the creation of an organization repository.
+func (MockRepoService) Create(_ context.Context, _ string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	return &gh.Repository{}, nil, nil
+}
+
 // Delete mocks the deletion of a repository.
 func (MockRepoService) Delete(_ context.Context, _, _ string) (*gh.Response, error) {
 	return nil, nil

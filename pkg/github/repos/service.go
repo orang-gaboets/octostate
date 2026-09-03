@@ -63,6 +63,39 @@ func CreateFromTemplate(ctx context.Context, option CreateFromTemplateOptions) (
 	return newRepo, nil
 }
 
+// Create creates an organization repository and optionally sets topics.
+func Create(ctx context.Context, option CreateOptions) (*gh.Repository, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	req := &gh.Repository{
+		Name:        &option.Name,
+		Description: option.Description,
+		Homepage:    option.Homepage,
+		Private:     option.Private,
+	}
+	ghlogging.Debugf(ctx, "create repository %s/%s", option.Owner, option.Name)
+	newRepo, _, err := option.Service.Create(ctx, option.Owner, req)
+	if err != nil {
+		return nil, github.WrapError(err, fmt.Sprintf("failed to create repository %s/%s", option.Owner, option.Name))
+	}
+	ghlogging.Debugf(ctx, "created repository %s/%s", option.Owner, option.Name)
+
+	if len(option.Topics) > 0 {
+		_, err := topics.ReplaceAllTopics(ctx, topics.ReplaceAllTopicsOptions{
+			Owner:   option.Owner,
+			Repo:    option.Name,
+			Service: option.Service,
+			Topics:  option.Topics,
+		})
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to set topics for new repository %s/%s", option.Owner, option.Name))
+		}
+	}
+	return newRepo, nil
+}
+
 // Delete removes a repository from GitHub.
 func Delete(ctx context.Context, option DeleteOptions) error {
 	if err := option.Validate(); err != nil {

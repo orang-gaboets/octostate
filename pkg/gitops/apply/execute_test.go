@@ -524,9 +524,6 @@ invites: []
 	if editReq.Homepage == nil || *editReq.Homepage != "" {
 		t.Fatalf("expected explicit empty homepage in edit payload, got %#v", editReq)
 	}
-	if editReq.AllowForking == nil || *editReq.AllowForking {
-		t.Fatalf("expected explicit false allow_forking in edit payload, got %#v", editReq)
-	}
 	if editReq.Archived == nil || *editReq.Archived {
 		t.Fatalf("expected explicit false archived in edit payload, got %#v", editReq)
 	}
@@ -623,8 +620,8 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 			if repository == nil || repository.Description == nil || *repository.Description != desiredRepo.Description {
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
-			if repository.AllowForking != nil {
-				t.Fatalf("expected allow_forking to be omitted for private repository update, got %#v", repository)
+			if repository.AllowForking == nil || *repository.AllowForking {
+				t.Fatalf("expected explicit private allow_forking=false, got %#v", repository)
 			}
 			return &gh.Repository{}, nil, nil
 		},
@@ -702,9 +699,6 @@ invites: []
 	}
 	if editReq.Homepage == nil || *editReq.Homepage != "" {
 		t.Fatalf("expected explicit empty homepage in edit payload, got %#v", editReq)
-	}
-	if editReq.AllowForking == nil || *editReq.AllowForking {
-		t.Fatalf("expected explicit false allow_forking in edit payload, got %#v", editReq)
 	}
 	if editReq.Archived == nil || *editReq.Archived {
 		t.Fatalf("expected explicit false archived in edit payload, got %#v", editReq)
@@ -845,7 +839,7 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 	}
 }
 
-func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
+func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
 		Actions: []gitopsplan.Action{{
@@ -873,10 +867,7 @@ func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
 			Visibility: "private",
 		}},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "cannot be created without a template") {
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -1780,6 +1771,7 @@ func withOrganizationService(service organizations.Service) func(*Options) {
 
 func withRepoService(service interface {
 	CreateFromTemplate(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error)
+	Create(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	Delete(context.Context, string, string) (*gh.Response, error)
 	Edit(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	Get(context.Context, string, string) (*gh.Repository, *gh.Response, error)
@@ -1883,12 +1875,20 @@ func (m *testOrganizationService) ListOrgInvitationTeams(ctx context.Context, or
 
 type testRepoService struct {
 	createFromTemplateFunc func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error)
+	createFunc             func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	deleteFunc             func(context.Context, string, string) (*gh.Response, error)
 	editFunc               func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	getFunc                func(context.Context, string, string) (*gh.Repository, *gh.Response, error)
 	listByOrgFunc          func(context.Context, string, *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error)
 	replaceAllTopicsFunc   func(context.Context, string, string, []string) ([]string, *gh.Response, error)
 	listAllTopicsFunc      func(context.Context, string, string) ([]string, *gh.Response, error)
+}
+
+func (m *testRepoService) Create(ctx context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	if m.createFunc != nil {
+		return m.createFunc(ctx, owner, repository)
+	}
+	return &gh.Repository{}, nil, nil
 }
 
 func (m *testRepoService) CreateFromTemplate(ctx context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {

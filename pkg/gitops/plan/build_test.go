@@ -387,8 +387,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    9,
-			NonExecutableActions: 10,
+			ExecutableActions:    10,
+			NonExecutableActions: 9,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,
@@ -396,7 +396,7 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		},
 		Actions: []Action{
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/octostate"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
-			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: false, Message: "repository orang-gaboets/new-repo cannot be created because template configuration is missing", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: true, Message: "create repository orang-gaboets/new-repo", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: "orang-gaboets/orphan-repo", Executable: false, Message: "repository orang-gaboets/orphan-repo exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform"}, {Field: "privacy", From: "closed", To: "secret"}}},
@@ -629,7 +629,7 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 	}
 }
 
-func TestBuildSkipsAllowForkingDiffForPrivateRepository(t *testing.T) {
+func TestBuildPlansAllowForkingDiffForPrivateRepository(t *testing.T) {
 	t.Parallel()
 
 	desired := testconfig.LoadDesiredConfig(t, `
@@ -658,8 +658,8 @@ invites: []
 		t.Fatalf("Build returned error: %v", err)
 	}
 
-	if len(report.Actions) != 0 {
-		t.Fatalf("expected no actions for private allow_forking drift, got %#v", report.Actions)
+	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
+		t.Fatalf("expected private allow_forking drift, got %#v", report.Actions)
 	}
 }
 
@@ -747,7 +747,6 @@ invites: []
 		Executable:   true,
 		Message:      "update repository orang-gaboets/octostate",
 		Changes: []FieldChange{
-			{Field: "allow_forking", From: true, To: false},
 			{Field: "archived", From: true, To: false},
 			{Field: "description", From: "CLI", To: ""},
 			{Field: "homepage", From: "https://example.com/octostate", To: ""},
@@ -824,7 +823,7 @@ func TestBuildOrdersRepositoryUpdateBeforeCreateWhenTemplateStateChangesInSamePl
 	}
 }
 
-func TestBuildRepositoryCreateWithoutTemplateIsNonExecutable(t *testing.T) {
+func TestBuildRepositoryCreateWithoutTemplateIsExecutable(t *testing.T) {
 	t.Parallel()
 
 	report, err := Build(context.Background(), Options{
@@ -848,8 +847,8 @@ func TestBuildRepositoryCreateWithoutTemplateIsNonExecutable(t *testing.T) {
 		ResourceType: ActionResourceTypeRepository,
 		Operation:    ActionOperationCreate,
 		ResourceID:   "orang-gaboets/new-repo",
-		Executable:   false,
-		Message:      "repository orang-gaboets/new-repo cannot be created because template configuration is missing",
+		Executable:   true,
+		Message:      "create repository orang-gaboets/new-repo",
 		Changes:      []FieldChange{},
 	}
 	if len(report.Actions) != 1 {
@@ -858,7 +857,7 @@ func TestBuildRepositoryCreateWithoutTemplateIsNonExecutable(t *testing.T) {
 	if !reflect.DeepEqual(report.Actions[0], want) {
 		t.Fatalf("unexpected action:\n got %#v\nwant %#v", report.Actions[0], want)
 	}
-	if report.Summary.ExecutableActions != 0 || report.Summary.NonExecutableActions != 1 {
+	if report.Summary.ExecutableActions != 1 || report.Summary.NonExecutableActions != 0 {
 		t.Fatalf("unexpected summary: %#v", report.Summary)
 	}
 }
@@ -968,23 +967,23 @@ func TestBuildTeamRepositoryPermissionCreateIsNonExecutableWhenRepositoryCannotB
 			ResourceType: ActionResourceTypeRepository,
 			Operation:    ActionOperationCreate,
 			ResourceID:   "orang-gaboets/octostate",
-			Executable:   false,
-			Message:      "repository orang-gaboets/octostate cannot be created because template configuration is missing",
+			Executable:   true,
+			Message:      "create repository orang-gaboets/octostate",
 			Changes:      []FieldChange{},
 		},
 		{
 			ResourceType: ActionResourceTypeTeamRepositoryPermission,
 			Operation:    ActionOperationCreate,
 			ResourceID:   "platform/orang-gaboets/octostate",
-			Executable:   false,
-			Message:      "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to be available: template configuration is missing",
+			Executable:   true,
+			Message:      "create team repository permission platform/orang-gaboets/octostate",
 			Changes:      []FieldChange{},
 		},
 	}
 	if !reflect.DeepEqual(report.Actions, want) {
 		t.Fatalf("unexpected actions:\n got %#v\nwant %#v", report.Actions, want)
 	}
-	if report.Summary.ExecutableActions != 0 || report.Summary.NonExecutableActions != 2 {
+	if report.Summary.ExecutableActions != 2 || report.Summary.NonExecutableActions != 0 {
 		t.Fatalf("unexpected summary: %#v", report.Summary)
 	}
 }
@@ -1741,7 +1740,7 @@ func TestBuildTeamRepositoryPermissionUsesRepositoryAvailability(t *testing.T) {
 		{name: "live-only same organization", owner: "orang-gaboets", actualRepos: []state.Repository{{Owner: "orang-gaboets", Name: "target"}}, executable: true},
 		{name: "missing same organization", owner: "orang-gaboets", executable: false},
 		{name: "executable same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{executableRepository}, executable: true},
-		{name: "non-executable same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "target", Visibility: "private"}}, executable: false},
+		{name: "ordinary same-plan create", owner: "orang-gaboets", desiredRepos: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "target", Visibility: "private"}}, executable: true},
 	}
 
 	for _, tt := range tests {

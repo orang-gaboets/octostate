@@ -17,6 +17,15 @@ import (
 
 // CreateNewRepoFromTemplateCmd creates a new command to create a GitHub repository from a template.
 func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
+	return createRepoCmd(svc, true)
+}
+
+// CreateRepoCmd creates the general repository creation command.
+func CreateRepoCmd(svc repos.Service) *cobra.Command {
+	return createRepoCmd(svc, false)
+}
+
+func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 	var (
 		token              string
 		appID              int64
@@ -36,8 +45,8 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "create-from-template",
-		Aliases: []string{"cft", "new-from-template", "create", "new"},
-		Short:   "Create GitHub repositories from a template",
+		Aliases: []string{"cft", "new-from-template"},
+		Short:   "Create a GitHub repository from a template",
 		Long:    "Create a new GitHub repository from a template repository, optionally specifying organization, name, description, topics, and privacy settings.",
 		Example: `
 			OCTOSTATE_GITHUB_TOKEN="<token>" octostate repo create-from-template --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true
@@ -56,10 +65,23 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 			if trimmedTemplateOrg == "" {
 				trimmedTemplateOrg = trimmedOrg
 			}
+			if !templateOnly {
+				hasTemplateName := trimmedTemplateName != ""
+				hasTemplateOrg := strings.TrimSpace(templateOrg) != ""
+				if hasTemplateOrg && !hasTemplateName {
+					return fmt.Errorf("--template-org requires --template-name")
+				}
+				if !hasTemplateName && includeAllBranches {
+					return fmt.Errorf("--include-all-branches requires --template-name")
+				}
+			}
 			if dryRun && cmd.Flags().Changed("to-config") {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
 			if dryRun {
+				if !templateOnly && trimmedTemplateName == "" {
+					return cmdoutput.PrintDryRun(cmd, fmt.Sprintf("Dry run: would create repository %s/%s (private=%t topics=%v)", trimmedOrg, trimmedName, private, topicList), map[string]any{"owner": trimmedOrg, "name": trimmedName, "private": private, "topics": topicList})
+				}
 				return cmdoutput.PrintDryRun(
 					cmd,
 					fmt.Sprintf(
@@ -97,15 +119,13 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 						return fmt.Errorf("repository %s/%s already exists in config", trimmedOrg, trimmedName)
 					}
 					repository := gitopsconfig.RepositorySpec{
-						Owner: trimmedOrg,
-						Name:  trimmedName,
-						Template: gitopsconfig.TemplateSpec{
-							Owner:              trimmedTemplateOrg,
-							Name:               trimmedTemplateName,
-							IncludeAllBranches: includeAllBranches,
-						},
+						Owner:      trimmedOrg,
+						Name:       trimmedName,
 						Visibility: visibility,
 						Topics:     normalizedTopics,
+					}
+					if trimmedTemplateName != "" {
+						repository.Template = gitopsconfig.TemplateSpec{Owner: trimmedTemplateOrg, Name: trimmedTemplateName, IncludeAllBranches: includeAllBranches}
 					}
 					repository.SetManagedDescription(desc)
 					cfg.Repositories = append(cfg.Repositories, repository)
@@ -114,17 +134,20 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s in config", trimmedOrg, trimmedName), map[string]any{
+				result := map[string]any{
 					"owner":                trimmedOrg,
 					"name":                 trimmedName,
 					"config_path":          toConfig,
 					"changed":              true,
-					"template_owner":       trimmedTemplateOrg,
-					"template_repo":        trimmedTemplateName,
 					"private":              private,
 					"include_all_branches": includeAllBranches,
 					"topics":               normalizedTopics,
-				})
+				}
+				if trimmedTemplateName != "" {
+					result["template_owner"] = trimmedTemplateOrg
+					result["template_repo"] = trimmedTemplateName
+				}
+				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s in config", trimmedOrg, trimmedName), result)
 			}
 			service := svc
 			if service == nil {
@@ -133,6 +156,13 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 					return err
 				}
 				service = client.Repositories()
+			}
+			if !templateOnly && trimmedTemplateName == "" {
+				createdRepo, err := repos.Create(ctx, repos.CreateOptions{Service: service, Name: trimmedName, Owner: trimmedOrg, Description: &desc, Private: &private, Topics: topicList})
+				if err != nil {
+					return err
+				}
+				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Created repository %s/%s", trimmedOrg, trimmedName), map[string]any{"owner": trimmedOrg, "name": trimmedName, "private": private, "topics": topicList, "repository": createdRepo})
 			}
 			opts := repos.CreateFromTemplateOptions{
 				Name:               trimmedName,
@@ -185,7 +215,13 @@ func CreateNewRepoFromTemplateCmd(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
-	github.MarkRequiredFlags(cmd, "org", "template-name", "name")
+	if templateOnly {
+		github.MarkRequiredFlags(cmd, "org", "template-name", "name")
+	} else {
+		cmd.Use = "create"
+		cmd.Aliases = []string{"new"}
+		github.MarkRequiredFlags(cmd, "org", "name")
+	}
 
 	return cmd
 }

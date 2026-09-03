@@ -142,6 +142,37 @@ func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, 
 	return &gh.Repository{}, nil, nil
 }
 
+func (m *mockService) Create(_ context.Context, owner string, req *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	m.createCalled = true
+	if m.createErr != nil {
+		return nil, nil, m.createErr
+	}
+	if req != nil {
+		m.owner = owner
+		m.repoName = req.GetName()
+		m.repoDesc = req.GetDescription()
+		m.repoPrivate = req.GetPrivate()
+	}
+	return &gh.Repository{}, nil, nil
+}
+
+func TestCreateSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+	description := "service repository"
+	homepage := "https://example.com/service"
+	private := true
+	created, err := Create(context.Background(), CreateOptions{
+		Service: mockSvc, Owner: newRepo.Owner, Name: newRepo.Name, Description: &description,
+		Homepage: &homepage, Private: &private, Topics: []string{"go"},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if created == nil || !mockSvc.createCalled || mockSvc.owner != newRepo.Owner || mockSvc.repoName != newRepo.Name || mockSvc.repoDesc != description || !mockSvc.repoPrivate {
+		t.Fatalf("unexpected ordinary create result: repo=%#v mock=%#v", created, mockSvc)
+	}
+}
+
 func (m *mockService) Delete(_ context.Context, owner, repo string) (*gh.Response, error) {
 	m.deleteCalled = true
 	m.owner = owner

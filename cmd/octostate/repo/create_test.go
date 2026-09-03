@@ -53,6 +53,24 @@ type captureCreateRepoFromTemplateService struct {
 	lastTemplateOrg  string
 	lastRequest      *gh.TemplateRepoRequest
 	createCalled     bool
+	ordinaryCalled   bool
+}
+
+func TestCreateRepoCmdSupportsOrdinaryCreation(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--private"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ordinary create returned error: %v", err)
+	}
+	if !service.ordinaryCalled || service.createCalled {
+		t.Fatalf("ordinary create used the wrong service path: %#v", service)
+	}
+}
+
+func (m *captureCreateRepoFromTemplateService) Create(_ context.Context, _ string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	m.ordinaryCalled = true
+	return &gh.Repository{}, nil, nil
 }
 
 func (m *captureCreateRepoFromTemplateService) CreateFromTemplate(_ context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {

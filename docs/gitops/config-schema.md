@@ -131,15 +131,15 @@ state:
 - `template.include_all_branches`
 
 `template.owner` and `template.name` are required together when creating a
-repository from a template. A reference to another missing repository is a
+repository from a template. Omitting the template selects ordinary
+organization-repository creation. A reference to another missing repository is a
 managed dependency only when the source is also a top-level desired repository
 in the configured organization. External, cross-organization, or live-only
 references remain reference-only and are checked during apply preflight
 instead.
 
-`config apply` currently creates repositories only through templates, so any
-repository that may need to be created must declare both `template.owner` and
-`template.name`.
+`config apply` creates repositories ordinarily when no template is declared and
+uses the template path when both template fields are present.
 
 Repository reconciliation semantics:
 
@@ -151,7 +151,8 @@ Repository reconciliation semantics:
 - explicit boolean values manage the boolean fields
 - explicit `null` is rejected for presence-aware fields by semantic validation,
   except for `is_template`, where it means unmanaged/preserve-live-state
-- `allow_forking` is ignored for private repositories
+- `allow_forking` is managed only for private repositories when explicitly
+  present; omitted private values remain unmanaged and public values are ignored
 
 Repository topics:
 
