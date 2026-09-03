@@ -16,10 +16,6 @@ func repositoryKey(owner, name string) string {
 	return resourceid.RepositoryKey(owner, name)
 }
 
-func repositoryCreatable() bool {
-	return true
-}
-
 func teamID(slug string) string {
 	return resourceid.TeamID(slug)
 }

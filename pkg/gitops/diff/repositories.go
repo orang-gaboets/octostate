@@ -20,13 +20,12 @@ func (b builder) planRepositories() []Action {
 		desiredRepos[key] = repository
 		actualRepository, ok := actualRepos[key]
 		if !ok {
-			executable := repositoryCreatable()
 			message := fmt.Sprintf("create repository %s", repositoryID(repository.Owner, repository.Name))
 			actions = append(actions, Action{
 				ResourceType: ActionResourceTypeRepository,
 				Operation:    ActionOperationCreate,
 				ResourceID:   repositoryID(repository.Owner, repository.Name),
-				Executable:   executable,
+				Executable:   true,
 				Message:      message,
 			})
 			continue
