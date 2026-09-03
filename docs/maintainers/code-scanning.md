@@ -15,7 +15,8 @@ checks.
 ## Verified configuration snapshot
 
 The following state was verified on 2026-08-18 against `main` at commit
-`24afc95`, before the workflow display-name change in this branch:
+`24afc95`, before the repository-managed workflow display name changed from
+`CodeQL` to `CodeQL Security`:
 
 - `.github/workflows/codeql.yml` was active with workflow name `CodeQL` and job
   name `Analyze Go`.
@@ -38,15 +39,15 @@ Code Quality run](https://github.com/orang-gaboets/octostate/actions/runs/320960
 revalidating the configuration instead of treating this dated snapshot as
 current state.
 
-This branch changes only the repository-managed workflow display name to
-`CodeQL Security`. Its job remains `Analyze Go`; the generated Code Quality job
-remains `Analyze (go)`.
+The repository-managed workflow currently uses the display name `CodeQL
+Security`. Its job remains `Analyze Go`; the generated Code Quality job remains
+`Analyze (go)`.
 
 The earlier decision in #110 said to leave GitHub Code Quality findings
 disabled for the time being. Current GitHub-managed Code Quality runs show that
 the external configuration has since changed. The intended configuration is
 now explicit: keep GitHub Code Quality alongside repository-managed security
-scanning. This repository change does not modify GitHub settings.
+scanning. The repository-managed workflow does not modify GitHub settings.
 
 ## Active analysis paths
 

@@ -185,6 +185,18 @@ That writes the local graph into `graphify-out/`, which stays untracked. From
 there, use `graphify query`, `graphify path`, or `graphify affected` when you
 need architecture, dependency, or impact analysis.
 
+## Documentation Assets
+
+Update `docs/assets/diagrams/gitops-flow.mmd` first, then regenerate the
+committed SVG from the repository root:
+
+```bash
+npx --yes --package @mermaid-js/mermaid-cli@11.12.0 mmdc \
+  -i docs/assets/diagrams/gitops-flow.mmd \
+  -o docs/assets/diagrams/gitops-flow.svg \
+  --backgroundColor transparent
+```
+
 ## Testing
 
 Run the full test suite:
