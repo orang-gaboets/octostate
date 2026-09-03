@@ -94,6 +94,55 @@ func TestCreateRepoCmdDryRunSkipsOrdinaryCreation(t *testing.T) {
 	}
 }
 
+func TestCreateRepoCmdWithTemplateUsesTemplateCreation(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	cmd.SetArgs([]string{"--org", "org", "--template-org", "templates", "--template-name", "base", "--name", "service", "--include-all-branches"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("template create returned error: %v", err)
+	}
+	if !service.createCalled || service.ordinaryCalled {
+		t.Fatalf("template create used the wrong service path: %#v", service)
+	}
+	if service.lastTemplateOrg != "templates" || service.lastTemplateRepo != "base" || service.lastRequest == nil || !service.lastRequest.GetIncludeAllBranches() {
+		t.Fatalf("unexpected template create request: org=%q repo=%q request=%#v", service.lastTemplateOrg, service.lastTemplateRepo, service.lastRequest)
+	}
+}
+
+func TestCreateRepoCmdToConfigOmitsTemplate(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte("organization: org\nrepositories: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := reposcmd.CreateRepoCmd(nil)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--desc", "description", "--private", "--to-config", configPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ordinary proposal returned error: %v", err)
+	}
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Data.TemplateOwner != "" || result.Data.TemplateRepo != "" || result.Data.IncludeAllBranches {
+		t.Fatalf("ordinary proposal unexpectedly contains template data: %#v", result.Data)
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repositories) != 1 {
+		t.Fatalf("expected one repository, got %#v", cfg.Repositories)
+	}
+	repository := cfg.Repositories[0]
+	if repository.Template != (gitopsconfig.TemplateSpec{}) {
+		t.Fatalf("ordinary proposal unexpectedly wrote template settings: %#v", repository.Template)
+	}
+	if repository.Visibility != "private" || repository.Description != "description" {
+		t.Fatalf("unexpected ordinary proposal repository: %#v", repository)
+	}
+}
+
 func (m *captureCreateRepoFromTemplateService) Create(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 	m.ordinaryCalled = true
 	m.lastCreateOwner = owner
