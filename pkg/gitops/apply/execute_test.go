@@ -304,6 +304,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			IncludeAllBranches: true,
 		},
 	}
+	desiredRepo.SetManagedAllowForking(false)
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
 		Actions: []gitopsplan.Action{{
@@ -343,8 +344,8 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			if repository == nil || repository.Homepage == nil || *repository.Homepage != desiredRepo.Homepage {
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
-			if repository.AllowForking != nil {
-				t.Fatalf("expected allow_forking to be omitted for private repository edit, got %#v", repository)
+			if repository.AllowForking == nil || *repository.AllowForking {
+				t.Fatalf("expected explicit private allow_forking=false, got %#v", repository)
 			}
 			return &gh.Repository{}, nil, nil
 		},
@@ -584,7 +585,7 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	}
 }
 
-func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.T) {
+func TestExecuteRepositoryUpdatePrivateRepoAppliesAllowForkingChange(t *testing.T) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
