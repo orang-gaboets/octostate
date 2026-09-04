@@ -233,3 +233,101 @@ automated live integration testing and is non-blocking for v1.2.0.
 
 The historical `docs/maintainers/v1.0.0-readiness.md` document remains
 unchanged.
+
+## Automated live integration workflow (#248)
+
+Issue [#248](https://github.com/orang-gaboets/octostate/issues/248) adds
+optional reusable live-integration evidence. It does not replace offline CI,
+does not block v1.2.0, and never substitutes for #243-owned exact-candidate
+description mutation, convergence, restoration, or release-readiness
+evidence.
+
+### Activation and authorization
+
+Run `Trusted Live Integration` manually from the Actions UI with the `main`
+branch selected, or use:
+
+```bash
+gh workflow run live-integration.yml --ref main
+```
+
+The workflow has no pull-request, push, or scheduled trigger and accepts no
+branch, SHA, organization, or repository inputs. The trust job runs only when
+`github.ref` is `refs/heads/main`; it checks out the dispatch SHA, fetches
+`origin/main`, verifies that SHA is an ancestor, and validates the committed
+fixture before the protected job can run.
+
+The `live-integration` job references the protected environment
+`octostate-test`. Maintainers must configure and read back these external
+settings before activation; the repository workflow does not create or change
+them:
+
+- require the `@orang-gaboets/octostate-live-testers` reviewer team where that
+  environment feature is supported;
+- allow self-review initially if that is the approved operating choice; and
+- restrict the environment to the `main` branch.
+
+The environment variable `OCTOSTATE_TEST_APP_CLIENT_ID` and environment
+secret `OCTOSTATE_TEST_APP_PRIVATE_KEY` are required. The App private key is
+referenced only by the protected job, never by `trusted-dispatch` and never by
+ordinary pull-request workflows. The dedicated App must remain installed only
+on `octostate-test`, restricted to `octostate-fixture-repo`, with Members read,
+Administration read/write, and Metadata read permissions. The documented
+non-secret App facts remain App ID `4726852` and installation ID `156749227`.
+
+### Run phases and credential sequence
+
+The protected job checks out the SHA emitted by the trust job and verifies the
+checkout before using credentials. It then performs these steps in order:
+
+1. Mint a short-lived installation token scoped to owner `octostate-test` and
+   repository `octostate-fixture-repo`, with Administration read, Members
+   read, and Metadata read. Run
+   `.github/scripts/live-integration.sh --read-only` for config validate,
+   config plan, config apply `--check`, audit pull, and audit diff.
+2. Clear the read-only token variables from the harness environment. No
+   write-scoped token exists during the trust job or before this read-only
+   phase completes.
+3. Mint a new short-lived token with Administration write, Members read, and
+   Metadata read, using the same owner and repository scope. Invoke
+   `.github/scripts/live-integration.sh --mutate` exactly once.
+
+The harness targets only `octostate-test` (ID `321418529`) and
+`octostate-test/octostate-fixture-repo` (ID `1347356483`). It requires the
+canonical baseline before mutation, and the only deliberate mutation is the
+reversible topic `octostate-live-integration`.
+
+The mutation path records a normalized stable repository projection containing
+only `id`, `owner.login`, `name`, `visibility`, `default_branch`,
+`description`, `archived`, `is_template`, and sorted `topics`. It validates the
+mutated plan and apply-check as exactly one repository update whose only field
+change is `topics`, marks the mutation started immediately before the single
+write, then requires the post-apply success envelope and matching executed
+action. It polls only bounded read observations and requires both the exact
+changed-topic projection and a fresh zero-executable plan. Restoration first
+requires the exact expected post-mutation projection (or accepts an exact
+baseline no-op), applies the committed baseline once, verifies convergence,
+and runs the final read-only audit checks.
+
+Expected non-executable drift for undeclared organization members, invites, or
+teams is allowed only when the action is explicitly non-executable and its
+resource type is `organization_member`, `invite`, or `team`. Any executable
+action, unrelated skipped action, malformed result envelope, identity mismatch,
+ambiguous state, or restoration failure fails closed. Exact action guards cover
+the plan, apply-check, apply, and restoration envelopes.
+
+Runs are serialized by the literal concurrency group
+`octostate-test-live-integration` and `cancel-in-progress: false`. The trust and
+protected jobs have 10-minute and 45-minute timeouts respectively; the harness
+also uses bounded convergence polling and an internal restoration deadline.
+The step summary is compact and sanitized: it records run ID, tested SHA,
+fixed target names/IDs, phase results, expected topic, exact-action-guard
+result, convergence/restoration results, final PASS/FAIL, and recovery
+guidance. It never records tokens, private keys, raw API payloads, or secret
+values.
+
+Normal failures enter guarded one-shot restoration. A forced cancellation or
+SIGKILL cannot be trapped; if restoration is FAIL or unknown, stop all further
+live automation and follow the dirty-sandbox recovery procedure above. A
+trusted maintainer must restore and independently re-verify the documented
+baseline before another run.
