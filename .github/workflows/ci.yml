@@ -154,6 +154,30 @@ jobs:
         run: |
           bash -n .github/scripts/release-approval-gate.sh
           bash -n .github/scripts/release-approval-gate.test.sh
+
+      - name: Run ShellCheck v0.11.0
+        run: >
+          docker run --rm
+          --volume "$PWD:/mnt"
+          --workdir /mnt
+          koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
+          -x
+          -P SCRIPTDIR
+          .github/scripts/release-approval-gate.sh
+          .github/scripts/release-approval-gate.test.sh
+
+      - name: Test release approval gate
+        run: bash .github/scripts/release-approval-gate.test.sh
+
+  shell-harnesses:
+    name: Shell harnesses
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify Bash syntax
+        run: |
           bash -n .github/scripts/git-remote-auth.sh
           bash -n .github/scripts/git-remote-auth.test.sh
           bash -n .github/scripts/live-integration.sh
@@ -169,17 +193,12 @@ jobs:
           koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
           -x
           -P SCRIPTDIR
-          .github/scripts/release-approval-gate.sh
-          .github/scripts/release-approval-gate.test.sh
           .github/scripts/git-remote-auth.sh
           .github/scripts/git-remote-auth.test.sh
           .github/scripts/live-integration.sh
           .github/scripts/live-integration.test.sh
           .github/scripts/verify-trusted-main.sh
           .github/scripts/verify-trusted-main.test.sh
-
-      - name: Test release approval gate
-        run: bash .github/scripts/release-approval-gate.test.sh
 
       - name: Test Git remote authentication helper
         run: bash .github/scripts/git-remote-auth.test.sh
