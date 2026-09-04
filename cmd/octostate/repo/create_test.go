@@ -275,6 +275,19 @@ func TestCreateRepoFromTemplateMissingTemplateNameFlag(t *testing.T) {
 	}
 }
 
+func TestCreateRepoFromTemplateRejectsExplicitBlankTemplateName(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	c := reposcmd.CreateNewRepoFromTemplateCmd(service)
+	c.SetArgs([]string{"--org", "o", "--template-name", "   ", "--name", "n"})
+	err := c.Execute()
+	if err == nil || err.Error() != "--template-name must not be empty" {
+		t.Fatalf("expected blank template-name error, got %v", err)
+	}
+	if service.createCalled || service.ordinaryCalled {
+		t.Fatalf("blank template name reached a create service: %#v", service)
+	}
+}
+
 func TestCreateRepoFromTemplateAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
 	c := reposcmd.CreateNewRepoFromTemplateCmd(nil)
