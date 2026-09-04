@@ -65,7 +65,7 @@ func TestGetOrgByNameCmdPropagatesServiceError(t *testing.T) {
 }
 
 func TestInviteCmdPropagatesInvitationServiceError(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(failingOrganizationService{}, nil)
+	cmd := organizationcmd.InviteCmd(failingOrganizationService{}, nil, nil)
 	cmd.SetArgs([]string{"--org", "o", "--id", "123"})
 	if err := cmd.Execute(); !errors.Is(err, errOrganizationCommandDependency) {
 		t.Fatalf("expected dependency error, got %v", err)
@@ -73,7 +73,7 @@ func TestInviteCmdPropagatesInvitationServiceError(t *testing.T) {
 }
 
 func TestInviteCmdPropagatesUserLookupError(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(auth.MockOrganizationService{}, failingOrganizationUserService{})
+	cmd := organizationcmd.InviteCmd(auth.MockOrganizationService{}, failingOrganizationUserService{}, nil)
 	cmd.SetArgs([]string{"--org", "o", "--username", "u"})
 	if err := cmd.Execute(); !errors.Is(err, errOrganizationCommandDependency) {
 		t.Fatalf("expected dependency error, got %v", err)

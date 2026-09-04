@@ -19,7 +19,7 @@ func NewOrganizationCmd(orgSvc organizations.Service, reposSvc repos.Service, us
 
 	cmd.AddCommand(
 		GetOrgByNameCmd(orgSvc),
-		InviteCmd(orgSvc, usersSvc),
+		InviteCmd(orgSvc, usersSvc, nil),
 		MembershipCmd(orgSvc),
 		ListOrgInvitationsCmd(orgSvc),
 		ListOrgMembersCmd(orgSvc),

@@ -30,9 +30,9 @@ This reference uses canonical command names. Common aliases such as `org`,
 
 ## Proposal mode
 
-The repository, topic, team, team membership, team repository permission, and
-organization invite mutation commands documented below also support
-`--to-config <organization.yaml>`. Proposal mode updates the existing local
+The repository, topic, team, team membership, team repository permission,
+organization invite, and organization membership mutation commands documented
+below also support `--to-config <organization.yaml>`. Proposal mode updates the existing local
 configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
 
@@ -96,19 +96,25 @@ therefore valid, reviewable config that stays pending until the repository
 exists.
 
 `organization invite` proposals record the invite locally instead of sending
-it, so the username form is written as a `username:` invite (trimmed) without
-the live user-ID lookup. New proposed invites use the `direct_member` role,
-matching what GitHub applies when the live path sends no explicit role; an
-invite that omits `role:` resolves to `direct_member` for the same reason.
+it. The command accepts a `username`, `user_id`, or `email` identity, plus the
+invitation role and team slugs. The username form is written trimmed without the
+live user-ID lookup, and team slugs are recorded directly, so each must
+reference a team the config declares or validation rejects the write. An
+invitation that omits `role:` resolves to `direct_member`, matching what GitHub
+applies when the live path sends no explicit role.
 
-Matching is identity-only: an invite whose username or `user_id` is already
-declared is a no-op, and because the command has no `--role` flag it never
-rewrites the retained entry. When the declared invite carries a different role
-or `team_slugs:`, the no-op result reports that retained shape rather than
-`direct_member`, since `config apply` sends the retained role and team
-assignments. Note that identity matching cannot span forms: a `username:`
-invite and a `user_id:` invite for the same person are not recognised as
-duplicates, because resolving one to the other would require a live lookup.
+Matching remains identity-only. If the same invitation identity is already
+declared, proposal mode is a semantic no-op and reports the retained role and
+team assignments rather than claiming newly supplied metadata was applied, since
+`config apply` sends the retained values. Note that identity matching cannot
+span forms: a `username:` invite and a `user_id:` invite for the same person are
+not recognised as duplicates, because resolving one to the other would require a
+live lookup.
+
+`organization membership set` proposals upsert the matching top-level `members:`
+entry: a missing member is added, an existing member's role is updated, and an
+identical entry is a deterministic no-op. Membership is durable desired state,
+distinct from the transitional invitation above.
 
 A *username* invite that duplicates a declared top-level member is rejected by
 the existing config validation. That check applies to username invites only:

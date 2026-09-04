@@ -2,6 +2,7 @@ package organization
 
 import (
 	"fmt"
+	"net/mail"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,7 +19,7 @@ import (
 )
 
 // InviteCmd creates a command to invite a user to an organization.
-func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Command {
+func InviteCmd(orgSvc organizations.Service, userSvc users.Service, teamSvc teams.Service) *cobra.Command {
 	var (
 		token          string
 		appID          int64
@@ -38,10 +39,11 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 		Use:     "invite",
 		Aliases: []string{"inv", "add-user", "invite-user"},
 		Short:   "Invite a user to an organization",
-		Long:    "Invite a user to a GitHub organization by their user ID or username.",
+		Long:    "Invite a user to a GitHub organization by user ID, username, or email.",
 		Example: `
 			OCTOSTATE_GITHUB_TOKEN="<token>" octostate organization invite --org <org-name> --id <user-id>
 			octostate organization invite --org <org-name> --username <username> --dry-run
+			octostate organization invite --org <org-name> --email <email> --role direct_member --team-slug <slug>
 			octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org-name> --username <username>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			trimmedOrg := strings.TrimSpace(org)
@@ -51,7 +53,11 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 			usernameProvided := cmd.Flags().Changed("username")
 			emailProvided := cmd.Flags().Changed("email")
 
-			if err := validateInviteIdentity(userIDProvided, usernameProvided, emailProvided, trimmedEmail); err != nil {
+			if err := validateInviteIdentity(
+				userIDProvided, userID,
+				usernameProvided, trimmedUsername,
+				emailProvided, trimmedEmail,
+			); err != nil {
 				return err
 			}
 
@@ -59,7 +65,10 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 			if !isSupportedInviteRole(requestedRole) {
 				return fmt.Errorf("role %q must be one of admin, direct_member, billing_manager: %w", requestedRole, github.ErrInvalidFieldValue)
 			}
-			normalizedTeamSlugs := normalizeTeamSlugs(teamSlugs)
+			normalizedTeamSlugs, err := normalizeTeamSlugs(teamSlugs)
+			if err != nil {
+				return err
+			}
 
 			if dryRun && cmd.Flags().Changed("to-config") {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
@@ -77,10 +86,6 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 				})
 			}
 
-			if userIDProvided && userID <= 0 {
-				return fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
-			}
-
 			if cmd.Flags().Changed("to-config") {
 				return inviteToConfig(cmd, inviteProposal{
 					path:         toConfig,
@@ -96,7 +101,7 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 			}
 
 			var client auth.Client
-			if orgSvc == nil || (!userIDProvided && usernameProvided && userSvc == nil) || len(normalizedTeamSlugs) > 0 {
+			if orgSvc == nil || (!userIDProvided && usernameProvided && userSvc == nil) || (len(normalizedTeamSlugs) > 0 && teamSvc == nil) {
 				var err error
 				client, err = auth.NewClient(cmd.Context(), token, appID, installationID, appKeyPath)
 				if err != nil {
@@ -142,7 +147,11 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 				opts.UserID = &userID
 			}
 			if len(normalizedTeamSlugs) > 0 {
-				teamIDs, err := resolveTeamIDs(cmd, client, trimmedOrg, normalizedTeamSlugs)
+				resolver := teamSvc
+				if resolver == nil {
+					resolver = client.Teams()
+				}
+				teamIDs, err := resolveTeamIDs(cmd, resolver, trimmedOrg, normalizedTeamSlugs)
 				if err != nil {
 					return err
 				}
@@ -192,8 +201,8 @@ func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Comma
 // sends no explicit role.
 const inviteProposalRole = "direct_member"
 
-// effectiveInviteRole reports the role an invite resolves to. An omitted role
-// is sent to GitHub as no role at all, which GitHub treats as direct_member.
+// effectiveInviteRole returns the invitation role to send. An omitted or
+// whitespace-only role resolves to direct_member.
 func effectiveInviteRole(role string) string {
 	if trimmed := strings.TrimSpace(role); trimmed != "" {
 		return trimmed
@@ -204,8 +213,16 @@ func effectiveInviteRole(role string) string {
 // isSupportedInviteRole reports whether the role is one the desired-state
 // invite schema accepts. Durable membership roles are deliberately not
 // accepted here; those belong to organization membership set.
-// validateInviteIdentity requires exactly one usable identity flag.
-func validateInviteIdentity(userIDProvided, usernameProvided, emailProvided bool, email string) error {
+// validateInviteIdentity requires exactly one usable invitation identity.
+//
+// It validates the value rather than only which flag was supplied, so an
+// unusable request fails before dry-run, proposal, and live handling instead of
+// being previewed as if it were valid.
+func validateInviteIdentity(
+	userIDProvided bool, userID int64,
+	usernameProvided bool, username string,
+	emailProvided bool, email string,
+) error {
 	identities := 0
 	for _, provided := range []bool{userIDProvided, usernameProvided, emailProvided} {
 		if provided {
@@ -218,10 +235,30 @@ func validateInviteIdentity(userIDProvided, usernameProvided, emailProvided bool
 	case identities > 1:
 		return fmt.Errorf("%w: provide exactly one of --id, --username, or --email", github.ErrConflictingCredentials)
 	}
-	if emailProvided && email == "" {
+
+	switch {
+	case userIDProvided && userID <= 0:
+		return fmt.Errorf("user ID must be greater than zero: %w", github.ErrMissingRequiredField)
+	case usernameProvided && username == "":
+		return fmt.Errorf("%w: --username must not be empty", github.ErrMissingRequiredField)
+	case emailProvided && email == "":
 		return fmt.Errorf("%w: --email must not be empty", github.ErrMissingRequiredField)
+	case emailProvided && !isValidInviteEmail(email):
+		return fmt.Errorf("email %q is not a valid email address: %w", email, github.ErrInvalidFieldValue)
 	}
 	return nil
+}
+
+// isValidInviteEmail mirrors the desired-state invite email rule so the CLI and
+// config validation cannot disagree about what a usable address is. The config
+// rule is unexported, so the semantics are matched here rather than widening
+// the config package API for a CLI concern.
+func isValidInviteEmail(email string) bool {
+	address, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+	return address.Address == email
 }
 
 // printInviteDryRun previews the requested invitation without any GitHub call,
@@ -257,16 +294,20 @@ func isSupportedInviteRole(role string) bool {
 	}
 }
 
-// normalizeTeamSlugs trims, drops empties, and de-duplicates while preserving
-// the caller's order, so the written config matches the deterministic shape the
-// config contract expects.
-func normalizeTeamSlugs(slugs []string) []string {
+// normalizeTeamSlugs trims and de-duplicates case-insensitively while
+// preserving the caller's order, so the written config matches the
+// deterministic shape the config contract expects.
+//
+// An explicitly supplied blank slug is an error rather than an omitted value:
+// silently dropping it would send an invitation without a team the caller asked
+// for, and the desired-state validator rejects an empty team_slugs entry too.
+func normalizeTeamSlugs(slugs []string) ([]string, error) {
 	normalized := make([]string, 0, len(slugs))
 	seen := make(map[string]struct{}, len(slugs))
 	for _, slug := range slugs {
 		trimmed := strings.TrimSpace(slug)
 		if trimmed == "" {
-			continue
+			return nil, fmt.Errorf("team slug must not be empty: %w", github.ErrMissingRequiredField)
 		}
 		key := strings.ToLower(trimmed)
 		if _, ok := seen[key]; ok {
@@ -275,14 +316,13 @@ func normalizeTeamSlugs(slugs []string) []string {
 		seen[key] = struct{}{}
 		normalized = append(normalized, trimmed)
 	}
-	return normalized
+	return normalized, nil
 }
 
 // resolveTeamIDs turns requested team slugs into the IDs the GitHub invitation
 // API needs, failing clearly when a slug does not resolve rather than silently
 // sending an invitation without the requested team.
-func resolveTeamIDs(cmd *cobra.Command, client auth.Client, org string, slugs []string) ([]int64, error) {
-	teamSvc := client.Teams()
+func resolveTeamIDs(cmd *cobra.Command, teamSvc teams.Service, org string, slugs []string) ([]int64, error) {
 	ids := make([]int64, 0, len(slugs))
 	for _, slug := range slugs {
 		team, err := teams.GetTeamBySlug(cmd.Context(), teams.GetTeamBySlugOptions{

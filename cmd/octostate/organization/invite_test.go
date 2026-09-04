@@ -39,7 +39,7 @@ func (s *captureInviteUserLookupService) Get(_ context.Context, _ string) (*gh.U
 
 func TestInviteCmdNoRequiredFlags(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for missing required flags")
@@ -48,7 +48,7 @@ func TestInviteCmdNoRequiredFlags(t *testing.T) {
 
 func TestInviteCmdAllRequiredFlagsTokenProvided(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--username", "u"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -57,7 +57,7 @@ func TestInviteCmdAllRequiredFlagsTokenProvided(t *testing.T) {
 
 func TestInviteCmdAllRequiredFlagsAppProvided(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--username", "u"})
 	if err := c.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -66,7 +66,7 @@ func TestInviteCmdAllRequiredFlagsAppProvided(t *testing.T) {
 
 func TestInviteCmdPartialAppProvided(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--app-id", "123", "--org", "o", "--username", "u"})
 	if err := c.Execute(); !errors.Is(err, github.ErrNoValidCredentials) {
 		t.Fatalf("expected error %v, got %v", github.ErrNoValidCredentials, err)
@@ -75,7 +75,7 @@ func TestInviteCmdPartialAppProvided(t *testing.T) {
 
 func TestInviteCmdBothAuthMethodsProvided(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--token", "t", "--app-id", "123", "--installation-id", "456", "--app-key-path", "path/to/key.pem", "--org", "o", "--username", "u"})
 	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
 		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
@@ -84,7 +84,7 @@ func TestInviteCmdBothAuthMethodsProvided(t *testing.T) {
 
 func TestInviteCmdWithUsername(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--username", "u"})
@@ -102,7 +102,7 @@ func TestInviteCmdWithUsername(t *testing.T) {
 
 func TestInviteCmdWithUserID(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--id", "123"})
@@ -120,7 +120,7 @@ func TestInviteCmdWithUserID(t *testing.T) {
 
 func TestInviteCmdWithBothUsernameAndUserID(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--username", "u", "--id", "123"})
 	if err := c.Execute(); !errors.Is(err, github.ErrConflictingCredentials) {
 		t.Fatalf("expected error %v, got %v", github.ErrConflictingCredentials, err)
@@ -140,7 +140,7 @@ func TestInviteCmdWithNonPositiveUserID(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			c := organizationcmd.InviteCmd(nil, nil)
+			c := organizationcmd.InviteCmd(nil, nil, nil)
 			c.SetArgs([]string{"--token", "t", "--org", "o", "--id", tc.userID})
 			if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
 				t.Fatalf("expected error %v, got %v", github.ErrMissingRequiredField, err)
@@ -151,7 +151,7 @@ func TestInviteCmdWithNonPositiveUserID(t *testing.T) {
 
 func TestInviteCmdWithInvalidFlags(t *testing.T) {
 	auth.PrepareClient(t)
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--token", "t", "--org", "o", "--invalid-flag"})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flags")
@@ -161,7 +161,7 @@ func TestInviteCmdWithInvalidFlags(t *testing.T) {
 func TestInviteCmdDryRunSkipsUserLookupAndOrgInvite(t *testing.T) {
 	orgSvc := &captureInviteOrganizationService{}
 	userSvc := &captureInviteUserLookupService{}
-	c := organizationcmd.InviteCmd(orgSvc, userSvc)
+	c := organizationcmd.InviteCmd(orgSvc, userSvc, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--username", "u", "--dry-run"})
@@ -236,7 +236,7 @@ invites: []
 func TestInviteToConfigAppendsUsernameInvite(t *testing.T) {
 	configPath := writeInviteConfig(t, inviteBaseConfig)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	var errBuf bytes.Buffer
 	c.SetOut(&out)
@@ -280,7 +280,7 @@ teams: []
 func TestInviteToConfigAppendsUserIDInvite(t *testing.T) {
 	configPath := writeInviteConfig(t, inviteBaseConfig)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--id", "42", "--to-config", configPath})
@@ -318,7 +318,7 @@ invites:
 `
 	configPath := writeInviteConfig(t, before)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--username", "OCTOCAT", "--to-config", configPath})
@@ -345,7 +345,7 @@ invites:
 `
 	configPath := writeInviteConfig(t, before)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--id", "42", "--to-config", configPath})
@@ -369,7 +369,7 @@ invites:
     role: admin
 `)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
@@ -399,7 +399,7 @@ invites: []
 `
 	configPath := writeInviteConfig(t, before)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})
 	err := c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "duplicate_organization_member_invite") {
@@ -414,7 +414,7 @@ func TestInviteToConfigOrganizationMismatchLeavesFileUnchanged(t *testing.T) {
 	before := inviteBaseConfig
 	configPath := writeInviteConfig(t, before)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--org", "other", "--username", "octocat", "--to-config", configPath})
 	err := c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "organization mismatch") {
@@ -427,7 +427,7 @@ func TestInviteToConfigOrganizationMismatchLeavesFileUnchanged(t *testing.T) {
 
 func TestInviteToConfigRejectsNonPositiveUserID(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "missing.yaml")
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--org", "o", "--id", "0", "--to-config", configPath})
 	if err := c.Execute(); !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("expected non-positive user ID error, got %v", err)
@@ -444,7 +444,7 @@ func TestInviteToConfigRejectsDirectoryTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", target})
 	err := c.Execute()
 	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
@@ -457,7 +457,7 @@ func TestInviteToConfigSkipsGitHubServices(t *testing.T) {
 
 	orgSvc := &captureInviteOrganizationService{}
 	userSvc := &captureInviteUserLookupService{}
-	c := organizationcmd.InviteCmd(orgSvc, userSvc)
+	c := organizationcmd.InviteCmd(orgSvc, userSvc, nil)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})
 	if err := c.Execute(); err != nil {
 		t.Fatal(err)
@@ -479,7 +479,7 @@ func TestInviteExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
 		{name: "whitespace", path: " "},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			c := organizationcmd.InviteCmd(nil, nil)
+			c := organizationcmd.InviteCmd(nil, nil, nil)
 			c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", test.path})
 			err := c.Execute()
 			if err == nil {
@@ -494,7 +494,7 @@ func TestInviteExplicitEmptyToConfigDoesNotUseGitHub(t *testing.T) {
 
 func TestInviteRejectsDryRunWithToConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "missing.yaml")
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--dry-run", "--to-config", configPath})
 	err := c.Execute()
 	if err == nil || err.Error() != "--to-config cannot be combined with --dry-run" {
@@ -521,7 +521,7 @@ invites:
 
 	orgSvc := &captureInviteOrganizationService{}
 	userSvc := &captureInviteUserLookupService{}
-	c := organizationcmd.InviteCmd(orgSvc, userSvc)
+	c := organizationcmd.InviteCmd(orgSvc, userSvc, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})
@@ -555,7 +555,7 @@ invites:
 `
 	configPath := writeInviteConfig(t, before)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--id", "42", "--to-config", configPath})
@@ -578,7 +578,7 @@ invites:
 func TestInviteToConfigNewInviteReportsEmptyTeamSlugs(t *testing.T) {
 	configPath := writeInviteConfig(t, inviteBaseConfig)
 
-	c := organizationcmd.InviteCmd(nil, nil)
+	c := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	c.SetOut(&out)
 	c.SetArgs([]string{"--org", "o", "--username", "octocat", "--to-config", configPath})

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
+	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 )
 
 type surfaceData struct {
@@ -73,7 +74,7 @@ func decodeSurface(t *testing.T, output string) surfaceResult {
 func TestInviteToConfigRecordsEmailRoleAndTeamSlugs(t *testing.T) {
 	path := surfaceConfig(t)
 
-	cmd := organizationcmd.InviteCmd(nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
@@ -97,19 +98,31 @@ func TestInviteToConfigRecordsEmailRoleAndTeamSlugs(t *testing.T) {
 		t.Fatalf("team slugs = %#v", result.Data.TeamSlugs)
 	}
 
-	written, err := os.ReadFile(path)
+	// Asserted against the loaded config rather than by substring: the base
+	// fixture already contains "platform" and "backend" in its team
+	// declarations, so a substring check would pass even if team_slugs were
+	// never written to the invite.
+	cfg, err := gitopsconfig.LoadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"email: alice@example.com", "role: admin", "platform", "backend"} {
-		if !strings.Contains(string(written), want) {
-			t.Fatalf("config missing %q:\n%s", want, written)
-		}
+	if len(cfg.Invites) != 1 {
+		t.Fatalf("invites = %#v", cfg.Invites)
+	}
+	invite := cfg.Invites[0]
+	if !invite.Email.Present || invite.Email.Value != "alice@example.com" {
+		t.Fatalf("unexpected invite email: %#v", invite.Email)
+	}
+	if invite.Role != "admin" {
+		t.Fatalf("role = %q", invite.Role)
+	}
+	if len(invite.TeamSlugs) != 2 || invite.TeamSlugs[0] != "platform" || invite.TeamSlugs[1] != "backend" {
+		t.Fatalf("invite team slugs = %#v, want [platform backend]", invite.TeamSlugs)
 	}
 }
 
 func TestInviteRejectsMoreThanOneIdentity(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil, nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SilenceUsage = true
@@ -120,7 +133,7 @@ func TestInviteRejectsMoreThanOneIdentity(t *testing.T) {
 }
 
 func TestInviteRejectsUnsupportedRole(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil, nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SilenceUsage = true
@@ -132,7 +145,7 @@ func TestInviteRejectsUnsupportedRole(t *testing.T) {
 }
 
 func TestInviteDryRunReportsRoleAndTeamsWithoutMutating(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil, nil)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
@@ -154,7 +167,7 @@ func TestInviteToConfigEmailNoOpReportsRetainedShape(t *testing.T) {
 	path := surfaceConfig(t)
 
 	for i := 0; i < 2; i++ {
-		cmd := organizationcmd.InviteCmd(nil, nil)
+		cmd := organizationcmd.InviteCmd(nil, nil, nil)
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetErr(&bytes.Buffer{})
