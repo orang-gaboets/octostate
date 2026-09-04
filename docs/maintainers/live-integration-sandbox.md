@@ -252,10 +252,11 @@ gh workflow run live-integration.yml --ref main
 ```
 
 The workflow has no pull-request, push, or scheduled trigger and accepts no
-branch, SHA, organization, or repository inputs. The trust job runs only when
-`github.ref` is `refs/heads/main`; it checks out the dispatch SHA, fetches
-`origin/main`, verifies that SHA is an ancestor, and validates the committed
-fixture before the protected job can run.
+branch, SHA, organization, or repository inputs. The trust job runs for a
+manual dispatch but fails closed unless `github.ref` is `refs/heads/main`; it
+checks out the dispatch SHA, fetches `origin/main`, verifies that SHA is an
+ancestor, and validates the committed fixture before the protected job can
+run.
 
 The `live-integration` job references the protected environment
 `octostate-test`. Maintainers must configure and read back these external
