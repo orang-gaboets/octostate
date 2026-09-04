@@ -59,6 +59,19 @@ type captureCreateRepoFromTemplateService struct {
 	ordinaryCalled   bool
 }
 
+func TestCreateRepoCmdHelpDescribesOptionalTemplateCreation(t *testing.T) {
+	cmd := reposcmd.CreateRepoCmd(nil)
+	if cmd.Short != "Create a GitHub repository, optionally from a template" {
+		t.Fatalf("unexpected short help: %q", cmd.Short)
+	}
+	if !strings.Contains(cmd.Long, "optionally from a template repository") {
+		t.Fatalf("expected general repository help to describe optional templates: %q", cmd.Long)
+	}
+	if !strings.Contains(cmd.Example, "octostate repo create --org <org> --name <new-repo-name>") || !strings.Contains(cmd.Example, "--template-name <template-name>") {
+		t.Fatalf("expected general repository examples for ordinary and template creation: %q", cmd.Example)
+	}
+}
+
 func TestCreateRepoCmdSupportsOrdinaryCreation(t *testing.T) {
 	service := &captureCreateRepoFromTemplateService{}
 	cmd := reposcmd.CreateRepoCmd(service)

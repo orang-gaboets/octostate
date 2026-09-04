@@ -223,6 +223,12 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 	} else {
 		cmd.Use = "create"
 		cmd.Aliases = []string{"new"}
+		cmd.Short = "Create a GitHub repository, optionally from a template"
+		cmd.Long = "Create a new GitHub repository, optionally from a template repository, with organization, name, description, topics, and privacy settings."
+		cmd.Example = `
+			octostate repo create --org <org> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true
+			octostate repo create --org <org> --template-name <template-name> --name <new-repo-name> --include-all-branches=true
+			octostate repo create --org <org> --name <new-repo-name> --dry-run`
 		github.MarkRequiredFlags(cmd, "org", "name")
 	}
 
