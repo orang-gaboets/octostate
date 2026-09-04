@@ -36,6 +36,8 @@ run_case() {
   local output_file="$4"
   local ref_value="$5"
   local sha_value="$6"
+  local expected_stdout="${7:-empty}"
+  local expected_stderr="${8:-empty}"
 
   : >"$output_file"
   : >"$test_root/stdout"
@@ -57,6 +59,44 @@ run_case() {
     cat "$test_root/stderr" >&2 || true
     return 1
   fi
+
+  case "$expected_stdout" in
+    empty)
+      if [ -s "$test_root/stdout" ]; then
+        echo "case $case_name: expected empty stdout" >&2
+        cat "$test_root/stdout" >&2
+        return 1
+      fi
+      ;;
+    nonempty)
+      if [ ! -s "$test_root/stdout" ]; then
+        echo "case $case_name: expected non-empty stdout" >&2
+        return 1
+      fi
+      ;;
+    *)
+      fail "unsupported stdout expectation: $expected_stdout"
+      ;;
+  esac
+
+  case "$expected_stderr" in
+    empty)
+      if [ -s "$test_root/stderr" ]; then
+        echo "case $case_name: expected empty stderr" >&2
+        cat "$test_root/stderr" >&2
+        return 1
+      fi
+      ;;
+    nonempty)
+      if [ ! -s "$test_root/stderr" ]; then
+        echo "case $case_name: expected non-empty stderr" >&2
+        return 1
+      fi
+      ;;
+    *)
+      fail "unsupported stderr expectation: $expected_stderr"
+      ;;
+  esac
 }
 
 assert_output() {
@@ -81,6 +121,7 @@ assert_no_output() {
 
 origin_repo="$test_root/origin.git"
 clone_repo="$test_root/clone"
+refresh_clone="$test_root/refresh-clone"
 alt_repo="$test_root/alt"
 mkdir -p "$origin_repo"
 git init --bare "$origin_repo" >/dev/null
@@ -95,6 +136,10 @@ git -C "$clone_repo" config user.name "Octostate Test"
 git -C "$clone_repo" config user.email "test@example.com"
 initial_sha=$(git -C "$clone_repo" rev-parse HEAD)
 
+git clone "$origin_repo" "$refresh_clone" >/dev/null
+git -C "$refresh_clone" config user.name "Octostate Test"
+git -C "$refresh_clone" config user.email "test@example.com"
+
 good_output="$test_root/good.out"
 run_case success 0 "$clone_repo" "$good_output" refs/heads/main "$initial_sha"
 assert_output "sha=$initial_sha" "$good_output"
@@ -104,10 +149,10 @@ git -C "$clone_repo" add local.txt
 git -C "$clone_repo" commit -m local-only >/dev/null
 local_only_sha=$(git -C "$clone_repo" rev-parse HEAD)
 
-run_case non_main_ref 1 "$clone_repo" "$test_root/non-main.out" refs/heads/feature "$initial_sha"
+run_case non_main_ref 1 "$clone_repo" "$test_root/non-main.out" refs/heads/feature "$initial_sha" empty nonempty
 assert_no_output "$test_root/non-main.out"
 
-run_case event_sha_mismatch 1 "$clone_repo" "$test_root/mismatch.out" refs/heads/main "$base_sha"
+run_case event_sha_mismatch 1 "$clone_repo" "$test_root/mismatch.out" refs/heads/main "$base_sha" empty nonempty
 assert_no_output "$test_root/mismatch.out"
 
 git clone "$origin_repo" "$alt_repo" >/dev/null
@@ -116,7 +161,19 @@ git -C "$alt_repo" config user.email "test@example.com"
 new_sha=$(commit_file "$alt_repo" advance.txt advance)
 git -C "$alt_repo" push origin main >/dev/null
 
-run_case non_ancestor 1 "$clone_repo" "$test_root/non-ancestor.out" refs/heads/main "$local_only_sha"
+orphan_repo="$test_root/orphan"
+init_repo "$orphan_repo"
+printf '%s\n' orphan > "$orphan_repo/orphan.txt"
+git -C "$orphan_repo" add orphan.txt
+git -C "$orphan_repo" commit -m orphan >/dev/null
+git -C "$refresh_clone" fetch "$orphan_repo" HEAD:refs/tmp/orphan >/dev/null
+bogus_sha=$(git -C "$refresh_clone" rev-parse refs/tmp/orphan)
+git -C "$refresh_clone" update-ref refs/remotes/origin/main "$bogus_sha"
+
+run_case fetch_refreshes_origin_main 0 "$refresh_clone" "$test_root/fetch-refresh.out" refs/heads/main "$initial_sha"
+assert_output "sha=$initial_sha" "$test_root/fetch-refresh.out"
+
+run_case non_ancestor 1 "$clone_repo" "$test_root/non-ancestor.out" refs/heads/main "$local_only_sha" empty nonempty
 assert_no_output "$test_root/non-ancestor.out"
 
 echo "trusted-main verification tests passed"
