@@ -222,7 +222,7 @@ jobs:
         run: go test -race ./pkg/gitops/...
 
   windows-config:
-    name: Windows config replacement
+    name: Windows file replacement
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -235,4 +235,4 @@ jobs:
           cache: true
 
       - name: Test config replacement packages
-        run: go test ./cmd/octostate/internal/filereplace ./cmd/octostate/internal/configproposal ./cmd/octostate/config
+        run: go test ./internal/filereplace ./internal/contributors ./pkg/gitops/snapshot ./cmd/octostate/internal/configproposal ./cmd/octostate/config

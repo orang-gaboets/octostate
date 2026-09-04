@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/orang-gaboets/octostate/internal/filereplace"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -111,33 +112,19 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 		return "", fmt.Errorf("create snapshot directory: %w", err)
 	}
 
-	file, err := os.CreateTemp(filepath.Dir(path), "snapshot-*.json")
+	encoded, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("create snapshot file: %w", err)
+		return "", fmt.Errorf("encode snapshot: %w", err)
 	}
-	tempPath := file.Name()
+	// json.Encoder.Encode terminated the document with a newline; MarshalIndent
+	// does not, so add it back to keep the file byte-identical.
+	encoded = append(encoded, '\n')
 
-	enc := json.NewEncoder(file)
-	enc.SetIndent("", "  ")
-
-	encodeErr := enc.Encode(snapshot)
-	closeErr := file.Close()
-	if encodeErr != nil || closeErr != nil {
-		_ = os.Remove(tempPath) //nolint:errcheck // best-effort cleanup for temp snapshot files
-	}
-
-	switch {
-	case encodeErr != nil && closeErr != nil:
-		return "", fmt.Errorf("encode snapshot: %w", errors.Join(encodeErr, closeErr))
-	case encodeErr != nil:
-		return "", fmt.Errorf("encode snapshot: %w", encodeErr)
-	case closeErr != nil:
-		return "", fmt.Errorf("close snapshot file: %w", closeErr)
-	}
-
-	if err := os.Rename(tempPath, path); err != nil {
-		_ = os.Remove(tempPath) //nolint:errcheck // best-effort cleanup for temp snapshot files
-		return "", fmt.Errorf("replace snapshot file: %w", err)
+	// 0600 matches what the previous os.CreateTemp path produced on first
+	// write. The snapshot carries organization member and invitation data,
+	// so first creation must not widen it.
+	if err := filereplace.WriteFile(path, encoded, 0o600); err != nil {
+		return "", fmt.Errorf("write snapshot: %w", err)
 	}
 
 	return path, nil
