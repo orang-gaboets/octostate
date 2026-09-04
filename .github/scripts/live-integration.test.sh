@@ -354,6 +354,10 @@ plan_payload() {
 
 case "${1:-} ${2:-}" in
   "config validate")
+    if [ "${LIVE_STUB_HANG_VALIDATE:-0}" = "1" ]; then
+      /bin/sleep 3
+      printf '%s\n' completed >"$LIVE_STUB_INFLIGHT_MARKER"
+    fi
     if [ "${LIVE_STUB_INVALID_VALIDATE:-0}" = "1" ]; then
       jq -nc '{valid:"yes", summary:{errors:0}, errors:[], warnings:[]}'
       exit 0
@@ -494,6 +498,7 @@ run_case() {
       LIVE_STUB_APPLY_LOG="$case_dir/apply.log" \
       LIVE_STUB_STATE="$case_dir/state" \
       LIVE_STUB_DESCENDANT_PID_FILE="$case_dir/descendant.pid" \
+      LIVE_STUB_INFLIGHT_MARKER="$case_dir/inflight.marker" \
       LIVE_STUB_GH_ONCE_FILE="$case_dir/gh-once" \
       LIVE_STUB_PLAN_ONCE_FILE="$case_dir/plan-once" \
       "$@" \
@@ -526,6 +531,12 @@ assert_contains "Final: FAIL" "$CASE_DIR/summary"
 run_case active_deadline --read-only 1 env OCTOSTATE_ACTIVE_DEADLINE_SECONDS=0
 assert_count 0 "go run ./cmd/octostate" "$CASE_DIR/commands.log"
 assert_contains "active integration deadline" "$CASE_DIR/stderr"
+
+run_case active_deadline_inflight --read-only 1 env OCTOSTATE_ACTIVE_DEADLINE_SECONDS=1 LIVE_STUB_HANG_VALIDATE=1
+assert_contains "active integration deadline" "$CASE_DIR/stderr"
+if [ -f "$CASE_DIR/inflight.marker" ]; then
+  fail "active deadline did not stop the in-flight command"
+fi
 
 for mode in malformed null wrong-type; do
   run_case "org_$mode" --read-only 1 env LIVE_STUB_ORG_MODE="$mode"

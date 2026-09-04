@@ -86,7 +86,7 @@ classify_gh_failure() {
 read_organization_json() {
   local output=$1
   local error_file=$SCRATCH_DIR/organization.error.txt
-  if ! gh api "/orgs/$EXPECTED_ORGANIZATION" >"$output" 2>"$error_file"; then
+  if ! run_command_with_active_deadline "$output" "$error_file" gh api "/orgs/$EXPECTED_ORGANIZATION"; then
     classify_gh_failure "$error_file"
     return $?
   fi
@@ -97,7 +97,7 @@ read_repository_projection() {
   local raw=$SCRATCH_DIR/repository.raw.json
   local error_file=$SCRATCH_DIR/repository.error.txt
   local projection=$1
-  if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw" 2>"$error_file"; then
+  if ! run_command_with_active_deadline "$raw" "$error_file" gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY"; then
     classify_gh_failure "$error_file"
     return $?
   fi
@@ -190,11 +190,40 @@ verify_target_and_baseline() {
 run_octostate() {
   local output=$1
   shift
+  run_command_with_active_deadline "$output" "$output.stderr" go run ./cmd/octostate "$@"
+}
+
+run_command_with_active_deadline() {
+  local output=$1
+  local error_output=$2
+  local child
+  local command_status=0
+  local grace
+  shift 2
+
   if [ "$ACTIVE_DEADLINE_ENABLED" -eq 1 ] && [ "$SECONDS" -ge "$ACTIVE_DEADLINE" ]; then
-    fail 'active integration deadline exceeded before Octostate command'
-    return 1
+    fail 'active integration deadline exceeded before command'
+    return 124
   fi
-  go run ./cmd/octostate "$@" >"$output" 2>"$output.stderr"
+  "$@" >"$output" 2>"$error_output" &
+  child=$!
+  while kill -0 "$child" 2>/dev/null; do
+    if [ "$ACTIVE_DEADLINE_ENABLED" -eq 1 ] && [ "$SECONDS" -ge "$ACTIVE_DEADLINE" ]; then
+      terminate_process_tree "$child" TERM
+      grace=0
+      while kill -0 "$child" 2>/dev/null && [ "$grace" -lt 5 ]; do
+        /bin/sleep 1
+        grace=$((grace + 1))
+      done
+      terminate_process_tree "$child" KILL
+      wait "$child" 2>/dev/null || true
+      fail 'active integration deadline exceeded while command was running'
+      return 124
+    fi
+    /bin/sleep 0.1
+  done
+  wait "$child" || command_status=$?
+  return "$command_status"
 }
 
 assert_validate_result() {
