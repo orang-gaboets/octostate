@@ -19,6 +19,7 @@ jobs:
       trusted_sha: ${{ steps.trust.outputs.sha }}
     steps:
       - name: Check out dispatch commit
+        timeout-minutes: 5
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -26,13 +27,16 @@ jobs:
           persist-credentials: false
       - name: Verify trusted main commit
         id: trust
+        timeout-minutes: 2
         run: .github/scripts/verify-trusted-main.sh
       - name: Set up Go
+        timeout-minutes: 5
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
       - name: Validate committed fixture
+        timeout-minutes: 5
         run: go run ./cmd/octostate config validate --config-dir testdata/live-integration
 
   live-integration:
@@ -44,22 +48,26 @@ jobs:
       name: octostate-test
     steps:
       - name: Check out verified commit
+        timeout-minutes: 5
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.trusted-dispatch.outputs.trusted_sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Set up Go
+        timeout-minutes: 5
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
       - name: Verify mutation checkout
+        timeout-minutes: 2
         env:
           TRUSTED_SHA: ${{ needs.trusted-dispatch.outputs.trusted_sha }}
         run: test "$(git rev-parse HEAD)" = "$TRUSTED_SHA"
       - name: Create read-scoped live-test installation token
         id: readonly-token
+        timeout-minutes: 5
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.OCTOSTATE_TEST_APP_CLIENT_ID }}
@@ -70,11 +78,13 @@ jobs:
           permission-members: read
           permission-metadata: read
       - name: Run read-only integration scenarios
+        timeout-minutes: 10
         env:
           GH_TOKEN: ${{ steps.readonly-token.outputs.token }}
           OCTOSTATE_GITHUB_TOKEN: ${{ steps.readonly-token.outputs.token }}
         run: .github/scripts/live-integration.sh --read-only
       - name: Revoke read-only token and clear environment
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ steps.readonly-token.outputs.token }}
           OCTOSTATE_GITHUB_TOKEN: ${{ steps.readonly-token.outputs.token }}
@@ -84,6 +94,7 @@ jobs:
           unset GH_TOKEN OCTOSTATE_GITHUB_TOKEN
       - name: Create write-scoped live-test installation token
         id: app-token
+        timeout-minutes: 5
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.OCTOSTATE_TEST_APP_CLIENT_ID }}
@@ -94,7 +105,10 @@ jobs:
           permission-members: read
           permission-metadata: read
       - name: Run mutation and restoration scenarios
+        timeout-minutes: 30
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           OCTOSTATE_GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          OCTOSTATE_ACTIVE_DEADLINE_SECONDS: 1200
+          OCTOSTATE_CLEANUP_DEADLINE_SECONDS: 540
         run: .github/scripts/live-integration.sh --mutate
