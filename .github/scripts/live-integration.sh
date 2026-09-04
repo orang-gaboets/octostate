@@ -677,12 +677,14 @@ terminate_process_tree() {
   local pid=$1
   local signal=$2
   local child
+  local -a children=()
 
   if [ -r "/proc/$pid/task/$pid/children" ]; then
-    while read -r child; do
+    read -r -a children <"/proc/$pid/task/$pid/children" || true
+    for child in "${children[@]}"; do
       [ -n "$child" ] || continue
       terminate_process_tree "$child" "$signal"
-    done <"/proc/$pid/task/$pid/children"
+    done
   else
     while read -r child; do
       [ -n "$child" ] || continue
