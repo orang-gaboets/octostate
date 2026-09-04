@@ -74,7 +74,7 @@ func decodeSurface(t *testing.T, output string) surfaceResult {
 func TestInviteToConfigRecordsEmailRoleAndTeamSlugs(t *testing.T) {
 	path := surfaceConfig(t)
 
-	cmd := organizationcmd.InviteCmd(nil, nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
@@ -122,7 +122,7 @@ func TestInviteToConfigRecordsEmailRoleAndTeamSlugs(t *testing.T) {
 }
 
 func TestInviteRejectsMoreThanOneIdentity(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(nil, nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SilenceUsage = true
@@ -133,7 +133,7 @@ func TestInviteRejectsMoreThanOneIdentity(t *testing.T) {
 }
 
 func TestInviteRejectsUnsupportedRole(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(nil, nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil)
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SilenceUsage = true
@@ -145,7 +145,7 @@ func TestInviteRejectsUnsupportedRole(t *testing.T) {
 }
 
 func TestInviteDryRunReportsRoleAndTeamsWithoutMutating(t *testing.T) {
-	cmd := organizationcmd.InviteCmd(nil, nil, nil)
+	cmd := organizationcmd.InviteCmd(nil, nil)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
@@ -167,7 +167,7 @@ func TestInviteToConfigEmailNoOpReportsRetainedShape(t *testing.T) {
 	path := surfaceConfig(t)
 
 	for i := 0; i < 2; i++ {
-		cmd := organizationcmd.InviteCmd(nil, nil, nil)
+		cmd := organizationcmd.InviteCmd(nil, nil)
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetErr(&bytes.Buffer{})

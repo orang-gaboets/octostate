@@ -19,7 +19,14 @@ import (
 )
 
 // InviteCmd creates a command to invite a user to an organization.
-func InviteCmd(orgSvc organizations.Service, userSvc users.Service, teamSvc teams.Service) *cobra.Command {
+func InviteCmd(orgSvc organizations.Service, userSvc users.Service) *cobra.Command {
+	return inviteCmd(orgSvc, userSvc, nil)
+}
+
+// inviteCmd additionally accepts a team service so live team-slug resolution is
+// injectable in tests. Kept unexported so the published two-argument
+// constructor stays source-compatible.
+func inviteCmd(orgSvc organizations.Service, userSvc users.Service, teamSvc teams.Service) *cobra.Command {
 	var (
 		token          string
 		appID          int64

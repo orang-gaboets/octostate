@@ -1,4 +1,4 @@
-package organization_test
+package organization
 
 import (
 	"bytes"
@@ -10,81 +10,71 @@ import (
 	gh "github.com/google/go-github/v88/github"
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
+	"github.com/orang-gaboets/octostate/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/pkg/github/users"
 )
 
 // captureInvite records exactly what the CLI hands the invitation service.
 type captureInvite struct {
 	auth.MockOrganizationService
 	calls []*gh.CreateOrgInvitationOptions
-	err   error
 }
 
 func (s *captureInvite) CreateOrgInvitation(_ context.Context, _ string, opts *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
 	s.calls = append(s.calls, opts)
-	if s.err != nil {
-		return nil, nil, s.err
-	}
 	return &gh.Invitation{}, nil, nil
 }
 
-type rejectingUserLookup struct {
+type recordingUserLookup struct {
 	auth.MockUserService
 	called bool
 }
 
-func (s *rejectingUserLookup) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
+func (s *recordingUserLookup) Get(_ context.Context, _ string) (*gh.User, *gh.Response, error) {
 	s.called = true
 	return &gh.User{ID: gh.Ptr(int64(7))}, nil, nil
 }
 
-// captureTeams resolves slugs to ids, or fails, so team wiring is testable
+// captureTeams resolves slugs to IDs, or fails, so team wiring is testable
 // without a live GitHub call.
 type captureTeams struct {
 	auth.MockTeamsService
-	ids  map[string]int64
-	err  error
-	seen []string
+	ids map[string]int64
+	err error
 }
 
 func (s *captureTeams) GetTeamBySlug(_ context.Context, _, slug string) (*gh.Team, *gh.Response, error) {
-	s.seen = append(s.seen, slug)
 	if s.err != nil {
 		return nil, nil, s.err
 	}
 	id, ok := s.ids[slug]
 	if !ok {
-		// A team returned without a usable ID.
+		// Resolves, but without a usable ID.
 		return &gh.Team{Slug: gh.Ptr(slug)}, nil, nil
 	}
 	return &gh.Team{ID: gh.Ptr(id), Slug: gh.Ptr(slug)}, nil, nil
 }
 
-func runInvite(t *testing.T, org *captureInvite, users *rejectingUserLookup, team *captureTeams, args ...string) error {
-	t.Helper()
-
-	var userSvc = (*rejectingUserLookup)(nil)
-	if users != nil {
-		userSvc = users
-	}
-	var teamSvc = (*captureTeams)(nil)
-	if team != nil {
-		teamSvc = team
-	}
-
-	cmd := organizationcmd.InviteCmd(org, userSvc, teamSvc)
-	cmd.SetOut(&bytes.Buffer{})
+// runInvite builds the command through the unexported seam. Each service is
+// left as a nil interface unless a mock was supplied, so a nil concrete pointer
+// never becomes a non-nil interface that bypasses the production fallback.
+func runInvite(org organizations.Service, user users.Service, team teams.Service, args ...string) (string, error) {
+	cmd := inviteCmd(org, user, team)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SilenceUsage = true
 	cmd.SetArgs(args)
-	return cmd.Execute()
+	err := cmd.Execute()
+	return out.String(), err
 }
 
 func TestInviteLiveEmailUsesEmailWithoutUserLookup(t *testing.T) {
 	org := &captureInvite{}
-	users := &rejectingUserLookup{}
+	user := &recordingUserLookup{}
 
-	if err := runInvite(t, org, users, nil, "--org", "o", "--email", "alice@example.com", "--token", "t"); err != nil {
+	if _, err := runInvite(org, user, nil, "--org", "o", "--email", "alice@example.com", "--token", "t"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +88,7 @@ func TestInviteLiveEmailUsesEmailWithoutUserLookup(t *testing.T) {
 	if opts.InviteeID != nil {
 		t.Fatalf("email identity must not send an invitee ID, got %d", opts.GetInviteeID())
 	}
-	if users.called {
+	if user.called {
 		t.Fatal("email identity must not perform a username lookup")
 	}
 }
@@ -115,7 +105,7 @@ func TestInviteLiveForwardsRole(t *testing.T) {
 			if tc.flag != "" {
 				args = append(args, "--role", tc.flag)
 			}
-			if err := runInvite(t, org, nil, nil, args...); err != nil {
+			if _, err := runInvite(org, nil, nil, args...); err != nil {
 				t.Fatal(err)
 			}
 			if got := org.calls[0].GetRole(); got != tc.want {
@@ -129,7 +119,7 @@ func TestInviteLiveResolvesTeamSlugsInCallerOrder(t *testing.T) {
 	org := &captureInvite{}
 	team := &captureTeams{ids: map[string]int64{"platform": 11, "backend": 22}}
 
-	if err := runInvite(t, org, nil, team,
+	if _, err := runInvite(org, nil, team,
 		"--org", "o", "--email", "a@example.com", "--token", "t",
 		"--team-slug", "platform", "--team-slug", "backend"); err != nil {
 		t.Fatal(err)
@@ -141,29 +131,42 @@ func TestInviteLiveResolvesTeamSlugsInCallerOrder(t *testing.T) {
 	}
 }
 
-func TestInviteLiveTeamLookupFailurePreventsInvitation(t *testing.T) {
-	org := &captureInvite{}
-	team := &captureTeams{err: errors.New("boom")}
-
-	err := runInvite(t, org, nil, team, "--org", "o", "--email", "a@example.com", "--token", "t", "--team-slug", "platform")
-	if err == nil {
-		t.Fatal("a failed team lookup must fail the command")
-	}
-	if len(org.calls) != 0 {
-		t.Fatal("no invitation may be sent when a requested team cannot be resolved")
+func TestInviteLiveTeamResolutionFailurePreventsInvitation(t *testing.T) {
+	for name, team := range map[string]*captureTeams{
+		"lookup fails": {err: errors.New("boom")},
+		"no usable ID": {ids: map[string]int64{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			org := &captureInvite{}
+			_, err := runInvite(org, nil, team, "--org", "o", "--email", "a@example.com", "--token", "t", "--team-slug", "platform")
+			if err == nil {
+				t.Fatal("unresolvable team must fail the command")
+			}
+			if len(org.calls) != 0 {
+				t.Fatal("no invitation may be sent when a requested team cannot be resolved")
+			}
+		})
 	}
 }
 
-func TestInviteLiveUnusableTeamIDPreventsInvitation(t *testing.T) {
-	org := &captureInvite{}
-	team := &captureTeams{ids: map[string]int64{}} // resolves, but without an ID
-
-	err := runInvite(t, org, nil, team, "--org", "o", "--email", "a@example.com", "--token", "t", "--team-slug", "platform")
-	if err == nil {
-		t.Fatal("a team without a usable ID must fail the command")
-	}
-	if len(org.calls) != 0 {
-		t.Fatal("no invitation may be sent when a team ID is unusable")
+// The exact inputs that previously produced a successful dry-run preview of a
+// request that could never work.
+func TestInviteRejectsUnusableInputBeforeDryRun(t *testing.T) {
+	for name, args := range map[string][]string{
+		"malformed email": {"--org", "o", "--email", "not-an-email", "--dry-run"},
+		"blank username":  {"--org", "o", "--username", " ", "--dry-run"},
+		"non-positive id": {"--org", "o", "--id", "0", "--dry-run"},
+		"blank team slug": {"--org", "o", "--email", "a@example.com", "--team-slug", " ", "--dry-run"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, err := runInvite(nil, nil, nil, args...)
+			if err == nil {
+				t.Fatalf("expected rejection, got output: %s", out)
+			}
+			if strings.Contains(out, "dry-run") {
+				t.Fatalf("no dry-run preview may be emitted for an unusable request: %s", out)
+			}
+		})
 	}
 }
 
@@ -187,15 +190,22 @@ func (s *captureMembership) EditOrgMembership(_ context.Context, user, org strin
 	return &gh.Membership{}, nil, nil
 }
 
-func TestMembershipSetLiveForwardsRequest(t *testing.T) {
-	svc := &captureMembership{}
-
-	cmd := organizationcmd.MembershipSetCmd(svc)
+func runMembership(svc organizations.Service, args ...string) (string, error) {
+	cmd := MembershipSetCmd(svc)
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--org", " acme ", "--username", " alice ", "--role", "admin", "--token", "t"})
-	if err := cmd.Execute(); err != nil {
+	cmd.SilenceUsage = true
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+func TestMembershipSetLiveForwardsRequest(t *testing.T) {
+	svc := &captureMembership{}
+
+	out, err := runMembership(svc, "--org", " acme ", "--username", " alice ", "--role", "admin", "--token", "t")
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -206,8 +216,8 @@ func TestMembershipSetLiveForwardsRequest(t *testing.T) {
 		t.Fatalf("forwarded org=%q user=%q role=%q", svc.orgs[0], svc.usernames[0], svc.roles[0])
 	}
 	// The wording must not claim the user is already an active member.
-	if !strings.Contains(out.String(), "Requested organization membership") {
-		t.Fatalf("unexpected message: %s", out.String())
+	if !strings.Contains(out, "Requested organization membership") {
+		t.Fatalf("unexpected message: %s", out)
 	}
 }
 
@@ -215,19 +225,12 @@ func TestMembershipSetLivePropagatesServiceError(t *testing.T) {
 	wantErr := errors.New("membership boom")
 	svc := &captureMembership{err: wantErr}
 
-	cmd := organizationcmd.MembershipSetCmd(svc)
-	var out bytes.Buffer
-	cmd.SetOut(&out)
-	cmd.SetErr(&bytes.Buffer{})
-	cmd.SilenceUsage = true
-	cmd.SetArgs([]string{"--org", "acme", "--username", "alice", "--token", "t"})
-
-	err := cmd.Execute()
+	out, err := runMembership(svc, "--org", "acme", "--username", "alice", "--token", "t")
 	if err == nil || !errors.Is(err, wantErr) {
 		t.Fatalf("expected the service error to propagate, got %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("no success output may be emitted on failure, got %q", out.String())
+	if out != "" {
+		t.Fatalf("no success output may be emitted on failure, got %q", out)
 	}
 	if len(svc.orgs) != 1 {
 		t.Fatalf("expected exactly one mutation attempt, got %d", len(svc.orgs))
