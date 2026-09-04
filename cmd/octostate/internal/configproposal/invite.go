@@ -44,3 +44,24 @@ func FindInviteIndexByUserID(cfg *gitopsconfig.OrganizationConfig, userID int64)
 
 	return -1, false
 }
+
+// FindInviteIndexByEmail returns the index of a declared invite whose identity
+// is the given email address. Identity is case-insensitive after trimming,
+// matching how config validation compares invite identities.
+func FindInviteIndexByEmail(cfg *gitopsconfig.OrganizationConfig, email string) (int, bool) {
+	if cfg == nil {
+		return -1, false
+	}
+
+	wantEmail := strings.TrimSpace(email)
+	for index, invite := range cfg.Invites {
+		if !invite.Email.Present || invite.Email.Null {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(invite.Email.Value), wantEmail) {
+			return index, true
+		}
+	}
+
+	return -1, false
+}

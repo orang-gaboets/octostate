@@ -186,7 +186,7 @@ Flags:
 ### `octostate organization invite`
 
 ```bash
-octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--to-config <organization.yaml> | --dry-run]
+octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username> | --email <email>) [--role <role>] [--team-slug <slug>]... [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -195,10 +195,38 @@ Flags:
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organization name
-- `--id` (required unless `--username` is provided): GitHub user ID to invite
-- `--username` (required unless `--id` is provided): GitHub username to invite
-- `--to-config` (optional): Record the invite in an existing local organization config instead of creating it in GitHub; the username form is stored trimmed, with no user-ID lookup
-- `--dry-run` (optional): Preview the invitation request without creating it (username lookups are skipped in dry-run mode)
+- `--id`, `--username`, `--email`: the invitation identity; provide exactly one
+- `--role` (optional): `admin`, `direct_member`, or `billing_manager`; defaults to `direct_member`
+- `--team-slug` (optional, repeatable): team slug to assign the invitation to. Live mode resolves each slug to its team ID and fails if a slug cannot be resolved, rather than sending an invitation without the requested team
+- `--to-config` (optional): Record the invite in an existing local organization config instead of creating it in GitHub; the username form is stored trimmed, with no user-ID lookup. Team slugs are written to `invites[].team_slugs` with no GitHub lookup, so each slug must reference a team the config declares or validation rejects the write
+- `--dry-run` (optional): Preview the invitation request, including role and team slugs, without creating it (username lookups are skipped in dry-run mode)
+
+An invite is the transitional resource that precedes membership. To set durable
+`members:` state, use `organization membership set` below.
+
+### `octostate organization membership set`
+
+```bash
+octostate organization membership set --org <org> --username <username> [--role <role>] [--to-config <organization.yaml> | --dry-run]
+```
+
+Sets durable organization membership, the resource represented by top-level
+`members:` in desired state. This is deliberately separate from
+`organization invite`: an invitation is transitional, while membership is the
+state GitOps reconciles.
+
+Flags:
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
+- `--app-id`, `--installation-id`, `--app-key-path`: GitHub App authentication
+- `--org` (required): GitHub organization name
+- `--username` (required): GitHub username whose membership is being set
+- `--role` (optional): `admin` or `member`; defaults to `member`. Invitation-only roles such as `direct_member` and `billing_manager` are rejected here
+- `--to-config` (optional): Add or update the matching top-level `members:` entry instead of calling GitHub; an identical entry is a deterministic no-op
+- `--dry-run` (optional): Preview the requested membership without mutating
+
+Live mode reports what was requested rather than claiming the user is already an
+active member: for a user who is not yet a member, GitHub records a pending
+membership the user must accept.
 
 ## Repository
 
