@@ -387,8 +387,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    10,
-			NonExecutableActions: 9,
+			ExecutableActions:    11,
+			NonExecutableActions: 8,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,

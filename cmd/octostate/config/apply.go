@@ -67,6 +67,14 @@ func ApplyConfigCmd() *cobra.Command {
 				printInvalidConfigError(cmd, err)
 				return err
 			}
+			// Dry run never evaluates the requirement, so accepting the flag
+			// there would make a safety flag silently ineffective. Rejected
+			// rather than quietly ignored.
+			if dryRun && requireExec {
+				err := exitcode.New(validateExitCodeInvalidConfig, errors.New("cannot use --require-executable with --dry-run; use --check or a live apply"))
+				printInvalidConfigError(cmd, err)
+				return err
+			}
 
 			mode := applyRunModeApply
 			switch {

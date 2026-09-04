@@ -144,3 +144,38 @@ func TestBuildTeamMembershipRoleUpdateUnchanged(t *testing.T) {
 		t.Fatalf("expected an executable role update, got %#v", member)
 	}
 }
+
+// #278 requires an unavailable prerequisite to propagate deterministically.
+// Public Build cannot reach that state because validation rejects a team member
+// missing from top-level members, so the planner branch is exercised directly
+// rather than by constructing config that deliberately violates validation.
+func TestPlanTeamMembersPropagatesUnavailableOrganizationMember(t *testing.T) {
+	t.Parallel()
+
+	p := planner{
+		desired: memberDependencyConfig(),
+		actual:  &state.OrganizationState{Organization: "acme"},
+	}
+	memberPlan := organizationMemberPlan{
+		availability: map[string]organizationMemberAvailability{
+			organizationMemberKey("alice"): {
+				executable: false,
+				diagnostic: "organization member alice cannot be created by this plan",
+			},
+		},
+	}
+
+	actions := p.planTeamMembers(memberPlan)
+
+	member, ok := actionByID(actions, ActionResourceTypeTeamMember, "platform/alice")
+	if !ok {
+		t.Fatalf("no team membership action emitted: %#v", actions)
+	}
+	if member.Executable {
+		t.Fatalf("team membership must remain non-executable: %#v", member)
+	}
+	const wantMessage = "team membership platform/alice is not executable: organization member alice cannot be created by this plan"
+	if member.Message != wantMessage {
+		t.Fatalf("unexpected diagnostic:\n got %q\nwant %q", member.Message, wantMessage)
+	}
+}

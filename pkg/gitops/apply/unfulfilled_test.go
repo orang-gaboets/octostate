@@ -7,6 +7,7 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
+	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -140,5 +141,96 @@ func TestExecuteFailsBeforeMutatingWhenDesiredActionUnfulfilled(t *testing.T) {
 
 	if _, err := Execute(context.Background(), opts); !errors.Is(err, ErrUnfulfilledDesiredAction) {
 		t.Fatalf("expected ErrUnfulfilledDesiredAction, got %v", err)
+	}
+}
+
+// #278 requires check mode to use the same same-plan availability semantics, so
+// a membership whose prerequisite is created in this plan must be checked
+// rather than skipped.
+func TestCheckAcceptsTeamMembershipWithSamePlanMemberPrerequisite(t *testing.T) {
+	t.Parallel()
+
+	memberCreate := gitopsplan.Action{
+		ResourceType: gitopsplan.ActionResourceTypeOrganizationMember,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   "alice",
+		Executable:   true,
+	}
+	membership := gitopsplan.Action{
+		ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   "platform/alice",
+		Executable:   true,
+	}
+
+	opts := requireExecutableOptions(t, planWith(memberCreate, membership))
+	opts.Desired = memberPrerequisiteConfig()
+	opts.Actual = &state.OrganizationState{
+		Organization: "org-a",
+		Teams:        []state.Team{{ID: 1, Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+
+	result, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("check must accept a membership whose prerequisite is in the same plan: %v", err)
+	}
+	if len(result.SkippedActions) != 0 {
+		t.Fatalf("nothing should be skipped, got %#v", result.SkippedActions)
+	}
+}
+
+// #278 requires that a failed organization-membership write is not followed by
+// the dependent team-membership write.
+func TestExecuteStopsDependentMembershipAfterMemberWriteFails(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("membership write failed")
+	memberCreate := gitopsplan.Action{
+		ResourceType: gitopsplan.ActionResourceTypeOrganizationMember,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   "alice",
+		Executable:   true,
+	}
+	membership := gitopsplan.Action{
+		ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   "platform/alice",
+		Executable:   true,
+	}
+
+	opts := requireExecutableOptions(t, planWith(memberCreate, membership))
+	opts.RequireExecutableDesiredActions = false
+	opts.Desired = memberPrerequisiteConfig()
+	opts.Actual = &state.OrganizationState{
+		Organization: "org-a",
+		Teams:        []state.Team{{ID: 1, Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+	opts.OrganizationService = &testOrganizationService{
+		editOrgMembershipFunc: func(context.Context, string, string, *gh.Membership) (*gh.Membership, *gh.Response, error) {
+			return nil, nil, wantErr
+		},
+	}
+	opts.TeamService = &testTeamService{
+		addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+			t.Error("dependent team membership must not be written after its prerequisite failed")
+			return nil, nil, nil
+		},
+	}
+
+	if _, err := Execute(context.Background(), opts); err == nil {
+		t.Fatal("a failed prerequisite write must fail the apply")
+	}
+}
+
+func memberPrerequisiteConfig() config.OrganizationConfig {
+	return config.OrganizationConfig{
+		Organization: "org-a",
+		Members:      []config.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Teams: []config.TeamSpec{{
+			Slug:    "platform",
+			Name:    "Platform",
+			Privacy: "closed",
+			Members: []config.TeamMemberSpec{{Username: "alice", Role: "member"}},
+		}},
 	}
 }

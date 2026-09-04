@@ -299,7 +299,7 @@ octostate config apply --config-dir ./config
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--check`: Run apply preflight validation without mutating GitHub
-- `--require-executable`: Fail when a desired create or update cannot be executed
+- `--require-executable`: Fail when a desired create or update cannot be executed. Cannot be combined with `--dry-run`, which never evaluates the requirement
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
