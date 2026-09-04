@@ -35,7 +35,7 @@ assert_not_contains() {
 count_log() {
   local needle="$1"
   local file="$2"
-  grep -F -- "$needle" "$file" | wc -l | tr -d ' ' || true
+  grep -F -c -- "$needle" "$file" || true
 }
 
 assert_count() {

@@ -158,7 +158,7 @@ assert_no_output "$test_root/mismatch.out"
 git clone "$origin_repo" "$alt_repo" >/dev/null
 git -C "$alt_repo" config user.name "Octostate Test"
 git -C "$alt_repo" config user.email "test@example.com"
-new_sha=$(commit_file "$alt_repo" advance.txt advance)
+commit_file "$alt_repo" advance.txt advance >/dev/null
 git -C "$alt_repo" push origin main >/dev/null
 
 orphan_repo="$test_root/orphan"

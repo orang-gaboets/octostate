@@ -29,7 +29,6 @@ PHASE_MUTATION='NOT RUN'
 PHASE_CONVERGENCE='NOT RUN'
 RESTORATION_CONVERGENCE='NOT RUN'
 PHASE_RESTORATION='NOT RUN'
-PHASE_FINAL='NOT RUN'
 ACTION_GUARD_RESULT='NOT RUN'
 
 fail() {
@@ -585,11 +584,7 @@ poll_for_topics() {
   return 1
 }
 
-restore_baseline_once() {
-  if [ "$RESTORE_ATTEMPTED" -eq 1 ]; then
-    return 1
-  fi
-  RESTORE_ATTEMPTED=1
+restore_baseline() {
   PHASE='restoration'
   PHASE_RESTORATION='FAIL'
   local current=$SCRATCH_DIR/repository.before-restore.json
@@ -672,8 +667,7 @@ restore_with_deadline() {
   : >"$result_file"
   (
     trap - EXIT TERM INT
-    RESTORE_ATTEMPTED=0
-    if restore_baseline_once; then
+    if restore_baseline; then
       printf 'PASS\n' >"$result_file"
     else
       printf 'FAIL\n' >"$result_file"
@@ -817,11 +811,9 @@ main() {
     return 1
   fi
   PHASE='final verification'
-  PHASE_FINAL='FAIL'
   if ! run_read_only_scenarios "$SCRATCH_DIR/baseline-config"; then
     return 1
   fi
-  PHASE_FINAL='PASS'
   return 0
 }
 
