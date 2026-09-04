@@ -11,11 +11,7 @@ POLL_ATTEMPTS=12
 POLL_DELAY_SECONDS=5
 CLEANUP_DEADLINE_SECONDS=${OCTOSTATE_CLEANUP_DEADLINE_SECONDS:-540}
 
-mode=${1:-}
-if [ "$#" -ne 1 ] || { [ "$mode" != '--read-only' ] && [ "$mode" != '--mutate' ]; }; then
-  echo 'usage: live-integration.sh --read-only|--mutate' >&2
-  exit 2
-fi
+mode=''
 
 SCRATCH_DIR=''
 SUMMARY_FILE=${GITHUB_STEP_SUMMARY:-}
@@ -78,9 +74,13 @@ normalize_repository() {
 
 read_repository_projection() {
   local raw=$SCRATCH_DIR/repository.raw.json
+  local error_file=$SCRATCH_DIR/repository.error.txt
   local projection=$1
-  if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw"; then
-    return 3
+  if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw" 2>"$error_file"; then
+    if grep -Eq '(^|[^0-9])(401|403|404)([^0-9]|$)|Bad credentials|Forbidden|Resource not found|not found' "$error_file"; then
+      return 3
+    fi
+    return 2
   fi
   if ! normalize_repository "$raw" "$projection"; then
     return 3
@@ -155,14 +155,11 @@ assert_zero_plan() {
   fi
   jq -e '
     .organization == "octostate-test" and
-    .plan_summary.has_changes == false and
     .plan_summary.executable_actions == 0 and
-    .plan_summary.actions == .plan_summary.non_executable_actions and
-    .plan_summary.create_actions == 0 and
-    .plan_summary.update_actions == 0 and
-    .plan_summary.delete_actions == 0 and
-    .plan_summary.remove_actions == 0 and
-    (.executable_actions | length == 0)' \
+    .plan_summary.actions == (.plan_summary.executable_actions + .plan_summary.non_executable_actions) and
+    .plan_summary.has_changes == (.plan_summary.actions > 0) and
+    (.executable_actions | length == 0) and
+    (.skipped_actions | length) == .plan_summary.non_executable_actions' \
     "$report" >/dev/null
 }
 
@@ -178,9 +175,14 @@ is_plan_envelope_valid() {
       (.create_actions | type == "number") and
       (.update_actions | type == "number") and
       (.delete_actions | type == "number") and
-      (.remove_actions | type == "number")) and
+      (.remove_actions | type == "number") and
+      .actions == (.executable_actions + .non_executable_actions) and
+      .has_changes == (.actions > 0) and
+      (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
     (.executable_actions | type == "array") and
-    (.skipped_actions | type == "array")' \
+    (.skipped_actions | type == "array") and
+    (.executable_actions | length) == .plan_summary.executable_actions and
+    (.skipped_actions | length) == .plan_summary.non_executable_actions' \
     "$report" >/dev/null
 }
 
@@ -189,11 +191,12 @@ assert_zero_check() {
   if ! jq -e '
     type == "object" and .status == "check" and
     (.data | type == "object" and .organization == "octostate-test" and
-      (.plan_summary | type == "object" and .has_changes == false and
-        .executable_actions == 0 and .actions == .non_executable_actions and
-        .create_actions == 0 and .update_actions == 0 and .delete_actions == 0 and .remove_actions == 0) and
+      (.plan_summary | type == "object" and .executable_actions == 0 and
+        .actions == (.executable_actions + .non_executable_actions) and
+        .has_changes == (.actions > 0)) and
       (.checked_actions | type == "array" and length == 0) and
-      (.skipped_actions | type == "array"))' \
+      (.skipped_actions | type == "array") and
+      (.skipped_actions | length) == .plan_summary.non_executable_actions)' \
     "$report" >/dev/null; then
     return 1
   fi
@@ -204,8 +207,10 @@ assert_zero_diff() {
   local report=$1
   if ! jq -e '
     type == "object" and .organization == "octostate-test" and
-    (.summary | type == "object" and .executable_actions == 0 and .actions == 0 and .non_executable_actions == 0) and
-    (.actions | type == "array")' \
+    (.summary | type == "object" and .executable_actions == 0 and
+      .actions == .non_executable_actions and .has_changes == (.actions > 0)) and
+    (.actions | type == "array") and
+    (.actions | length) == .summary.non_executable_actions' \
     "$report" >/dev/null; then
     return 1
   fi
@@ -288,7 +293,8 @@ assert_exact_topic_action() {
           .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
           .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
         (.executable_actions | type == "array" and length == 1) and
-        (.skipped_actions | type == "array")' "$report" >/dev/null; then
+        (.skipped_actions | type == "array") and
+        (.skipped_actions | length) == .plan_summary.non_executable_actions' "$report" >/dev/null; then
         return 1
       fi
       ;;
@@ -301,7 +307,8 @@ assert_exact_topic_action() {
             .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
             .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
           (.checked_actions | type == "array" and length == 1) and
-          (.skipped_actions | type == "array"))' "$report" >/dev/null; then
+          (.skipped_actions | type == "array") and
+          (.skipped_actions | length) == .plan_summary.non_executable_actions)' "$report" >/dev/null; then
         return 1
       fi
       ;;
@@ -314,7 +321,8 @@ assert_exact_topic_action() {
             .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
             .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
           (.executed_actions | type == "array" and length == 1) and
-          (.skipped_actions | type == "array"))' "$report" >/dev/null; then
+          (.skipped_actions | type == "array") and
+          (.skipped_actions | length) == .plan_summary.non_executable_actions)' "$report" >/dev/null; then
         return 1
       fi
       ;;
@@ -335,7 +343,8 @@ assert_exact_topic_action() {
     --argjson to "$to_topics" \
     "$action_path | .[0] |
       .resource_type == \"repository\" and .operation == \"update\" and
-      .resource_id == \$repo and (.changes | type == \"array\" and length == 1) and
+      .resource_id == \$repo and .executable == true and
+      (.changes | type == \"array\" and length == 1) and
       .changes[0].field == \"topics\" and
       (.changes[0].from == \$from) and (.changes[0].to == \$to)" \
     "$report" >/dev/null; then
@@ -367,6 +376,7 @@ prepare_mutation() {
   EXPECTED_MUTATED_PROJECTION=$SCRATCH_DIR/expected.mutated.projection.json
   jq -cS --arg topic "$MUTATION_TOPIC" '.topics = [$topic]' "$baseline_projection" >"$EXPECTED_MUTATED_PROJECTION"
 
+  ACTION_GUARD_RESULT='FAIL'
   if ! run_octostate "$plan" config plan --config-dir "$mutated_dir"; then
     fail 'mutated config plan failed'
     return 1
@@ -375,6 +385,7 @@ prepare_mutation() {
     fail 'mutated config plan was not exactly one topic-only repository update'
     return 1
   fi
+  ACTION_GUARD_RESULT='FAIL'
   if ! run_octostate "$check" config apply --config-dir "$mutated_dir" --check; then
     fail 'mutated config apply --check failed'
     return 1
@@ -392,6 +403,7 @@ apply_mutation_once() {
   MUTATION_STARTED=1
   PHASE='mutation'
   PHASE_MUTATION='FAIL'
+  ACTION_GUARD_RESULT='FAIL'
   if ! run_octostate "$apply" config apply --config-dir "$mutated_dir"; then
     fail 'mutating config apply failed'
     return 1
@@ -428,15 +440,17 @@ poll_for_topics() {
     local plan=$SCRATCH_DIR/poll.plan.$attempt.json
     local read_status=0
     read_repository_projection "$current" || read_status=$?
-    if [ "$read_status" -ne 0 ]; then
-      fail 'poll repository response failed or had an invalid shape'
+    if [ "$read_status" -eq 3 ]; then
+      fail 'poll repository response was malformed or had a non-transient API failure'
       return 1
     fi
-    if ! stable_projection_matches "$expected_projection" "$current"; then
-      fail 'poll repository identity or stable baseline fields changed'
-      return 1
+    if [ "$read_status" -eq 0 ]; then
+      if ! stable_projection_matches "$expected_projection" "$current"; then
+        fail 'poll repository identity or stable baseline fields changed'
+        return 1
+      fi
     fi
-    if projection_matches "$expected_projection" "$current"; then
+    if [ "$read_status" -eq 0 ] && projection_matches "$expected_projection" "$current"; then
       if ! run_octostate "$plan" config plan --config-dir "$desired_config"; then
         fail 'poll config plan failed'
         return 1
@@ -542,6 +556,7 @@ restore_with_deadline() {
   local deadline
   local grace
   local timed_out=0
+  local guard_before=$ACTION_GUARD_RESULT
 
   RESTORE_ATTEMPTED=1
   : >"$result_file"
@@ -573,6 +588,7 @@ restore_with_deadline() {
       fi
       kill -KILL "$child" 2>/dev/null || true
       wait "$child" 2>/dev/null || true
+      ACTION_GUARD_RESULT='FAIL'
       PHASE_RESTORATION='FAIL (cleanup deadline)'
       return 1
     fi
@@ -580,15 +596,18 @@ restore_with_deadline() {
   done
   wait "$child" 2>/dev/null || true
   if [ "$timed_out" -eq 1 ] || [ "$SECONDS" -ge "$deadline" ]; then
+    ACTION_GUARD_RESULT='FAIL'
     PHASE_RESTORATION='FAIL (cleanup deadline)'
     return 1
   fi
   if [ "$(cat "$result_file" 2>/dev/null)" = 'PASS' ]; then
+    ACTION_GUARD_RESULT=$guard_before
     RESTORATION_COMPLETED=1
     RESTORATION_CONVERGENCE='PASS'
     PHASE_RESTORATION='PASS'
     return 0
   fi
+  ACTION_GUARD_RESULT='FAIL'
   PHASE_RESTORATION='FAIL (dirty sandbox)'
   return 1
 }
@@ -628,7 +647,9 @@ on_exit() {
     write_summary FAIL
   fi
   rm -rf "$SCRATCH_DIR"
-  if [ "$status" -lt 128 ]; then
+  if [ "$status" -eq 2 ]; then
+    exit_status=2
+  elif [ "$status" -lt 128 ]; then
     exit_status=$FINAL_STATUS
   fi
   exit "$exit_status"
@@ -643,6 +664,12 @@ main() {
   trap 'on_exit' EXIT
   trap 'on_signal TERM' TERM
   trap 'on_signal INT' INT
+
+  if [ "$#" -ne 1 ] || { [ "${1:-}" != '--read-only' ] && [ "${1:-}" != '--mutate' ]; }; then
+    echo 'usage: live-integration.sh --read-only|--mutate' >&2
+    return 2
+  fi
+  mode=$1
 
   if ! require_commands; then
     return 1

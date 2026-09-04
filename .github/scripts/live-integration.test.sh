@@ -99,6 +99,9 @@ case "${1:-}" in
         if [ "${LIVE_STUB_GH_FAILURE_AFTER_MUTATION:-0}" = "1" ]; then
           api_status=500
         fi
+        if [ "${LIVE_STUB_GH_FATAL_AFTER_MUTATION:-0}" = "1" ]; then
+          api_status=401
+        fi
         if [ "$state" = "mutated" ] && [ "$api_status" != '' ]; then
           fail_api=1
           if [ "${LIVE_STUB_POLL_GH_ONCE:-0}" = "1" ] && [ -f "$LIVE_STUB_GH_ONCE_FILE" ]; then
@@ -107,6 +110,9 @@ case "${1:-}" in
           if [ "$fail_api" -eq 1 ]; then
             : >"$LIVE_STUB_GH_ONCE_FILE"
             emit_headers "$api_status"
+            if [ "$api_status" = "401" ]; then
+              echo 'Bad credentials (HTTP 401)' >&2
+            fi
             jq -nc '{message:"simulated API failure"}'
             exit 1
           fi
@@ -230,7 +236,7 @@ action_json() {
       resource_type:"repository",
       operation:"update",
       resource_id:"octostate-test/octostate-fixture-repo",
-      executable:true,
+      executable:($extra != "false-executable"),
       message:"update repository octostate-test/octostate-fixture-repo",
       changes:[{field:(if $extra == "wrong-field" then "description" else "topics" end), from:$from, to:$to}]
     }'
@@ -245,6 +251,9 @@ plan_payload() {
   local skipped='[]'
   local non_executable=0
   if [ "${LIVE_STUB_UNEXPECTED_SKIPPED:-0}" = "1" ]; then
+    skipped='[{"resource_type":"organization_member","operation":"delete","resource_id":"legacy-user","executable":false,"message":"expected drift","changes":[]}]'
+    non_executable=1
+  elif [ "${LIVE_STUB_UNEXPECTED_SKIPPED:-0}" = "2" ]; then
     skipped='[{"resource_type":"repository","operation":"update","resource_id":"octostate-test/octostate-fixture-repo","executable":false,"message":"unexpected","changes":[]}]'
     non_executable=1
   fi
@@ -254,6 +263,12 @@ plan_payload() {
   elif [ "${LIVE_STUB_WRONG_FIELD_ACTION:-0}" = "1" ] && [ "$desired" = "mutated" ] && [ "$current" = "baseline" ]; then
     actions=$(jq -nc --argjson first "$(action_json mutated wrong-field)" '[ $first ]')
     executable=1
+  elif [ "${LIVE_STUB_FALSE_ACTION:-0}" = "1" ] && [ "$desired" = "mutated" ] && [ "$current" = "baseline" ]; then
+    actions=$(jq -nc --argjson first "$(action_json mutated false-executable)" '[ $first ]')
+    executable=1
+  elif [ "${LIVE_STUB_CONTRADICTORY_SUMMARY:-0}" = "1" ] && [ "$desired" = "mutated" ] && [ "$current" = "baseline" ]; then
+    actions=$(jq -nc --argjson first "$(action_json mutated)" '[ $first ]')
+    executable=0
   elif [ "${LIVE_STUB_POLL_PLAN_DIRTY:-0}" = "1" ] && [ "$desired" = "mutated" ] && [ "$current" = "mutated" ]; then
     actions=$(jq -nc --argjson first "$(action_json mutated)" '[ $first ]')
     executable=1
@@ -278,13 +293,13 @@ plan_payload() {
     {
       organization:$org,
       plan_summary:{
-        has_changes:($executable > 0),
+        has_changes:((($actions|length) + $non_executable) > 0),
         actions:(($actions|length) + $non_executable),
         executable_actions:$executable,
         non_executable_actions:$non_executable,
         create_actions:0,
         update_actions:$executable,
-        delete_actions:0,
+        delete_actions:($non_executable),
         remove_actions:0
       },
       executable_actions:$actions,
@@ -345,7 +360,11 @@ case "${1:-} ${2:-}" in
     fi
 
     payload=$(plan_payload "$desired")
-    printf '%s\n' "$desired" >"$LIVE_STUB_STATE"
+    next_state=$desired
+    if [ "$desired" = "mutated" ] && [ "${LIVE_STUB_STATE_AFTER_MUTATION:-}" = "dirty" ]; then
+      next_state=dirty
+    fi
+    printf '%s\n' "$next_state" >"$LIVE_STUB_STATE"
     if [ "${LIVE_STUB_INVALID_APPLY:-0}" = "1" ] && [ "$desired" = "mutated" ]; then
       jq -nc --argjson payload "$payload" '{status:"check", message:"applied", data:{organization:$payload.organization, plan_summary:$payload.plan_summary, executed_actions:$payload.executable_actions, skipped_actions:$payload.skipped_actions}}'
       exit 0
@@ -406,6 +425,7 @@ run_case() {
       LIVE_STUB_LOG="$case_dir/commands.log" \
       LIVE_STUB_APPLY_LOG="$case_dir/apply.log" \
       LIVE_STUB_STATE="$case_dir/state" \
+      LIVE_STUB_GH_ONCE_FILE="$case_dir/gh-once" \
       "$@" \
       bash "$script_dir/live-integration.sh" "$mode"
   ) >"$case_dir/stdout" 2>"$case_dir/stderr"
@@ -452,7 +472,11 @@ assert_count 1 "go run ./cmd/octostate config apply --config-dir" "$CASE_DIR/com
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 assert_contains "Final: PASS" "$CASE_DIR/summary"
 
-run_case unexpected_skipped_drift --read-only 1 env LIVE_STUB_UNEXPECTED_SKIPPED=1
+run_case allowed_skipped_drift --read-only 0 env LIVE_STUB_UNEXPECTED_SKIPPED=1
+assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+assert_contains "Final: PASS" "$CASE_DIR/summary"
+
+run_case unexpected_skipped_drift --read-only 1 env LIVE_STUB_UNEXPECTED_SKIPPED=2
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 assert_contains "Final: FAIL" "$CASE_DIR/summary"
 
@@ -498,6 +522,12 @@ assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 run_case wrong_field_action --mutate 1 env LIVE_STUB_WRONG_FIELD_ACTION=1
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 
+run_case false_executable_action --mutate 1 env LIVE_STUB_FALSE_ACTION=1
+assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+
+run_case contradictory_summary_action --mutate 1 env LIVE_STUB_CONTRADICTORY_SUMMARY=1
+assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+
 run_case polling_timeout_after_mutation --mutate 1 env LIVE_STUB_POLL_PLAN_DIRTY=1
 assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
@@ -509,7 +539,21 @@ assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
 assert_contains "dirty sandbox" "$CASE_DIR/summary"
 
+run_case polling_transient_api_failure --mutate 0 env LIVE_STUB_POLL_GH_STATUS=500 LIVE_STUB_POLL_GH_ONCE=1
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
+
 run_case polling_api_failure --mutate 1 env LIVE_STUB_GH_FAILURE_AFTER_MUTATION=1
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
+assert_contains "dirty sandbox" "$CASE_DIR/summary"
+
+run_case polling_fatal_api_failure --mutate 1 env LIVE_STUB_GH_FATAL_AFTER_MUTATION=1
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
+assert_contains "dirty sandbox" "$CASE_DIR/summary"
+
+run_case ambiguous_restoration_state --mutate 1 env LIVE_STUB_STATE_AFTER_MUTATION=dirty
 assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
 assert_contains "dirty sandbox" "$CASE_DIR/summary"
