@@ -77,10 +77,10 @@ read_repository_projection() {
   local error_file=$SCRATCH_DIR/repository.error.txt
   local projection=$1
   if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw" 2>"$error_file"; then
-    if grep -Eq '(^|[^[:digit:]])4[0-9]{2}([^[:digit:]]|$)|Bad credentials|Forbidden|Resource not found|not found' "$error_file"; then
-      return 3
+    if grep -Eq '(^|[^[:digit:]])(408|429|5[0-9]{2})([^[:digit:]]|$)|timed out|timeout|temporary|connection|network|resolve|TLS|EOF|reset' "$error_file"; then
+      return 2
     fi
-    return 2
+    return 3
   fi
   if ! normalize_repository "$raw" "$projection"; then
     return 3
@@ -146,6 +146,25 @@ run_octostate() {
   local output=$1
   shift
   go run ./cmd/octostate "$@" >"$output" 2>"$output.stderr"
+}
+
+assert_validate_result() {
+  local report=$1
+  jq -e '
+    type == "object" and .valid == true and
+    (.summary | type == "object" and .errors == 0) and
+    (.errors | type == "array") and (.warnings | type == "array")' \
+    "$report" >/dev/null
+}
+
+assert_audit_pull_result() {
+  local report=$1
+  jq -e '
+    type == "object" and .status == "success" and
+    (.data | type == "object" and .organization == "octostate-test" and
+      (.path | type == "string" and length > 0) and
+      (.pulled_at | type == "string" and length > 0))' \
+    "$report" >/dev/null
 }
 
 assert_zero_plan() {
@@ -246,6 +265,10 @@ run_read_only_scenarios() {
     fail 'config validate failed'
     return 1
   fi
+  if ! assert_validate_result "$SCRATCH_DIR/read-only.validate.json"; then
+    fail 'config validate returned an invalid result envelope'
+    return 1
+  fi
   if ! run_octostate "$plan" config plan --config-dir "$config_dir"; then
     fail 'config plan failed'
     return 1
@@ -264,6 +287,10 @@ run_read_only_scenarios() {
   fi
   if ! run_octostate "$pull" audit pull --config-dir "$config_dir" --state-dir "$state_dir"; then
     fail 'audit pull failed'
+    return 1
+  fi
+  if ! assert_audit_pull_result "$pull"; then
+    fail 'audit pull returned an invalid result envelope'
     return 1
   fi
   if ! jq -e '.organization == "octostate-test"' "$state_dir/actual/snapshot.json" >/dev/null; then
@@ -395,6 +422,10 @@ prepare_mutation() {
   write_mutated_config "$SCRATCH_DIR/baseline-config" "$mutated_dir"
   if ! run_octostate "$validate" config validate --config-dir "$mutated_dir"; then
     fail 'mutated config validate failed'
+    return 1
+  fi
+  if ! assert_validate_result "$validate"; then
+    fail 'mutated config validate returned an invalid result envelope'
     return 1
   fi
   ORIGINAL_PROJECTION=$SCRATCH_DIR/original.projection.json

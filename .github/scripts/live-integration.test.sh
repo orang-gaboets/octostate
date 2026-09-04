@@ -116,9 +116,19 @@ case "${1:-}" in
             if [[ "$api_status" =~ ^4[0-9][0-9]$ ]]; then
               echo "HTTP $api_status request failed" >&2
             fi
+            if [[ "$api_status" =~ ^5[0-9][0-9]$ ]]; then
+              echo "HTTP $api_status temporary server failure" >&2
+            fi
+            if [[ "$api_status" = "408" || "$api_status" = "429" ]]; then
+              echo "HTTP $api_status retryable client response" >&2
+            fi
             jq -nc '{message:"simulated API failure"}'
             exit 1
           fi
+        fi
+        if [ "$state" = "mutated" ] && [ "${LIVE_STUB_UNKNOWN_GH_FAILURE:-0}" = "1" ]; then
+          echo 'simulated unclassified API failure' >&2
+          exit 1
         fi
 
         mode=${LIVE_STUB_REPO_MODE:-ok}
@@ -341,6 +351,10 @@ plan_payload() {
 
 case "${1:-} ${2:-}" in
   "config validate")
+    if [ "${LIVE_STUB_INVALID_VALIDATE:-0}" = "1" ]; then
+      jq -nc '{valid:"yes", summary:{errors:0}, errors:[], warnings:[]}'
+      exit 0
+    fi
     jq -nc '{valid:true, summary:{errors:0,warnings:0}, errors:[], warnings:[]}'
     ;;
   "config plan")
@@ -407,6 +421,10 @@ case "${1:-} ${2:-}" in
     state_dir=$(find_state_dir "$@")
     mkdir -p "$state_dir/actual"
     jq -nc '{organization:"octostate-test"}' >"$state_dir/actual/snapshot.json"
+    if [ "${LIVE_STUB_INVALID_AUDIT_PULL:-0}" = "1" ]; then
+      jq -nc '{status:"success", message:"wrote actual-state snapshot", data:{organization:"wrong-org", path:"snapshot.json", pulled_at:"2026-09-04T00:00:00Z"}}'
+      exit 0
+    fi
     jq -nc '{status:"success", message:"wrote actual-state snapshot", data:{organization:"octostate-test", path:"snapshot.json", pulled_at:"2026-09-04T00:00:00Z"}}'
     ;;
   "audit diff")
@@ -505,6 +523,12 @@ assert_count 1 "go run ./cmd/octostate config apply --config-dir" "$CASE_DIR/com
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 assert_contains "Final: PASS" "$CASE_DIR/summary"
 
+run_case invalid_validate_envelope --read-only 1 env LIVE_STUB_INVALID_VALIDATE=1
+assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+
+run_case invalid_audit_pull_envelope --read-only 1 env LIVE_STUB_INVALID_AUDIT_PULL=1
+assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+
 run_case allowed_skipped_drift --read-only 0 env LIVE_STUB_UNEXPECTED_SKIPPED=1
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 assert_contains "Final: PASS" "$CASE_DIR/summary"
@@ -597,6 +621,10 @@ run_case polling_transient_api_failure --mutate 0 env LIVE_STUB_POLL_GH_STATUS=5
 assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
 
+run_case polling_rate_limit_retry --mutate 0 env LIVE_STUB_POLL_GH_STATUS=429 LIVE_STUB_POLL_GH_ONCE=1
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
+
 run_case polling_api_failure --mutate 1 env LIVE_STUB_GH_FAILURE_AFTER_MUTATION=1
 assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
@@ -610,6 +638,12 @@ assert_contains "dirty sandbox" "$CASE_DIR/summary"
 run_case polling_fatal_422_api_failure --mutate 1 env LIVE_STUB_GH_FATAL_STATUS=422
 assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
+assert_contains "dirty sandbox" "$CASE_DIR/summary"
+
+run_case polling_unknown_api_failure --mutate 1 env LIVE_STUB_UNKNOWN_GH_FAILURE=1
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 0 "apply-baseline" "$CASE_DIR/apply.log"
+assert_count 0 "sleep 5" "$CASE_DIR/commands.log"
 assert_contains "dirty sandbox" "$CASE_DIR/summary"
 
 run_case ambiguous_restoration_state --mutate 1 env LIVE_STUB_STATE_AFTER_MUTATION=dirty
