@@ -499,6 +499,10 @@ run_case invalid_flag --bogus 2
 assert_count 0 "go run ./cmd/octostate config apply" "$CASE_DIR/commands.log"
 assert_contains "Final: FAIL" "$CASE_DIR/summary"
 
+run_case missing_token --read-only 1 env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN
+assert_count 0 "go run ./cmd/octostate config apply" "$CASE_DIR/commands.log"
+assert_contains "Final: FAIL" "$CASE_DIR/summary"
+
 for mode in malformed null wrong-type; do
   run_case "org_$mode" --read-only 1 env LIVE_STUB_ORG_MODE="$mode"
   assert_count 0 "go run ./cmd/octostate config apply" "$CASE_DIR/commands.log"

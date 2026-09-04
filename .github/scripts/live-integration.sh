@@ -41,6 +41,7 @@ require_commands() {
   command -v gh >/dev/null 2>&1 || fail 'gh is required'
   command -v go >/dev/null 2>&1 || fail 'go is required'
   command -v jq >/dev/null 2>&1 || fail 'jq is required'
+  [ -n "${OCTOSTATE_GITHUB_TOKEN:-}" ] || fail 'OCTOSTATE_GITHUB_TOKEN is required'
 }
 
 expected_baseline_projection() {
