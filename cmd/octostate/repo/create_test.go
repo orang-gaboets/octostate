@@ -109,6 +109,63 @@ func TestCreateRepoCmdWithTemplateUsesTemplateCreation(t *testing.T) {
 	}
 }
 
+func TestCreateRepoCmdRejectsExplicitBlankTemplateName(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "live",
+			args: []string{"--org", "org", "--name", "service", "--template-name", "   "},
+		},
+		{
+			name: "dry-run",
+			args: []string{"--org", "org", "--name", "service", "--template-name", "   ", "--dry-run"},
+		},
+		{
+			name: "to-config",
+			args: []string{"--org", "org", "--name", "service", "--template-name", "   "},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var service *captureCreateRepoFromTemplateService
+			if test.name == "live" || test.name == "dry-run" {
+				service = &captureCreateRepoFromTemplateService{}
+			}
+			cmd := reposcmd.CreateRepoCmd(service)
+			args := append([]string(nil), test.args...)
+			var before []byte
+			var configPath string
+			if test.name == "to-config" {
+				configPath = filepath.Join(t.TempDir(), "organization.yaml")
+				before = []byte("organization: org\nrepositories: []\n")
+				if err := os.WriteFile(configPath, before, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--to-config", configPath)
+			}
+			cmd.SetArgs(args)
+
+			err := cmd.Execute()
+			if err == nil || err.Error() != "--template-name must not be empty" {
+				t.Fatalf("expected blank template-name error, got %v", err)
+			}
+			if service != nil && (service.ordinaryCalled || service.createCalled) {
+				t.Fatalf("blank template name reached a create service: %#v", service)
+			}
+			if configPath != "" {
+				after, readErr := os.ReadFile(configPath)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				if !bytes.Equal(after, before) {
+					t.Fatalf("config changed after blank template-name rejection:\n%s", after)
+				}
+			}
+		})
+	}
+}
+
 func TestCreateRepoCmdToConfigOmitsTemplate(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	if err := os.WriteFile(configPath, []byte("organization: org\nrepositories: []\n"), 0o600); err != nil {

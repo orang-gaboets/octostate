@@ -56,6 +56,9 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 			ctx := cmd.Context()
 			trimmedOrg := strings.TrimSpace(org)
 			trimmedTemplateName := strings.TrimSpace(templateName)
+			if cmd.Flags().Changed("template-name") && trimmedTemplateName == "" {
+				return fmt.Errorf("--template-name must not be empty")
+			}
 			trimmedTemplateOrg := strings.TrimSpace(templateOrg)
 			trimmedName := strings.TrimSpace(name)
 			var topicList []string
