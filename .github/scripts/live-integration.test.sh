@@ -265,7 +265,7 @@ plan_payload() {
       skipped='[{"resource_type":"repository","operation":"update","resource_id":"octostate-test/octostate-fixture-repo","executable":false,"message":"unexpected","changes":[]}]'
       non_executable=1
       ;;
-    3)
+    3|6)
       skipped='[{"resource_type":"team","operation":"delete","resource_id":"legacy-team","executable":false,"message":"expected drift","changes":[]}]'
       non_executable=1
       ;;
@@ -308,7 +308,9 @@ plan_payload() {
   update_actions=$executable
   case "${LIVE_STUB_UNEXPECTED_SKIPPED:-0}" in
     1|3) delete_actions=$non_executable ;;
+    2) update_actions=$non_executable ;;
     4) remove_actions=$non_executable ;;
+    6) update_actions=$((executable + non_executable)) ;;
     5) update_actions=$((executable + non_executable)) ;;
   esac
   jq -nc \
@@ -408,7 +410,7 @@ case "${1:-} ${2:-}" in
     jq -nc '{status:"success", message:"wrote actual-state snapshot", data:{organization:"octostate-test", path:"snapshot.json", pulled_at:"2026-09-04T00:00:00Z"}}'
     ;;
   "audit diff")
-    jq -nc '{organization:"octostate-test", snapshot_pulled_at:"2026-09-04T00:00:00Z", summary:{has_changes:false, actions:0, executable_actions:0, non_executable_actions:0}, actions:[]}'
+    jq -nc '{organization:"octostate-test", snapshot_pulled_at:"2026-09-04T00:00:00Z", summary:{has_changes:false, actions:0, executable_actions:0, non_executable_actions:0, create_actions:0, update_actions:0, delete_actions:0, remove_actions:0}, actions:[]}'
     ;;
   *)
     echo "unexpected octostate command: $*" >&2
@@ -518,6 +520,10 @@ assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 assert_contains "Final: FAIL" "$CASE_DIR/summary"
 
 run_case unexpected_skipped_operation --read-only 1 env LIVE_STUB_UNEXPECTED_SKIPPED=5
+assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+assert_contains "Final: FAIL" "$CASE_DIR/summary"
+
+run_case operation_counter_mismatch --read-only 1 env LIVE_STUB_UNEXPECTED_SKIPPED=6
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
 assert_contains "Final: FAIL" "$CASE_DIR/summary"
 

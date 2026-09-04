@@ -185,7 +185,11 @@ is_plan_envelope_valid() {
     (.executable_actions | type == "array") and
     (.skipped_actions | type == "array") and
     (.executable_actions | length) == .plan_summary.executable_actions and
-    (.skipped_actions | length) == .plan_summary.non_executable_actions' \
+    (.skipped_actions | length) == .plan_summary.non_executable_actions and
+    .plan_summary.create_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "create")) | length) and
+    .plan_summary.update_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "update")) | length) and
+    .plan_summary.delete_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "delete")) | length) and
+    .plan_summary.remove_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "remove")) | length)' \
     "$report" >/dev/null
 }
 
@@ -199,7 +203,11 @@ assert_zero_check() {
         .has_changes == (.actions > 0)) and
       (.checked_actions | type == "array" and length == 0) and
       (.skipped_actions | type == "array") and
-      (.skipped_actions | length) == .plan_summary.non_executable_actions)' \
+      (.skipped_actions | length) == .plan_summary.non_executable_actions) and
+    .data.plan_summary.create_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "create")) | length) and
+    .data.plan_summary.update_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "update")) | length) and
+    .data.plan_summary.delete_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "delete")) | length) and
+    .data.plan_summary.remove_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "remove")) | length)' \
     "$report" >/dev/null; then
     return 1
   fi
@@ -212,6 +220,10 @@ assert_zero_diff() {
     type == "object" and .organization == "octostate-test" and
     (.summary | type == "object" and .executable_actions == 0 and
       .actions == .non_executable_actions and .has_changes == (.actions > 0)) and
+    .summary.create_actions == ([.actions[]] | map(select(.operation == "create")) | length) and
+    .summary.update_actions == ([.actions[]] | map(select(.operation == "update")) | length) and
+    .summary.delete_actions == ([.actions[]] | map(select(.operation == "delete")) | length) and
+    .summary.remove_actions == ([.actions[]] | map(select(.operation == "remove")) | length) and
     (.actions | type == "array") and
     (.actions | length) == .summary.non_executable_actions' \
     "$report" >/dev/null; then
@@ -298,7 +310,11 @@ assert_exact_topic_action() {
           (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
         (.executable_actions | type == "array" and length == 1) and
         (.skipped_actions | type == "array") and
-        (.skipped_actions | length) == .plan_summary.non_executable_actions' "$report" >/dev/null; then
+        (.skipped_actions | length) == .plan_summary.non_executable_actions and
+        .plan_summary.create_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "create")) | length) and
+        .plan_summary.update_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "update")) | length) and
+        .plan_summary.delete_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "delete")) | length) and
+        .plan_summary.remove_actions == ([.executable_actions[], .skipped_actions[]] | map(select(.operation == "remove")) | length)' "$report" >/dev/null; then
         return 1
       fi
       ;;
@@ -313,7 +329,11 @@ assert_exact_topic_action() {
             (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
           (.checked_actions | type == "array" and length == 1) and
           (.skipped_actions | type == "array") and
-          (.skipped_actions | length) == .plan_summary.non_executable_actions)' "$report" >/dev/null; then
+          (.skipped_actions | length) == .plan_summary.non_executable_actions) and
+        .data.plan_summary.create_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "create")) | length) and
+        .data.plan_summary.update_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "update")) | length) and
+        .data.plan_summary.delete_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "delete")) | length) and
+        .data.plan_summary.remove_actions == ([.data.checked_actions[], .data.skipped_actions[]] | map(select(.operation == "remove")) | length)' "$report" >/dev/null; then
         return 1
       fi
       ;;
@@ -328,7 +348,11 @@ assert_exact_topic_action() {
             (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
           (.executed_actions | type == "array" and length == 1) and
           (.skipped_actions | type == "array") and
-          (.skipped_actions | length) == .plan_summary.non_executable_actions)' "$report" >/dev/null; then
+          (.skipped_actions | length) == .plan_summary.non_executable_actions) and
+        .data.plan_summary.create_actions == ([.data.executed_actions[], .data.skipped_actions[]] | map(select(.operation == "create")) | length) and
+        .data.plan_summary.update_actions == ([.data.executed_actions[], .data.skipped_actions[]] | map(select(.operation == "update")) | length) and
+        .data.plan_summary.delete_actions == ([.data.executed_actions[], .data.skipped_actions[]] | map(select(.operation == "delete")) | length) and
+        .data.plan_summary.remove_actions == ([.data.executed_actions[], .data.skipped_actions[]] | map(select(.operation == "remove")) | length)' "$report" >/dev/null; then
         return 1
       fi
       ;;
