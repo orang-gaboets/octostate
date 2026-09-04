@@ -99,13 +99,16 @@ case "${1:-}" in
         if [ "${LIVE_STUB_GH_FAILURE_AFTER_MUTATION:-0}" = "1" ]; then
           api_status=500
         fi
+        if [ "${LIVE_STUB_GH_FAILURE_BEFORE_MUTATION:-0}" = "1" ] && [ "$state" = "baseline" ]; then
+          api_status=500
+        fi
         if [ "${LIVE_STUB_GH_FATAL_AFTER_MUTATION:-0}" = "1" ]; then
           api_status=401
         fi
         if [ "${LIVE_STUB_GH_FATAL_STATUS:-}" != "" ]; then
           api_status=$LIVE_STUB_GH_FATAL_STATUS
         fi
-        if [ "$state" = "mutated" ] && [ "$api_status" != '' ]; then
+        if [ "$api_status" != '' ] && { [ "$state" = "mutated" ] || { [ "$state" = "baseline" ] && [ "${LIVE_STUB_GH_FAILURE_BEFORE_MUTATION:-0}" = "1" ]; }; }; then
           fail_api=1
           if [ "${LIVE_STUB_POLL_GH_ONCE:-0}" = "1" ] && [ -f "$LIVE_STUB_GH_ONCE_FILE" ]; then
             fail_api=0
@@ -362,7 +365,13 @@ case "${1:-} ${2:-}" in
       printf '{not-json\n'
       exit 0
     fi
-    plan_payload "$(desired_state "$@")"
+    desired=$(desired_state "$@")
+    if [ "${LIVE_STUB_POLL_PLAN_TRANSIENT:-0}" = "1" ] && [ "$desired" = "mutated" ] && [ "$(cat "$LIVE_STUB_STATE")" = "mutated" ] && [ ! -f "$LIVE_STUB_PLAN_ONCE_FILE" ]; then
+      : >"$LIVE_STUB_PLAN_ONCE_FILE"
+      echo 'HTTP 500 temporary server failure' >&2
+      exit 1
+    fi
+    plan_payload "$desired"
     ;;
   "config apply")
     desired=$(desired_state "$@")
@@ -476,6 +485,7 @@ run_case() {
       LIVE_STUB_APPLY_LOG="$case_dir/apply.log" \
       LIVE_STUB_STATE="$case_dir/state" \
       LIVE_STUB_GH_ONCE_FILE="$case_dir/gh-once" \
+      LIVE_STUB_PLAN_ONCE_FILE="$case_dir/plan-once" \
       "$@" \
       bash "$script_dir/live-integration.sh" "$mode"
   ) >"$case_dir/stdout" 2>"$case_dir/stderr"
@@ -525,6 +535,9 @@ unset LIVE_STUB_INITIAL_STATE
 run_case read_only_success --read-only 0
 assert_count 1 "go run ./cmd/octostate config apply --config-dir" "$CASE_DIR/commands.log"
 assert_count 0 "apply-mutated" "$CASE_DIR/apply.log"
+assert_contains "Final: PASS" "$CASE_DIR/summary"
+
+run_case baseline_transient_api_retry --read-only 0 env LIVE_STUB_GH_FAILURE_BEFORE_MUTATION=1 LIVE_STUB_POLL_GH_ONCE=1
 assert_contains "Final: PASS" "$CASE_DIR/summary"
 
 run_case invalid_validate_envelope --read-only 1 env LIVE_STUB_INVALID_VALIDATE=1
@@ -626,6 +639,10 @@ assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
 
 run_case polling_rate_limit_retry --mutate 0 env LIVE_STUB_POLL_GH_STATUS=429 LIVE_STUB_POLL_GH_ONCE=1
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
+
+run_case polling_transient_plan_failure --mutate 0 env LIVE_STUB_POLL_PLAN_TRANSIENT=1
 assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
 assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
 

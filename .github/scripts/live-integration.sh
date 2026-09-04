@@ -73,20 +73,58 @@ normalize_repository() {
     "$input" >"$output" || return 1
 }
 
+classify_gh_failure() {
+  local error_file=$1
+  if grep -Eq '(^|[^[:digit:]])(408|429|5[0-9]{2})([^[:digit:]]|$)|timed out|timeout|temporary|connection|network|resolve|TLS|EOF|reset' "$error_file"; then
+    return 2
+  fi
+  return 3
+}
+
+read_organization_json() {
+  local output=$1
+  local error_file=$SCRATCH_DIR/organization.error.txt
+  if ! gh api "/orgs/$EXPECTED_ORGANIZATION" >"$output" 2>"$error_file"; then
+    classify_gh_failure "$error_file"
+    return $?
+  fi
+  return 0
+}
+
 read_repository_projection() {
   local raw=$SCRATCH_DIR/repository.raw.json
   local error_file=$SCRATCH_DIR/repository.error.txt
   local projection=$1
   if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw" 2>"$error_file"; then
-    if grep -Eq '(^|[^[:digit:]])(408|429|5[0-9]{2})([^[:digit:]]|$)|timed out|timeout|temporary|connection|network|resolve|TLS|EOF|reset' "$error_file"; then
-      return 2
-    fi
-    return 3
+    classify_gh_failure "$error_file"
+    return $?
   fi
   if ! normalize_repository "$raw" "$projection"; then
     return 3
   fi
   return 0
+}
+
+read_with_retries() {
+  local reader=$1
+  local output=$2
+  local attempt status
+  for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
+    status=0
+    "$reader" "$output" || status=$?
+    if [ "$status" -eq 0 ] || [ "$status" -eq 3 ]; then
+      return "$status"
+    fi
+    if [ "$attempt" -eq "$POLL_ATTEMPTS" ]; then
+      return "$status"
+    fi
+    sleep "$POLL_DELAY_SECONDS"
+  done
+}
+
+is_transient_failure_file() {
+  local error_file=$1
+  grep -Eq '(^|[^[:digit:]])(408|429|5[0-9]{2})([^[:digit:]]|$)|timed out|timeout|temporary|connection|network|resolve|TLS|EOF|reset' "$error_file"
 }
 
 assert_baseline_projection() {
@@ -117,8 +155,10 @@ verify_target_and_baseline() {
   local org_json=$SCRATCH_DIR/organization.json
   local repository_projection=$SCRATCH_DIR/repository.baseline.json
 
-  if ! gh api "/orgs/$EXPECTED_ORGANIZATION" >"$org_json"; then
-    fail 'organization lookup failed'
+  local org_status=0
+  read_with_retries read_organization_json "$org_json" || org_status=$?
+  if [ "$org_status" -ne 0 ]; then
+    fail 'organization lookup failed or had an invalid response'
     return 1
   fi
   if ! jq -e \
@@ -130,7 +170,9 @@ verify_target_and_baseline() {
     return 1
   fi
 
-  if ! read_repository_projection "$repository_projection"; then
+  local repository_status=0
+  read_with_retries read_repository_projection "$repository_projection" || repository_status=$?
+  if [ "$repository_status" -ne 0 ]; then
     fail 'repository response was malformed or had an invalid shape'
     return 1
   fi
@@ -514,6 +556,10 @@ poll_for_topics() {
     fi
     if [ "$read_status" -eq 0 ] && projection_matches "$expected_projection" "$current"; then
       if ! run_octostate "$plan" config plan --config-dir "$desired_config"; then
+        if is_transient_failure_file "$plan.stderr" && [ "$attempt" -lt "$POLL_ATTEMPTS" ]; then
+          sleep "$POLL_DELAY_SECONDS"
+          continue
+        fi
         fail 'poll config plan failed'
         return 1
       fi
@@ -552,7 +598,9 @@ restore_baseline_once() {
   local baseline_projection
   baseline_projection=$(expected_baseline_projection)
 
-  if ! read_repository_projection "$current"; then
+  local read_status=0
+  read_with_retries read_repository_projection "$current" || read_status=$?
+  if [ "$read_status" -ne 0 ]; then
     fail 'restoration identity/state read failed'
     return 1
   fi
