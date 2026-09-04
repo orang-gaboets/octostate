@@ -280,6 +280,11 @@ non-secret App facts remain App ID `4726852` and installation ID `156749227`.
 The protected job checks out the SHA emitted by the trust job and verifies the
 checkout before using credentials. It then performs these steps in order:
 
+The implementation intentionally keeps the read-only scenarios in this
+protected job rather than running them before environment approval. This keeps
+the App private key unavailable until approval, including for the read-only
+token; the trust job only validates trusted code and the committed fixture.
+
 1. Mint a short-lived installation token scoped to owner `octostate-test` and
    repository `octostate-fixture-repo`, with Administration read, Members
    read, and Metadata read. Run
@@ -318,8 +323,11 @@ the plan, apply-check, apply, and restoration envelopes.
 
 Runs are serialized by the literal concurrency group
 `octostate-test-live-integration` and `cancel-in-progress: false`. The trust and
-protected jobs have 10-minute and 45-minute timeouts respectively; the harness
-also uses bounded convergence polling and an internal restoration deadline.
+protected jobs have 10-minute and 45-minute timeouts respectively, and their
+checkout, setup, validation, token, and live-operation steps have explicit
+timeouts. The mutation step is limited to 30 minutes, with a 20-minute active
+operation budget and a separate 9-minute restoration deadline. The harness also
+uses bounded convergence polling.
 The step summary is compact and sanitized: it records run ID, tested SHA,
 fixed target names/IDs, phase results, expected topic, exact-action-guard
 result, convergence/restoration results, final PASS/FAIL, and recovery
