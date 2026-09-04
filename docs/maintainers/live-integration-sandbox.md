@@ -224,8 +224,8 @@ When no mismatch exists, explicitly record `no remote write performed`.
 ## Ownership and release treatment
 
 This document and its index link are the only repository changes owned by
-#247. Do not modify #243 or #248. Do not add workflow automation, a control
-repository, or runtime behavior.
+#247. For #247, do not modify #243 or #248, add workflow automation, introduce
+a control repository, or change runtime behavior.
 
 #243 may proceed with its targeted manual live validation after #247's
 verification/documentation is complete. #248 remains the home for future
