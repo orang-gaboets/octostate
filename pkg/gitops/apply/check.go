@@ -49,6 +49,9 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 		return nil, err
 	}
 	opt.Desired = config.NormalizeDesiredState(opt.Desired)
+	if err := requireExecutableDesiredActions(opt); err != nil {
+		return nil, err
+	}
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}

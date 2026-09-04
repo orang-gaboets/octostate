@@ -47,6 +47,7 @@ func ApplyConfigCmd() *cobra.Command {
 		configDir      string
 		check          bool
 		dryRun         bool
+		requireExec    bool
 	)
 
 	cmd := &cobra.Command{
@@ -83,6 +84,7 @@ func ApplyConfigCmd() *cobra.Command {
 				appKeyPath,
 				configDir,
 				mode,
+				requireExec,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
@@ -113,6 +115,8 @@ func ApplyConfigCmd() *cobra.Command {
 
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
 	cmd.Flags().BoolVar(&check, "check", false, "Run apply preflight checks without mutating GitHub")
+	cmd.Flags().BoolVar(&requireExec, "require-executable", false,
+		"Fail when a desired create or update cannot be executed. Unsupported delete/remove drift is still reported without failing")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
@@ -127,6 +131,7 @@ func applyConfig(
 	appID, installationID int64,
 	appKeyPath, configDir string,
 	mode applyRunMode,
+	requireExecutable bool,
 ) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
@@ -171,13 +176,14 @@ func applyConfig(
 	switch mode {
 	case applyRunModeCheck:
 		checkResult, err := checkApply(ctx, gitopsapply.Options{
-			Desired:             cfg,
-			Actual:              actual,
-			Plan:                report,
-			OrganizationService: client.Organizations(),
-			RepositoryService:   client.Repositories(),
-			TeamService:         client.Teams(),
-			UserService:         client.Users(),
+			Desired:                         cfg,
+			Actual:                          actual,
+			Plan:                            report,
+			RequireExecutableDesiredActions: requireExecutable,
+			OrganizationService:             client.Organizations(),
+			RepositoryService:               client.Repositories(),
+			TeamService:                     client.Teams(),
+			UserService:                     client.Users(),
 		})
 		if err != nil {
 			return nil, nil, nil, runtimePhaseError("run apply preflight check", err)
@@ -190,13 +196,14 @@ func applyConfig(
 		return nil, preview, nil, nil
 	default:
 		result, err := executeApply(ctx, gitopsapply.Options{
-			Desired:             cfg,
-			Actual:              actual,
-			Plan:                report,
-			OrganizationService: client.Organizations(),
-			RepositoryService:   client.Repositories(),
-			TeamService:         client.Teams(),
-			UserService:         client.Users(),
+			Desired:                         cfg,
+			Actual:                          actual,
+			Plan:                            report,
+			RequireExecutableDesiredActions: requireExecutable,
+			OrganizationService:             client.Organizations(),
+			RepositoryService:               client.Repositories(),
+			TeamService:                     client.Teams(),
+			UserService:                     client.Users(),
 		})
 		if err != nil {
 			return nil, nil, nil, runtimePhaseError("execute apply plan", err)
