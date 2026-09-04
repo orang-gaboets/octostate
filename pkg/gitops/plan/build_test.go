@@ -927,7 +927,7 @@ func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenRepositoryIsCreatedI
 	}
 }
 
-func TestBuildTeamRepositoryPermissionCreateIsNonExecutableWhenRepositoryCannotBeCreated(t *testing.T) {
+func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenOrdinaryRepositoryIsCreated(t *testing.T) {
 	t.Parallel()
 
 	report, err := Build(context.Background(), Options{
@@ -1640,6 +1640,71 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotOrder, tt.wantOrder) {
 				t.Fatalf("unexpected action order: got %#v want %#v", gotOrder, tt.wantOrder)
+			}
+		})
+	}
+}
+
+func TestBuildOrdinaryRepositoryTemplateAvailability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		configureSource    func(*config.RepositorySpec)
+		consumerExecutable bool
+	}{
+		{
+			name: "managed template",
+			configureSource: func(repository *config.RepositorySpec) {
+				repository.SetManagedIsTemplate(true)
+			},
+			consumerExecutable: true,
+		},
+		{
+			name:               "template omitted",
+			consumerExecutable: false,
+		},
+		{
+			name: "template explicitly false",
+			configureSource: func(repository *config.RepositorySpec) {
+				repository.SetManagedIsTemplate(false)
+			},
+			consumerExecutable: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: false}
+			if tt.configureSource != nil {
+				tt.configureSource(&source)
+			}
+			consumer := config.RepositorySpec{
+				Owner:      "orang-gaboets",
+				Name:       "consumer",
+				Visibility: "private",
+				Template:   config.TemplateSpec{Owner: "orang-gaboets", Name: "source"},
+			}
+			report, err := Build(context.Background(), Options{
+				Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}},
+				Actual:  &state.OrganizationState{Organization: "orang-gaboets"},
+			})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			if got, want := len(report.Actions), 2; got != want {
+				t.Fatalf("unexpected action count: got %d want %d; actions=%#v", got, want, report.Actions)
+			}
+			if got, want := report.Actions[0].ResourceID, "orang-gaboets/source"; got != want {
+				t.Fatalf("source action order: got %q want %q; actions=%#v", got, want, report.Actions)
+			}
+			if !report.Actions[0].Executable {
+				t.Fatalf("ordinary source create should be executable: %#v", report.Actions[0])
+			}
+			if got, want := report.Actions[1].ResourceID, "orang-gaboets/consumer"; got != want {
+				t.Fatalf("consumer action order: got %q want %q; actions=%#v", got, want, report.Actions)
+			}
+			if got := report.Actions[1].Executable; got != tt.consumerExecutable {
+				t.Fatalf("consumer executable=%v want %v: %#v", got, tt.consumerExecutable, report.Actions[1])
 			}
 		})
 	}
