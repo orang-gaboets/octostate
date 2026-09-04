@@ -528,7 +528,7 @@ restore_baseline_once() {
 
 write_summary() {
   local status=$1
-  local summary=${SUMMARY_FILE:-$SCRATCH_DIR/summary.md}
+  local summary=${SUMMARY_FILE:-${RUNNER_TEMP:-/tmp}/octostate-live-summary.$$.md}
   mkdir -p "$(dirname "$summary")"
   cat >"$summary" <<EOF
 # Trusted Live Integration
@@ -646,7 +646,9 @@ on_exit() {
     fi
     write_summary FAIL
   fi
-  rm -rf "$SCRATCH_DIR"
+  if [ -n "$SCRATCH_DIR" ]; then
+    rm -rf "$SCRATCH_DIR"
+  fi
   if [ "$status" -eq 2 ]; then
     exit_status=2
   elif [ "$status" -lt 128 ]; then
@@ -657,9 +659,6 @@ on_exit() {
 
 main() {
   local runner_temp=${RUNNER_TEMP:-/tmp}
-  mkdir -p "$runner_temp"
-  SCRATCH_DIR=$(mktemp -d "$runner_temp/octostate-live.XXXXXX")
-  chmod 700 "$SCRATCH_DIR"
   umask 077
   trap 'on_exit' EXIT
   trap 'on_signal TERM' TERM
@@ -670,6 +669,13 @@ main() {
     return 2
   fi
   mode=$1
+
+  if ! mkdir -p "$runner_temp"; then
+    fail "could not create runner temp directory: $runner_temp"
+    return 1
+  fi
+  SCRATCH_DIR=$(mktemp -d "$runner_temp/octostate-live.XXXXXX")
+  chmod 700 "$SCRATCH_DIR"
 
   if ! require_commands; then
     return 1
