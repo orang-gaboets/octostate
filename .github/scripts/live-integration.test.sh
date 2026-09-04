@@ -425,6 +425,9 @@ case "${1:-} ${2:-}" in
     if [ "$desired" = "mutated" ] && [ "${LIVE_STUB_STATE_AFTER_MUTATION:-}" = "dirty" ]; then
       next_state=dirty
     fi
+    if [ "$desired" = "baseline" ] && [ "${LIVE_STUB_STATE_AFTER_RESTORE:-}" = "dirty" ]; then
+      next_state=dirty
+    fi
     printf '%s\n' "$next_state" >"$LIVE_STUB_STATE"
     if [ "${LIVE_STUB_INVALID_APPLY:-0}" = "1" ] && [ "$desired" = "mutated" ]; then
       jq -nc --argjson payload "$payload" '{status:"check", message:"applied", data:{organization:$payload.organization, plan_summary:$payload.plan_summary, executed_actions:$payload.executable_actions, skipped_actions:$payload.skipped_actions}}'
@@ -520,6 +523,10 @@ run_case missing_token --read-only 1 env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN
 assert_count 0 "go run ./cmd/octostate config apply" "$CASE_DIR/commands.log"
 assert_contains "Final: FAIL" "$CASE_DIR/summary"
 
+run_case active_deadline --read-only 1 env OCTOSTATE_ACTIVE_DEADLINE_SECONDS=0
+assert_count 0 "go run ./cmd/octostate" "$CASE_DIR/commands.log"
+assert_contains "active integration deadline" "$CASE_DIR/stderr"
+
 for mode in malformed null wrong-type; do
   run_case "org_$mode" --read-only 1 env LIVE_STUB_ORG_MODE="$mode"
   assert_count 0 "go run ./cmd/octostate config apply" "$CASE_DIR/commands.log"
@@ -608,6 +615,14 @@ assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
 assert_contains "dirty sandbox" "$CASE_DIR/summary"
 if [ "$(cat "$CASE_DIR/state")" != "mutated" ]; then
   fail "restoration failure should leave the stub dirty"
+fi
+
+run_case restoration_convergence_failure --mutate 1 env LIVE_STUB_STATE_AFTER_RESTORE=dirty
+assert_count 1 "apply-mutated" "$CASE_DIR/apply.log"
+assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
+assert_contains "Restoration convergence: FAIL" "$CASE_DIR/summary"
+if [ "$(cat "$CASE_DIR/state")" != "dirty" ]; then
+  fail "restoration convergence failure should leave the stub dirty"
 fi
 
 run_case invalid_apply_envelope --mutate 1 env LIVE_STUB_INVALID_APPLY=1

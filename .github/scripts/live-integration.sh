@@ -10,6 +10,7 @@ BASELINE_CONFIG_DIR='testdata/live-integration'
 POLL_ATTEMPTS=12
 POLL_DELAY_SECONDS=5
 CLEANUP_DEADLINE_SECONDS=${OCTOSTATE_CLEANUP_DEADLINE_SECONDS:-540}
+ACTIVE_DEADLINE_SECONDS=${OCTOSTATE_ACTIVE_DEADLINE_SECONDS:-1200}
 
 mode=''
 
@@ -21,6 +22,8 @@ MUTATION_STARTED=0
 RESTORE_ATTEMPTED=0
 RESTORATION_COMPLETED=0
 CLEANUP_RUNNING=0
+ACTIVE_DEADLINE_ENABLED=0
+ACTIVE_DEADLINE=0
 FINAL_STATUS=1
 PHASE='startup'
 PHASE_BASELINE='NOT RUN'
@@ -187,6 +190,10 @@ verify_target_and_baseline() {
 run_octostate() {
   local output=$1
   shift
+  if [ "$ACTIVE_DEADLINE_ENABLED" -eq 1 ] && [ "$SECONDS" -ge "$ACTIVE_DEADLINE" ]; then
+    fail 'active integration deadline exceeded before Octostate command'
+    return 1
+  fi
   go run ./cmd/octostate "$@" >"$output" 2>"$output.stderr"
 }
 
@@ -631,6 +638,17 @@ restore_baseline() {
   return 0
 }
 
+write_restore_result() {
+  local result_file=$1
+  local status=$2
+  {
+    printf 'status=%s\n' "$status"
+    printf 'phase_restoration=%s\n' "$PHASE_RESTORATION"
+    printf 'restoration_convergence=%s\n' "$RESTORATION_CONVERGENCE"
+    printf 'action_guard_result=%s\n' "$ACTION_GUARD_RESULT"
+  } >"$result_file"
+}
+
 write_summary() {
   local status=$1
   local summary=${SUMMARY_FILE:-${RUNNER_TEMP:-/tmp}/octostate-live-summary.$$.md}
@@ -681,15 +699,20 @@ restore_with_deadline() {
   local grace
   local timed_out=0
   local guard_before=$ACTION_GUARD_RESULT
+  local result_status=''
+  local result_phase=''
+  local result_convergence=''
+  local result_guard=''
 
   RESTORE_ATTEMPTED=1
   : >"$result_file"
   (
     trap - EXIT TERM INT
+    ACTIVE_DEADLINE_ENABLED=0
     if restore_baseline; then
-      printf 'PASS\n' >"$result_file"
+      write_restore_result "$result_file" PASS
     else
-      printf 'FAIL\n' >"$result_file"
+      write_restore_result "$result_file" FAIL
     fi
   ) &
   child=$!
@@ -707,6 +730,7 @@ restore_with_deadline() {
       wait "$child" 2>/dev/null || true
       ACTION_GUARD_RESULT='FAIL'
       PHASE_RESTORATION='FAIL (cleanup deadline)'
+      RESTORATION_CONVERGENCE='FAIL (cleanup deadline)'
       return 1
     fi
     /bin/sleep 1
@@ -715,17 +739,29 @@ restore_with_deadline() {
   if [ "$timed_out" -eq 1 ] || [ "$SECONDS" -ge "$deadline" ]; then
     ACTION_GUARD_RESULT='FAIL'
     PHASE_RESTORATION='FAIL (cleanup deadline)'
+    RESTORATION_CONVERGENCE='FAIL (cleanup deadline)'
     return 1
   fi
-  if [ "$(cat "$result_file" 2>/dev/null)" = 'PASS' ]; then
-    ACTION_GUARD_RESULT=$guard_before
+  if [ -s "$result_file" ]; then
+    while IFS='=' read -r key value; do
+      case "$key" in
+        status) result_status=$value ;;
+        phase_restoration) result_phase=$value ;;
+        restoration_convergence) result_convergence=$value ;;
+        action_guard_result) result_guard=$value ;;
+      esac
+    done <"$result_file"
+  fi
+  if [ "$result_status" = 'PASS' ]; then
+    ACTION_GUARD_RESULT=${result_guard:-$guard_before}
     RESTORATION_COMPLETED=1
-    RESTORATION_CONVERGENCE='PASS'
-    PHASE_RESTORATION='PASS'
+    RESTORATION_CONVERGENCE=${result_convergence:-'PASS'}
+    PHASE_RESTORATION=${result_phase:-'PASS'}
     return 0
   fi
   ACTION_GUARD_RESULT='FAIL'
-  PHASE_RESTORATION='FAIL (dirty sandbox)'
+  PHASE_RESTORATION=${result_phase:-'FAIL (dirty sandbox)'}
+  RESTORATION_CONVERGENCE=${result_convergence:-'FAIL'}
   return 1
 }
 
@@ -786,6 +822,8 @@ main() {
     return 2
   fi
   mode=$1
+  ACTIVE_DEADLINE=$((SECONDS + ACTIVE_DEADLINE_SECONDS))
+  ACTIVE_DEADLINE_ENABLED=1
 
   if ! mkdir -p "$runner_temp"; then
     fail "could not create runner temp directory: $runner_temp"
