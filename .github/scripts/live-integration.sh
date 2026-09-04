@@ -9,7 +9,7 @@ MUTATION_TOPIC='octostate-live-integration'
 BASELINE_CONFIG_DIR='testdata/live-integration'
 POLL_ATTEMPTS=12
 POLL_DELAY_SECONDS=5
-CLEANUP_DEADLINE_SECONDS=540
+CLEANUP_DEADLINE_SECONDS=${OCTOSTATE_CLEANUP_DEADLINE_SECONDS:-540}
 
 mode=${1:-}
 if [ "$#" -ne 1 ] || { [ "$mode" != '--read-only' ] && [ "$mode" != '--mutate' ]; }; then
@@ -34,6 +34,7 @@ PHASE_CONVERGENCE='NOT RUN'
 RESTORATION_CONVERGENCE='NOT RUN'
 PHASE_RESTORATION='NOT RUN'
 PHASE_FINAL='NOT RUN'
+ACTION_GUARD_RESULT='NOT RUN'
 
 fail() {
   echo "live integration: $*" >&2
@@ -79,7 +80,7 @@ read_repository_projection() {
   local raw=$SCRATCH_DIR/repository.raw.json
   local projection=$1
   if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw"; then
-    return 2
+    return 3
   fi
   if ! normalize_repository "$raw" "$projection"; then
     return 3
@@ -92,6 +93,18 @@ assert_baseline_projection() {
   local expected
   expected=$(expected_baseline_projection)
   [ "$(cat "$projection")" = "$expected" ]
+}
+
+assert_allowed_skipped_actions() {
+  local report=$1
+  local action_path=$2
+  jq -e "$action_path |
+    if type != \"array\" then false
+    else all(.[]; . as \$action |
+      (\$action.executable == false) and
+      ([\"organization_member\", \"invite\", \"team\"] | index(\$action.resource_type) != null))
+    end" \
+    "$report" >/dev/null
 }
 
 verify_target_and_baseline() {
@@ -134,36 +147,69 @@ run_octostate() {
 
 assert_zero_plan() {
   local report=$1
-  if ! jq -e '
-    type == "object" and (.organization | type == "string") and
-    (.plan_summary | type == "object" and (.executable_actions | type == "number")) and
-    (.executable_actions | type == "array")' \
-    "$report" >/dev/null; then
+  if ! is_plan_envelope_valid "$report"; then
+    return 1
+  fi
+  if ! assert_allowed_skipped_actions "$report" '.skipped_actions'; then
     return 1
   fi
   jq -e '
     .organization == "octostate-test" and
+    .plan_summary.has_changes == false and
     .plan_summary.executable_actions == 0 and
-    (.executable_actions | type == "array" and length == 0)' \
+    .plan_summary.actions == .plan_summary.non_executable_actions and
+    .plan_summary.create_actions == 0 and
+    .plan_summary.update_actions == 0 and
+    .plan_summary.delete_actions == 0 and
+    .plan_summary.remove_actions == 0 and
+    (.executable_actions | length == 0)' \
+    "$report" >/dev/null
+}
+
+is_plan_envelope_valid() {
+  local report=$1
+  jq -e '
+    type == "object" and .organization == "octostate-test" and
+    (.plan_summary | type == "object" and
+      (.has_changes | type == "boolean") and
+      (.actions | type == "number") and
+      (.executable_actions | type == "number") and
+      (.non_executable_actions | type == "number") and
+      (.create_actions | type == "number") and
+      (.update_actions | type == "number") and
+      (.delete_actions | type == "number") and
+      (.remove_actions | type == "number")) and
+    (.executable_actions | type == "array") and
+    (.skipped_actions | type == "array")' \
     "$report" >/dev/null
 }
 
 assert_zero_check() {
   local report=$1
-  jq -e '
+  if ! jq -e '
     type == "object" and .status == "check" and
     (.data | type == "object" and .organization == "octostate-test" and
-      (.plan_summary | .executable_actions == 0) and
-      (.checked_actions | type == "array" and length == 0))' \
-    "$report" >/dev/null
+      (.plan_summary | type == "object" and .has_changes == false and
+        .executable_actions == 0 and .actions == .non_executable_actions and
+        .create_actions == 0 and .update_actions == 0 and .delete_actions == 0 and .remove_actions == 0) and
+      (.checked_actions | type == "array" and length == 0) and
+      (.skipped_actions | type == "array"))' \
+    "$report" >/dev/null; then
+    return 1
+  fi
+  assert_allowed_skipped_actions "$report" '.data.skipped_actions'
 }
 
 assert_zero_diff() {
   local report=$1
-  jq -e '
+  if ! jq -e '
     type == "object" and .organization == "octostate-test" and
-    (.summary | type == "object" and .executable_actions == 0)' \
-    "$report" >/dev/null
+    (.summary | type == "object" and .executable_actions == 0 and .actions == 0 and .non_executable_actions == 0) and
+    (.actions | type == "array")' \
+    "$report" >/dev/null; then
+    return 1
+  fi
+  assert_allowed_skipped_actions "$report" '.actions'
 }
 
 run_read_only_scenarios() {
@@ -230,7 +276,55 @@ assert_exact_topic_action() {
   local action_path=$2
   local from_topics=$3
   local to_topics=$4
-  local actions=$SCRATCH_DIR/action.$RANDOM.json
+  local envelope=$5
+  local skipped_path
+  ACTION_GUARD_RESULT='FAIL'
+  case "$envelope" in
+    plan)
+      skipped_path='.skipped_actions'
+      if ! jq -e '
+        type == "object" and .organization == "octostate-test" and
+        (.plan_summary | type == "object" and .has_changes == true and
+          .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
+          .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
+        (.executable_actions | type == "array" and length == 1) and
+        (.skipped_actions | type == "array")' "$report" >/dev/null; then
+        return 1
+      fi
+      ;;
+    check)
+      skipped_path='.data.skipped_actions'
+      if ! jq -e '
+        type == "object" and .status == "check" and
+        (.data | type == "object" and .organization == "octostate-test" and
+          (.plan_summary | type == "object" and .has_changes == true and
+            .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
+            .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
+          (.checked_actions | type == "array" and length == 1) and
+          (.skipped_actions | type == "array"))' "$report" >/dev/null; then
+        return 1
+      fi
+      ;;
+    apply)
+      skipped_path='.data.skipped_actions'
+      if ! jq -e '
+        type == "object" and .status == "success" and
+        (.data | type == "object" and .organization == "octostate-test" and
+          (.plan_summary | type == "object" and .has_changes == true and
+            .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
+            .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
+          (.executed_actions | type == "array" and length == 1) and
+          (.skipped_actions | type == "array"))' "$report" >/dev/null; then
+        return 1
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  if ! assert_allowed_skipped_actions "$report" "$skipped_path"; then
+    return 1
+  fi
   if ! jq -e "$action_path | type == \"array\" and length == 1" "$report" >/dev/null; then
     return 1
   fi
@@ -247,6 +341,7 @@ assert_exact_topic_action() {
     "$report" >/dev/null; then
     return 1
   fi
+  ACTION_GUARD_RESULT='PASS'
   return 0
 }
 
@@ -263,14 +358,6 @@ prepare_mutation() {
     fail 'mutated config validate failed'
     return 1
   fi
-  if ! run_octostate "$plan" config plan --config-dir "$mutated_dir"; then
-    fail 'mutated config plan failed'
-    return 1
-  fi
-  if ! assert_exact_topic_action "$plan" '.executable_actions' '[]' "[\"$MUTATION_TOPIC\"]"; then
-    fail 'mutated config plan was not exactly one topic-only repository update'
-    return 1
-  fi
   ORIGINAL_PROJECTION=$SCRATCH_DIR/original.projection.json
   if ! read_repository_projection "$ORIGINAL_PROJECTION" || ! assert_baseline_projection "$ORIGINAL_PROJECTION"; then
     fail 'baseline changed before mutation'
@@ -280,11 +367,19 @@ prepare_mutation() {
   EXPECTED_MUTATED_PROJECTION=$SCRATCH_DIR/expected.mutated.projection.json
   jq -cS --arg topic "$MUTATION_TOPIC" '.topics = [$topic]' "$baseline_projection" >"$EXPECTED_MUTATED_PROJECTION"
 
+  if ! run_octostate "$plan" config plan --config-dir "$mutated_dir"; then
+    fail 'mutated config plan failed'
+    return 1
+  fi
+  if ! assert_exact_topic_action "$plan" '.executable_actions' '[]' "[\"$MUTATION_TOPIC\"]" plan; then
+    fail 'mutated config plan was not exactly one topic-only repository update'
+    return 1
+  fi
   if ! run_octostate "$check" config apply --config-dir "$mutated_dir" --check; then
     fail 'mutated config apply --check failed'
     return 1
   fi
-  if ! assert_exact_topic_action "$check" '.data.checked_actions' '[]' "[\"$MUTATION_TOPIC\"]"; then
+  if ! assert_exact_topic_action "$check" '.data.checked_actions' '[]' "[\"$MUTATION_TOPIC\"]" check; then
     fail 'mutated config apply --check was not exactly one topic-only repository update'
     return 1
   fi
@@ -301,7 +396,7 @@ apply_mutation_once() {
     fail 'mutating config apply failed'
     return 1
   fi
-  if ! assert_exact_topic_action "$apply" '.data.executed_actions' '[]' "[\"$MUTATION_TOPIC\"]"; then
+  if ! assert_exact_topic_action "$apply" '.data.executed_actions' '[]' "[\"$MUTATION_TOPIC\"]" apply; then
     fail 'mutating config apply executed an unexpected action'
     return 1
   fi
@@ -315,6 +410,13 @@ projection_matches() {
   [ "$(cat "$expected")" = "$(cat "$actual")" ]
 }
 
+stable_projection_matches() {
+  local expected=$1
+  local actual=$2
+  jq -ne --slurpfile expected "$expected" --slurpfile actual "$actual" \
+    '$expected[0] | del(.topics) == ($actual[0] | del(.topics))'
+}
+
 poll_for_topics() {
   local expected_projection=$1
   local desired_config=$2
@@ -326,18 +428,26 @@ poll_for_topics() {
     local plan=$SCRATCH_DIR/poll.plan.$attempt.json
     local read_status=0
     read_repository_projection "$current" || read_status=$?
-    if [ "$read_status" -eq 3 ]; then
-      fail 'poll repository response was malformed or had an invalid shape'
+    if [ "$read_status" -ne 0 ]; then
+      fail 'poll repository response failed or had an invalid shape'
       return 1
     fi
-    if [ "$read_status" -eq 0 ] && projection_matches "$expected_projection" "$current"; then
+    if ! stable_projection_matches "$expected_projection" "$current"; then
+      fail 'poll repository identity or stable baseline fields changed'
+      return 1
+    fi
+    if projection_matches "$expected_projection" "$current"; then
       if ! run_octostate "$plan" config plan --config-dir "$desired_config"; then
         fail 'poll config plan failed'
         return 1
       fi
       if ! assert_zero_plan "$plan"; then
-        if ! jq -e 'type == "object" and (.organization | type == "string") and (.plan_summary | type == "object") and (.executable_actions | type == "array")' "$plan" >/dev/null; then
+        if ! is_plan_envelope_valid "$plan"; then
           fail 'poll config plan response was malformed'
+          return 1
+        fi
+        if ! assert_allowed_skipped_actions "$plan" '.skipped_actions'; then
+          fail 'poll config plan contained an unexpected skipped action'
           return 1
         fi
       else
@@ -348,9 +458,7 @@ poll_for_topics() {
     if [ "$attempt" -eq "$POLL_ATTEMPTS" ]; then
       break
     fi
-    if [ "$read_status" -eq 2 ] || [ "$read_status" -eq 0 ]; then
-      sleep "$POLL_DELAY_SECONDS"
-    fi
+    sleep "$POLL_DELAY_SECONDS"
   done
   return 1
 }
@@ -386,7 +494,7 @@ restore_baseline_once() {
     fail 'baseline restoration apply failed'
     return 1
   fi
-  if ! assert_exact_topic_action "$apply" '.data.executed_actions' "[\"$MUTATION_TOPIC\"]" '[]'; then
+  if ! assert_exact_topic_action "$apply" '.data.executed_actions' "[\"$MUTATION_TOPIC\"]" '[]' apply; then
     fail 'baseline restoration executed an unexpected action'
     return 1
   fi
@@ -419,11 +527,70 @@ write_summary() {
 - Baseline: $PHASE_BASELINE
 - Read-only scenarios: $PHASE_READ_ONLY
 - Mutation: $PHASE_MUTATION (expected topic: octostate-live-integration)
+- Exact action guard: $ACTION_GUARD_RESULT
 - convergence: $PHASE_CONVERGENCE
 - Restoration convergence: $RESTORATION_CONVERGENCE
 - Restoration: $PHASE_RESTORATION
 - Final: $status
+- Recovery: If restoration is FAIL or unknown, stop automation and have a maintainer restore and re-verify the canonical fixture baseline before any further run.
 EOF
+}
+
+restore_with_deadline() {
+  local result_file=$SCRATCH_DIR/cleanup.restore.result
+  local child
+  local deadline
+  local grace
+  local timed_out=0
+
+  RESTORE_ATTEMPTED=1
+  : >"$result_file"
+  (
+    trap - EXIT TERM INT
+    RESTORE_ATTEMPTED=0
+    if restore_baseline_once; then
+      printf 'PASS\n' >"$result_file"
+    else
+      printf 'FAIL\n' >"$result_file"
+    fi
+  ) &
+  child=$!
+  deadline=$((SECONDS + CLEANUP_DEADLINE_SECONDS))
+  while kill -0 "$child" 2>/dev/null; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      timed_out=1
+      if command -v pkill >/dev/null 2>&1; then
+        pkill -TERM -P "$child" 2>/dev/null || true
+      fi
+      kill -TERM "$child" 2>/dev/null || true
+      grace=0
+      while kill -0 "$child" 2>/dev/null && [ "$grace" -lt 5 ]; do
+        /bin/sleep 1
+        grace=$((grace + 1))
+      done
+      if command -v pkill >/dev/null 2>&1; then
+        pkill -KILL -P "$child" 2>/dev/null || true
+      fi
+      kill -KILL "$child" 2>/dev/null || true
+      wait "$child" 2>/dev/null || true
+      PHASE_RESTORATION='FAIL (cleanup deadline)'
+      return 1
+    fi
+    /bin/sleep 1
+  done
+  wait "$child" 2>/dev/null || true
+  if [ "$timed_out" -eq 1 ] || [ "$SECONDS" -ge "$deadline" ]; then
+    PHASE_RESTORATION='FAIL (cleanup deadline)'
+    return 1
+  fi
+  if [ "$(cat "$result_file" 2>/dev/null)" = 'PASS' ]; then
+    RESTORATION_COMPLETED=1
+    RESTORATION_CONVERGENCE='PASS'
+    PHASE_RESTORATION='PASS'
+    return 0
+  fi
+  PHASE_RESTORATION='FAIL (dirty sandbox)'
+  return 1
 }
 
 cleanup_after_failure() {
@@ -432,12 +599,7 @@ cleanup_after_failure() {
   fi
   CLEANUP_RUNNING=1
   if [ "$MUTATION_STARTED" -eq 1 ] && [ "$RESTORATION_COMPLETED" -eq 0 ] && [ "$RESTORE_ATTEMPTED" -eq 0 ]; then
-    local deadline=$((SECONDS + CLEANUP_DEADLINE_SECONDS))
-    if [ "$SECONDS" -lt "$deadline" ]; then
-      restore_baseline_once || true
-    else
-      PHASE_RESTORATION='FAIL (cleanup deadline)'
-    fi
+    restore_with_deadline || true
   fi
   return 0
 }
@@ -460,7 +622,7 @@ on_exit() {
     write_summary PASS
   else
     FINAL_STATUS=1
-    if [ "$RESTORATION_COMPLETED" -eq 0 ] && [ "$MUTATION_STARTED" -eq 1 ]; then
+    if [ "$RESTORATION_COMPLETED" -eq 0 ] && [ "$MUTATION_STARTED" -eq 1 ] && [ "$PHASE_RESTORATION" != 'FAIL (cleanup deadline)' ]; then
       PHASE_RESTORATION='FAIL (dirty sandbox)'
     fi
     write_summary FAIL
@@ -473,7 +635,6 @@ on_exit() {
 }
 
 main() {
-  require_commands
   local runner_temp=${RUNNER_TEMP:-/tmp}
   mkdir -p "$runner_temp"
   SCRATCH_DIR=$(mktemp -d "$runner_temp/octostate-live.XXXXXX")
@@ -482,6 +643,10 @@ main() {
   trap 'on_exit' EXIT
   trap 'on_signal TERM' TERM
   trap 'on_signal INT' INT
+
+  if ! require_commands; then
+    return 1
+  fi
 
   cp -R "$BASELINE_CONFIG_DIR" "$SCRATCH_DIR/baseline-config"
   if ! verify_target_and_baseline; then
@@ -505,7 +670,7 @@ main() {
     fail 'mutation did not converge'
     return 1
   fi
-  if ! restore_baseline_once; then
+  if ! restore_with_deadline; then
     return 1
   fi
   PHASE='final verification'
