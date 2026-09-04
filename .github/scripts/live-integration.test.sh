@@ -404,6 +404,12 @@ case "${1:-} ${2:-}" in
       fi
     else
       printf 'apply-baseline\n' >>"$LIVE_STUB_APPLY_LOG"
+      if [ "${LIVE_STUB_HANG_RESTORE_DESCENDANT:-0}" = "1" ]; then
+        /bin/sleep 30 &
+        printf '%s\n' "$!" >"$LIVE_STUB_DESCENDANT_PID_FILE"
+        /bin/sleep 3
+        exit 1
+      fi
       if [ "${LIVE_STUB_HANG_RESTORE:-0}" = "1" ]; then
         /bin/sleep 3
         exit 1
@@ -484,6 +490,7 @@ run_case() {
       LIVE_STUB_LOG="$case_dir/commands.log" \
       LIVE_STUB_APPLY_LOG="$case_dir/apply.log" \
       LIVE_STUB_STATE="$case_dir/state" \
+      LIVE_STUB_DESCENDANT_PID_FILE="$case_dir/descendant.pid" \
       LIVE_STUB_GH_ONCE_FILE="$case_dir/gh-once" \
       LIVE_STUB_PLAN_ONCE_FILE="$case_dir/plan-once" \
       "$@" \
@@ -689,6 +696,16 @@ assert_count 1 "apply-baseline" "$CASE_DIR/apply.log"
 assert_contains "cleanup deadline" "$CASE_DIR/summary"
 if [ "$(cat "$CASE_DIR/state")" != "mutated" ]; then
   fail "cleanup deadline test should leave the stub dirty"
+fi
+
+if [ -r "/proc/$$/task/$$/children" ]; then
+  run_case cleanup_deadline_kills_descendant --mutate 1 env OCTOSTATE_CLEANUP_DEADLINE_SECONDS=1 LIVE_STUB_HANG_RESTORE_DESCENDANT=1
+  descendant_pid=$(cat "$CASE_DIR/descendant.pid")
+  if kill -0 "$descendant_pid" 2>/dev/null; then
+    fail "cleanup deadline left a restoration descendant running"
+  fi
+else
+  echo "skipping descendant cleanup test: /proc process inspection is unavailable"
 fi
 
 echo "live integration harness tests passed"

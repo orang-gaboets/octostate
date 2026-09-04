@@ -655,6 +655,25 @@ write_summary() {
 EOF
 }
 
+terminate_process_tree() {
+  local pid=$1
+  local signal=$2
+  local child
+
+  if [ -r "/proc/$pid/task/$pid/children" ]; then
+    while read -r child; do
+      [ -n "$child" ] || continue
+      terminate_process_tree "$child" "$signal"
+    done <"/proc/$pid/task/$pid/children"
+  else
+    while read -r child; do
+      [ -n "$child" ] || continue
+      terminate_process_tree "$child" "$signal"
+    done < <(pgrep -P "$pid" 2>/dev/null || true)
+  fi
+  kill "-$signal" "$pid" 2>/dev/null || true
+}
+
 restore_with_deadline() {
   local result_file=$SCRATCH_DIR/cleanup.restore.result
   local child
@@ -678,19 +697,13 @@ restore_with_deadline() {
   while kill -0 "$child" 2>/dev/null; do
     if [ "$SECONDS" -ge "$deadline" ]; then
       timed_out=1
-      if command -v pkill >/dev/null 2>&1; then
-        pkill -TERM -P "$child" 2>/dev/null || true
-      fi
-      kill -TERM "$child" 2>/dev/null || true
+      terminate_process_tree "$child" TERM
       grace=0
       while kill -0 "$child" 2>/dev/null && [ "$grace" -lt 5 ]; do
         /bin/sleep 1
         grace=$((grace + 1))
       done
-      if command -v pkill >/dev/null 2>&1; then
-        pkill -KILL -P "$child" 2>/dev/null || true
-      fi
-      kill -KILL "$child" 2>/dev/null || true
+      terminate_process_tree "$child" KILL
       wait "$child" 2>/dev/null || true
       ACTION_GUARD_RESULT='FAIL'
       PHASE_RESTORATION='FAIL (cleanup deadline)'
