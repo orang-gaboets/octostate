@@ -77,7 +77,7 @@ read_repository_projection() {
   local error_file=$SCRATCH_DIR/repository.error.txt
   local projection=$1
   if ! gh api "/repos/$EXPECTED_ORGANIZATION/$EXPECTED_REPOSITORY" >"$raw" 2>"$error_file"; then
-    if grep -Eq '(^|[^0-9])(401|403|404)([^0-9]|$)|Bad credentials|Forbidden|Resource not found|not found' "$error_file"; then
+    if grep -Eq '(^|[^[:digit:]])4[0-9]{2}([^[:digit:]]|$)|Bad credentials|Forbidden|Resource not found|not found' "$error_file"; then
       return 3
     fi
     return 2
@@ -102,7 +102,10 @@ assert_allowed_skipped_actions() {
     if type != \"array\" then false
     else all(.[]; . as \$action |
       (\$action.executable == false) and
-      ([\"organization_member\", \"invite\", \"team\"] | index(\$action.resource_type) != null))
+      (if \$action.resource_type == \"organization_member\" then \$action.operation == \"delete\"
+       elif \$action.resource_type == \"invite\" then \$action.operation == \"remove\"
+       elif \$action.resource_type == \"team\" then \$action.operation == \"delete\"
+       else false end))
     end" \
     "$report" >/dev/null
 }
@@ -290,8 +293,9 @@ assert_exact_topic_action() {
       if ! jq -e '
         type == "object" and .organization == "octostate-test" and
         (.plan_summary | type == "object" and .has_changes == true and
-          .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
-          .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
+          .actions == (.executable_actions + .non_executable_actions) and
+          .executable_actions == 1 and .update_actions >= 1 and
+          (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
         (.executable_actions | type == "array" and length == 1) and
         (.skipped_actions | type == "array") and
         (.skipped_actions | length) == .plan_summary.non_executable_actions' "$report" >/dev/null; then
@@ -304,8 +308,9 @@ assert_exact_topic_action() {
         type == "object" and .status == "check" and
         (.data | type == "object" and .organization == "octostate-test" and
           (.plan_summary | type == "object" and .has_changes == true and
-            .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
-            .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
+            .actions == (.executable_actions + .non_executable_actions) and
+            .executable_actions == 1 and .update_actions >= 1 and
+            (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
           (.checked_actions | type == "array" and length == 1) and
           (.skipped_actions | type == "array") and
           (.skipped_actions | length) == .plan_summary.non_executable_actions)' "$report" >/dev/null; then
@@ -318,8 +323,9 @@ assert_exact_topic_action() {
         type == "object" and .status == "success" and
         (.data | type == "object" and .organization == "octostate-test" and
           (.plan_summary | type == "object" and .has_changes == true and
-            .actions == 1 and .executable_actions == 1 and .non_executable_actions == 0 and
-            .create_actions == 0 and .update_actions == 1 and .delete_actions == 0 and .remove_actions == 0) and
+            .actions == (.executable_actions + .non_executable_actions) and
+            .executable_actions == 1 and .update_actions >= 1 and
+            (.create_actions + .update_actions + .delete_actions + .remove_actions) == .actions) and
           (.executed_actions | type == "array" and length == 1) and
           (.skipped_actions | type == "array") and
           (.skipped_actions | length) == .plan_summary.non_executable_actions)' "$report" >/dev/null; then
