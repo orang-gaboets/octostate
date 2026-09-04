@@ -26,10 +26,6 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 	if !ok {
 		return fmt.Errorf("desired repository %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
 	}
-	if repository.Template.Owner == "" || repository.Template.Name == "" {
-		return fmt.Errorf("repository %s cannot be created without a template: %w", action.ResourceID, githubpkg.ErrInvalidFieldValue)
-	}
-
 	private, err := visibilityPrivateFlag(repository.Visibility)
 	if err != nil {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
@@ -40,17 +36,30 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 		description = githubpkg.Ptr(value)
 	}
 
-	_, err = repos.CreateFromTemplate(e.ctx, repos.CreateFromTemplateOptions{
-		Service:            e.repositoryService,
-		Name:               repository.Name,
-		Owner:              repository.Owner,
-		TemplateOwner:      repository.Template.Owner,
-		TemplateRepo:       repository.Template.Name,
-		Description:        description,
-		Private:            githubpkg.Ptr(private),
-		SkipTopicSync:      true,
-		IncludeAllBranches: repository.Template.IncludeAllBranches,
-	})
+	if repository.Template.Owner != "" || repository.Template.Name != "" {
+		if repository.Template.Owner == "" || repository.Template.Name == "" {
+			return fmt.Errorf("repository %s has incomplete template configuration: %w", action.ResourceID, githubpkg.ErrInvalidFieldValue)
+		}
+		_, err = repos.CreateFromTemplate(e.ctx, repos.CreateFromTemplateOptions{
+			Service:            e.repositoryService,
+			Name:               repository.Name,
+			Owner:              repository.Owner,
+			TemplateOwner:      repository.Template.Owner,
+			TemplateRepo:       repository.Template.Name,
+			Description:        description,
+			Private:            githubpkg.Ptr(private),
+			SkipTopicSync:      true,
+			IncludeAllBranches: repository.Template.IncludeAllBranches,
+		})
+	} else {
+		_, err = repos.Create(e.ctx, repos.CreateOptions{
+			Service:     e.repositoryService,
+			Name:        repository.Name,
+			Owner:       repository.Owner,
+			Description: description,
+			Private:     githubpkg.Ptr(private),
+		})
+	}
 	if err != nil {
 		return err
 	}
@@ -93,14 +102,14 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 		case "topics":
 			topicsChanged = true
 		case "allow_forking":
-			private, err := visibilityPrivateFlag(repository.Visibility)
-			if err != nil {
+			if _, err := visibilityPrivateFlag(repository.Visibility); err != nil {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
-			if !private {
-				editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
-				editNeeded = true
+			if !config.IsPrivateVisibility(repository.Visibility) {
+				break
 			}
+			editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
+			editNeeded = true
 		case "archived":
 			editOptions.Archived = githubpkg.Ptr(repository.Archived)
 			editNeeded = true
@@ -147,7 +156,7 @@ func (e *executor) applyExactRepositorySettings(repository config.RepositorySpec
 	if isTemplate, managed := repository.ManagedIsTemplate(); managed {
 		editOptions.IsTemplate = githubpkg.Ptr(isTemplate)
 	}
-	if !private {
+	if config.IsPrivateVisibility(repository.Visibility) {
 		if allowForking, managed := repository.ManagedAllowForking(); managed {
 			editOptions.AllowForking = githubpkg.Ptr(allowForking)
 		}

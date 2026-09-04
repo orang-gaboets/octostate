@@ -20,6 +20,10 @@ func (failingRepoService) CreateFromTemplate(context.Context, string, string, *g
 	return nil, nil, errRepoCommandDependency
 }
 
+func (failingRepoService) Create(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	return nil, nil, errRepoCommandDependency
+}
+
 func (failingRepoService) Get(context.Context, string, string) (*gh.Repository, *gh.Response, error) {
 	return nil, nil, errRepoCommandDependency
 }

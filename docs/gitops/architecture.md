@@ -95,7 +95,7 @@ Current collector concurrency limits:
 - Reuses the same action vocabulary and deterministic reporting conventions as
   plan, with offline repository ordering appropriate to snapshot diff
 - Gates team repository permission create/update actions on repository presence
-  in the snapshot or complete desired template configuration; managed template
+  in the snapshot or a declared desired repository; managed template
   dependency resolution remains plan-only
 
 ### `pkg/gitops/syncfromlive`

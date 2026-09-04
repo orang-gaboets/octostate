@@ -188,38 +188,42 @@ func (e *executor) preflightRepositoryCreate(action gitopsplan.Action) error {
 	if !ok {
 		return fmt.Errorf("desired repository %s not found: %w", action.ResourceID, github.ErrNotFound)
 	}
-	if repository.Template.Owner == "" || repository.Template.Name == "" {
-		return fmt.Errorf("repository %s cannot be created without a template: %w", action.ResourceID, github.ErrInvalidFieldValue)
-	}
-
 	private, err := visibilityPrivateFlag(repository.Visibility)
 	if err != nil {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
 	}
 
-	createOptions := repos.CreateFromTemplateOptions{
-		Service:            e.repositoryService,
-		Name:               repository.Name,
-		Owner:              repository.Owner,
-		TemplateOwner:      repository.Template.Owner,
-		TemplateRepo:       repository.Template.Name,
-		SkipTopicSync:      true,
-		IncludeAllBranches: repository.Template.IncludeAllBranches,
-		Private:            github.Ptr(private),
+	var validateErr error
+	if repository.Template.Owner == "" && repository.Template.Name == "" {
+		createOptions := repos.CreateOptions{Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner, Private: github.Ptr(private)}
+		if description, managed := repository.ManagedDescription(); managed {
+			createOptions.Description = github.Ptr(description)
+		}
+		validateErr = createOptions.Validate()
+	} else {
+		createOptions := repos.CreateFromTemplateOptions{
+			Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner,
+			TemplateOwner: repository.Template.Owner, TemplateRepo: repository.Template.Name,
+			SkipTopicSync: true, IncludeAllBranches: repository.Template.IncludeAllBranches,
+			Private: github.Ptr(private),
+		}
+		if description, managed := repository.ManagedDescription(); managed {
+			createOptions.Description = github.Ptr(description)
+		}
+		validateErr = createOptions.Validate()
 	}
-	if description, managed := repository.ManagedDescription(); managed {
-		createOptions.Description = github.Ptr(description)
-	}
-	if err := createOptions.Validate(); err != nil {
-		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
+	if validateErr != nil {
+		return fmt.Errorf("create repository %s: %w", action.ResourceID, validateErr)
 	}
 
-	templateRepository, err := e.preflightTemplateRepository(repository.Template.Owner, repository.Template.Name)
-	if err != nil {
-		return fmt.Errorf("create repository %s: template repository %s/%s: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, err)
-	}
-	if templateRepository == nil || !templateRepository.IsTemplate {
-		return fmt.Errorf("create repository %s: template repository %s/%s is not marked as a template: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, github.ErrInvalidFieldValue)
+	if repository.Template.Owner != "" || repository.Template.Name != "" {
+		templateRepository, err := e.preflightTemplateRepository(repository.Template.Owner, repository.Template.Name)
+		if err != nil {
+			return fmt.Errorf("create repository %s: template repository %s/%s: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, err)
+		}
+		if templateRepository == nil || !templateRepository.IsTemplate {
+			return fmt.Errorf("create repository %s: template repository %s/%s is not marked as a template: %w", action.ResourceID, repository.Template.Owner, repository.Template.Name, github.ErrInvalidFieldValue)
+		}
 	}
 
 	_, err = e.preflightGetRepository(repository.Owner, repository.Name)
@@ -255,8 +259,8 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 			}
 		case "description", "homepage", "topics", "allow_forking", "archived", "is_template":
 			if change.Field == "allow_forking" {
-				if _, err := visibilityPrivateFlag(repository.Visibility); err != nil {
-					return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
+				if !config.IsPrivateVisibility(repository.Visibility) {
+					return fmt.Errorf("update repository %s: allow_forking is only applicable to private repositories: %w", action.ResourceID, github.ErrInvalidFieldValue)
 				}
 			}
 			if change.Field == "is_template" {

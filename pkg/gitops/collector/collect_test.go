@@ -805,6 +805,10 @@ func (s *repositoryServiceStub) CreateFromTemplate(context.Context, string, stri
 	panic("unexpected CreateFromTemplate call")
 }
 
+func (s *repositoryServiceStub) Create(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	panic("unexpected Create call")
+}
+
 func (s *repositoryServiceStub) Delete(context.Context, string, string) (*gh.Response, error) {
 	panic("unexpected Delete call")
 }

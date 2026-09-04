@@ -101,6 +101,7 @@ type mockService struct {
 	owner           string
 	repoName        string
 	repoDesc        string
+	repoHomepage    string
 	repoTopics      []string
 	repoPrivate     bool
 	templateName    string
@@ -140,6 +141,68 @@ func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, 
 	}
 
 	return &gh.Repository{}, nil, nil
+}
+
+func (m *mockService) Create(_ context.Context, owner string, req *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	m.createCalled = true
+	if m.createErr != nil {
+		return nil, nil, m.createErr
+	}
+	if req != nil {
+		m.owner = owner
+		m.repoName = req.GetName()
+		m.repoDesc = req.GetDescription()
+		m.repoHomepage = req.GetHomepage()
+		m.repoPrivate = req.GetPrivate()
+	}
+	return &gh.Repository{}, nil, nil
+}
+
+func TestCreateSuccess(t *testing.T) {
+	mockSvc := &mockService{}
+	description := "service repository"
+	homepage := "https://example.com/service"
+	private := true
+	created, err := Create(context.Background(), CreateOptions{
+		Service: mockSvc, Owner: newRepo.Owner, Name: newRepo.Name, Description: &description,
+		Homepage: &homepage, Private: &private, Topics: []string{"go"},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if created == nil || !mockSvc.createCalled || mockSvc.owner != newRepo.Owner || mockSvc.repoName != newRepo.Name || mockSvc.repoDesc != description || mockSvc.repoHomepage != homepage || !mockSvc.repoPrivate {
+		t.Fatalf("unexpected ordinary create result: repo=%#v mock=%#v", created, mockSvc)
+	}
+	if !reflect.DeepEqual(mockSvc.repoTopics, []string{"go"}) {
+		t.Fatalf("expected topics %v, got %v", []string{"go"}, mockSvc.repoTopics)
+	}
+}
+
+func TestCreateValidation(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		opt  CreateOptions
+		want error
+	}{
+		{name: "missing name", opt: CreateOptions{Service: &mockService{}, Owner: "org"}, want: github.ErrMissingRequiredField},
+		{name: "missing owner", opt: CreateOptions{Service: &mockService{}, Name: "repo"}, want: github.ErrMissingRequiredField},
+		{name: "missing service", opt: CreateOptions{Name: "repo", Owner: "org"}, want: github.ErrNilService},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Create(context.Background(), test.opt); !errors.Is(err, test.want) {
+				t.Fatalf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreatePropagatesTopicError(t *testing.T) {
+	topicErr := errors.New("topic update failed")
+	mockSvc := &mockService{replaceErr: topicErr}
+	_, err := Create(context.Background(), CreateOptions{Service: mockSvc, Owner: newRepo.Owner, Name: newRepo.Name, Topics: []string{"go"}})
+	if !errors.Is(err, topicErr) {
+		t.Fatalf("expected wrapped topic error, got %v", err)
+	}
 }
 
 func (m *mockService) Delete(_ context.Context, owner, repo string) (*gh.Response, error) {

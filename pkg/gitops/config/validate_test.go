@@ -61,6 +61,16 @@ func TestValidateDuplicateRepositoriesCaseInsensitive(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateRepository)
 }
 
+func TestValidateRejectsTemplateBranchOptionWithoutTemplate(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].Template = TemplateSpec{IncludeAllBranches: true}
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].template.include_all_branches", ValidationIssueCodeInvalidFieldValue)
+}
+
 func TestRepositoryOwnerMatchesOrganization(t *testing.T) {
 	t.Parallel()
 

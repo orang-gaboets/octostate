@@ -199,8 +199,8 @@ func assertMaterializedRepoBuilder(
 	if homepage, managed := got.ManagedHomepage(); !managed || homepage != "https://example.com/octostate" {
 		t.Fatalf("expected homepage to materialize from live, got value=%q managed=%v", homepage, managed)
 	}
-	if allowForking, managed := got.ManagedAllowForking(); !managed || allowForking {
-		t.Fatalf("expected allow_forking=false to materialize from live, got value=%v managed=%v", allowForking, managed)
+	if _, managed := got.ManagedAllowForking(); managed {
+		t.Fatalf("expected public allow_forking to stay unmanaged, got %#v", got.AllowForkingOption())
 	}
 	if archived, managed := got.ManagedArchived(); !managed || archived {
 		t.Fatalf("expected managed archived value to stay unchanged, got value=%v managed=%v", archived, managed)
@@ -228,8 +228,8 @@ func assertMaterializedPrivateRepo(t *testing.T, got config.RepositorySpec) {
 	if homepage, managed := got.ManagedHomepage(); !managed || homepage != "" {
 		t.Fatalf("expected empty live homepage to materialize as managed clear, got value=%q managed=%v", homepage, managed)
 	}
-	if _, managed := got.ManagedAllowForking(); managed {
-		t.Fatalf("expected allow_forking to stay unmanaged for private repo, got %#v", got.AllowForkingOption())
+	if allowForking, managed := got.ManagedAllowForking(); !managed || !allowForking {
+		t.Fatalf("expected allow_forking=true to materialize for private repo, got value=%v managed=%v", allowForking, managed)
 	}
 	if archived, managed := got.ManagedArchived(); !managed || archived {
 		t.Fatalf("expected archived=false to materialize from live, got value=%v managed=%v", archived, managed)

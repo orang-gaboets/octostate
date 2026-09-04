@@ -52,7 +52,172 @@ type captureCreateRepoFromTemplateService struct {
 	lastTemplateRepo string
 	lastTemplateOrg  string
 	lastRequest      *gh.TemplateRepoRequest
+	lastCreateOwner  string
+	lastCreateRepo   *gh.Repository
+	lastTopics       []string
 	createCalled     bool
+	ordinaryCalled   bool
+}
+
+func TestCreateRepoCmdHelpDescribesOptionalTemplateCreation(t *testing.T) {
+	cmd := reposcmd.CreateRepoCmd(nil)
+	if cmd.Short != "Create a GitHub repository, optionally from a template" {
+		t.Fatalf("unexpected short help: %q", cmd.Short)
+	}
+	if !strings.Contains(cmd.Long, "optionally from a template repository") {
+		t.Fatalf("expected general repository help to describe optional templates: %q", cmd.Long)
+	}
+	if !strings.Contains(cmd.Example, "octostate repo create --org <org> --name <new-repo-name>") || !strings.Contains(cmd.Example, "--template-name <template-name>") {
+		t.Fatalf("expected general repository examples for ordinary and template creation: %q", cmd.Example)
+	}
+}
+
+func TestCreateRepoCmdSupportsOrdinaryCreation(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--desc", "description", "--topics", "go,cli", "--private"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ordinary create returned error: %v", err)
+	}
+	if !service.ordinaryCalled || service.createCalled {
+		t.Fatalf("ordinary create used the wrong service path: %#v", service)
+	}
+	if service.lastCreateOwner != "org" || service.lastCreateRepo.GetName() != "service" || service.lastCreateRepo.GetDescription() != "description" || !service.lastCreateRepo.GetPrivate() {
+		t.Fatalf("unexpected ordinary create request: owner=%q repo=%#v", service.lastCreateOwner, service.lastCreateRepo)
+	}
+	if got, want := strings.Join(service.lastTopics, ","), "go,cli"; got != want {
+		t.Fatalf("unexpected ordinary create topics: got %q want %q", got, want)
+	}
+}
+
+func TestCreateRepoCmdDryRunSkipsOrdinaryCreation(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ordinary dry-run returned error: %v", err)
+	}
+	if service.ordinaryCalled || service.createCalled {
+		t.Fatalf("ordinary dry-run called a create service: %#v", service)
+	}
+	if !strings.Contains(out.String(), `"status": "dry-run"`) {
+		t.Fatalf("expected dry-run output, got %q", out.String())
+	}
+}
+
+func TestCreateRepoCmdWithTemplateUsesTemplateCreation(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	cmd.SetArgs([]string{"--org", "org", "--template-org", "templates", "--template-name", "base", "--name", "service", "--include-all-branches"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("template create returned error: %v", err)
+	}
+	if !service.createCalled || service.ordinaryCalled {
+		t.Fatalf("template create used the wrong service path: %#v", service)
+	}
+	if service.lastTemplateOrg != "templates" || service.lastTemplateRepo != "base" || service.lastRequest == nil || !service.lastRequest.GetIncludeAllBranches() {
+		t.Fatalf("unexpected template create request: org=%q repo=%q request=%#v", service.lastTemplateOrg, service.lastTemplateRepo, service.lastRequest)
+	}
+}
+
+func TestCreateRepoCmdRejectsExplicitBlankTemplateName(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "live",
+			args: []string{"--org", "org", "--name", "service", "--template-name", "   "},
+		},
+		{
+			name: "dry-run",
+			args: []string{"--org", "org", "--name", "service", "--template-name", "   ", "--dry-run"},
+		},
+		{
+			name: "to-config",
+			args: []string{"--org", "org", "--name", "service", "--template-name", "   "},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var service *captureCreateRepoFromTemplateService
+			if test.name == "live" || test.name == "dry-run" {
+				service = &captureCreateRepoFromTemplateService{}
+			}
+			cmd := reposcmd.CreateRepoCmd(service)
+			args := append([]string(nil), test.args...)
+			var before []byte
+			var configPath string
+			if test.name == "to-config" {
+				configPath = filepath.Join(t.TempDir(), "organization.yaml")
+				before = []byte("organization: org\nrepositories: []\n")
+				if err := os.WriteFile(configPath, before, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--to-config", configPath)
+			}
+			cmd.SetArgs(args)
+
+			err := cmd.Execute()
+			if err == nil || err.Error() != "--template-name must not be empty" {
+				t.Fatalf("expected blank template-name error, got %v", err)
+			}
+			if service != nil && (service.ordinaryCalled || service.createCalled) {
+				t.Fatalf("blank template name reached a create service: %#v", service)
+			}
+			if configPath != "" {
+				after, readErr := os.ReadFile(configPath)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				if !bytes.Equal(after, before) {
+					t.Fatalf("config changed after blank template-name rejection:\n%s", after)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateRepoCmdToConfigOmitsTemplate(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	if err := os.WriteFile(configPath, []byte("organization: org\nrepositories: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := reposcmd.CreateRepoCmd(nil)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--desc", "description", "--private", "--to-config", configPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ordinary proposal returned error: %v", err)
+	}
+	result := decodeConfigOperationOutput(t, out.String())
+	if result.Data.TemplateOwner != "" || result.Data.TemplateRepo != "" || result.Data.IncludeAllBranches {
+		t.Fatalf("ordinary proposal unexpectedly contains template data: %#v", result.Data)
+	}
+
+	cfg, err := gitopsconfig.LoadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repositories) != 1 {
+		t.Fatalf("expected one repository, got %#v", cfg.Repositories)
+	}
+	repository := cfg.Repositories[0]
+	if repository.Template != (gitopsconfig.TemplateSpec{}) {
+		t.Fatalf("ordinary proposal unexpectedly wrote template settings: %#v", repository.Template)
+	}
+	if repository.Visibility != "private" || repository.Description != "description" {
+		t.Fatalf("unexpected ordinary proposal repository: %#v", repository)
+	}
+}
+
+func (m *captureCreateRepoFromTemplateService) Create(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	m.ordinaryCalled = true
+	m.lastCreateOwner = owner
+	m.lastCreateRepo = repository
+	return &gh.Repository{}, nil, nil
 }
 
 func (m *captureCreateRepoFromTemplateService) CreateFromTemplate(_ context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
@@ -79,7 +244,8 @@ func (*captureCreateRepoFromTemplateService) ListByOrg(_ context.Context, _ stri
 	return nil, nil, nil
 }
 
-func (*captureCreateRepoFromTemplateService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+func (m *captureCreateRepoFromTemplateService) ReplaceAllTopics(_ context.Context, _, _ string, topics []string) ([]string, *gh.Response, error) {
+	m.lastTopics = append([]string(nil), topics...)
 	return topics, nil, nil
 }
 
@@ -106,6 +272,19 @@ func TestCreateRepoFromTemplateMissingTemplateNameFlag(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "template-name") {
 		t.Fatalf("expected error mentioning template-name, got %v", err)
+	}
+}
+
+func TestCreateRepoFromTemplateRejectsExplicitBlankTemplateName(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	c := reposcmd.CreateNewRepoFromTemplateCmd(service)
+	c.SetArgs([]string{"--org", "o", "--template-name", "   ", "--name", "n"})
+	err := c.Execute()
+	if err == nil || err.Error() != "--template-name must not be empty" {
+		t.Fatalf("expected blank template-name error, got %v", err)
+	}
+	if service.createCalled || service.ordinaryCalled {
+		t.Fatalf("blank template name reached a create service: %#v", service)
 	}
 }
 
