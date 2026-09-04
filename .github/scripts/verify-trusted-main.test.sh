@@ -130,6 +130,7 @@ init_repo "$test_root/work"
 base_sha=$(commit_file "$test_root/work" base.txt base)
 git -C "$test_root/work" remote add origin "$origin_repo"
 git -C "$test_root/work" push -u origin main >/dev/null
+git -C "$origin_repo" symbolic-ref HEAD refs/heads/main
 
 git clone "$origin_repo" "$clone_repo" >/dev/null
 git -C "$clone_repo" config user.name "Octostate Test"
