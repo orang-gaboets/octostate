@@ -137,6 +137,58 @@ func TestCheckPreflightsOrdinaryRepositoryCreateWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestCheckPreflightsPrivateRepositoryAllowForkingUpdateWithoutMutation(t *testing.T) {
+	desiredRepo := config.RepositorySpec{Owner: "orang-gaboets", Name: "octostate", Visibility: "private", AllowForking: false}
+	desiredRepo.SetManagedAllowForking(false)
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo}}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{
+			Owner: "orang-gaboets", Name: "octostate", Visibility: "private", AllowForking: true,
+		}},
+	}
+	plan := &gitopsplan.Report{
+		Organization: "orang-gaboets",
+		Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationUpdate,
+			ResourceID:   repositoryResourceID("orang-gaboets", "octostate"),
+			Executable:   true,
+			Changes:      []gitopsplan.FieldChange{{Field: "allow_forking", From: true, To: false}},
+		}},
+	}
+	plan.Normalize()
+
+	getCalled := false
+	repoSvc := &testRepoService{
+		getFunc: func(_ context.Context, owner, repo string) (*gh.Repository, *gh.Response, error) {
+			getCalled = true
+			if owner != "orang-gaboets" || repo != "octostate" {
+				t.Fatalf("unexpected repository lookup %s/%s", owner, repo)
+			}
+			return githubRepository(owner, repo, false), nil, nil
+		},
+		editFunc: func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			t.Fatal("repository edit should not run during check")
+			return nil, nil, nil
+		},
+	}
+
+	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !getCalled {
+		t.Fatal("expected repository lookup during check")
+	}
+	if !reflect.DeepEqual(result.CheckedActions, plan.Actions) {
+		t.Fatalf("unexpected checked actions: %#v", result.CheckedActions)
+	}
+	if len(result.SkippedActions) != 0 {
+		t.Fatalf("unexpected skipped actions: %#v", result.SkippedActions)
+	}
+}
+
 func TestCheckRejectsInvalidDesiredConfig(t *testing.T) {
 	t.Parallel()
 

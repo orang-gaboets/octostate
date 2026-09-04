@@ -1642,6 +1642,38 @@ func TestExecuteManagedTemplateCreatePrecedesConsumer(t *testing.T) {
 	}
 }
 
+func TestExecuteOrdinaryManagedTemplateCreatePrecedesConsumer(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private"}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	var creates []string
+	repoSvc := &testRepoService{
+		createFunc: func(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			creates = append(creates, owner+"/"+repository.GetName())
+			return &gh.Repository{}, nil, nil
+		},
+		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			creates = append(creates, templateOwner+"/"+templateRepo+"->"+request.GetName())
+			return &gh.Repository{}, nil, nil
+		},
+	}
+	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if want := []string{"orang-gaboets/source", "orang-gaboets/source->consumer"}; !reflect.DeepEqual(creates, want) {
+		t.Fatalf("unexpected repository write order: got %#v want %#v", creates, want)
+	}
+}
+
 func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *testing.T) {
 	t.Parallel()
 
