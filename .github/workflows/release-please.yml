@@ -71,6 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           CREATED_TAG: ${{ steps.release-please.outputs.tag_name }}
+          CREATED_COMMIT: ${{ steps.release-please.outputs.sha }}
           RETRY_TAG: ${{ inputs.release_tag }}
           RETRY_COMMIT: ${{ inputs.release_commit }}
           EXPECTED_COMMIT: ${{ github.sha }}
@@ -79,8 +80,12 @@ jobs:
           tag=''
           commit=''
           if [[ -n "${CREATED_TAG}" ]]; then
+            [[ -n "${CREATED_COMMIT}" ]] || {
+              echo 'release-please returned a tag without its release commit' >&2
+              exit 1
+            }
             tag="${CREATED_TAG}"
-            commit="${EXPECTED_COMMIT}"
+            commit="${CREATED_COMMIT}"
           elif [[ -n "${RETRY_TAG}" ]]; then
             tag="${RETRY_TAG}"
             commit="${RETRY_COMMIT}"
