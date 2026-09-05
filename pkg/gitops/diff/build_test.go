@@ -372,6 +372,33 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	}
 }
 
+func TestBuildPlansInternalRepositoryVisibilityDrift(t *testing.T) {
+	t.Parallel()
+
+	actual := state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "octostate", Visibility: "public"}},
+	}
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &actual)
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Actions) != 1 || report.Actions[0].Operation != gitopsplan.ActionOperationUpdate || len(report.Actions[0].Changes) != 1 {
+		t.Fatalf("unexpected internal visibility drift report: %#v", report.Actions)
+	}
+	change := report.Actions[0].Changes[0]
+	if change.Field != "visibility" || change.From != "public" || change.To != "internal" {
+		t.Fatalf("unexpected internal visibility change: %#v", change)
+	}
+}
+
 func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
 	t.Parallel()
 

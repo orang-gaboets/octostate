@@ -823,7 +823,7 @@ func TestBuildOrdersRepositoryUpdateBeforeCreateWhenTemplateStateChangesInSamePl
 	}
 }
 
-func TestBuildRepositoryCreateWithoutTemplateIsExecutable(t *testing.T) {
+func TestBuildInternalRepositoryCreateWithoutTemplateIsExecutable(t *testing.T) {
 	t.Parallel()
 
 	report, err := Build(context.Background(), Options{
@@ -832,7 +832,7 @@ func TestBuildRepositoryCreateWithoutTemplateIsExecutable(t *testing.T) {
 			Repositories: []config.RepositorySpec{{
 				Owner:      "orang-gaboets",
 				Name:       "new-repo",
-				Visibility: "private",
+				Visibility: "internal",
 			}},
 		},
 		Actual: &state.OrganizationState{
