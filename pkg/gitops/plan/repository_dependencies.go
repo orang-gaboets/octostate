@@ -294,6 +294,9 @@ func repositoryNodeAvailability(node *repositoryPlanNode, dependency repositoryA
 		}
 		return availability
 	}
+	if strings.EqualFold(strings.TrimSpace(node.repository.Visibility), "internal") {
+		return repositoryAvailability{diagnostic: "internal visibility is unsupported for template-based repository creation"}
+	}
 	if node.dependency != "" && (!dependency.executable || !dependency.usableAsTemplate) {
 		return repositoryAvailability{diagnostic: fmt.Sprintf("required template %s is unavailable: %s", node.dependency, dependency.diagnostic)}
 	}

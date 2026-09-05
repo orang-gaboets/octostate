@@ -118,9 +118,12 @@ Supported visibility values:
 
 - `public`
 - `private`
+- `internal`
 
-`internal` visibility is currently rejected by validation and is not supported
-by apply yet.
+`internal` is available for GitHub Enterprise organizations/accounts that
+support internal repositories. GitHub may reject it during live preflight or
+apply for unsupported targets. Template-based creation does not support
+`internal`; declare an ordinary repository creation or use a supported target.
 
 Repository template fields are create-time inputs and also define managed
 same-organization dependency edges for repositories that are missing from live
@@ -152,7 +155,8 @@ Repository reconciliation semantics:
 - explicit `null` is rejected for presence-aware fields by semantic validation,
   except for `is_template`, where it means unmanaged/preserve-live-state
 - `allow_forking` is managed only for private repositories when explicitly
-  present; omitted private values remain unmanaged and public values are ignored
+  present; omitted private values remain unmanaged and public/internal values
+  are ignored
 
 Repository topics:
 

@@ -80,3 +80,14 @@ func TestBootstrapRepositoriesMaterializesManagedFields(t *testing.T) {
 		t.Fatalf("expected managed is_template=true, got value=%v managed=%v", value, managed)
 	}
 }
+
+func TestBootstrapRepositoriesPreservesInternalVisibility(t *testing.T) {
+	t.Parallel()
+
+	got := bootstrapRepositories("acme", []state.Repository{{
+		Owner: "acme", Name: "platform", Visibility: "internal",
+	}})
+	if len(got) != 1 || got[0].Visibility != "internal" {
+		t.Fatalf("expected internal visibility to be preserved, got %#v", got)
+	}
+}

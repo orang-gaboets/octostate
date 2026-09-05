@@ -73,6 +73,7 @@ func Create(ctx context.Context, option CreateOptions) (*gh.Repository, error) {
 		Name:        &option.Name,
 		Description: option.Description,
 		Homepage:    option.Homepage,
+		Visibility:  option.Visibility,
 		Private:     option.Private,
 	}
 	ghlogging.Debugf(ctx, "create repository %s/%s", option.Owner, option.Name)
@@ -136,6 +137,7 @@ func Edit(ctx context.Context, option EditOptions) (*gh.Repository, error) {
 	repo := &gh.Repository{
 		Description:  option.Description,
 		Homepage:     option.Homepage,
+		Visibility:   option.Visibility,
 		Private:      option.Private,
 		IsTemplate:   option.IsTemplate,
 		Archived:     option.Archived,

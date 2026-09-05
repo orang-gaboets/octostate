@@ -26,7 +26,7 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 	if !ok {
 		return fmt.Errorf("desired repository %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
 	}
-	private, err := visibilityPrivateFlag(repository.Visibility)
+	visibility, err := repositoryVisibility(repository.Visibility)
 	if err != nil {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
 	}
@@ -37,6 +37,9 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 	}
 
 	if repository.Template.Owner != "" || repository.Template.Name != "" {
+		if visibility == "internal" {
+			return fmt.Errorf("create repository %s: internal visibility is unsupported for template-based creation: %w", action.ResourceID, githubpkg.ErrInvalidFieldValue)
+		}
 		if repository.Template.Owner == "" || repository.Template.Name == "" {
 			return fmt.Errorf("repository %s has incomplete template configuration: %w", action.ResourceID, githubpkg.ErrInvalidFieldValue)
 		}
@@ -47,7 +50,7 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 			TemplateOwner:      repository.Template.Owner,
 			TemplateRepo:       repository.Template.Name,
 			Description:        description,
-			Private:            githubpkg.Ptr(private),
+			Private:            githubpkg.Ptr(visibility == "private"),
 			SkipTopicSync:      true,
 			IncludeAllBranches: repository.Template.IncludeAllBranches,
 		})
@@ -57,7 +60,8 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 			Name:        repository.Name,
 			Owner:       repository.Owner,
 			Description: description,
-			Private:     githubpkg.Ptr(private),
+			Visibility:  githubpkg.Ptr(visibility),
+			Private:     githubpkg.Ptr(visibility == "private"),
 		})
 	}
 	if err != nil {
@@ -87,11 +91,12 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 	for _, change := range action.Changes {
 		switch change.Field {
 		case "visibility":
-			private, err := visibilityPrivateFlag(repository.Visibility)
+			visibility, err := repositoryVisibility(repository.Visibility)
 			if err != nil {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
-			editOptions.Private = githubpkg.Ptr(private)
+			editOptions.Visibility = githubpkg.Ptr(visibility)
+			editOptions.Private = githubpkg.Ptr(visibility == "private")
 			editNeeded = true
 		case "description":
 			editOptions.Description = githubpkg.Ptr(repository.Description)
@@ -102,7 +107,7 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 		case "topics":
 			topicsChanged = true
 		case "allow_forking":
-			if _, err := visibilityPrivateFlag(repository.Visibility); err != nil {
+			if _, err := repositoryVisibility(repository.Visibility); err != nil {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
 			if !config.IsPrivateVisibility(repository.Visibility) {
@@ -133,16 +138,17 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 }
 
 func (e *executor) applyExactRepositorySettings(repository config.RepositorySpec) error {
-	private, err := visibilityPrivateFlag(repository.Visibility)
+	visibility, err := repositoryVisibility(repository.Visibility)
 	if err != nil {
 		return err
 	}
 
 	editOptions := repos.EditOptions{
-		Service: e.repositoryService,
-		Owner:   repository.Owner,
-		Repo:    repository.Name,
-		Private: githubpkg.Ptr(private),
+		Service:    e.repositoryService,
+		Owner:      repository.Owner,
+		Repo:       repository.Name,
+		Visibility: githubpkg.Ptr(visibility),
+		Private:    githubpkg.Ptr(visibility == "private"),
 	}
 	if description, managed := repository.ManagedDescription(); managed {
 		editOptions.Description = githubpkg.Ptr(description)

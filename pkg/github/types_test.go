@@ -113,6 +113,18 @@ func TestRepositoryFromGhRepo(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves internal visibility", func(t *testing.T) {
+		got := RepositoryFromGhRepo(&gh.Repository{
+			Owner:      &gh.User{Login: Ptr("acme")},
+			Name:       Ptr("service"),
+			Private:    Ptr(false),
+			Visibility: Ptr("internal"),
+		})
+		if got.Visibility != "internal" || got.Private {
+			t.Fatalf("unexpected internal repository: %#v", got)
+		}
+	})
+
 	t.Run("maps fields", func(t *testing.T) {
 		ghRepo := &gh.Repository{
 			Owner:        &gh.User{Login: Ptr(orgLogin)},

@@ -90,6 +90,38 @@ func TestCreateRepoCmdSupportsOrdinaryCreation(t *testing.T) {
 	}
 }
 
+func TestCreateRepoCmdSupportsInternalVisibility(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--visibility", "internal"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("internal create returned error: %v", err)
+	}
+	if service.lastCreateRepo.GetVisibility() != "internal" || service.lastCreateRepo.Private != nil {
+		t.Fatalf("unexpected internal create request: %#v", service.lastCreateRepo)
+	}
+}
+
+func TestCreateRepoCmdRejectsPrivateAndVisibilityTogether(t *testing.T) {
+	service := &captureCreateRepoFromTemplateService{}
+	cmd := reposcmd.CreateRepoCmd(service)
+	cmd.SetArgs([]string{"--org", "org", "--name", "service", "--private", "--visibility", "private"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("expected visibility conflict, got %v", err)
+	}
+	if service.ordinaryCalled || service.createCalled {
+		t.Fatal("visibility conflict reached a create service")
+	}
+}
+
+func TestCreateRepoCmdRejectsInternalTemplateDryRun(t *testing.T) {
+	cmd := reposcmd.CreateNewRepoFromTemplateCmd(&captureCreateRepoFromTemplateService{})
+	cmd.SetArgs([]string{"--org", "org", "--template-name", "base", "--name", "service", "--visibility", "internal", "--dry-run"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsupported for template-based") {
+		t.Fatalf("expected unsupported template visibility error, got %v", err)
+	}
+}
+
 func TestCreateRepoCmdDryRunSkipsOrdinaryCreation(t *testing.T) {
 	service := &captureCreateRepoFromTemplateService{}
 	cmd := reposcmd.CreateRepoCmd(service)

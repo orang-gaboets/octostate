@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -38,6 +39,7 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 		desc               string
 		topics             string
 		private            bool
+		visibility         string
 		includeAllBranches bool
 		dryRun             bool
 		toConfig           string
@@ -54,6 +56,14 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 			octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --template-name <template-name> --name <new-repo-name> --desc "Repository description" --topics "topic1,topic2" --private=true --include-all-branches=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			selected, err := selectedVisibility(cmd, private, visibility)
+			if err != nil {
+				return err
+			}
+			var legacyPrivateOption *bool
+			if cmd.Flags().Changed("private") {
+				legacyPrivateOption = &private
+			}
 			trimmedOrg := strings.TrimSpace(org)
 			trimmedTemplateName := strings.TrimSpace(templateName)
 			if cmd.Flags().Changed("template-name") && trimmedTemplateName == "" {
@@ -81,19 +91,22 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 			if dryRun && cmd.Flags().Changed("to-config") {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
+			if dryRun && selected == "internal" && (templateOnly || trimmedTemplateName != "") {
+				return fmt.Errorf("internal visibility is unsupported for template-based repository creation")
+			}
 			if dryRun {
 				if !templateOnly && trimmedTemplateName == "" {
-					return cmdoutput.PrintDryRun(cmd, fmt.Sprintf("Dry run: would create repository %s/%s (private=%t topics=%v)", trimmedOrg, trimmedName, private, topicList), map[string]any{"owner": trimmedOrg, "name": trimmedName, "private": private, "topics": topicList})
+					return cmdoutput.PrintDryRun(cmd, fmt.Sprintf("Dry run: would create repository %s/%s (visibility=%s topics=%v)", trimmedOrg, trimmedName, selected, topicList), map[string]any{"owner": trimmedOrg, "name": trimmedName, "visibility": selected, "private": selected == "private", "topics": topicList})
 				}
 				return cmdoutput.PrintDryRun(
 					cmd,
 					fmt.Sprintf(
-						"Dry run: would create repository %s/%s from template %s/%s (private=%t include-all-branches=%t topics=%v)",
+						"Dry run: would create repository %s/%s from template %s/%s (visibility=%s include-all-branches=%t topics=%v)",
 						trimmedOrg,
 						trimmedName,
 						trimmedTemplateOrg,
 						trimmedTemplateName,
-						private,
+						selected,
 						includeAllBranches,
 						topicList,
 					),
@@ -102,7 +115,8 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 						"name":                 trimmedName,
 						"template_owner":       trimmedTemplateOrg,
 						"template_repo":        trimmedTemplateName,
-						"private":              private,
+						"visibility":           selected,
+						"private":              selected == "private",
 						"include_all_branches": includeAllBranches,
 						"topics":               topicList,
 					},
@@ -113,10 +127,6 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				visibility := "public"
-				if private {
-					visibility = "private"
-				}
 				_, err = configproposal.ApplyToConfigFile(toConfig, trimmedOrg, func(cfg *gitopsconfig.OrganizationConfig) error {
 					if _, exists := configproposal.FindRepositoryIndex(cfg, trimmedOrg, trimmedName); exists {
 						return fmt.Errorf("repository %s/%s already exists in config", trimmedOrg, trimmedName)
@@ -124,7 +134,7 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 					repository := gitopsconfig.RepositorySpec{
 						Owner:      trimmedOrg,
 						Name:       trimmedName,
-						Visibility: visibility,
+						Visibility: selected,
 						Topics:     normalizedTopics,
 					}
 					if trimmedTemplateName != "" {
@@ -142,7 +152,8 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 					"name":                 trimmedName,
 					"config_path":          toConfig,
 					"changed":              true,
-					"private":              private,
+					"visibility":           selected,
+					"private":              selected == "private",
 					"include_all_branches": includeAllBranches,
 					"topics":               normalizedTopics,
 				}
@@ -152,56 +163,7 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 				}
 				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Proposed repository %s/%s in config", trimmedOrg, trimmedName), result)
 			}
-			service := svc
-			if service == nil {
-				client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
-				if err != nil {
-					return err
-				}
-				service = client.Repositories()
-			}
-			if !templateOnly && trimmedTemplateName == "" {
-				createdRepo, err := repos.Create(ctx, repos.CreateOptions{Service: service, Name: trimmedName, Owner: trimmedOrg, Description: &desc, Private: &private, Topics: topicList})
-				if err != nil {
-					return err
-				}
-				return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Created repository %s/%s", trimmedOrg, trimmedName), map[string]any{"owner": trimmedOrg, "name": trimmedName, "private": private, "topics": topicList, "repository": createdRepo})
-			}
-			opts := repos.CreateFromTemplateOptions{
-				Name:               trimmedName,
-				Owner:              trimmedOrg,
-				TemplateRepo:       trimmedTemplateName,
-				TemplateOwner:      trimmedTemplateOrg,
-				Description:        &desc,
-				Private:            &private,
-				Topics:             topicList,
-				IncludeAllBranches: includeAllBranches,
-				Service:            service,
-			}
-			createdRepo, err := repos.CreateFromTemplate(ctx, opts)
-			if err != nil {
-				return err
-			}
-			return cmdoutput.PrintSuccess(
-				cmd,
-				fmt.Sprintf(
-					"Created repository %s/%s from template %s/%s",
-					trimmedOrg,
-					trimmedName,
-					trimmedTemplateOrg,
-					trimmedTemplateName,
-				),
-				map[string]any{
-					"owner":                trimmedOrg,
-					"name":                 trimmedName,
-					"template_owner":       trimmedTemplateOrg,
-					"template_repo":        trimmedTemplateName,
-					"private":              private,
-					"include_all_branches": includeAllBranches,
-					"topics":               topicList,
-					"repository":           createdRepo,
-				},
-			)
+			return createRepositoryLive(ctx, cmd, svc, token, appID, installationID, appKeyPath, templateOnly, trimmedOrg, trimmedTemplateOrg, trimmedTemplateName, trimmedName, desc, topicList, selected, legacyPrivateOption, includeAllBranches)
 		},
 	}
 
@@ -214,6 +176,7 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 	cmd.Flags().StringVar(&desc, "desc", "", "Repository description")
 	cmd.Flags().StringVar(&topics, "topics", "", "Comma-separated list of topics")
 	cmd.Flags().BoolVar(&private, "private", false, "Create repository as private")
+	cmd.Flags().StringVar(&visibility, "visibility", "", "Repository visibility: public, private, or internal")
 	cmd.Flags().BoolVar(&includeAllBranches, "include-all-branches", false, "Include all branches from the template repository")
 	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
@@ -233,6 +196,40 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 	}
 
 	return cmd
+}
+
+func createRepositoryLive(ctx context.Context, cmd *cobra.Command, svc repos.Service, token string, appID, installationID int64, appKeyPath string, templateOnly bool, org, templateOrg, templateName, name, desc string, topicList []string, visibility string, legacyPrivate *bool, includeAllBranches bool) error {
+	service := svc
+	if service == nil {
+		client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
+		if err != nil {
+			return err
+		}
+		service = client.Repositories()
+	}
+	if !templateOnly && templateName == "" {
+		createdRepo, err := repos.Create(ctx, repos.CreateOptions{Service: service, Name: name, Owner: org, Description: &desc, Visibility: &visibility, Private: legacyPrivate, Topics: topicList})
+		if err != nil {
+			return err
+		}
+		return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Created repository %s/%s", org, name), map[string]any{"owner": org, "name": name, "visibility": visibility, "private": visibility == "private", "topics": topicList, "repository": createdRepo})
+	}
+	if visibility == "internal" {
+		return fmt.Errorf("internal visibility is unsupported for template-based repository creation")
+	}
+	createdRepo, err := repos.CreateFromTemplate(ctx, repos.CreateFromTemplateOptions{
+		Name: name, Owner: org, TemplateRepo: templateName, TemplateOwner: templateOrg,
+		Description: &desc, Private: github.Ptr(visibility == "private"), Topics: topicList,
+		IncludeAllBranches: includeAllBranches, Service: service,
+	})
+	if err != nil {
+		return err
+	}
+	return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Created repository %s/%s from template %s/%s", org, name, templateOrg, templateName), map[string]any{
+		"owner": org, "name": name, "template_owner": templateOrg, "template_repo": templateName,
+		"visibility": visibility, "private": visibility == "private", "include_all_branches": includeAllBranches,
+		"topics": topicList, "repository": createdRepo,
+	})
 }
 
 func normalizeConfigTopics(topics []string) ([]string, error) {

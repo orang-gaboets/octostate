@@ -132,6 +132,18 @@ func TestEditRepoWithInvalidFlags(t *testing.T) {
 	}
 }
 
+func TestEditRepoRejectsPrivateAndVisibilityTogether(t *testing.T) {
+	service := &captureEditRepoService{}
+	c := reposcmd.EditRepo(service)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--private", "--visibility", "internal"})
+	if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("expected visibility conflict, got %v", err)
+	}
+	if service.editCalled {
+		t.Fatal("visibility conflict reached edit service")
+	}
+}
+
 func TestEditRepoDryRunSkipsEditService(t *testing.T) {
 	svc := &captureEditRepoService{}
 	c := reposcmd.EditRepo(svc)
