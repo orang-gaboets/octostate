@@ -37,19 +37,20 @@ for artifact in "${expected[@]}"; do
   grep -q "  $artifact$" "$output/checksums.txt"
 done
 
-tar -tzf "$output/${expected[0]}" | sort > "$fixture/tar-list"
-grep -qx 'LICENSE' "$fixture/tar-list"
-grep -qx 'README.md' "$fixture/tar-list"
-grep -qx 'CHANGELOG.md' "$fixture/tar-list"
-grep -qx 'octostate' "$fixture/tar-list"
-! grep -Eq '(^|/)(\.github|\.agents|cmd|pkg|internal|docs|.*_test\.go|AGENTS\.md|CONTRIBUTING\.md)' "$fixture/tar-list"
-
-unzip -Z1 "$output/${expected[4]}" | sort > "$fixture/zip-list"
-grep -qx 'LICENSE' "$fixture/zip-list"
-grep -qx 'README.md' "$fixture/zip-list"
-grep -qx 'CHANGELOG.md' "$fixture/zip-list"
-grep -qx 'octostate.exe' "$fixture/zip-list"
-! grep -Eq '(^|/)(\.github|\.agents|cmd|pkg|internal|docs|.*_test\.go|AGENTS\.md|CONTRIBUTING\.md)' "$fixture/zip-list"
+for artifact in "${expected[@]}"; do
+  list="$fixture/${artifact}.list"
+  if [[ "$artifact" == *.zip ]]; then
+    unzip -Z1 "$output/$artifact" | sort > "$list"
+    executable=octostate.exe
+  else
+    tar -tzf "$output/$artifact" | sort > "$list"
+    executable=octostate
+  fi
+  for member in LICENSE README.md CHANGELOG.md "$executable"; do
+    grep -qx "$member" "$list"
+  done
+  ! grep -Eq '(^|/)(\.github|\.agents|cmd|pkg|internal|docs|.*_test\.go|AGENTS\.md|CONTRIBUTING\.md)' "$list"
+done
 
 if (cd "$fixture/repo" && bash .github/scripts/build-release-artifacts.sh invalid "$output") 2>/dev/null; then
   echo 'invalid release tag was accepted' >&2
