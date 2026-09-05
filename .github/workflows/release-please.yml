@@ -43,8 +43,22 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
+      - name: Validate retry inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RETRY_TAG: ${{ inputs.release_tag }}
+          RETRY_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -euo pipefail
+          [[ -n "${RETRY_TAG}" && -n "${RETRY_COMMIT}" ]] ||
+            [[ -z "${RETRY_TAG}" && -z "${RETRY_COMMIT}" ]] || {
+              echo 'release_tag and release_commit must be supplied together' >&2
+              exit 1
+            }
+
       - name: Run release-please
         id: release-please
+        if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
         # googleapis/release-please-action v5.0.0
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
         with:
