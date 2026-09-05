@@ -50,9 +50,9 @@ The complete newcomer walkthrough, including a fuller example, is in
 
 ## Install
 
-Go 1.25.0 or newer is required. The module declares its language version in
-`go.mod` and may select the patched toolchain automatically when toolchain
-switching is enabled.
+Go 1.25.0 or newer is required only when installing from source with `go
+install`, embedding Octostate in a Go program, or developing the repository. It
+is not required for normal CLI use from a prebuilt archive.
 
 For normal CLI use, download the matching prebuilt archive from the
 [GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
@@ -78,10 +78,12 @@ For a Go-native installation from source:
 go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
 ```
 
-Automation and control repositories should use an explicitly selected release
-and verify its checksum instead of using `@latest` so their behavior is
-reproducible. Go developers embedding Octostate should import the Go module;
-contributors should clone the repository and follow the development guide.
+Automation and control repositories should pin an explicit version. Prefer a
+pinned release archive with checksum verification, or use
+`go install ...@v<version>` when a Go-native installation is appropriate;
+avoid `@latest` for reproducible automation. Go developers embedding Octostate
+should import the Go module; contributors should clone the repository and follow
+the development guide.
 
 ## Authentication
 

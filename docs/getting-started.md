@@ -11,9 +11,11 @@ intend to inspect.
 
 ## What you need
 
-- Go 1.25.0 or newer. The repository’s `go.mod` is the source of truth for the
-  language version; the [development guide](maintainers/development.md)
-  explains toolchain selection.
+- Go 1.25.0 or newer if you build from source, embed Octostate, or develop the
+  repository. It is not required for normal CLI use from a prebuilt archive.
+  The repository’s `go.mod` is the source of truth for the language version;
+  the [development guide](maintainers/development.md) explains toolchain
+  selection.
 - A GitHub organization you are authorized to inspect; you also need
   authorization to modify it before running `config apply`.
 - A GitHub token held in an environment variable for the shortest path through
