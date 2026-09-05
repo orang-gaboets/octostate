@@ -169,8 +169,8 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 	}
 	assertMaterializedTopLevelConfig(t, desired, got)
 	assertMaterializedRepoBuilder(t, desired.Repositories[0], got.Repositories[0])
-	assertMaterializedInternalRepo(t, got.Repositories[1])
-	assertMaterializedInternalRepo(t, got.Repositories[2])
+	assertMaterializedForkingRepo(t, got.Repositories[1], "internal")
+	assertMaterializedForkingRepo(t, got.Repositories[2], "private")
 	assertMaterializedConfigOnlyRepo(t, got.Repositories[3])
 	assertNoLiveOnlyRepository(t, got.Repositories)
 
@@ -230,9 +230,12 @@ func assertMaterializedRepoBuilder(
 	}
 }
 
-func assertMaterializedInternalRepo(t *testing.T, got config.RepositorySpec) {
+func assertMaterializedForkingRepo(t *testing.T, got config.RepositorySpec, visibility string) {
 	t.Helper()
 
+	if got.Visibility != visibility {
+		t.Fatalf("expected %s visibility, got %q", visibility, got.Visibility)
+	}
 	if description, managed := got.ManagedDescription(); !managed || description != "" {
 		t.Fatalf("expected empty live description to materialize as managed clear, got value=%q managed=%v", description, managed)
 	}
@@ -240,7 +243,7 @@ func assertMaterializedInternalRepo(t *testing.T, got config.RepositorySpec) {
 		t.Fatalf("expected empty live homepage to materialize as managed clear, got value=%q managed=%v", homepage, managed)
 	}
 	if allowForking, managed := got.ManagedAllowForking(); !managed || !allowForking {
-		t.Fatalf("expected allow_forking=true to materialize for internal repo, got value=%v managed=%v", allowForking, managed)
+		t.Fatalf("expected allow_forking=true to materialize for %s repo, got value=%v managed=%v", visibility, allowForking, managed)
 	}
 	if archived, managed := got.ManagedArchived(); !managed || archived {
 		t.Fatalf("expected archived=false to materialize from live, got value=%v managed=%v", archived, managed)
