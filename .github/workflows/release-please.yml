@@ -69,12 +69,10 @@ jobs:
       - name: Resolve release to package
         id: release
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           CREATED_TAG: ${{ steps.release-please.outputs.tag_name }}
           CREATED_COMMIT: ${{ steps.release-please.outputs.sha }}
           RETRY_TAG: ${{ inputs.release_tag }}
           RETRY_COMMIT: ${{ inputs.release_commit }}
-          EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           tag=''
@@ -89,27 +87,6 @@ jobs:
           elif [[ -n "${RETRY_TAG}" ]]; then
             tag="${RETRY_TAG}"
             commit="${RETRY_COMMIT}"
-          else
-            export GIT_CONFIG_COUNT=1
-            export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
-            export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
-            drafts_json=$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100")
-            mapfile -t drafts < <(jq -r '.[][] | select(.draft == true) | .tag_name' <<<"${drafts_json}")
-            matches=()
-            for candidate in "${drafts[@]}"; do
-              peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
-                "refs/tags/${candidate}^{}" | awk '{print $1}')
-              [[ -n "${peeled}" ]] || peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
-                "refs/tags/${candidate}" | awk '{print $1}')
-              [[ "${peeled}" == "${EXPECTED_COMMIT}" ]] && matches+=("${candidate}")
-            done
-            [[ "${#matches[@]}" -eq 1 ]] || {
-              [[ "${#matches[@]}" -eq 0 ]] && exit 0
-              echo 'multiple draft releases match the triggering commit' >&2
-              exit 1
-            }
-            tag="${matches[0]}"
-            commit="${EXPECTED_COMMIT}"
           fi
           if [[ -n "${tag}" ]]; then
             [[ -n "${commit}" ]] || { echo 'release retry requires release_commit' >&2; exit 1; }
@@ -204,13 +181,12 @@ jobs:
             echo 'matching release stopped being draft during upload; refusing to publish' >&2
             exit 1
           }
-          for asset in "${assets[@]}" dist/checksums.txt; do
-            name=$(basename "${asset}")
-            jq -e --arg name "${name}" '.assets[] | select(.name == $name)' <<<"${release_json}" >/dev/null || {
-              echo "missing uploaded release asset: ${name}" >&2
-              exit 1
-            }
-          done
+          expected_asset_names=$(printf '%s\n' "${assets[@]}" dist/checksums.txt | sed 's#^dist/##' | sort)
+          actual_asset_names=$(jq -r '.assets[].name' <<<"${release_json}" | sort)
+          [[ "${actual_asset_names}" == "${expected_asset_names}" ]] || {
+            echo 'release contains unexpected or missing assets; refusing to publish' >&2
+            exit 1
+          }
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
           export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
