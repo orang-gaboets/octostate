@@ -234,7 +234,7 @@ Flags:
 - `--desc` (optional): Repository description
 - `--topics` (optional): Comma-separated list of repository topics
 - `--private` (optional): Create a private repository (default is public)
-- `--visibility` (optional): Select `public`, `private`, or `internal`; cannot be combined with `--private`. Internal template creation is unsupported.
+- `--visibility` (optional): Select `public`, `private`, or `internal`; cannot be combined with `--private`. Live template creation with `internal` is unsupported, but `--to-config` may record it for later planning.
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
 - `--to-config` (optional): Add the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository creation without creating it
@@ -247,8 +247,10 @@ template-based path; `--template-org` defaults to `--org`. It supports the
 same live, `--dry-run`, and `--to-config` modes. `--include-all-branches` is
 valid only with a template. Existing `repo create-from-template` invocations
 remain available for explicit template creation. For ordinary creation, use
-`--visibility public|private|internal`; internal visibility is supported only
-on the ordinary path.
+`--visibility public|private|internal`. Live template creation with `internal`
+is unsupported; `--to-config` may still record an internal template-backed
+desired state, which planning marks non-executable while the repository is
+missing.
 
 ### `octostate repo delete`
 
