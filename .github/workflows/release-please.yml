@@ -5,6 +5,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing draft release tag to package on retry'
+        required: false
+        type: string
+      release_commit:
+        description: 'Expected commit for release_tag when retrying'
+        required: false
+        type: string
 
 concurrency:
   group: release-please-${{ github.workflow }}
@@ -44,24 +53,28 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       - name: Check out the exact release tag
-        if: steps.release-please.outputs.release_created == 'true'
+        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name || inputs.release_tag }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
         run: |
           set -euo pipefail
           git init .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-          git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" \
-            fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
+          git fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           git checkout --detach "${RELEASE_TAG}"
-          [[ "$(git rev-parse HEAD^{commit})" == "${GITHUB_SHA}" ]] || {
-            echo "release tag ${RELEASE_TAG} does not target triggering commit ${GITHUB_SHA}" >&2
+          [[ -n "${EXPECTED_COMMIT}" ]] || { echo 'retry requires release_commit' >&2; exit 1; }
+          [[ "$(git rev-parse HEAD^{commit})" == "${EXPECTED_COMMIT}" ]] || {
+            echo "release tag ${RELEASE_TAG} does not target expected commit ${EXPECTED_COMMIT}" >&2
             exit 1
           }
 
       - name: Set up Go
-        if: steps.release-please.outputs.release_created == 'true'
+        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         # actions/setup-go v7.0.0
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -69,13 +82,13 @@ jobs:
           cache: true
 
       - name: Build release artifacts
-        if: steps.release-please.outputs.release_created == 'true'
+        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         env:
-          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name || inputs.release_tag }}
         run: bash .github/scripts/build-release-artifacts.sh "${RELEASE_TAG}" dist
 
       - name: Upload and verify release artifacts
-        if: steps.release-please.outputs.release_created == 'true'
+        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
@@ -84,11 +97,29 @@ jobs:
           sha256sum -c dist/checksums.txt
           mapfile -t assets < <(find dist -maxdepth 1 -type f \( -name 'octostate_*.tar.gz' -o -name 'octostate_*.zip' \) -print | sort)
           [[ "${#assets[@]}" -eq 5 ]] || { echo 'expected exactly five release archives' >&2; exit 1; }
-          gh release upload "${RELEASE_TAG}" "${assets[@]}" dist/checksums.txt --clobber
           release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
           [[ "$(jq -r '.tag_name' <<<"${release_json}")" == "${RELEASE_TAG}" ]] || exit 1
           [[ "$(jq -r '.draft' <<<"${release_json}")" == 'true' ]] || {
             echo 'matching release is not draft; refusing to publish artifacts' >&2
+            exit 1
+          }
+          for asset in "${assets[@]}" dist/checksums.txt; do
+            name=$(basename "${asset}")
+            asset_id=$(jq -r --arg name "${name}" '.assets[] | select(.name == $name) | .id' <<<"${release_json}")
+            if [[ -n "${asset_id}" ]]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+            fi
+          done
+          gh release upload "${RELEASE_TAG}" "${assets[@]}" dist/checksums.txt
+          rm -rf remote-assets
+          mkdir remote-assets
+          for asset in "${assets[@]}" dist/checksums.txt; do
+            gh release download "${RELEASE_TAG}" --pattern "$(basename "${asset}")" --dir remote-assets
+          done
+          (cd remote-assets && sha256sum -c ../dist/checksums.txt)
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          [[ "$(jq -r '.draft' <<<"${release_json}")" == 'true' ]] || {
+            echo 'matching release stopped being draft during upload; refusing to publish' >&2
             exit 1
           }
           for asset in "${assets[@]}" dist/checksums.txt; do

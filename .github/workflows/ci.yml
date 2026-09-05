@@ -176,6 +176,9 @@ jobs:
       - name: Test Git remote authentication helper
         run: bash .github/scripts/git-remote-auth.test.sh
 
+      - name: Test release artifact packaging
+        run: bash .github/scripts/build-release-artifacts.test.sh
+
   build:
     runs-on: ubuntu-latest
     steps:
