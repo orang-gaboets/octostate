@@ -41,6 +41,15 @@ grep -F "  $archive" checksums.txt | sha256sum -c - # Linux
 grep -F "  $archive" checksums.txt | shasum -a 256 -c - # macOS
 ```
 
+On Windows PowerShell, verify the Windows archive with:
+
+```powershell
+$archive = "octostate_<version>_windows_amd64.zip"
+$expected = ((Select-String -Path checksums.txt -SimpleMatch "  $archive").Line -split '\s+')[0]
+$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "checksum mismatch for $archive" }
+```
+
 If you prefer to build from source, install a pinned release with Go:
 
 ```bash
