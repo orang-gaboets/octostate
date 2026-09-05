@@ -108,9 +108,11 @@ jobs:
           fi
           if [[ -n "${tag}" ]]; then
             [[ -n "${commit}" ]] || { echo 'release retry requires release_commit' >&2; exit 1; }
-            printf 'tag=%s\n' "${tag}" >> "$GITHUB_OUTPUT"
-            printf 'commit=%s\n' "${commit}" >> "$GITHUB_OUTPUT"
-            printf 'should_package=true\n' >> "$GITHUB_OUTPUT"
+            {
+              printf 'tag=%s\n' "${tag}"
+              printf 'commit=%s\n' "${commit}"
+              printf 'should_package=true\n'
+            } >> "$GITHUB_OUTPUT"
           else
             printf 'should_package=false\n' >> "$GITHUB_OUTPUT"
           fi
@@ -131,7 +133,7 @@ jobs:
           git fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           git checkout --detach "${RELEASE_TAG}"
           [[ -n "${EXPECTED_COMMIT}" ]] || { echo 'retry requires release_commit' >&2; exit 1; }
-          [[ "$(git rev-parse HEAD^{commit})" == "${EXPECTED_COMMIT}" ]] || {
+          [[ "$(git rev-parse "HEAD^{commit}")" == "${EXPECTED_COMMIT}" ]] || {
             echo "release tag ${RELEASE_TAG} does not target expected commit ${EXPECTED_COMMIT}" >&2
             exit 1
           }

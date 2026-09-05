@@ -19,7 +19,7 @@ repo_root=$(git rev-parse --show-toplevel)
 mkdir -p "$output_dir"
 output_dir=$(cd "$output_dir" && pwd)
 tag_commit=$(git rev-parse "$tag^{commit}")
-head_commit=$(git rev-parse HEAD^{commit})
+head_commit=$(git rev-parse "HEAD^{commit}")
 [[ "$tag_commit" == "$head_commit" ]] || {
   echo "HEAD does not match release tag $tag" >&2
   exit 1
