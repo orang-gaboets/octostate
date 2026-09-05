@@ -38,11 +38,20 @@ supported CLI targets, uploads the archives and `checksums.txt` to that draft,
 verifies the final assets and SHA-256 entries, and only then publishes the
 Release.
 
-The custom archives are named `octostate_<version>_<os>_<arch>` with `.tar.gz`
-for macOS/Linux and `.zip` for Windows. Each contains only the executable,
-`LICENSE`, `README.md`, and `CHANGELOG.md`; GitHub's generated source archives
-are not changed. Re-running packaging may replace assets only on the same
-verified release tag and cannot silently target another release.
+The custom archives are named:
+
+```text
+octostate_<version>_darwin_amd64.tar.gz
+octostate_<version>_darwin_arm64.tar.gz
+octostate_<version>_linux_amd64.tar.gz
+octostate_<version>_linux_arm64.tar.gz
+octostate_<version>_windows_amd64.zip
+```
+
+Each contains only the executable, `LICENSE`, `README.md`, and `CHANGELOG.md`;
+GitHub's generated source archives are not changed. Re-running packaging may
+replace assets only on the same verified release tag and cannot silently target
+another release.
 
 Staging assets before publication preserves the ordering required by future
 GitHub immutable-release protection tracked in #266. It does not claim that

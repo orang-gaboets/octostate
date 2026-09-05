@@ -60,6 +60,9 @@ its entry in `checksums.txt`, and place the `octostate` executable on `PATH`.
 Official archives are available for macOS (Intel and Apple Silicon), Linux
 (amd64 and arm64), and Windows (amd64).
 
+On Linux, verify the downloaded files with `sha256sum -c checksums.txt`; on
+macOS, use `shasum -a 256 -c checksums.txt`.
+
 For a Go-native installation from source:
 
 ```bash
