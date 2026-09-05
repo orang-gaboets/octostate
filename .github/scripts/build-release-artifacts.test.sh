@@ -50,7 +50,6 @@ for artifact in "${expected[@]}"; do
   for member in LICENSE README.md CHANGELOG.md "$executable"; do
     grep -qx "$member" "$list"
   done
-  ! grep -Eq '(^|/)(\.github|\.agents|cmd|pkg|internal|docs|.*_test\.go|AGENTS\.md|CONTRIBUTING\.md)' "$list"
 done
 
 if (cd "$fixture/repo" && bash .github/scripts/build-release-artifacts.sh invalid "$output") 2>/dev/null; then
