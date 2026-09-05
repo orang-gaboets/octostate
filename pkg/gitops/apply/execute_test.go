@@ -585,13 +585,21 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	}
 }
 
+func TestExecuteRepositoryUpdatePrivateRepoAppliesAllowForkingChange(t *testing.T) {
+	testExecuteRepositoryUpdateAllowForkingChange(t, "private")
+}
+
 func TestExecuteRepositoryUpdateInternalRepoAppliesAllowForkingChange(t *testing.T) {
+	testExecuteRepositoryUpdateAllowForkingChange(t, "internal")
+}
+
+func testExecuteRepositoryUpdateAllowForkingChange(t *testing.T, visibility string) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
 		Owner:        "orang-gaboets",
 		Name:         "octostate",
-		Visibility:   "internal",
+		Visibility:   visibility,
 		Description:  "Updated description",
 		AllowForking: false,
 	}
@@ -622,7 +630,7 @@ func TestExecuteRepositoryUpdateInternalRepoAppliesAllowForkingChange(t *testing
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
 			if repository.AllowForking == nil || *repository.AllowForking {
-				t.Fatalf("expected explicit internal allow_forking=false, got %#v", repository)
+				t.Fatalf("expected explicit %s allow_forking=false, got %#v", visibility, repository)
 			}
 			return &gh.Repository{}, nil, nil
 		},
@@ -881,6 +889,63 @@ func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 	}
 	if !createCalled {
 		t.Fatal("expected ordinary repository creation")
+	}
+}
+
+func TestExecuteRepositoryCreateInternalUsesVisibility(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeRepository,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	var createReq *gh.Repository
+	repoSvc := &testRepoService{createFunc: func(_ context.Context, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+		createReq = repository
+		return &gh.Repository{}, nil, nil
+	}}
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createReq == nil || createReq.GetVisibility() != "internal" || createReq.Private != nil {
+		t.Fatalf("unexpected internal create payload: %#v", createReq)
+	}
+}
+
+func TestExecuteRepositoryUpdateInternalUsesVisibility(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeRepository,
+		Operation:    gitopsplan.ActionOperationUpdate,
+		ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+		Executable:   true,
+		Changes:      []gitopsplan.FieldChange{{Field: "visibility", From: "public", To: "internal"}},
+	}}}
+	plan.Normalize()
+
+	var editReq *gh.Repository
+	repoSvc := &testRepoService{editFunc: func(_ context.Context, _, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+		editReq = repository
+		return &gh.Repository{}, nil, nil
+	}}
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if editReq == nil || editReq.GetVisibility() != "internal" || editReq.Private != nil {
+		t.Fatalf("unexpected internal update payload: %#v", editReq)
 	}
 }
 

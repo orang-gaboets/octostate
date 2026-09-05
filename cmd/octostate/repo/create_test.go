@@ -122,6 +122,14 @@ func TestCreateRepoCmdRejectsInternalTemplateDryRun(t *testing.T) {
 	}
 }
 
+func TestCreateRepoCmdRejectsInternalTemplateLiveBeforeAuth(t *testing.T) {
+	cmd := reposcmd.CreateNewRepoFromTemplateCmd(nil)
+	cmd.SetArgs([]string{"--org", "org", "--template-name", "base", "--name", "service", "--visibility", "internal"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsupported for template-based") {
+		t.Fatalf("expected unsupported template visibility error, got %v", err)
+	}
+}
+
 func TestCreateRepoCmdToConfigAllowsInternalTemplate(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
 	if err := os.WriteFile(configPath, []byte("organization: org\nrepositories: []\n"), 0o600); err != nil {

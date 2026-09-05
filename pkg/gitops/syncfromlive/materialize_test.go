@@ -90,6 +90,10 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 				Visibility: "internal",
 			},
 			{
+				Name:       "private-repo",
+				Visibility: "private",
+			},
+			{
 				Name:       "config-only",
 				Visibility: "public",
 			},
@@ -132,6 +136,12 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 			},
 			{
 				Owner:        "orang-gaboets",
+				Name:         "private-repo",
+				Visibility:   "private",
+				AllowForking: true,
+			},
+			{
+				Owner:        "orang-gaboets",
 				Name:         "live-only",
 				Visibility:   "public",
 				Description:  "adopt me first",
@@ -154,13 +164,14 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 	if got.Organization != desired.Organization {
 		t.Fatalf("unexpected organization %q", got.Organization)
 	}
-	if len(got.Repositories) != 3 {
+	if len(got.Repositories) != 4 {
 		t.Fatalf("unexpected repositories %#v", got.Repositories)
 	}
 	assertMaterializedTopLevelConfig(t, desired, got)
 	assertMaterializedRepoBuilder(t, desired.Repositories[0], got.Repositories[0])
 	assertMaterializedInternalRepo(t, got.Repositories[1])
-	assertMaterializedConfigOnlyRepo(t, got.Repositories[2])
+	assertMaterializedInternalRepo(t, got.Repositories[2])
+	assertMaterializedConfigOnlyRepo(t, got.Repositories[3])
 	assertNoLiveOnlyRepository(t, got.Repositories)
 
 	if report := config.Validate(got); !report.Valid {

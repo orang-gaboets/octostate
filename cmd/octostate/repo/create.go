@@ -199,6 +199,9 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 }
 
 func createRepositoryLive(ctx context.Context, cmd *cobra.Command, svc repos.Service, token string, appID, installationID int64, appKeyPath string, templateOnly bool, org, templateOrg, templateName, name, desc string, topicList []string, visibility string, legacyPrivate *bool, includeAllBranches bool) error {
+	if (templateOnly || templateName != "") && visibility == "internal" {
+		return fmt.Errorf("internal visibility is unsupported for template-based repository creation")
+	}
 	service := svc
 	if service == nil {
 		client, err := auth.NewClient(ctx, token, appID, installationID, appKeyPath)
@@ -213,9 +216,6 @@ func createRepositoryLive(ctx context.Context, cmd *cobra.Command, svc repos.Ser
 			return err
 		}
 		return cmdoutput.PrintSuccess(cmd, fmt.Sprintf("Created repository %s/%s", org, name), map[string]any{"owner": org, "name": name, "visibility": visibility, "private": visibility == "private", "topics": topicList, "repository": createdRepo})
-	}
-	if visibility == "internal" {
-		return fmt.Errorf("internal visibility is unsupported for template-based repository creation")
 	}
 	createdRepo, err := repos.CreateFromTemplate(ctx, repos.CreateFromTemplateOptions{
 		Name: name, Owner: org, TemplateRepo: templateName, TemplateOwner: templateOrg,

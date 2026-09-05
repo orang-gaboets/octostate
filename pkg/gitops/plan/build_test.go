@@ -629,18 +629,26 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 	}
 }
 
+func TestBuildPlansAllowForkingDiffForPrivateRepository(t *testing.T) {
+	testBuildPlansAllowForkingDiff(t, "private")
+}
+
 func TestBuildPlansAllowForkingDiffForInternalRepository(t *testing.T) {
+	testBuildPlansAllowForkingDiff(t, "internal")
+}
+
+func testBuildPlansAllowForkingDiff(t *testing.T, visibility string) {
 	t.Parallel()
 
-	desired := testconfig.LoadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, fmt.Sprintf(`
 organization: orang-gaboets
 repositories:
   - name: octostate
-    visibility: internal
+    visibility: %s
     allow_forking: false
 teams: []
 invites: []
-`)
+`, visibility))
 
 	report, err := Build(context.Background(), Options{
 		Desired: desired,
@@ -649,7 +657,7 @@ invites: []
 			Repositories: []state.Repository{{
 				Owner:        "orang-gaboets",
 				Name:         "octostate",
-				Visibility:   "internal",
+				Visibility:   visibility,
 				AllowForking: true,
 			}},
 		},
@@ -659,7 +667,7 @@ invites: []
 	}
 
 	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
-		t.Fatalf("expected internal allow_forking drift, got %#v", report.Actions)
+		t.Fatalf("expected %s allow_forking drift, got %#v", visibility, report.Actions)
 	}
 }
 

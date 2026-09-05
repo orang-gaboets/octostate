@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -920,7 +921,15 @@ func TestBuildInviteUserIDPendingInviteWithoutResolvedUserIDMappingCreatesDrift(
 	}
 }
 
+func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
+	testBuildRepositoryAllowForkingDrift(t, "private")
+}
+
 func TestBuildInternalRepositoryPlansAllowForkingDrift(t *testing.T) {
+	testBuildRepositoryAllowForkingDrift(t, "internal")
+}
+
+func testBuildRepositoryAllowForkingDrift(t *testing.T, visibility string) {
 	t.Parallel()
 
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 15, 0, 0, time.UTC), &state.OrganizationState{
@@ -929,7 +938,7 @@ func TestBuildInternalRepositoryPlansAllowForkingDrift(t *testing.T) {
 			{
 				Owner:        "orang-gaboets",
 				Name:         "octostate",
-				Visibility:   "internal",
+				Visibility:   visibility,
 				Description:  "CLI",
 				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
@@ -940,11 +949,11 @@ func TestBuildInternalRepositoryPlansAllowForkingDrift(t *testing.T) {
 		},
 	})
 
-	desired := testconfig.LoadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, fmt.Sprintf(`
 organization: orang-gaboets
 repositories:
   - name: octostate
-    visibility: internal
+    visibility: %s
     description: "CLI"
     homepage: "https://example.com/octostate"
     topics: [gitops]
@@ -953,7 +962,7 @@ repositories:
     is_template: false
 teams: []
 invites: []
-`)
+`, visibility))
 
 	report, err := Build(Options{
 		Desired:  desired,
@@ -963,7 +972,7 @@ invites: []
 		t.Fatalf("Build returned error: %v", err)
 	}
 	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
-		t.Fatalf("expected internal allow_forking drift, got %#v", report.Actions)
+		t.Fatalf("expected %s allow_forking drift, got %#v", visibility, report.Actions)
 	}
 }
 
