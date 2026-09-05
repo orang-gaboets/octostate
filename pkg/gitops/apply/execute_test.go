@@ -449,8 +449,8 @@ invites: []
 	if editReq == nil {
 		t.Fatal("expected follow-up repository edit request")
 	}
-	if editReq.Private == nil || !*editReq.Private {
-		t.Fatalf("expected private repository edit payload, got %#v", editReq)
+	if editReq.GetVisibility() != "private" || editReq.Private != nil {
+		t.Fatalf("expected visibility-only private repository edit payload, got %#v", editReq)
 	}
 	if editReq.Description != nil || editReq.Homepage != nil || editReq.Archived != nil || editReq.IsTemplate != nil || editReq.AllowForking != nil {
 		t.Fatalf("expected unmanaged optional fields to be omitted from edit payload, got %#v", editReq)
@@ -516,8 +516,8 @@ invites: []
 	if editReq == nil {
 		t.Fatal("expected follow-up repository edit request")
 	}
-	if editReq.Private == nil || *editReq.Private {
-		t.Fatalf("expected public repository edit payload, got %#v", editReq)
+	if editReq.GetVisibility() != "public" || editReq.Private != nil {
+		t.Fatalf("expected visibility-only public repository edit payload, got %#v", editReq)
 	}
 	if editReq.Description == nil || *editReq.Description != "" {
 		t.Fatalf("expected explicit empty description in edit payload, got %#v", editReq)
@@ -857,7 +857,7 @@ func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 	repoSvc := &testRepoService{
 		createFunc: func(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 			createCalled = true
-			if owner != "orang-gaboets" || repository == nil || repository.GetName() != "octostate" || !repository.GetPrivate() {
+			if owner != "orang-gaboets" || repository == nil || repository.GetName() != "octostate" || repository.GetVisibility() != "private" || repository.Private != nil {
 				t.Fatalf("unexpected ordinary create request: owner=%q repository=%#v", owner, repository)
 			}
 			return &gh.Repository{}, nil, nil

@@ -61,7 +61,6 @@ func (e *executor) createRepository(action gitopsplan.Action) error {
 			Owner:       repository.Owner,
 			Description: description,
 			Visibility:  githubpkg.Ptr(visibility),
-			Private:     githubpkg.Ptr(visibility == "private"),
 		})
 	}
 	if err != nil {
@@ -96,7 +95,6 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
 			editOptions.Visibility = githubpkg.Ptr(visibility)
-			editOptions.Private = githubpkg.Ptr(visibility == "private")
 			editNeeded = true
 		case "description":
 			editOptions.Description = githubpkg.Ptr(repository.Description)
@@ -148,7 +146,6 @@ func (e *executor) applyExactRepositorySettings(repository config.RepositorySpec
 		Owner:      repository.Owner,
 		Repo:       repository.Name,
 		Visibility: githubpkg.Ptr(visibility),
-		Private:    githubpkg.Ptr(visibility == "private"),
 	}
 	if description, managed := repository.ManagedDescription(); managed {
 		editOptions.Description = githubpkg.Ptr(description)

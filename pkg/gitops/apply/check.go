@@ -195,7 +195,7 @@ func (e *executor) preflightRepositoryCreate(action gitopsplan.Action) error {
 
 	var validateErr error
 	if repository.Template.Owner == "" && repository.Template.Name == "" {
-		createOptions := repos.CreateOptions{Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner, Visibility: github.Ptr(visibility), Private: github.Ptr(visibility == "private")}
+		createOptions := repos.CreateOptions{Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner, Visibility: github.Ptr(visibility)}
 		if description, managed := repository.ManagedDescription(); managed {
 			createOptions.Description = github.Ptr(description)
 		}
