@@ -122,6 +122,28 @@ func TestCreateRepoCmdRejectsInternalTemplateDryRun(t *testing.T) {
 	}
 }
 
+func TestCreateRepoCmdRejectsInternalTemplateToConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "organization.yaml")
+	before := []byte("organization: org\nrepositories: []\n")
+	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := reposcmd.CreateRepoCmd(nil)
+	cmd.SetArgs([]string{"--org", "org", "--template-name", "base", "--name", "service", "--visibility", "internal", "--to-config", configPath})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsupported for template-based") {
+		t.Fatalf("expected unsupported template visibility error, got %v", err)
+	}
+
+	after, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatalf("config changed after unsupported template proposal rejection:\n%s", after)
+	}
+}
+
 func TestCreateRepoCmdDryRunSkipsOrdinaryCreation(t *testing.T) {
 	service := &captureCreateRepoFromTemplateService{}
 	cmd := reposcmd.CreateRepoCmd(service)

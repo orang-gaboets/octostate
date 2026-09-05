@@ -91,7 +91,7 @@ func createRepoCmd(svc repos.Service, templateOnly bool) *cobra.Command {
 			if dryRun && cmd.Flags().Changed("to-config") {
 				return fmt.Errorf("--to-config cannot be combined with --dry-run")
 			}
-			if dryRun && selected == "internal" && (templateOnly || trimmedTemplateName != "") {
+			if selected == "internal" && (templateOnly || trimmedTemplateName != "") && (dryRun || cmd.Flags().Changed("to-config")) {
 				return fmt.Errorf("internal visibility is unsupported for template-based repository creation")
 			}
 			if dryRun {
