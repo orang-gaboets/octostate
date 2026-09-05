@@ -46,6 +46,7 @@ for artifact in "${expected[@]}"; do
     tar -tzf "$output/$artifact" | sort > "$list"
     executable=octostate
   fi
+  [[ $(wc -l < "$list") -eq 4 ]]
   for member in LICENSE README.md CHANGELOG.md "$executable"; do
     grep -qx "$member" "$list"
   done
