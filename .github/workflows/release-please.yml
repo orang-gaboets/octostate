@@ -74,8 +74,8 @@ jobs:
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
             export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
-            drafts_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100")
-            mapfile -t drafts < <(jq -r '.[] | select(.draft == true) | .tag_name' <<<"${drafts_json}")
+            drafts_json=$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100")
+            mapfile -t drafts < <(jq -r '.[][] | select(.draft == true) | .tag_name' <<<"${drafts_json}")
             matches=()
             for candidate in "${drafts[@]}"; do
               peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
