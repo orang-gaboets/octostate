@@ -36,6 +36,14 @@ for artifact in "${expected[@]}"; do
   [[ -s "$output/$artifact" ]]
   grep -q "  $artifact$" "$output/checksums.txt"
 done
+(
+  cd "$output"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c checksums.txt
+  else
+    shasum -a 256 -c checksums.txt
+  fi
+)
 
 for artifact in "${expected[@]}"; do
   list="$fixture/${artifact}.list"
