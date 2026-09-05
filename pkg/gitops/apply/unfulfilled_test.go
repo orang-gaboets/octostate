@@ -217,8 +217,11 @@ func TestExecuteStopsDependentMembershipAfterMemberWriteFails(t *testing.T) {
 		},
 	}
 
-	if _, err := Execute(context.Background(), opts); err == nil {
-		t.Fatal("a failed prerequisite write must fail the apply")
+	// Assert on the injected error itself: any-error would also pass if the
+	// apply failed for an unrelated reason, which would hide whether the
+	// prerequisite write is what actually stopped it.
+	if _, err := Execute(context.Background(), opts); !errors.Is(err, wantErr) {
+		t.Fatalf("expected the failed prerequisite write to fail the apply, got %v", err)
 	}
 }
 
