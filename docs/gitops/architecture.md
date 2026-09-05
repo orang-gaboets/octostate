@@ -64,9 +64,10 @@ Current collector concurrency limits:
 - Compares desired config with live `OrganizationState`
 - Produces the structured reconciliation report used by `config plan`
   and `config apply`
-- Builds the repository plan first, then computes the five independent
-  non-repository action phases concurrently and appends them in fixed order
-  before final action normalization
+- Computes the repository and organization-member availability plans first,
+  since later phases depend on them, then runs the four remaining action phases
+  concurrently and appends every phase in fixed order before final action
+  normalization
 - Builds managed same-organization template dependency edges for missing
   repositories and emits them in deterministic dependency-safe topological
   order, using normalized repository identity to break ready-action ties
@@ -75,6 +76,9 @@ Current collector concurrency limits:
   new sources require `is_template: true`
 - Propagates unavailable-source diagnostics transitively, reports stable cycle
   paths, and shares repository availability with team repository permissions
+- Applies the same availability model to organization members: a desired
+  top-level member satisfies the prerequisite for a team membership in the same
+  plan, and the member action is ordered before the membership that needs it
 - Leaves external, cross-organization, live-only, and otherwise non-managed
   template references to apply
   preflight; dependency edges are internal and are not fields in public plan
@@ -84,6 +88,9 @@ Current collector concurrency limits:
 - Executes the supported executable subset of the plan
 - Keeps writes ordered and controlled
 - Reports unsupported `delete` / `remove` drift as skipped state
+- Distinguishes that intentionally unsupported drift from a desired
+  `create` / `update` that planning determined cannot execute; callers can
+  require the latter to be executable and receive a non-zero result otherwise
 
 ### `pkg/gitops/snapshot`
 - Owns the JSON snapshot file contract
@@ -97,6 +104,9 @@ Current collector concurrency limits:
 - Gates team repository permission create/update actions on repository presence
   in the snapshot or a declared desired repository; managed template
   dependency resolution remains plan-only
+- Uses the same organization-member availability rule as plan, so a desired
+  member declared alongside a desired team membership is not reported as an
+  unfulfillable prerequisite
 
 ### `pkg/gitops/syncfromlive`
 - Builds desired-state proposals from live GitHub state

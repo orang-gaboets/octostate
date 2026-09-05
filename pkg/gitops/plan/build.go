@@ -85,23 +85,22 @@ const planPhaseConcurrency = 6
 
 type planBuildResult struct {
 	repositoryPlan                  repositoryPlan
+	organizationMemberPlan          organizationMemberPlan
 	teamActions                     []Action
-	organizationMemberActions       []Action
 	inviteActions                   []Action
 	teamMemberActions               []Action
 	teamRepositoryPermissionActions []Action
 }
 
 func (p planner) buildActions() ([]Action, error) {
-	result := planBuildResult{repositoryPlan: p.computeRepositoryPlan()}
+	result := planBuildResult{
+		repositoryPlan:         p.computeRepositoryPlan(),
+		organizationMemberPlan: p.computeOrganizationMemberPlan(),
+	}
 	g, groupCtx := errgroup.WithContext(p.ctx)
 	g.SetLimit(planPhaseConcurrency)
 	g.Go(func() error {
 		result.teamActions = p.planTeams()
-		return nil
-	})
-	g.Go(func() error {
-		result.organizationMemberActions = p.planOrganizationMembers()
 		return nil
 	})
 	g.Go(func() error {
@@ -116,7 +115,7 @@ func (p planner) buildActions() ([]Action, error) {
 		return nil
 	})
 	g.Go(func() error {
-		result.teamMemberActions = p.planTeamMembers()
+		result.teamMemberActions = p.planTeamMembers(result.organizationMemberPlan)
 		return nil
 	})
 	g.Go(func() error {
@@ -131,14 +130,14 @@ func (p planner) buildActions() ([]Action, error) {
 	actions := make([]Action, 0,
 		len(result.repositoryPlan.actions)+
 			len(result.teamActions)+
-			len(result.organizationMemberActions)+
+			len(result.organizationMemberPlan.actions)+
 			len(result.inviteActions)+
 			len(result.teamMemberActions)+
 			len(result.teamRepositoryPermissionActions),
 	)
 	actions = append(actions, result.repositoryPlan.actions...)
 	actions = append(actions, result.teamActions...)
-	actions = append(actions, result.organizationMemberActions...)
+	actions = append(actions, result.organizationMemberPlan.actions...)
 	actions = append(actions, result.inviteActions...)
 	actions = append(actions, result.teamMemberActions...)
 	actions = append(actions, result.teamRepositoryPermissionActions...)

@@ -29,6 +29,13 @@ type Options struct {
 	RepositoryService   repos.Service
 	TeamService         teams.Service
 	UserService         ghusers.Service
+
+	// RequireExecutableDesiredActions makes a desired create or update that
+	// planning determined cannot execute a failure rather than a skipped
+	// action. Unsupported destructive drift is unaffected, so a caller can
+	// require its own mutations to be achievable while still tolerating drift
+	// Octostate does not reconcile.
+	RequireExecutableDesiredActions bool
 }
 
 // Validate checks whether the apply inputs and service dependencies are usable.
@@ -63,8 +70,13 @@ func (opt *Options) Validate() error {
 	return nil
 }
 
-// Result captures the actions executed and the unsupported drift skipped by one
-// apply run.
+// Result captures the actions executed and the actions skipped by one apply
+// run.//
+// The skipped set holds every non-executable action, which covers two different
+// situations: destructive drift Octostate intentionally declines to reconcile,
+// and a desired create or update that planning determined cannot execute. Use
+// UnfulfilledDesiredActions to tell them apart, or
+// Options.RequireExecutableDesiredActions to fail on the second kind.
 type Result struct {
 	Organization string              `json:"organization"`
 	PlanSummary  gitopsplan.Summary  `json:"plan_summary"`
@@ -97,6 +109,11 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 		return nil, err
 	}
 	opt.Desired = config.NormalizeDesiredState(opt.Desired)
+	// Checked before constructing the executor so a stated requirement cannot
+	// produce a partially applied plan.
+	if err := requireExecutableDesiredActions(opt); err != nil {
+		return nil, err
+	}
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}
