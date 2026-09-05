@@ -52,12 +52,60 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      - name: Check out the exact release tag
-        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+      - name: Resolve release to package
+        id: release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name || inputs.release_tag }}
-          EXPECTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.release_commit || github.sha }}
+          CREATED_TAG: ${{ steps.release-please.outputs.tag_name }}
+          RETRY_TAG: ${{ inputs.release_tag }}
+          RETRY_COMMIT: ${{ inputs.release_commit }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tag=''
+          commit=''
+          if [[ -n "${CREATED_TAG}" ]]; then
+            tag="${CREATED_TAG}"
+            commit="${EXPECTED_COMMIT}"
+          elif [[ -n "${RETRY_TAG}" ]]; then
+            tag="${RETRY_TAG}"
+            commit="${RETRY_COMMIT}"
+          else
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
+            export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
+            mapfile -t drafts < <(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.draft == true) | .tag_name')
+            matches=()
+            for candidate in "${drafts[@]}"; do
+              peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+                "refs/tags/${candidate}^{}" | awk '{print $1}')
+              [[ -n "${peeled}" ]] || peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+                "refs/tags/${candidate}" | awk '{print $1}')
+              [[ "${peeled}" == "${EXPECTED_COMMIT}" ]] && matches+=("${candidate}")
+            done
+            [[ "${#matches[@]}" -eq 1 ]] || {
+              [[ "${#matches[@]}" -eq 0 ]] && exit 0
+              echo 'multiple draft releases match the triggering commit' >&2
+              exit 1
+            }
+            tag="${matches[0]}"
+            commit="${EXPECTED_COMMIT}"
+          fi
+          if [[ -n "${tag}" ]]; then
+            [[ -n "${commit}" ]] || { echo 'release retry requires release_commit' >&2; exit 1; }
+            printf 'tag=%s\n' "${tag}" >> "$GITHUB_OUTPUT"
+            printf 'commit=%s\n' "${commit}" >> "$GITHUB_OUTPUT"
+            printf 'should_package=true\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'should_package=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the exact release tag
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          EXPECTED_COMMIT: ${{ steps.release.outputs.commit }}
         run: |
           set -euo pipefail
           git init .
@@ -74,7 +122,7 @@ jobs:
           }
 
       - name: Set up Go
-        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: steps.release.outputs.should_package == 'true'
         # actions/setup-go v7.0.0
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
@@ -82,16 +130,16 @@ jobs:
           cache: true
 
       - name: Build release artifacts
-        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: steps.release.outputs.should_package == 'true'
         env:
-          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name || inputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: bash .github/scripts/build-release-artifacts.sh "${RELEASE_TAG}" dist
 
       - name: Upload and verify release artifacts
-        if: steps.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: steps.release.outputs.should_package == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
           sha256sum -c dist/checksums.txt
@@ -113,8 +161,15 @@ jobs:
           gh release upload "${RELEASE_TAG}" "${assets[@]}" dist/checksums.txt
           rm -rf remote-assets
           mkdir remote-assets
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
           for asset in "${assets[@]}" dist/checksums.txt; do
-            gh release download "${RELEASE_TAG}" --pattern "$(basename "${asset}")" --dir remote-assets
+            name=$(basename "${asset}")
+            asset_url=$(jq -r --arg name "${name}" '.assets[] | select(.name == $name) | .url' <<<"${release_json}")
+            [[ -n "${asset_url}" && "${asset_url}" != 'null' ]] || {
+              echo "missing uploaded release asset URL: ${name}" >&2
+              exit 1
+            }
+            gh api -H 'Accept: application/octet-stream' "${asset_url}" > "remote-assets/${name}"
           done
           (cd remote-assets && sha256sum -c ../dist/checksums.txt)
           release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")

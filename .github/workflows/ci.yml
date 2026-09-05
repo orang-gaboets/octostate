@@ -150,6 +150,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Verify Bash syntax
         run: |
           bash -n .github/scripts/release-approval-gate.sh

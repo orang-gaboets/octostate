@@ -51,4 +51,15 @@ grep -qx 'CHANGELOG.md' "$fixture/zip-list"
 grep -qx 'octostate.exe' "$fixture/zip-list"
 ! grep -Eq '(^|/)(\.github|\.agents|cmd|pkg|internal|docs|.*_test\.go|AGENTS\.md|CONTRIBUTING\.md)' "$fixture/zip-list"
 
+if (cd "$fixture/repo" && bash .github/scripts/build-release-artifacts.sh invalid "$output") 2>/dev/null; then
+  echo 'invalid release tag was accepted' >&2
+  exit 1
+fi
+
+git -C "$fixture/repo" commit --quiet --allow-empty -m mismatch
+if (cd "$fixture/repo" && bash .github/scripts/build-release-artifacts.sh v0.0.0 "$output") 2>/dev/null; then
+  echo 'tag/HEAD mismatch was accepted' >&2
+  exit 1
+fi
+
 echo 'release artifact packaging tests passed'
