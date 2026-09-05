@@ -60,8 +60,13 @@ its entry in `checksums.txt`, and place the `octostate` executable on `PATH`.
 Official archives are available for macOS (Intel and Apple Silicon), Linux
 (amd64 and arm64), and Windows (amd64).
 
-On Linux, verify the downloaded files with `sha256sum -c checksums.txt`; on
-macOS, use `shasum -a 256 -c checksums.txt`.
+To verify one downloaded archive, replace the placeholder with its filename:
+
+```bash
+archive='octostate_<version>_<platform-archive>'
+grep -F "  $archive" checksums.txt | sha256sum -c - # Linux
+grep -F "  $archive" checksums.txt | shasum -a 256 -c - # macOS
+```
 
 For a Go-native installation from source:
 

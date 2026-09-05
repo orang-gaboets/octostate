@@ -33,9 +33,13 @@ the archive against `checksums.txt`, extract it, and put the executable on
 `PATH`. Release archives contain only the executable, `LICENSE`, `README.md`,
 and `CHANGELOG.md`.
 
-On Linux, run `sha256sum -c checksums.txt`; on macOS, run
-`shasum -a 256 -c checksums.txt` from the directory containing the downloaded
-files.
+To verify one downloaded archive, replace the placeholder with its filename:
+
+```bash
+archive='octostate_<version>_<platform-archive>'
+grep -F "  $archive" checksums.txt | sha256sum -c - # Linux
+grep -F "  $archive" checksums.txt | shasum -a 256 -c - # macOS
+```
 
 If you prefer to build from source, install a pinned release with Go:
 
