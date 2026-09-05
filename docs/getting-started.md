@@ -37,8 +37,12 @@ To verify one downloaded archive, replace the placeholder with its filename:
 
 ```bash
 archive='octostate_<version>_<platform-archive>'
-grep -F "  $archive" checksums.txt | sha256sum -c - # Linux
-grep -F "  $archive" checksums.txt | shasum -a 256 -c - # macOS
+entry=$(grep -F "  $archive" checksums.txt) || { echo "checksum entry not found: $archive" >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then
+  printf '%s\n' "$entry" | sha256sum -c -
+else
+  printf '%s\n' "$entry" | shasum -a 256 -c -
+fi
 ```
 
 On Windows PowerShell, verify the Windows archive with:
