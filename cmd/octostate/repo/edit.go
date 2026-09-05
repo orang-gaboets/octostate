@@ -150,7 +150,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&newVisibility, "visibility", "", "Repository visibility: public, private, or internal")
 	cmd.Flags().BoolVar(&newIsTemplate, "is-template", false, "Set the repository as a template")
 	cmd.Flags().BoolVar(&newArchived, "archived", false, "Archive the repository")
-	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow private forking of the repository")
+	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow forking of a private or internal repository")
 	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 

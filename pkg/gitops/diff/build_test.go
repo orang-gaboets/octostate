@@ -920,7 +920,7 @@ func TestBuildInviteUserIDPendingInviteWithoutResolvedUserIDMappingCreatesDrift(
 	}
 }
 
-func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
+func TestBuildInternalRepositoryPlansAllowForkingDrift(t *testing.T) {
 	t.Parallel()
 
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 15, 0, 0, time.UTC), &state.OrganizationState{
@@ -929,7 +929,7 @@ func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
 			{
 				Owner:        "orang-gaboets",
 				Name:         "octostate",
-				Visibility:   "private",
+				Visibility:   "internal",
 				Description:  "CLI",
 				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
@@ -944,7 +944,7 @@ func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
 organization: orang-gaboets
 repositories:
   - name: octostate
-    visibility: private
+    visibility: internal
     description: "CLI"
     homepage: "https://example.com/octostate"
     topics: [gitops]
@@ -963,7 +963,7 @@ invites: []
 		t.Fatalf("Build returned error: %v", err)
 	}
 	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
-		t.Fatalf("expected private allow_forking drift, got %#v", report.Actions)
+		t.Fatalf("expected internal allow_forking drift, got %#v", report.Actions)
 	}
 }
 

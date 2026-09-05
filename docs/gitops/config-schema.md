@@ -154,9 +154,9 @@ Repository reconciliation semantics:
 - explicit boolean values manage the boolean fields
 - explicit `null` is rejected for presence-aware fields by semantic validation,
   except for `is_template`, where it means unmanaged/preserve-live-state
-- `allow_forking` is managed only for private repositories when explicitly
-  present; omitted private values remain unmanaged and public/internal values
-  are ignored
+- `allow_forking` is managed only for private or internal repositories when
+  explicitly present; omitted values remain unmanaged and public values are
+  ignored
 
 Repository topics:
 

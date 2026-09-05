@@ -246,7 +246,9 @@ when `--template-name` is omitted. Supplying `--template-name` selects the
 template-based path; `--template-org` defaults to `--org`. It supports the
 same live, `--dry-run`, and `--to-config` modes. `--include-all-branches` is
 valid only with a template. Existing `repo create-from-template` invocations
-remain available for explicit template creation.
+remain available for explicit template creation. For ordinary creation, use
+`--visibility public|private|internal`; internal visibility is supported only
+on the ordinary path.
 
 ### `octostate repo delete`
 
@@ -291,7 +293,7 @@ Flags:
 - `--visibility` (optional): Set repository visibility to `public`, `private`, or `internal`; cannot be combined with `--private`
 - `--is-template` (optional): Set or unset repository as a template
 - `--archived` (optional): Archive/unarchive the repository
-- `--allow-forking` (optional): Allow/disallow private forking of the repository
+- `--allow-forking` (optional): Allow/disallow forking of a private or internal repository
 - `--to-config` (optional): Apply the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository edits without updating the repository
 

@@ -143,6 +143,12 @@ func IsPrivateVisibility(visibility string) bool {
 	return strings.EqualFold(strings.TrimSpace(visibility), "private")
 }
 
+// SupportsAllowForking reports whether repository forking settings apply to a visibility.
+func SupportsAllowForking(visibility string) bool {
+	visibility = strings.TrimSpace(visibility)
+	return strings.EqualFold(visibility, "private") || strings.EqualFold(visibility, "internal")
+}
+
 // TemplateSpec identifies the template repository used to create a repository.
 type TemplateSpec struct {
 	Owner              string `yaml:"owner"`

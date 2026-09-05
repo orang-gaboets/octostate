@@ -585,13 +585,13 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	}
 }
 
-func TestExecuteRepositoryUpdatePrivateRepoAppliesAllowForkingChange(t *testing.T) {
+func TestExecuteRepositoryUpdateInternalRepoAppliesAllowForkingChange(t *testing.T) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
 		Owner:        "orang-gaboets",
 		Name:         "octostate",
-		Visibility:   "private",
+		Visibility:   "internal",
 		Description:  "Updated description",
 		AllowForking: false,
 	}
@@ -622,7 +622,7 @@ func TestExecuteRepositoryUpdatePrivateRepoAppliesAllowForkingChange(t *testing.
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
 			if repository.AllowForking == nil || *repository.AllowForking {
-				t.Fatalf("expected explicit private allow_forking=false, got %#v", repository)
+				t.Fatalf("expected explicit internal allow_forking=false, got %#v", repository)
 			}
 			return &gh.Repository{}, nil, nil
 		},

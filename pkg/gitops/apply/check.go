@@ -262,8 +262,8 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 			}
 		case "description", "homepage", "topics", "allow_forking", "archived", "is_template":
 			if change.Field == "allow_forking" {
-				if !config.IsPrivateVisibility(repository.Visibility) {
-					return fmt.Errorf("update repository %s: allow_forking is only applicable to private repositories: %w", action.ResourceID, github.ErrInvalidFieldValue)
+				if !config.SupportsAllowForking(repository.Visibility) {
+					return fmt.Errorf("update repository %s: allow_forking is only applicable to private or internal repositories: %w", action.ResourceID, github.ErrInvalidFieldValue)
 				}
 			}
 			if change.Field == "is_template" {

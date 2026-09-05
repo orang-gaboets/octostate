@@ -86,8 +86,8 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 				return repo
 			}(),
 			{
-				Name:       "private-repo",
-				Visibility: "private",
+				Name:       "internal-repo",
+				Visibility: "internal",
 			},
 			{
 				Name:       "config-only",
@@ -122,8 +122,8 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 			},
 			{
 				Owner:        "orang-gaboets",
-				Name:         "private-repo",
-				Visibility:   "private",
+				Name:         "internal-repo",
+				Visibility:   "internal",
 				Description:  "",
 				Homepage:     "",
 				AllowForking: true,
@@ -159,7 +159,7 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 	}
 	assertMaterializedTopLevelConfig(t, desired, got)
 	assertMaterializedRepoBuilder(t, desired.Repositories[0], got.Repositories[0])
-	assertMaterializedPrivateRepo(t, got.Repositories[1])
+	assertMaterializedInternalRepo(t, got.Repositories[1])
 	assertMaterializedConfigOnlyRepo(t, got.Repositories[2])
 	assertNoLiveOnlyRepository(t, got.Repositories)
 
@@ -219,7 +219,7 @@ func assertMaterializedRepoBuilder(
 	}
 }
 
-func assertMaterializedPrivateRepo(t *testing.T, got config.RepositorySpec) {
+func assertMaterializedInternalRepo(t *testing.T, got config.RepositorySpec) {
 	t.Helper()
 
 	if description, managed := got.ManagedDescription(); !managed || description != "" {
@@ -229,7 +229,7 @@ func assertMaterializedPrivateRepo(t *testing.T, got config.RepositorySpec) {
 		t.Fatalf("expected empty live homepage to materialize as managed clear, got value=%q managed=%v", homepage, managed)
 	}
 	if allowForking, managed := got.ManagedAllowForking(); !managed || !allowForking {
-		t.Fatalf("expected allow_forking=true to materialize for private repo, got value=%v managed=%v", allowForking, managed)
+		t.Fatalf("expected allow_forking=true to materialize for internal repo, got value=%v managed=%v", allowForking, managed)
 	}
 	if archived, managed := got.ManagedArchived(); !managed || archived {
 		t.Fatalf("expected archived=false to materialize from live, got value=%v managed=%v", archived, managed)

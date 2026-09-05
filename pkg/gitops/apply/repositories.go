@@ -108,7 +108,7 @@ func (e *executor) updateRepository(action gitopsplan.Action) error {
 			if _, err := repositoryVisibility(repository.Visibility); err != nil {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
-			if !config.IsPrivateVisibility(repository.Visibility) {
+			if !config.SupportsAllowForking(repository.Visibility) {
 				break
 			}
 			editOptions.AllowForking = githubpkg.Ptr(repository.AllowForking)
@@ -159,7 +159,7 @@ func (e *executor) applyExactRepositorySettings(repository config.RepositorySpec
 	if isTemplate, managed := repository.ManagedIsTemplate(); managed {
 		editOptions.IsTemplate = githubpkg.Ptr(isTemplate)
 	}
-	if config.IsPrivateVisibility(repository.Visibility) {
+	if config.SupportsAllowForking(repository.Visibility) {
 		if allowForking, managed := repository.ManagedAllowForking(); managed {
 			editOptions.AllowForking = githubpkg.Ptr(allowForking)
 		}

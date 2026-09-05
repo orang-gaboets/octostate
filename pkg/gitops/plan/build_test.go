@@ -629,14 +629,14 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 	}
 }
 
-func TestBuildPlansAllowForkingDiffForPrivateRepository(t *testing.T) {
+func TestBuildPlansAllowForkingDiffForInternalRepository(t *testing.T) {
 	t.Parallel()
 
 	desired := testconfig.LoadDesiredConfig(t, `
 organization: orang-gaboets
 repositories:
   - name: octostate
-    visibility: private
+    visibility: internal
     allow_forking: false
 teams: []
 invites: []
@@ -649,7 +649,7 @@ invites: []
 			Repositories: []state.Repository{{
 				Owner:        "orang-gaboets",
 				Name:         "octostate",
-				Visibility:   "private",
+				Visibility:   "internal",
 				AllowForking: true,
 			}},
 		},
@@ -659,7 +659,7 @@ invites: []
 	}
 
 	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
-		t.Fatalf("expected private allow_forking drift, got %#v", report.Actions)
+		t.Fatalf("expected internal allow_forking drift, got %#v", report.Actions)
 	}
 }
 

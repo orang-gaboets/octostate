@@ -85,9 +85,12 @@ func TestBootstrapRepositoriesPreservesInternalVisibility(t *testing.T) {
 	t.Parallel()
 
 	got := bootstrapRepositories("acme", []state.Repository{{
-		Owner: "acme", Name: "platform", Visibility: "internal",
+		Owner: "acme", Name: "platform", Visibility: "internal", AllowForking: true,
 	}})
 	if len(got) != 1 || got[0].Visibility != "internal" {
 		t.Fatalf("expected internal visibility to be preserved, got %#v", got)
+	}
+	if value, managed := got[0].ManagedAllowForking(); !managed || !value {
+		t.Fatalf("expected internal allow_forking=true to be managed, got value=%v managed=%v", value, managed)
 	}
 }
