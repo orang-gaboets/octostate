@@ -162,6 +162,8 @@ jobs:
           bash -n .github/scripts/release-approval-gate.test.sh
           bash -n .github/scripts/git-remote-auth.sh
           bash -n .github/scripts/git-remote-auth.test.sh
+          bash -n .github/scripts/build-release-artifacts.sh
+          bash -n .github/scripts/build-release-artifacts.test.sh
 
       - name: Run ShellCheck v0.11.0
         run: >
@@ -175,6 +177,8 @@ jobs:
           .github/scripts/release-approval-gate.test.sh
           .github/scripts/git-remote-auth.sh
           .github/scripts/git-remote-auth.test.sh
+          .github/scripts/build-release-artifacts.sh
+          .github/scripts/build-release-artifacts.test.sh
 
       - name: Test release approval gate
         run: bash .github/scripts/release-approval-gate.test.sh
