@@ -54,14 +54,22 @@ Go 1.25.0 or newer is required. The module declares its language version in
 `go.mod` and may select the patched toolchain automatically when toolchain
 switching is enabled.
 
-For a local installation:
+For normal CLI use, download the matching prebuilt archive from the
+[GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
+its entry in `checksums.txt`, and place the `octostate` executable on `PATH`.
+Official archives are available for macOS (Intel and Apple Silicon), Linux
+(amd64 and arm64), and Windows (amd64).
+
+For a Go-native installation from source:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@latest
+go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
 ```
 
 Automation and control repositories should use an explicitly selected release
-instead of `@latest` so their behavior is reproducible.
+and verify its checksum instead of using `@latest` so their behavior is
+reproducible. Go developers embedding Octostate should import the Go module;
+contributors should clone the repository and follow the development guide.
 
 ## Authentication
 

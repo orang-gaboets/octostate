@@ -34,20 +34,68 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Run release-please with GitHub App token
-        if: ${{ steps.app-token.outputs.token != '' }}
+      - name: Run release-please
+        id: release-please
         # googleapis/release-please-action v5.0.0
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      - name: Run release-please with GITHUB_TOKEN fallback
-        if: ${{ steps.app-token.outputs.token == '' }}
-        # googleapis/release-please-action v5.0.0
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
+      - name: Check out the exact release tag
+        if: steps.release-please.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" \
+            fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          git checkout --detach "${RELEASE_TAG}"
+          [[ "$(git rev-parse HEAD^{commit})" == "${GITHUB_SHA}" ]] || {
+            echo "release tag ${RELEASE_TAG} does not target triggering commit ${GITHUB_SHA}" >&2
+            exit 1
+          }
+
+      - name: Set up Go
+        if: steps.release-please.outputs.release_created == 'true'
+        # actions/setup-go v7.0.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release artifacts
+        if: steps.release-please.outputs.release_created == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+        run: bash .github/scripts/build-release-artifacts.sh "${RELEASE_TAG}" dist
+
+      - name: Upload and verify release artifacts
+        if: steps.release-please.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          sha256sum -c dist/checksums.txt
+          mapfile -t assets < <(find dist -maxdepth 1 -type f \( -name 'octostate_*.tar.gz' -o -name 'octostate_*.zip' \) -print | sort)
+          [[ "${#assets[@]}" -eq 5 ]] || { echo 'expected exactly five release archives' >&2; exit 1; }
+          gh release upload "${RELEASE_TAG}" "${assets[@]}" dist/checksums.txt --clobber
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          [[ "$(jq -r '.tag_name' <<<"${release_json}")" == "${RELEASE_TAG}" ]] || exit 1
+          [[ "$(jq -r '.draft' <<<"${release_json}")" == 'true' ]] || {
+            echo 'matching release is not draft; refusing to publish artifacts' >&2
+            exit 1
+          }
+          for asset in "${assets[@]}" dist/checksums.txt; do
+            name=$(basename "${asset}")
+            jq -e --arg name "${name}" '.assets[] | select(.name == $name)' <<<"${release_json}" >/dev/null || {
+              echo "missing uploaded release asset: ${name}" >&2
+              exit 1
+            }
+          done
+          gh release edit "${RELEASE_TAG}" --draft=false

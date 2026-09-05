@@ -27,10 +27,16 @@ PowerShell commands for `PATH` and environment variables.
 
 ## Install and verify the CLI
 
-Install the latest release locally:
+For normal CLI use, download the archive for your platform from the
+[GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
+the archive against `checksums.txt`, extract it, and put the executable on
+`PATH`. Release archives contain only the executable, `LICENSE`, `README.md`,
+and `CHANGELOG.md`.
+
+If you prefer to build from source, install a pinned release with Go:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@latest
+go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
 ```
 
 Ensure Go's install directory is on `PATH`: use `$(go env GOBIN)` when it is
@@ -42,8 +48,10 @@ go_bin="$(go env GOBIN)"
 export PATH="$go_bin:$PATH"
 ```
 
-For automation or a control repository, replace `@latest` with an explicitly
-selected release so the workflow is reproducible.
+For automation or a control repository, use an explicitly selected release
+archive or `@v<version>` so the workflow is reproducible. Go programs embedding
+Octostate should use the module imports; contributors should clone the
+repository and use the development workflow.
 
 Verify that the binary is available:
 

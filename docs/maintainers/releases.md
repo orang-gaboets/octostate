@@ -28,6 +28,26 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+## CLI Release Artifacts
+
+Release Please remains the source of truth for the release version and tag.
+After an approved release PR merges, it creates the matching tag and a draft
+GitHub Release with immediate tag creation. The same workflow checks out that
+exact tag, verifies that it points to the triggering commit, builds the five
+supported CLI targets, uploads the archives and `checksums.txt` to that draft,
+verifies the final assets and SHA-256 entries, and only then publishes the
+Release.
+
+The custom archives are named `octostate_<version>_<os>_<arch>` with `.tar.gz`
+for macOS/Linux and `.zip` for Windows. Each contains only the executable,
+`LICENSE`, `README.md`, and `CHANGELOG.md`; GitHub's generated source archives
+are not changed. Re-running packaging may replace assets only on the same
+verified release tag and cannot silently target another release.
+
+Staging assets before publication preserves the ordering required by future
+GitHub immutable-release protection tracked in #266. It does not claim that
+immutable-release protection is currently enabled.
+
 ## Compatibility Notes for Releases
 
 When a release includes a concrete upgrade adaptation for existing
