@@ -162,6 +162,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          EXPECTED_COMMIT: ${{ steps.release.outputs.commit }}
         run: |
           set -euo pipefail
           (cd dist && sha256sum -c checksums.txt)
@@ -210,4 +211,15 @@ jobs:
               exit 1
             }
           done
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
+          peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${RELEASE_TAG}^{}" | awk '{print $1}')
+          [[ -n "${peeled}" ]] || peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${RELEASE_TAG}" | awk '{print $1}')
+          [[ "${peeled}" == "${EXPECTED_COMMIT}" ]] || {
+            echo "release tag ${RELEASE_TAG} moved before publication; refusing to publish artifacts" >&2
+            exit 1
+          }
           gh release edit "${RELEASE_TAG}" --draft=false
