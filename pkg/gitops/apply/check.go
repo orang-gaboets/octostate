@@ -15,7 +15,12 @@ import (
 )
 
 // CheckResult captures the actions that passed apply preflight validation and
-// the unsupported drift skipped by one check run.
+// the actions skipped by one check run.//
+// The skipped set holds every non-executable action, which covers two different
+// situations: destructive drift Octostate intentionally declines to reconcile,
+// and a desired create or update that planning determined cannot execute. Use
+// UnfulfilledDesiredActions to tell them apart, or
+// Options.RequireExecutableDesiredActions to fail on the second kind.
 type CheckResult struct {
 	Organization   string              `json:"organization"`
 	PlanSummary    gitopsplan.Summary  `json:"plan_summary"`

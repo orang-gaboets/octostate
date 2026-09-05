@@ -70,8 +70,13 @@ func (opt *Options) Validate() error {
 	return nil
 }
 
-// Result captures the actions executed and the unsupported drift skipped by one
-// apply run.
+// Result captures the actions executed and the actions skipped by one apply
+// run.//
+// The skipped set holds every non-executable action, which covers two different
+// situations: destructive drift Octostate intentionally declines to reconcile,
+// and a desired create or update that planning determined cannot execute. Use
+// UnfulfilledDesiredActions to tell them apart, or
+// Options.RequireExecutableDesiredActions to fail on the second kind.
 type Result struct {
 	Organization string              `json:"organization"`
 	PlanSummary  gitopsplan.Summary  `json:"plan_summary"`

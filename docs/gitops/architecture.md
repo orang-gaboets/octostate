@@ -64,9 +64,10 @@ Current collector concurrency limits:
 - Compares desired config with live `OrganizationState`
 - Produces the structured reconciliation report used by `config plan`
   and `config apply`
-- Builds the repository plan first, then computes the five independent
-  non-repository action phases concurrently and appends them in fixed order
-  before final action normalization
+- Computes the repository and organization-member availability plans first,
+  since later phases depend on them, then runs the four remaining action phases
+  concurrently and appends every phase in fixed order before final action
+  normalization
 - Builds managed same-organization template dependency edges for missing
   repositories and emits them in deterministic dependency-safe topological
   order, using normalized repository identity to break ready-action ties
