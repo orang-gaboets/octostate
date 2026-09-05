@@ -122,25 +122,24 @@ func TestCreateRepoCmdRejectsInternalTemplateDryRun(t *testing.T) {
 	}
 }
 
-func TestCreateRepoCmdRejectsInternalTemplateToConfig(t *testing.T) {
+func TestCreateRepoCmdToConfigAllowsInternalTemplate(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "organization.yaml")
-	before := []byte("organization: org\nrepositories: []\n")
-	if err := os.WriteFile(configPath, before, 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte("organization: org\nrepositories: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	cmd := reposcmd.CreateRepoCmd(nil)
 	cmd.SetArgs([]string{"--org", "org", "--template-name", "base", "--name", "service", "--visibility", "internal", "--to-config", configPath})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsupported for template-based") {
-		t.Fatalf("expected unsupported template visibility error, got %v", err)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("internal template proposal returned error: %v", err)
 	}
 
-	after, err := os.ReadFile(configPath)
+	cfg, err := gitopsconfig.LoadFile(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(after, before) {
-		t.Fatalf("config changed after unsupported template proposal rejection:\n%s", after)
+	if len(cfg.Repositories) != 1 || cfg.Repositories[0].Visibility != "internal" || cfg.Repositories[0].Template.Name != "base" {
+		t.Fatalf("unexpected internal template proposal: %#v", cfg.Repositories)
 	}
 }
 
