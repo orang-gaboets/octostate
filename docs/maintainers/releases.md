@@ -53,6 +53,18 @@ GitHub's generated source archives are not changed. Re-running packaging may
 replace assets only on the same verified release tag and cannot silently target
 another release.
 
+If a run fails after the draft Release exists, retry it from **Actions** using
+the `Release Please` workflow's `release_tag` and `release_commit` inputs. Set
+`release_tag` to the draft tag and `release_commit` to the commit that tag
+resolves to; both values are required so the workflow cannot package another
+commit. For example:
+
+```bash
+gh workflow run release-please.yml \
+  -f release_tag=v1.2.3 \
+  -f release_commit=<tagged-commit-sha>
+```
+
 Staging assets before publication preserves the ordering required by future
 GitHub immutable-release protection tracked in #266. It does not claim that
 immutable-release protection is currently enabled.
