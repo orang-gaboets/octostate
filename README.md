@@ -54,7 +54,8 @@ Go 1.25.0 or newer is required only when installing from source with `go
 install`, embedding Octostate in a Go program, or developing the repository. It
 is not required for normal CLI use from a prebuilt archive.
 
-For normal CLI use, download the matching prebuilt archive from the
+For releases that provide prebuilt artifacts (starting with v1.3.0), normal CLI
+users should download the matching archive from the
 [GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
 its entry in `checksums.txt`, and place the `octostate` executable on `PATH`.
 Official archives are available for macOS (Intel and Apple Silicon), Linux

@@ -29,7 +29,8 @@ PowerShell commands for `PATH` and environment variables.
 
 ## Install and verify the CLI
 
-For normal CLI use, download the archive for your platform from the
+For releases that provide prebuilt artifacts (starting with v1.3.0), normal CLI
+users should download the archive for their platform from the
 [GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
 the archive against `checksums.txt`, extract it, and put the executable on
 `PATH`. Release archives contain only the executable, `LICENSE`, `README.md`,
