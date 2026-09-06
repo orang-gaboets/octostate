@@ -28,6 +28,48 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+## CLI Release Artifacts
+
+Release Please remains the source of truth for the release version and tag.
+After an approved release PR merges, it creates the matching tag and a draft
+GitHub Release with immediate tag creation. The same workflow checks out that
+exact tag, verifies that it points to the release commit reported by
+`release-please` or the explicitly supplied retry commit, builds the five
+supported CLI targets, uploads the archives and `checksums.txt` to that draft,
+verifies the final assets and SHA-256 entries, and only then publishes the
+Release.
+
+The custom archives are named:
+
+```text
+octostate_<version>_darwin_amd64.tar.gz
+octostate_<version>_darwin_arm64.tar.gz
+octostate_<version>_linux_amd64.tar.gz
+octostate_<version>_linux_arm64.tar.gz
+octostate_<version>_windows_amd64.zip
+```
+
+Each contains only the executable, `LICENSE`, `README.md`, and `CHANGELOG.md`;
+GitHub's generated source archives are not changed. Re-running packaging may
+replace assets only on the same verified release tag and cannot silently target
+another release.
+
+If a run fails after the draft Release exists, retry it from **Actions** using
+the `Release Please` workflow's `release_tag` and `release_commit` inputs. Set
+`release_tag` to the draft tag and `release_commit` to the commit that tag
+resolves to; both values are required so the workflow cannot package another
+commit. For example:
+
+```bash
+gh workflow run release-please.yml \
+  -f release_tag=v1.2.3 \
+  -f release_commit=<tagged-commit-sha>
+```
+
+Staging assets before publication preserves the ordering required by future
+GitHub immutable-release protection tracked in #266. It does not claim that
+immutable-release protection is currently enabled.
+
 ## Compatibility Notes for Releases
 
 When a release includes a concrete upgrade adaptation for existing
@@ -53,8 +95,9 @@ free-floating `Unreleased` section for hand-maintained migration text. The
 versioned compatibility document is the canonical detailed home; release
 surfaces should link to it rather than duplicate it.
 
-The pointer is applied in two stages, because the release tag does not exist
-until publication.
+The pointer is applied in two stages. Before the release PR merges, the release
+tag does not exist. After the merge, `release-please` creates the tag and draft
+Release; the final published Release body is updated and verified separately.
 
 ### Stage 1: the release PR, before merge
 
@@ -65,8 +108,8 @@ release PR body and read the PR body back to confirm it persisted. If
 `release-please` regenerates the PR body, repeat this checkpoint after the final
 update.
 
-At this stage the pointer may use `blob/main`, because the release tag does not
-yet exist:
+At this stage the pointer may use `blob/main`, because the release tag is not
+created until the release PR merges:
 
 ```text
 Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v<version>-compatibility.md
@@ -82,10 +125,11 @@ body afterwards cannot add it to the tagged tree.
 
 ### Stage 2: the published GitHub Release, after publication
 
-Once the release is published, the tag exists and the pointer must use that
-release tag rather than `main`. Read back the published Release body and confirm
-it contains **exactly one** direct pointer to the same versioned compatibility
-document, addressed through the release tag:
+After the release PR merges, `release-please` creates the tag and draft Release.
+Once that Release is published, its pointer must use the release tag rather than
+`main`. Read back the published Release body and confirm it contains **exactly
+one** direct pointer to the same versioned compatibility document, addressed
+through the release tag:
 
 ```text
 Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/v<version>/docs/maintainers/v<version>-compatibility.md

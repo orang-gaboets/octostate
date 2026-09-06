@@ -5,6 +5,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing draft release tag to package on retry'
+        required: false
+        type: string
+      release_commit:
+        description: 'Expected commit for release_tag when retrying'
+        required: false
+        type: string
 
 concurrency:
   group: release-please-${{ github.workflow }}
@@ -34,20 +43,159 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Run release-please with GitHub App token
-        if: ${{ steps.app-token.outputs.token != '' }}
+      - name: Validate retry inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RETRY_TAG: ${{ inputs.release_tag }}
+          RETRY_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -euo pipefail
+          [[ -n "${RETRY_TAG}" && -n "${RETRY_COMMIT}" ]] ||
+            [[ -z "${RETRY_TAG}" && -z "${RETRY_COMMIT}" ]] || {
+              echo 'release_tag and release_commit must be supplied together' >&2
+              exit 1
+            }
+
+      - name: Run release-please
+        id: release-please
+        if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
         # googleapis/release-please-action v5.0.0
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      - name: Run release-please with GITHUB_TOKEN fallback
-        if: ${{ steps.app-token.outputs.token == '' }}
-        # googleapis/release-please-action v5.0.0
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
+      - name: Resolve release to package
+        id: release
+        env:
+          CREATED_TAG: ${{ steps.release-please.outputs.tag_name }}
+          CREATED_COMMIT: ${{ steps.release-please.outputs.sha }}
+          RETRY_TAG: ${{ inputs.release_tag }}
+          RETRY_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          set -euo pipefail
+          tag=''
+          commit=''
+          if [[ -n "${CREATED_TAG}" ]]; then
+            [[ -n "${CREATED_COMMIT}" ]] || {
+              echo 'release-please returned a tag without its release commit' >&2
+              exit 1
+            }
+            tag="${CREATED_TAG}"
+            commit="${CREATED_COMMIT}"
+          elif [[ -n "${RETRY_TAG}" ]]; then
+            tag="${RETRY_TAG}"
+            commit="${RETRY_COMMIT}"
+          fi
+          if [[ -n "${tag}" ]]; then
+            [[ -n "${commit}" ]] || { echo 'release retry requires release_commit' >&2; exit 1; }
+            {
+              printf 'tag=%s\n' "${tag}"
+              printf 'commit=%s\n' "${commit}"
+              printf 'should_package=true\n'
+            } >> "$GITHUB_OUTPUT"
+          else
+            printf 'should_package=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the exact release tag
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          EXPECTED_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
+          git fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          git checkout --detach "${RELEASE_TAG}"
+          [[ -n "${EXPECTED_COMMIT}" ]] || { echo 'retry requires release_commit' >&2; exit 1; }
+          [[ "$(git rev-parse "HEAD^{commit}")" == "${EXPECTED_COMMIT}" ]] || {
+            echo "release tag ${RELEASE_TAG} does not target expected commit ${EXPECTED_COMMIT}" >&2
+            exit 1
+          }
+
+      - name: Set up Go
+        if: steps.release.outputs.should_package == 'true'
+        # actions/setup-go v7.0.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release artifacts
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: bash .github/scripts/build-release-artifacts.sh "${RELEASE_TAG}" dist
+
+      - name: Upload and verify release artifacts
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          EXPECTED_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum -c checksums.txt)
+          mapfile -t assets < <(find dist -maxdepth 1 -type f \( -name 'octostate_*.tar.gz' -o -name 'octostate_*.zip' \) -print | sort)
+          [[ "${#assets[@]}" -eq 5 ]] || { echo 'expected exactly five release archives' >&2; exit 1; }
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          [[ "$(jq -r '.tag_name' <<<"${release_json}")" == "${RELEASE_TAG}" ]] || exit 1
+          [[ "$(jq -r '.draft' <<<"${release_json}")" == 'true' ]] || {
+            echo 'matching release is not draft; refusing to publish artifacts' >&2
+            exit 1
+          }
+          for asset in "${assets[@]}" dist/checksums.txt; do
+            name=$(basename "${asset}")
+            asset_id=$(jq -r --arg name "${name}" '.assets[] | select(.name == $name) | .id' <<<"${release_json}")
+            if [[ -n "${asset_id}" ]]; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+            fi
+          done
+          gh release upload "${RELEASE_TAG}" "${assets[@]}" dist/checksums.txt
+          rm -rf remote-assets
+          mkdir remote-assets
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          for asset in "${assets[@]}" dist/checksums.txt; do
+            name=$(basename "${asset}")
+            asset_url=$(jq -r --arg name "${name}" '.assets[] | select(.name == $name) | .url' <<<"${release_json}")
+            [[ -n "${asset_url}" && "${asset_url}" != 'null' ]] || {
+              echo "missing uploaded release asset URL: ${name}" >&2
+              exit 1
+            }
+            gh api -H 'Accept: application/octet-stream' "${asset_url}" > "remote-assets/${name}"
+          done
+          (cd remote-assets && sha256sum -c ../dist/checksums.txt)
+          cmp -s dist/checksums.txt remote-assets/checksums.txt || {
+            echo 'uploaded checksum manifest differs from the local manifest' >&2
+            exit 1
+          }
+          release_json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          [[ "$(jq -r '.draft' <<<"${release_json}")" == 'true' ]] || {
+            echo 'matching release stopped being draft during upload; refusing to publish' >&2
+            exit 1
+          }
+          expected_asset_names=$(printf '%s\n' "${assets[@]}" dist/checksums.txt | sed 's#^dist/##' | sort)
+          actual_asset_names=$(jq -r '.assets[].name' <<<"${release_json}" | sort)
+          [[ "${actual_asset_names}" == "${expected_asset_names}" ]] || {
+            echo 'release contains unexpected or missing assets; refusing to publish' >&2
+            exit 1
+          }
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
+          peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${RELEASE_TAG}^{}" | awk '{print $1}')
+          [[ -n "${peeled}" ]] || peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${RELEASE_TAG}" | awk '{print $1}')
+          [[ "${peeled}" == "${EXPECTED_COMMIT}" ]] || {
+            echo "release tag ${RELEASE_TAG} moved before publication; refusing to publish artifacts" >&2
+            exit 1
+          }
+          gh release edit "${RELEASE_TAG}" --draft=false

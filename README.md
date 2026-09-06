@@ -50,18 +50,41 @@ The complete newcomer walkthrough, including a fuller example, is in
 
 ## Install
 
-Go 1.25.0 or newer is required. The module declares its language version in
-`go.mod` and may select the patched toolchain automatically when toolchain
-switching is enabled.
+Go 1.25.0 or newer is required only when installing from source with `go
+install`, embedding Octostate in a Go program, or developing the repository. It
+is not required for normal CLI use from a prebuilt archive.
 
-For a local installation:
+For releases that provide prebuilt artifacts (starting with v1.3.0), normal CLI
+users should download the matching archive from the
+[GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
+its entry in `checksums.txt`, and place the `octostate` executable on `PATH`.
+Official archives are available for macOS (Intel and Apple Silicon), Linux
+(amd64 and arm64), and Windows (amd64).
+
+To verify one downloaded archive, replace the placeholder with its filename:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@latest
+archive='octostate_<version>_<platform-archive>'
+entry=$(grep -F "  $archive" checksums.txt) || { echo "checksum entry not found: $archive" >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then
+  printf '%s\n' "$entry" | sha256sum -c -
+else
+  printf '%s\n' "$entry" | shasum -a 256 -c -
+fi
 ```
 
-Automation and control repositories should use an explicitly selected release
-instead of `@latest` so their behavior is reproducible.
+For a Go-native installation from source:
+
+```bash
+go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
+```
+
+Automation and control repositories should pin an explicit version. Prefer a
+pinned release archive with checksum verification, or use
+`go install ...@v<version>` when a Go-native installation is appropriate;
+avoid `@latest` for reproducible automation. Go developers embedding Octostate
+should import the Go module; contributors should clone the repository and follow
+the development guide.
 
 ## Authentication
 
