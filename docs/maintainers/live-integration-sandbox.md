@@ -291,9 +291,8 @@ token; the trust job only validates trusted code and the committed fixture.
    read, and Metadata read. Run
    `.github/scripts/live-integration.sh --read-only` for config validate,
    config plan, config apply `--check`, audit pull, and audit diff.
-2. Revoke the read-only installation token through GitHub and clear its
-   variables from the step environment. No write-scoped token exists during
-   the trust job or before this read-only phase completes.
+2. Revoke the read-only installation token through GitHub. No write-scoped
+   token exists during the trust job or before this read-only phase completes.
 3. Mint a new short-lived token with Administration write, Members read, and
    Metadata read, using the same owner and repository scope. Invoke
    `.github/scripts/live-integration.sh --mutate` exactly once.

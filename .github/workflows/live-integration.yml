@@ -82,7 +82,7 @@ jobs:
           GH_TOKEN: ${{ steps.readonly-token.outputs.token }}
           OCTOSTATE_GITHUB_TOKEN: ${{ steps.readonly-token.outputs.token }}
         run: .github/scripts/live-integration.sh --read-only
-      - name: Revoke read-only token and clear environment
+      - name: Revoke read-only token
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ steps.readonly-token.outputs.token }}
@@ -90,7 +90,6 @@ jobs:
         run: |
           set -euo pipefail
           gh api --method DELETE /installation/token >/dev/null
-          unset GH_TOKEN OCTOSTATE_GITHUB_TOKEN
       - name: Create write-scoped live-test installation token
         id: app-token
         timeout-minutes: 5
