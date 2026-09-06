@@ -136,7 +136,7 @@ Bootstrap rules:
 - Pending invites are excluded by default
 - Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
-- `allow_forking` is included for private repositories and omitted for public repositories
+- `allow_forking` is included for private or internal repositories and omitted for public repositories
 - Direct organization members outside teams are represented through top-level `members:`
 
 Write behavior:
@@ -225,7 +225,7 @@ Materialize rules:
   - `is_template`
 - Empty live string values become explicit managed empty-string clears
 - Boolean live values, including `false`, become explicit managed booleans
-- `allow_forking` is materialized for desired private repositories when it is unmanaged
+- `allow_forking` is materialized for desired private or internal repositories when it is unmanaged
 - If a repository is not yet declared in config, adopt it first and then materialize optional fields afterward
 
 Example print-to-stdout use:

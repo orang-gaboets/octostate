@@ -19,10 +19,12 @@ import (
 type captureEditRepoService struct {
 	auth.MockRepoService
 	editCalled bool
+	editRepo   *gh.Repository
 }
 
-func (s *captureEditRepoService) Edit(_ context.Context, _, _ string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
+func (s *captureEditRepoService) Edit(_ context.Context, _, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 	s.editCalled = true
+	s.editRepo = repository
 	return &gh.Repository{}, nil, nil
 }
 
@@ -129,6 +131,42 @@ func TestEditRepoWithInvalidFlags(t *testing.T) {
 	})
 	if err := c.Execute(); err == nil {
 		t.Fatalf("expected error for invalid flag value")
+	}
+}
+
+func TestEditRepoRejectsPrivateAndVisibilityTogether(t *testing.T) {
+	service := &captureEditRepoService{}
+	c := reposcmd.EditRepo(service)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--private", "--visibility", "internal"})
+	if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("expected visibility conflict, got %v", err)
+	}
+	if service.editCalled {
+		t.Fatal("visibility conflict reached edit service")
+	}
+}
+
+func TestEditRepoSupportsInternalVisibility(t *testing.T) {
+	service := &captureEditRepoService{}
+	c := reposcmd.EditRepo(service)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--visibility", "internal"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("internal visibility edit returned error: %v", err)
+	}
+	if !service.editCalled || service.editRepo == nil || service.editRepo.GetVisibility() != "internal" || service.editRepo.Private != nil {
+		t.Fatalf("unexpected internal visibility edit request: %#v", service.editRepo)
+	}
+}
+
+func TestEditRepoRejectsInvalidVisibility(t *testing.T) {
+	service := &captureEditRepoService{}
+	c := reposcmd.EditRepo(service)
+	c.SetArgs([]string{"--org", "o", "--name", "n", "--visibility", "unknown"})
+	if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "invalid --visibility value") {
+		t.Fatalf("expected invalid visibility error, got %v", err)
+	}
+	if service.editCalled {
+		t.Fatal("invalid visibility reached edit service")
 	}
 }
 

@@ -27,6 +27,7 @@ type CreateOptions struct {
 	Owner       string
 	Description *string
 	Homepage    *string
+	Visibility  *string
 	Private     *bool
 	Topics      []string
 }
@@ -96,6 +97,7 @@ type EditOptions struct {
 	Owner        string
 	Description  *string
 	Homepage     *string
+	Visibility   *string
 	Private      *bool
 	IsTemplate   *bool
 	Archived     *bool

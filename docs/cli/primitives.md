@@ -253,7 +253,7 @@ Flags:
 ### `octostate repo create-from-template`
 
 ```bash
-octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--to-config <organization.yaml> | --dry-run]
+octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false | --visibility public|private|internal] [--include-all-branches true|false] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -268,6 +268,7 @@ Flags:
 - `--desc` (optional): Repository description
 - `--topics` (optional): Comma-separated list of repository topics
 - `--private` (optional): Create a private repository (default is public)
+- `--visibility` (optional): Select `public`, `private`, or `internal`; cannot be combined with `--private`. Live template creation with `internal` is unsupported, but `--to-config` may record it for later planning.
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
 - `--to-config` (optional): Add the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository creation without creating it
@@ -279,7 +280,11 @@ when `--template-name` is omitted. Supplying `--template-name` selects the
 template-based path; `--template-org` defaults to `--org`. It supports the
 same live, `--dry-run`, and `--to-config` modes. `--include-all-branches` is
 valid only with a template. Existing `repo create-from-template` invocations
-remain available for explicit template creation.
+remain available for explicit template creation. For ordinary creation, use
+`--visibility public|private|internal`. Live template creation with `internal`
+is unsupported; `--to-config` may still record an internal template-backed
+desired state, which planning marks non-executable while the repository is
+missing.
 
 ### `octostate repo delete`
 
@@ -308,7 +313,7 @@ Flags:
 ### `octostate repo edit`
 
 ```bash
-octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--to-config <organization.yaml> | --dry-run]
+octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false | --visibility public|private|internal] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -321,9 +326,10 @@ Flags:
 - `--desc` (optional): Repository description
 - `--homepage` (optional): Repository homepage URL
 - `--private` (optional): Set repository to private/public
+- `--visibility` (optional): Set repository visibility to `public`, `private`, or `internal`; cannot be combined with `--private`
 - `--is-template` (optional): Set or unset repository as a template
 - `--archived` (optional): Archive/unarchive the repository
-- `--allow-forking` (optional): Allow/disallow private forking of the repository
+- `--allow-forking` (optional): Allow/disallow forking of a private or internal repository
 - `--to-config` (optional): Apply the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository edits without updating the repository
 

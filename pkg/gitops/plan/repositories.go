@@ -25,7 +25,7 @@ func repositoryUpdateAction(repository config.RepositorySpec, actual state.Repos
 	if !equalStringSets(actual.Topics, repository.Topics) {
 		changes = append(changes, FieldChange{Field: "topics", From: sortedStrings(actual.Topics), To: sortedStrings(repository.Topics)})
 	}
-	if allowForking, managed := repository.ManagedAllowForking(); managed && config.IsPrivateVisibility(repository.Visibility) && actual.AllowForking != allowForking {
+	if allowForking, managed := repository.ManagedAllowForking(); managed && config.SupportsAllowForking(repository.Visibility) && actual.AllowForking != allowForking {
 		changes = append(changes, FieldChange{Field: "allow_forking", From: actual.AllowForking, To: allowForking})
 	}
 	if archived, managed := repository.ManagedArchived(); managed && actual.Archived != archived {

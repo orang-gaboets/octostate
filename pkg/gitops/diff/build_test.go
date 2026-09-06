@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -369,6 +370,33 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	}
 	if !reflect.DeepEqual(report, want) {
 		t.Fatalf("unexpected report:\n got %#v\nwant %#v", report, want)
+	}
+}
+
+func TestBuildPlansInternalRepositoryVisibilityDrift(t *testing.T) {
+	t.Parallel()
+
+	actual := state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "octostate", Visibility: "public"}},
+	}
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &actual)
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Actions) != 1 || report.Actions[0].Operation != gitopsplan.ActionOperationUpdate || len(report.Actions[0].Changes) != 1 {
+		t.Fatalf("unexpected internal visibility drift report: %#v", report.Actions)
+	}
+	change := report.Actions[0].Changes[0]
+	if change.Field != "visibility" || change.From != "public" || change.To != "internal" {
+		t.Fatalf("unexpected internal visibility change: %#v", change)
 	}
 }
 
@@ -894,6 +922,14 @@ func TestBuildInviteUserIDPendingInviteWithoutResolvedUserIDMappingCreatesDrift(
 }
 
 func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
+	testBuildRepositoryAllowForkingDrift(t, "private")
+}
+
+func TestBuildInternalRepositoryPlansAllowForkingDrift(t *testing.T) {
+	testBuildRepositoryAllowForkingDrift(t, "internal")
+}
+
+func testBuildRepositoryAllowForkingDrift(t *testing.T, visibility string) {
 	t.Parallel()
 
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 15, 0, 0, time.UTC), &state.OrganizationState{
@@ -902,7 +938,7 @@ func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
 			{
 				Owner:        "orang-gaboets",
 				Name:         "octostate",
-				Visibility:   "private",
+				Visibility:   visibility,
 				Description:  "CLI",
 				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
@@ -913,11 +949,11 @@ func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
 		},
 	})
 
-	desired := testconfig.LoadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, fmt.Sprintf(`
 organization: orang-gaboets
 repositories:
   - name: octostate
-    visibility: private
+    visibility: %s
     description: "CLI"
     homepage: "https://example.com/octostate"
     topics: [gitops]
@@ -926,7 +962,7 @@ repositories:
     is_template: false
 teams: []
 invites: []
-`)
+`, visibility))
 
 	report, err := Build(Options{
 		Desired:  desired,
@@ -936,7 +972,7 @@ invites: []
 		t.Fatalf("Build returned error: %v", err)
 	}
 	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
-		t.Fatalf("expected private allow_forking drift, got %#v", report.Actions)
+		t.Fatalf("expected %s allow_forking drift, got %#v", visibility, report.Actions)
 	}
 }
 

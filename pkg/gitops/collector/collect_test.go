@@ -186,7 +186,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 				{
 					Owner:        &gh.User{Login: githubpkg.Ptr(orgName)},
 					Name:         githubpkg.Ptr("octostate"),
-					Visibility:   githubpkg.Ptr("private"),
+					Visibility:   githubpkg.Ptr("internal"),
 					Description:  githubpkg.Ptr("CLI"),
 					Homepage:     githubpkg.Ptr("https://example.com/octostate"),
 					Topics:       []string{"gitops", "go"},
@@ -328,7 +328,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 		},
 		Repositories: []state.Repository{
 			{Owner: orgName, Name: "alpha", Visibility: "public", Description: "Alpha repo", Homepage: "", Topics: []string{}, AllowForking: true, Archived: false, IsTemplate: true},
-			{Owner: orgName, Name: "octostate", Visibility: "private", Description: "CLI", Homepage: "https://example.com/octostate", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
+			{Owner: orgName, Name: "octostate", Visibility: "internal", Description: "CLI", Homepage: "https://example.com/octostate", Topics: []string{"gitops", "go"}, AllowForking: false, Archived: false, IsTemplate: false},
 		},
 		Teams: []state.Team{
 			{ID: 1, Slug: "admins", Name: "Admins", Description: "Admin team", Privacy: "secret", ParentSlug: ""},

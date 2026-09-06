@@ -18,8 +18,9 @@ var (
 		"billing_manager": {},
 	}
 	validRepositoryVisibility = map[string]struct{}{
-		"public":  {},
-		"private": {},
+		"public":   {},
+		"private":  {},
+		"internal": {},
 	}
 	validTeamPrivacy = map[string]struct{}{
 		"closed": {},

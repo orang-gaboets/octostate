@@ -93,7 +93,7 @@ func materializeRepository(
 	if _, managed := desired.ManagedHomepage(); !managed {
 		materialized.SetManagedHomepage(actual.Homepage)
 	}
-	if config.IsPrivateVisibility(desired.Visibility) {
+	if config.SupportsAllowForking(desired.Visibility) {
 		if _, managed := desired.ManagedAllowForking(); !managed {
 			materialized.SetManagedAllowForking(actual.AllowForking)
 		}

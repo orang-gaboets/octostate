@@ -44,7 +44,7 @@ func (b builder) planRepositories() []Action {
 		if !equalStringSets(actualRepository.Topics, repository.Topics) {
 			changes = append(changes, FieldChange{Field: "topics", From: sortedStrings(actualRepository.Topics), To: sortedStrings(repository.Topics)})
 		}
-		if allowForking, managed := repository.ManagedAllowForking(); managed && config.IsPrivateVisibility(repository.Visibility) && actualRepository.AllowForking != allowForking {
+		if allowForking, managed := repository.ManagedAllowForking(); managed && config.SupportsAllowForking(repository.Visibility) && actualRepository.AllowForking != allowForking {
 			changes = append(changes, FieldChange{Field: "allow_forking", From: actualRepository.AllowForking, To: allowForking})
 		}
 		if archived, managed := repository.ManagedArchived(); managed && actualRepository.Archived != archived {

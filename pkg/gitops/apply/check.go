@@ -188,24 +188,27 @@ func (e *executor) preflightRepositoryCreate(action gitopsplan.Action) error {
 	if !ok {
 		return fmt.Errorf("desired repository %s not found: %w", action.ResourceID, github.ErrNotFound)
 	}
-	private, err := visibilityPrivateFlag(repository.Visibility)
+	visibility, err := repositoryVisibility(repository.Visibility)
 	if err != nil {
 		return fmt.Errorf("create repository %s: %w", action.ResourceID, err)
 	}
 
 	var validateErr error
 	if repository.Template.Owner == "" && repository.Template.Name == "" {
-		createOptions := repos.CreateOptions{Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner, Private: github.Ptr(private)}
+		createOptions := repos.CreateOptions{Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner, Visibility: github.Ptr(visibility)}
 		if description, managed := repository.ManagedDescription(); managed {
 			createOptions.Description = github.Ptr(description)
 		}
 		validateErr = createOptions.Validate()
 	} else {
+		if visibility == "internal" {
+			return fmt.Errorf("create repository %s: internal visibility is unsupported for template-based creation: %w", action.ResourceID, github.ErrInvalidFieldValue)
+		}
 		createOptions := repos.CreateFromTemplateOptions{
 			Service: e.repositoryService, Name: repository.Name, Owner: repository.Owner,
 			TemplateOwner: repository.Template.Owner, TemplateRepo: repository.Template.Name,
 			SkipTopicSync: true, IncludeAllBranches: repository.Template.IncludeAllBranches,
-			Private: github.Ptr(private),
+			Private: github.Ptr(visibility == "private"),
 		}
 		if description, managed := repository.ManagedDescription(); managed {
 			createOptions.Description = github.Ptr(description)
@@ -254,13 +257,13 @@ func (e *executor) preflightRepositoryUpdate(action gitopsplan.Action) error {
 	for _, change := range action.Changes {
 		switch change.Field {
 		case "visibility":
-			if _, err := visibilityPrivateFlag(repository.Visibility); err != nil {
+			if _, err := repositoryVisibility(repository.Visibility); err != nil {
 				return fmt.Errorf("update repository %s: %w", action.ResourceID, err)
 			}
 		case "description", "homepage", "topics", "allow_forking", "archived", "is_template":
 			if change.Field == "allow_forking" {
-				if !config.IsPrivateVisibility(repository.Visibility) {
-					return fmt.Errorf("update repository %s: allow_forking is only applicable to private repositories: %w", action.ResourceID, github.ErrInvalidFieldValue)
+				if !config.SupportsAllowForking(repository.Visibility) {
+					return fmt.Errorf("update repository %s: allow_forking is only applicable to private or internal repositories: %w", action.ResourceID, github.ErrInvalidFieldValue)
 				}
 			}
 			if change.Field == "is_template" {

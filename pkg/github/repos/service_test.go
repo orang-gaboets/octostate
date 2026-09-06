@@ -84,32 +84,33 @@ var (
 )
 
 type mockService struct {
-	createCalled    bool
-	deleteCalled    bool
-	editCalled      bool
-	getCalled       bool
-	listCalled      bool
-	replaceCalled   bool
-	listByOrgCalled bool
-	createErr       error
-	deleteErr       error
-	editErr         error
-	getErr          error
-	listErr         error
-	replaceErr      error
-	listByOrgErr    error
-	owner           string
-	repoName        string
-	repoDesc        string
-	repoHomepage    string
-	repoTopics      []string
-	repoPrivate     bool
-	templateName    string
-	templateOwner   string
-	editOptions     EditOptions
-	listByOrgType   string
-	lastPage        int
-	orgRepos        [][]*gh.Repository
+	createCalled         bool
+	deleteCalled         bool
+	editCalled           bool
+	getCalled            bool
+	listCalled           bool
+	replaceCalled        bool
+	listByOrgCalled      bool
+	createErr            error
+	deleteErr            error
+	editErr              error
+	getErr               error
+	listErr              error
+	replaceErr           error
+	listByOrgErr         error
+	owner                string
+	repoName             string
+	repoDesc             string
+	repoHomepage         string
+	repoTopics           []string
+	repoPrivate          bool
+	lastCreateVisibility string
+	templateName         string
+	templateOwner        string
+	editOptions          EditOptions
+	listByOrgType        string
+	lastPage             int
+	orgRepos             [][]*gh.Repository
 }
 
 func (m *mockService) CreateFromTemplate(_ context.Context, owner, repo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
@@ -154,6 +155,7 @@ func (m *mockService) Create(_ context.Context, owner string, req *gh.Repository
 		m.repoDesc = req.GetDescription()
 		m.repoHomepage = req.GetHomepage()
 		m.repoPrivate = req.GetPrivate()
+		m.lastCreateVisibility = req.GetVisibility()
 	}
 	return &gh.Repository{}, nil, nil
 }
@@ -175,6 +177,20 @@ func TestCreateSuccess(t *testing.T) {
 	}
 	if !reflect.DeepEqual(mockSvc.repoTopics, []string{"go"}) {
 		t.Fatalf("expected topics %v, got %v", []string{"go"}, mockSvc.repoTopics)
+	}
+}
+
+func TestCreateInternalUsesVisibility(t *testing.T) {
+	mockSvc := &mockService{}
+	visibility := "internal"
+	_, err := Create(context.Background(), CreateOptions{
+		Service: mockSvc, Owner: "org", Name: "service", Visibility: &visibility,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if mockSvc.lastCreateVisibility != "internal" {
+		t.Fatalf("expected internal visibility, got %q", mockSvc.lastCreateVisibility)
 	}
 }
 
