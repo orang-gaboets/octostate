@@ -20,16 +20,12 @@ func (b builder) planRepositories() []Action {
 		desiredRepos[key] = repository
 		actualRepository, ok := actualRepos[key]
 		if !ok {
-			executable := repositoryCreatable(repository)
 			message := fmt.Sprintf("create repository %s", repositoryID(repository.Owner, repository.Name))
-			if !executable {
-				message = fmt.Sprintf("repository %s cannot be created because template configuration is missing", repositoryID(repository.Owner, repository.Name))
-			}
 			actions = append(actions, Action{
 				ResourceType: ActionResourceTypeRepository,
 				Operation:    ActionOperationCreate,
 				ResourceID:   repositoryID(repository.Owner, repository.Name),
-				Executable:   executable,
+				Executable:   true,
 				Message:      message,
 			})
 			continue
@@ -48,7 +44,7 @@ func (b builder) planRepositories() []Action {
 		if !equalStringSets(actualRepository.Topics, repository.Topics) {
 			changes = append(changes, FieldChange{Field: "topics", From: sortedStrings(actualRepository.Topics), To: sortedStrings(repository.Topics)})
 		}
-		if allowForking, managed := repository.ManagedAllowForking(); managed && repository.Visibility != "private" && actualRepository.AllowForking != allowForking {
+		if allowForking, managed := repository.ManagedAllowForking(); managed && config.SupportsAllowForking(repository.Visibility) && actualRepository.AllowForking != allowForking {
 			changes = append(changes, FieldChange{Field: "allow_forking", From: actualRepository.AllowForking, To: allowForking})
 		}
 		if archived, managed := repository.ManagedArchived(); managed && actualRepository.Archived != archived {

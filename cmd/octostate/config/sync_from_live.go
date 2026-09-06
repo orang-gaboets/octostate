@@ -12,8 +12,8 @@ import (
 
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/filereplace"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/internal/filereplace"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"

@@ -3,6 +3,7 @@ package diff
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -372,6 +373,33 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	}
 }
 
+func TestBuildPlansInternalRepositoryVisibilityDrift(t *testing.T) {
+	t.Parallel()
+
+	actual := state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "octostate", Visibility: "public"}},
+	}
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &actual)
+	report, err := Build(Options{
+		Desired: config.OrganizationConfig{
+			Organization: "orang-gaboets",
+			Repositories: []config.RepositorySpec{{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}},
+		},
+		Snapshot: &snap,
+	})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+	if len(report.Actions) != 1 || report.Actions[0].Operation != gitopsplan.ActionOperationUpdate || len(report.Actions[0].Changes) != 1 {
+		t.Fatalf("unexpected internal visibility drift report: %#v", report.Actions)
+	}
+	change := report.Actions[0].Changes[0]
+	if change.Field != "visibility" || change.From != "public" || change.To != "internal" {
+		t.Fatalf("unexpected internal visibility change: %#v", change)
+	}
+}
+
 func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
 	t.Parallel()
 
@@ -467,11 +495,10 @@ func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
 			target:                "desired-repo",
 			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private"}},
 			wantOperation:         ActionOperationCreate,
-			wantExecutable:        false,
+			wantExecutable:        true,
 			wantActions:           2,
-			wantExecutableActions: 0,
-			wantNonExecutable:     2,
-			wantMessage:           "repository org-a/desired-repo is declared in desired state but is not creatable: template configuration is missing",
+			wantExecutableActions: 2,
+			wantNonExecutable:     0,
 		},
 		{
 			name:                  "desired missing template update",
@@ -479,11 +506,10 @@ func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
 			desiredRepositories:   []config.RepositorySpec{{Owner: "org-a", Name: "desired-repo", Visibility: "private"}},
 			actualPermission:      &state.TeamRepositoryPermission{TeamSlug: "platform", Owner: "org-a", Name: "desired-repo", Permission: "pull"},
 			wantOperation:         ActionOperationUpdate,
-			wantExecutable:        false,
+			wantExecutable:        true,
 			wantActions:           2,
-			wantExecutableActions: 0,
-			wantNonExecutable:     2,
-			wantMessage:           "repository org-a/desired-repo is declared in desired state but is not creatable: template configuration is missing",
+			wantExecutableActions: 2,
+			wantNonExecutable:     0,
 		},
 	}
 
@@ -737,8 +763,8 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		Summary: Summary{
 			HasChanges:           true,
 			Actions:              19,
-			ExecutableActions:    9,
-			NonExecutableActions: 10,
+			ExecutableActions:    10,
+			NonExecutableActions: 9,
 			CreateActions:        8,
 			UpdateActions:        5,
 			DeleteActions:        3,
@@ -746,7 +772,7 @@ func TestBuildPlansDeterministicDriftActions(t *testing.T) {
 		},
 		Actions: []Action{
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationUpdate, ResourceID: "orang-gaboets/existing-repo", Executable: true, Message: "update repository orang-gaboets/existing-repo", Changes: []FieldChange{{Field: "archived", From: false, To: true}, {Field: "description", From: "Old desc", To: "New desc"}, {Field: "homepage", From: "", To: "https://example.com/octostate"}, {Field: "is_template", From: false, To: true}, {Field: "topics", From: []string{"gitops"}, To: []string{"gitops", "go"}}, {Field: "visibility", From: "public", To: "private"}}},
-			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: false, Message: "repository orang-gaboets/new-repo cannot be created because template configuration is missing", Changes: []FieldChange{}},
+			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationCreate, ResourceID: "orang-gaboets/new-repo", Executable: true, Message: "create repository orang-gaboets/new-repo", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeRepository, Operation: ActionOperationDelete, ResourceID: "orang-gaboets/orphan-repo", Executable: false, Message: "repository orang-gaboets/orphan-repo exists in snapshot state but is not declared in desired config", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationCreate, ResourceID: "fresh", Executable: true, Message: "create team fresh", Changes: []FieldChange{}},
 			{ResourceType: ActionResourceTypeTeam, Operation: ActionOperationUpdate, ResourceID: "platform", Executable: true, Message: "update team platform", Changes: []FieldChange{{Field: "description", From: "Old desc", To: "New desc"}, {Field: "name", From: "Platform Old", To: "Platform"}, {Field: "privacy", From: "closed", To: "secret"}}},
@@ -895,7 +921,15 @@ func TestBuildInviteUserIDPendingInviteWithoutResolvedUserIDMappingCreatesDrift(
 	}
 }
 
-func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
+func TestBuildPrivateRepositoryPlansAllowForkingDrift(t *testing.T) {
+	testBuildRepositoryAllowForkingDrift(t, "private")
+}
+
+func TestBuildInternalRepositoryPlansAllowForkingDrift(t *testing.T) {
+	testBuildRepositoryAllowForkingDrift(t, "internal")
+}
+
+func testBuildRepositoryAllowForkingDrift(t *testing.T, visibility string) {
 	t.Parallel()
 
 	snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 11, 15, 0, 0, time.UTC), &state.OrganizationState{
@@ -904,7 +938,7 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 			{
 				Owner:        "orang-gaboets",
 				Name:         "octostate",
-				Visibility:   "private",
+				Visibility:   visibility,
 				Description:  "CLI",
 				Homepage:     "https://example.com/octostate",
 				Topics:       []string{"gitops"},
@@ -915,11 +949,11 @@ func TestBuildPrivateRepositoryIgnoresAllowForkingDrift(t *testing.T) {
 		},
 	})
 
-	desired := testconfig.LoadDesiredConfig(t, `
+	desired := testconfig.LoadDesiredConfig(t, fmt.Sprintf(`
 organization: orang-gaboets
 repositories:
   - name: octostate
-    visibility: private
+    visibility: %s
     description: "CLI"
     homepage: "https://example.com/octostate"
     topics: [gitops]
@@ -928,7 +962,7 @@ repositories:
     is_template: false
 teams: []
 invites: []
-`)
+`, visibility))
 
 	report, err := Build(Options{
 		Desired:  desired,
@@ -937,8 +971,8 @@ invites: []
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
-	if len(report.Actions) != 0 {
-		t.Fatalf("expected no actions, got %#v", report.Actions)
+	if len(report.Actions) != 1 || len(report.Actions[0].Changes) != 1 || report.Actions[0].Changes[0].Field != "allow_forking" {
+		t.Fatalf("expected %s allow_forking drift, got %#v", visibility, report.Actions)
 	}
 }
 
@@ -1034,7 +1068,6 @@ invites: []
 		Executable:   true,
 		Message:      "update repository orang-gaboets/octostate",
 		Changes: []FieldChange{
-			{Field: "allow_forking", From: true, To: false},
 			{Field: "archived", From: true, To: false},
 			{Field: "description", From: "CLI", To: ""},
 			{Field: "homepage", From: "https://example.com/octostate", To: ""},

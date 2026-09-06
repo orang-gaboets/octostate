@@ -61,6 +61,16 @@ func TestValidateDuplicateRepositoriesCaseInsensitive(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeDuplicateRepository)
 }
 
+func TestValidateRejectsTemplateBranchOptionWithoutTemplate(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].Template = TemplateSpec{IncludeAllBranches: true}
+
+	report := Validate(cfg)
+	assertHasIssueAtPathAndCode(t, report, "repositories[0].template.include_all_branches", ValidationIssueCodeInvalidFieldValue)
+}
+
 func TestRepositoryOwnerMatchesOrganization(t *testing.T) {
 	t.Parallel()
 
@@ -731,7 +741,7 @@ func TestValidateInvalidEnums(t *testing.T) {
 	cfg := validOrganizationConfig()
 	cfg.Members[0].Role = "owner"
 	cfg.Invites[0].Role = "owner"
-	cfg.Repositories[0].Visibility = "internal"
+	cfg.Repositories[0].Visibility = "unknown"
 	cfg.Teams[0].Privacy = "visible"
 	cfg.Teams[0].Members[0].Role = "owner"
 	cfg.Teams[0].Repositories[0].Permission = "write"
@@ -740,6 +750,16 @@ func TestValidateInvalidEnums(t *testing.T) {
 	assertHasIssueCode(t, report, ValidationIssueCodeInvalidEnum)
 	if report.Summary.Errors < 6 {
 		t.Fatalf("expected multiple invalid enum errors, got %#v", report.Errors)
+	}
+}
+
+func TestValidateInternalRepositoryVisibility(t *testing.T) {
+	t.Parallel()
+
+	cfg := validOrganizationConfig()
+	cfg.Repositories[0].Visibility = "internal"
+	if report := Validate(cfg); !report.Valid {
+		t.Fatalf("expected internal visibility to validate, got %#v", report.Errors)
 	}
 }
 

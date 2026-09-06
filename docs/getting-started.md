@@ -11,9 +11,11 @@ intend to inspect.
 
 ## What you need
 
-- Go 1.25.0 or newer. The repository’s `go.mod` is the source of truth for the
-  language version; the [development guide](maintainers/development.md)
-  explains toolchain selection.
+- Go 1.25.0 or newer if you build from source, embed Octostate, or develop the
+  repository. It is not required for normal CLI use from a prebuilt archive.
+  The repository’s `go.mod` is the source of truth for the language version;
+  the [development guide](maintainers/development.md) explains toolchain
+  selection.
 - A GitHub organization you are authorized to inspect; you also need
   authorization to modify it before running `config apply`.
 - A GitHub token held in an environment variable for the shortest path through
@@ -27,10 +29,38 @@ PowerShell commands for `PATH` and environment variables.
 
 ## Install and verify the CLI
 
-Install the latest release locally:
+For releases that provide prebuilt artifacts (starting with v1.3.0), normal CLI
+users should download the archive for their platform from the
+[GitHub Release](https://github.com/orang-gaboets/octostate/releases), verify
+the archive against `checksums.txt`, extract it, and put the executable on
+`PATH`. Release archives contain only the executable, `LICENSE`, `README.md`,
+and `CHANGELOG.md`.
+
+To verify one downloaded archive, replace the placeholder with its filename:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@latest
+archive='octostate_<version>_<platform-archive>'
+entry=$(grep -F "  $archive" checksums.txt) || { echo "checksum entry not found: $archive" >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then
+  printf '%s\n' "$entry" | sha256sum -c -
+else
+  printf '%s\n' "$entry" | shasum -a 256 -c -
+fi
+```
+
+On Windows PowerShell, verify the Windows archive with:
+
+```powershell
+$archive = "octostate_<version>_windows_amd64.zip"
+$expected = ((Select-String -Path checksums.txt -SimpleMatch "  $archive").Line -split '\s+')[0]
+$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "checksum mismatch for $archive" }
+```
+
+If you prefer to build from source, install a pinned release with Go:
+
+```bash
+go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
 ```
 
 Ensure Go's install directory is on `PATH`: use `$(go env GOBIN)` when it is
@@ -42,8 +72,10 @@ go_bin="$(go env GOBIN)"
 export PATH="$go_bin:$PATH"
 ```
 
-For automation or a control repository, replace `@latest` with an explicitly
-selected release so the workflow is reproducible.
+For automation or a control repository, use an explicitly selected release
+archive or `@v<version>` so the workflow is reproducible. Go programs embedding
+Octostate should use the module imports; contributors should clone the
+repository and use the development workflow.
 
 Verify that the binary is available:
 

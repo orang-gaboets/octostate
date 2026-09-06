@@ -2,6 +2,27 @@ package config
 
 import "testing"
 
+func TestIsPrivateVisibility(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		visibility string
+		want       bool
+	}{
+		{visibility: "private", want: true},
+		{visibility: " PRIVATE ", want: true},
+		{visibility: "public", want: false},
+		{visibility: "", want: false},
+		{visibility: "internal", want: false},
+	} {
+		t.Run(test.visibility, func(t *testing.T) {
+			if got := IsPrivateVisibility(test.visibility); got != test.want {
+				t.Fatalf("IsPrivateVisibility(%q) = %v, want %v", test.visibility, got, test.want)
+			}
+		})
+	}
+}
+
 func TestRepositorySpecSetManagedOptionals(t *testing.T) {
 	t.Parallel()
 

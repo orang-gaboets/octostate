@@ -20,6 +20,29 @@ type CreateFromTemplateOptions struct {
 	IncludeAllBranches bool
 }
 
+// CreateOptions defines the options for creating an organization repository.
+type CreateOptions struct {
+	Service     Service
+	Name        string
+	Owner       string
+	Description *string
+	Homepage    *string
+	Visibility  *string
+	Private     *bool
+	Topics      []string
+}
+
+// Validate checks if the CreateOptions are valid.
+func (opt *CreateOptions) Validate() error {
+	if opt.Name == "" || opt.Owner == "" {
+		return github.ErrMissingRequiredField
+	}
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	return nil
+}
+
 // Validate checks if the CreateFromTemplateOptions are valid.
 func (opt *CreateFromTemplateOptions) Validate() error {
 	if opt.Name == "" || opt.Owner == "" || opt.TemplateOwner == "" || opt.TemplateRepo == "" {
@@ -74,6 +97,7 @@ type EditOptions struct {
 	Owner        string
 	Description  *string
 	Homepage     *string
+	Visibility   *string
 	Private      *bool
 	IsTemplate   *bool
 	Archived     *bool

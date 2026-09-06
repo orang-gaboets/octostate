@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/orang-gaboets/octostate/internal/filereplace"
 )
 
 // LoadConfig reads the maintainer override file. A missing file is normal and
@@ -62,11 +64,11 @@ func Update(path string, discovered []Contributor, cfg Config) (bool, error) {
 		return false, nil
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		return false, fmt.Errorf("stat %s: %w", path, err)
-	}
-	if err := os.WriteFile(path, []byte(updated), info.Mode().Perm()); err != nil {
+	// Replace rather than WriteFile: the README was read above, so it must
+	// already exist. Replace keeps that requirement, so a file removed between
+	// the read and the write fails instead of being recreated from contents
+	// that are now stale.
+	if err := filereplace.Replace(path, []byte(updated)); err != nil {
 		return false, fmt.Errorf("write %s: %w", path, err)
 	}
 	return true, nil

@@ -86,7 +86,7 @@ organization: orang-gaboets
 invites: []
 repositories:
   - name: octostate
-    visibility: internal
+    visibility: unknown
 teams: []
 `)
 

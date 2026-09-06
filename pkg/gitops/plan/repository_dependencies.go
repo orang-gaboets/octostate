@@ -287,7 +287,15 @@ func repositoryNodeAvailability(node *repositoryPlanNode, dependency repositoryA
 		return availability
 	}
 	if strings.TrimSpace(node.repository.Template.Owner) == "" || strings.TrimSpace(node.repository.Template.Name) == "" {
-		return repositoryAvailability{diagnostic: "template configuration is missing"}
+		isTemplate, managed := node.repository.ManagedIsTemplate()
+		availability := repositoryAvailability{executable: true, usableAsTemplate: managed && isTemplate}
+		if !availability.usableAsTemplate {
+			availability.diagnostic = fmt.Sprintf("repository %s will not be a template", repositoryID(node.repository.Owner, node.repository.Name))
+		}
+		return availability
+	}
+	if strings.EqualFold(strings.TrimSpace(node.repository.Visibility), "internal") {
+		return repositoryAvailability{diagnostic: "internal visibility is unsupported for template-based repository creation"}
 	}
 	if node.dependency != "" && (!dependency.executable || !dependency.usableAsTemplate) {
 		return repositoryAvailability{diagnostic: fmt.Sprintf("required template %s is unavailable: %s", node.dependency, dependency.diagnostic)}
@@ -301,8 +309,5 @@ func repositoryNodeAvailability(node *repositoryPlanNode, dependency repositoryA
 }
 
 func repositoryUnavailableMessage(repository config.RepositorySpec, diagnostic string) string {
-	if diagnostic == "template configuration is missing" {
-		return fmt.Sprintf("repository %s cannot be created because template configuration is missing", repositoryID(repository.Owner, repository.Name))
-	}
 	return fmt.Sprintf("repository %s cannot be created because %s", repositoryID(repository.Owner, repository.Name), diagnostic)
 }

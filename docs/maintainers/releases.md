@@ -28,6 +28,48 @@ With the manifest baseline in place, future releasable commits on `main` will
 cause `release-please` to open or update a release PR automatically from the
 current anchored version.
 
+## CLI Release Artifacts
+
+Release Please remains the source of truth for the release version and tag.
+After an approved release PR merges, it creates the matching tag and a draft
+GitHub Release with immediate tag creation. The same workflow checks out that
+exact tag, verifies that it points to the release commit reported by
+`release-please` or the explicitly supplied retry commit, builds the five
+supported CLI targets, uploads the archives and `checksums.txt` to that draft,
+verifies the final assets and SHA-256 entries, and only then publishes the
+Release.
+
+The custom archives are named:
+
+```text
+octostate_<version>_darwin_amd64.tar.gz
+octostate_<version>_darwin_arm64.tar.gz
+octostate_<version>_linux_amd64.tar.gz
+octostate_<version>_linux_arm64.tar.gz
+octostate_<version>_windows_amd64.zip
+```
+
+Each contains only the executable, `LICENSE`, `README.md`, and `CHANGELOG.md`;
+GitHub's generated source archives are not changed. Re-running packaging may
+replace assets only on the same verified release tag and cannot silently target
+another release.
+
+If a run fails after the draft Release exists, retry it from **Actions** using
+the `Release Please` workflow's `release_tag` and `release_commit` inputs. Set
+`release_tag` to the draft tag and `release_commit` to the commit that tag
+resolves to; both values are required so the workflow cannot package another
+commit. For example:
+
+```bash
+gh workflow run release-please.yml \
+  -f release_tag=v1.2.3 \
+  -f release_commit=<tagged-commit-sha>
+```
+
+Staging assets before publication preserves the ordering required by future
+GitHub immutable-release protection tracked in #266. It does not claim that
+immutable-release protection is currently enabled.
+
 ## Compatibility Notes for Releases
 
 When a release includes a concrete upgrade adaptation for existing
@@ -53,19 +95,77 @@ free-floating `Unreleased` section for hand-maintained migration text. The
 versioned compatibility document is the canonical detailed home; release
 surfaces should link to it rather than duplicate it.
 
+The pointer is applied in two stages. Before the release PR merges, the release
+tag does not exist. After the merge, `release-please` creates the tag and draft
+Release; the final published Release body is updated and verified separately.
+
+### Stage 1: the release PR, before merge
+
 Before an authorized publisher or maintainer applies the configured release
 approval label (default `release: ready`) or otherwise merges a qualifying
-generated release PR, add the exact compatibility-document pointer to the
-generated release PR body and read the
-PR body back to confirm it persisted. If `release-please` regenerates the PR
-body, repeat this checkpoint after the final update. For `v1.2.0`, that pointer is
-`Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v1.2.0-compatibility.md`.
+generated release PR, add the compatibility-document pointer to the generated
+release PR body and read the PR body back to confirm it persisted. If
+`release-please` regenerates the PR body, repeat this checkpoint after the final
+update.
 
-After publication, read back the GitHub Release body and confirm the same
-pointer is present. If it is missing, an authorized publisher must add the
-pointer to the GitHub Release body and read it back before considering issue
-#218 closed. Those remote writes and read-backs are outside the local
-documentation change here and must be performed separately.
+At this stage the pointer may use `blob/main`, because the release tag is not
+created until the release PR merges:
+
+```text
+Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/main/docs/maintainers/v<version>-compatibility.md
+```
+
+Before applying the release approval label, confirm that the versioned
+compatibility document is present on `main` and that the stage 1 URL resolves.
+Do not publish a qualifying release until the document is present, because the
+resulting release tag must contain it. This check belongs here rather than only
+after publication: if the compatibility document is absent from the release
+commit, the resulting release tag will not contain it, and editing the Release
+body afterwards cannot add it to the tagged tree.
+
+### Stage 2: the published GitHub Release, after publication
+
+After the release PR merges, `release-please` creates the tag and draft Release.
+Once that Release is published, its pointer must use the release tag rather than
+`main`. Read back the published Release body and confirm it contains **exactly
+one** direct pointer to the same versioned compatibility document, addressed
+through the release tag:
+
+```text
+Compatibility and migration notes: https://github.com/orang-gaboets/octostate/blob/v<version>/docs/maintainers/v<version>-compatibility.md
+```
+
+A `blob/main` link keeps tracking the branch, so a later edit silently changes
+what a reader of an old release sees. A tag-qualified link no longer follows
+later changes to `main`.
+
+This convention is about addressing the release tag; it does not by itself make
+that tag immutable. GitHub-enforced release and tag immutability is tracked
+separately in #266.
+
+For a worked example of the tagged form, the v1.2.0 document resolves at its own
+tag:
+<https://github.com/orang-gaboets/octostate/blob/v1.2.0/docs/maintainers/v1.2.0-compatibility.md>.
+That is the shape to reproduce; it is not the pointer the v1.2.0 Release body
+carries, for the reason given below.
+
+If the published Release body does not contain exactly one correct
+tag-qualified pointer - for example the pointer is missing, duplicated, points
+at the wrong tag or path, or still carries the `blob/main` form from stage 1 -
+an authorized publisher must correct it and read the body back before the
+post-publication checkpoint is complete. Corrections **modify only the
+compatibility-pointer line(s)**; the generated release notes must remain
+intact. Confirm that the tagged URL resolves before considering the
+checkpoint done, since a tagged link to a document that was never committed on
+that tag is worse than no link at all.
+
+Those remote writes and read-backs happen on GitHub rather than in this
+repository and must be performed separately from any documentation change.
+
+The `v1.2.0` Release is a documented historical exception: it carries the
+`blob/main` form because it published before this convention existed, and it is
+deliberately left unchanged. The convention applies to qualifying releases from
+`v1.2.1` onward.
 
 The release-please GitHub App installation also needs these permissions for the
 release approval workflow:

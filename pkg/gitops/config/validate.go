@@ -18,8 +18,9 @@ var (
 		"billing_manager": {},
 	}
 	validRepositoryVisibility = map[string]struct{}{
-		"public":  {},
-		"private": {},
+		"public":   {},
+		"private":  {},
+		"internal": {},
 	}
 	validTeamPrivacy = map[string]struct{}{
 		"closed": {},
@@ -161,6 +162,8 @@ func validateRepositories(report *ValidationReport, repositories []RepositorySpe
 			report.addError(pathPrefix+".template.owner", ValidationIssueCodeMissingRequiredField, "template owner is required when template name is set")
 		case templateOwner != "" && templateName == "":
 			report.addError(pathPrefix+".template.name", ValidationIssueCodeMissingRequiredField, "template name is required when template owner is set")
+		case templateOwner == "" && templateName == "" && repo.Template.IncludeAllBranches:
+			report.addError(pathPrefix+".template.include_all_branches", ValidationIssueCodeInvalidFieldValue, "template include_all_branches requires template owner and name")
 		}
 		if repo.DescriptionOption().Null {
 			report.addError(pathPrefix+".description", ValidationIssueCodeInvalidFieldValue, "repository description must not be null when provided")

@@ -86,6 +86,10 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 				return repo
 			}(),
 			{
+				Name:       "internal-repo",
+				Visibility: "internal",
+			},
+			{
 				Name:       "private-repo",
 				Visibility: "private",
 			},
@@ -122,13 +126,19 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 			},
 			{
 				Owner:        "orang-gaboets",
-				Name:         "private-repo",
-				Visibility:   "private",
+				Name:         "internal-repo",
+				Visibility:   "internal",
 				Description:  "",
 				Homepage:     "",
 				AllowForking: true,
 				Archived:     false,
 				IsTemplate:   false,
+			},
+			{
+				Owner:        "orang-gaboets",
+				Name:         "private-repo",
+				Visibility:   "private",
+				AllowForking: true,
 			},
 			{
 				Owner:        "orang-gaboets",
@@ -154,13 +164,14 @@ func TestBuildMaterializeConfigFillsOnlyUnmanagedRepositoryFields(t *testing.T) 
 	if got.Organization != desired.Organization {
 		t.Fatalf("unexpected organization %q", got.Organization)
 	}
-	if len(got.Repositories) != 3 {
+	if len(got.Repositories) != 4 {
 		t.Fatalf("unexpected repositories %#v", got.Repositories)
 	}
 	assertMaterializedTopLevelConfig(t, desired, got)
 	assertMaterializedRepoBuilder(t, desired.Repositories[0], got.Repositories[0])
-	assertMaterializedPrivateRepo(t, got.Repositories[1])
-	assertMaterializedConfigOnlyRepo(t, got.Repositories[2])
+	assertMaterializedForkingRepo(t, got.Repositories[1], "internal")
+	assertMaterializedForkingRepo(t, got.Repositories[2], "private")
+	assertMaterializedConfigOnlyRepo(t, got.Repositories[3])
 	assertNoLiveOnlyRepository(t, got.Repositories)
 
 	if report := config.Validate(got); !report.Valid {
@@ -199,8 +210,8 @@ func assertMaterializedRepoBuilder(
 	if homepage, managed := got.ManagedHomepage(); !managed || homepage != "https://example.com/octostate" {
 		t.Fatalf("expected homepage to materialize from live, got value=%q managed=%v", homepage, managed)
 	}
-	if allowForking, managed := got.ManagedAllowForking(); !managed || allowForking {
-		t.Fatalf("expected allow_forking=false to materialize from live, got value=%v managed=%v", allowForking, managed)
+	if _, managed := got.ManagedAllowForking(); managed {
+		t.Fatalf("expected public allow_forking to stay unmanaged, got %#v", got.AllowForkingOption())
 	}
 	if archived, managed := got.ManagedArchived(); !managed || archived {
 		t.Fatalf("expected managed archived value to stay unchanged, got value=%v managed=%v", archived, managed)
@@ -219,17 +230,20 @@ func assertMaterializedRepoBuilder(
 	}
 }
 
-func assertMaterializedPrivateRepo(t *testing.T, got config.RepositorySpec) {
+func assertMaterializedForkingRepo(t *testing.T, got config.RepositorySpec, visibility string) {
 	t.Helper()
 
+	if got.Visibility != visibility {
+		t.Fatalf("expected %s visibility, got %q", visibility, got.Visibility)
+	}
 	if description, managed := got.ManagedDescription(); !managed || description != "" {
 		t.Fatalf("expected empty live description to materialize as managed clear, got value=%q managed=%v", description, managed)
 	}
 	if homepage, managed := got.ManagedHomepage(); !managed || homepage != "" {
 		t.Fatalf("expected empty live homepage to materialize as managed clear, got value=%q managed=%v", homepage, managed)
 	}
-	if _, managed := got.ManagedAllowForking(); managed {
-		t.Fatalf("expected allow_forking to stay unmanaged for private repo, got %#v", got.AllowForkingOption())
+	if allowForking, managed := got.ManagedAllowForking(); !managed || !allowForking {
+		t.Fatalf("expected allow_forking=true to materialize for %s repo, got value=%v managed=%v", visibility, allowForking, managed)
 	}
 	if archived, managed := got.ManagedArchived(); !managed || archived {
 		t.Fatalf("expected archived=false to materialize from live, got value=%v managed=%v", archived, managed)

@@ -21,6 +21,12 @@ documentation.
 - [Primitive commands](cli/primitives.md) — direct organization, repository,
   topic, team, and user operations.
 
+## Upgrading Octostate
+
+- [v1.2.0 compatibility notes](maintainers/v1.2.0-compatibility.md) — what users
+  may need to change in existing configurations, scripts, or integrations when
+  upgrading from v1.1.1 to v1.2.0.
+
 ## Understanding GitOps
 
 - [GitOps overview](gitops/overview.md) — desired state, live planning,
@@ -38,6 +44,9 @@ documentation.
 ## Developing or maintaining Octostate
 
 - [Development](maintainers/development.md) — local setup, checks, and testing.
+- [Code scanning and Code Quality](maintainers/code-scanning.md) — how
+  repository-managed CodeQL security scanning and GitHub-managed Code Quality
+  analysis differ, and how to triage a failure in each.
 - [Live integration sandbox](maintainers/live-integration-sandbox.md) — the
   dedicated `octostate-test` sandbox contract, verification, and recovery.
 - [Releases](maintainers/releases.md) — release automation and maintainer

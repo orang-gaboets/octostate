@@ -136,7 +136,7 @@ Bootstrap rules:
 - Pending invites are excluded by default
 - Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
-- `allow_forking` is omitted for private repositories
+- `allow_forking` is included for private or internal repositories and omitted for public repositories
 - Direct organization members outside teams are represented through top-level `members:`
 
 Write behavior:
@@ -225,7 +225,7 @@ Materialize rules:
   - `is_template`
 - Empty live string values become explicit managed empty-string clears
 - Boolean live values, including `false`, become explicit managed booleans
-- `allow_forking` is not materialized for desired private repositories
+- `allow_forking` is materialized for desired private or internal repositories when it is unmanaged
 - If a repository is not yet declared in config, adopt it first and then materialize optional fields afterward
 
 Example print-to-stdout use:
@@ -322,7 +322,7 @@ Behavior:
 - `--check` and `--dry-run` are mutually exclusive
 - Live apply executes only supported executable `create` / `update` actions
 - Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
-- Repository creation currently requires `template.owner` and `template.name`
+- Repository creation uses ordinary organization creation when `template.owner` and `template.name` are omitted, and template creation when both are present
 - Omitted optional repository fields are left unmanaged during apply
 - Explicit empty `description` / `homepage` values are applied as clears
 - Explicit boolean repository values are only applied when declared in config

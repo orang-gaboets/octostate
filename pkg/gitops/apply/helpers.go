@@ -80,16 +80,16 @@ func desiredInviteResourceID(invite config.InviteSpec) (string, error) {
 	return fmt.Sprintf("user_id:%d", invite.UserID.Value), nil
 }
 
-func visibilityPrivateFlag(visibility string) (bool, error) {
+func repositoryVisibility(visibility string) (string, error) {
 	switch strings.TrimSpace(visibility) {
 	case "private":
-		return true, nil
+		return "private", nil
 	case "public":
-		return false, nil
+		return "public", nil
 	case "internal":
-		return false, fmt.Errorf("repository visibility %q is not supported by apply yet: %w", visibility, githubpkg.ErrInvalidFieldValue)
+		return "internal", nil
 	default:
-		return false, fmt.Errorf("repository visibility %q is invalid: %w", visibility, githubpkg.ErrInvalidFieldValue)
+		return "", fmt.Errorf("repository visibility %q is invalid: %w", visibility, githubpkg.ErrInvalidFieldValue)
 	}
 }
 

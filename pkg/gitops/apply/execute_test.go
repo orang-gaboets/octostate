@@ -304,6 +304,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			IncludeAllBranches: true,
 		},
 	}
+	desiredRepo.SetManagedAllowForking(false)
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
 		Actions: []gitopsplan.Action{{
@@ -343,8 +344,8 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 			if repository == nil || repository.Homepage == nil || *repository.Homepage != desiredRepo.Homepage {
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
-			if repository.AllowForking != nil {
-				t.Fatalf("expected allow_forking to be omitted for private repository edit, got %#v", repository)
+			if repository.AllowForking == nil || *repository.AllowForking {
+				t.Fatalf("expected explicit private allow_forking=false, got %#v", repository)
 			}
 			return &gh.Repository{}, nil, nil
 		},
@@ -448,8 +449,8 @@ invites: []
 	if editReq == nil {
 		t.Fatal("expected follow-up repository edit request")
 	}
-	if editReq.Private == nil || !*editReq.Private {
-		t.Fatalf("expected private repository edit payload, got %#v", editReq)
+	if editReq.GetVisibility() != "private" || editReq.Private != nil {
+		t.Fatalf("expected visibility-only private repository edit payload, got %#v", editReq)
 	}
 	if editReq.Description != nil || editReq.Homepage != nil || editReq.Archived != nil || editReq.IsTemplate != nil || editReq.AllowForking != nil {
 		t.Fatalf("expected unmanaged optional fields to be omitted from edit payload, got %#v", editReq)
@@ -515,17 +516,14 @@ invites: []
 	if editReq == nil {
 		t.Fatal("expected follow-up repository edit request")
 	}
-	if editReq.Private == nil || *editReq.Private {
-		t.Fatalf("expected public repository edit payload, got %#v", editReq)
+	if editReq.GetVisibility() != "public" || editReq.Private != nil {
+		t.Fatalf("expected visibility-only public repository edit payload, got %#v", editReq)
 	}
 	if editReq.Description == nil || *editReq.Description != "" {
 		t.Fatalf("expected explicit empty description in edit payload, got %#v", editReq)
 	}
 	if editReq.Homepage == nil || *editReq.Homepage != "" {
 		t.Fatalf("expected explicit empty homepage in edit payload, got %#v", editReq)
-	}
-	if editReq.AllowForking == nil || *editReq.AllowForking {
-		t.Fatalf("expected explicit false allow_forking in edit payload, got %#v", editReq)
 	}
 	if editReq.Archived == nil || *editReq.Archived {
 		t.Fatalf("expected explicit false archived in edit payload, got %#v", editReq)
@@ -587,13 +585,21 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 	}
 }
 
-func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.T) {
+func TestExecuteRepositoryUpdatePrivateRepoAppliesAllowForkingChange(t *testing.T) {
+	testExecuteRepositoryUpdateAllowForkingChange(t, "private")
+}
+
+func TestExecuteRepositoryUpdateInternalRepoAppliesAllowForkingChange(t *testing.T) {
+	testExecuteRepositoryUpdateAllowForkingChange(t, "internal")
+}
+
+func testExecuteRepositoryUpdateAllowForkingChange(t *testing.T, visibility string) {
 	t.Parallel()
 
 	desiredRepo := config.RepositorySpec{
 		Owner:        "orang-gaboets",
 		Name:         "octostate",
-		Visibility:   "private",
+		Visibility:   visibility,
 		Description:  "Updated description",
 		AllowForking: false,
 	}
@@ -623,8 +629,8 @@ func TestExecuteRepositoryUpdatePrivateRepoIgnoresAllowForkingChange(t *testing.
 			if repository == nil || repository.Description == nil || *repository.Description != desiredRepo.Description {
 				t.Fatalf("unexpected repository edit payload: %#v", repository)
 			}
-			if repository.AllowForking != nil {
-				t.Fatalf("expected allow_forking to be omitted for private repository update, got %#v", repository)
+			if repository.AllowForking == nil || *repository.AllowForking {
+				t.Fatalf("expected explicit %s allow_forking=false, got %#v", visibility, repository)
 			}
 			return &gh.Repository{}, nil, nil
 		},
@@ -702,9 +708,6 @@ invites: []
 	}
 	if editReq.Homepage == nil || *editReq.Homepage != "" {
 		t.Fatalf("expected explicit empty homepage in edit payload, got %#v", editReq)
-	}
-	if editReq.AllowForking == nil || *editReq.AllowForking {
-		t.Fatalf("expected explicit false allow_forking in edit payload, got %#v", editReq)
 	}
 	if editReq.Archived == nil || *editReq.Archived {
 		t.Fatalf("expected explicit false archived in edit payload, got %#v", editReq)
@@ -845,7 +848,7 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 	}
 }
 
-func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
+func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 	plan := &gitopsplan.Report{
 		Organization: "orang-gaboets",
 		Actions: []gitopsplan.Action{{
@@ -858,7 +861,15 @@ func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
 	}
 	plan.Normalize()
 
+	createCalled := false
 	repoSvc := &testRepoService{
+		createFunc: func(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			createCalled = true
+			if owner != "orang-gaboets" || repository == nil || repository.GetName() != "octostate" || repository.GetVisibility() != "private" || repository.Private != nil {
+				t.Fatalf("unexpected ordinary create request: owner=%q repository=%#v", owner, repository)
+			}
+			return &gh.Repository{}, nil, nil
+		},
 		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 			t.Fatal("create from template should not be called when template is missing")
 			return nil, nil, nil
@@ -873,11 +884,68 @@ func TestExecuteRepositoryCreateWithoutTemplateFailsBeforeWrites(t *testing.T) {
 			Visibility: "private",
 		}},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "cannot be created without a template") {
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !createCalled {
+		t.Fatal("expected ordinary repository creation")
+	}
+}
+
+func TestExecuteRepositoryCreateInternalUsesVisibility(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeRepository,
+		Operation:    gitopsplan.ActionOperationCreate,
+		ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+		Executable:   true,
+	}}}
+	plan.Normalize()
+
+	var createReq *gh.Repository
+	repoSvc := &testRepoService{createFunc: func(_ context.Context, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+		createReq = repository
+		return &gh.Repository{}, nil, nil
+	}}
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createReq == nil || createReq.GetVisibility() != "internal" || createReq.Private != nil {
+		t.Fatalf("unexpected internal create payload: %#v", createReq)
+	}
+}
+
+func TestExecuteRepositoryUpdateInternalUsesVisibility(t *testing.T) {
+	t.Parallel()
+
+	desiredRepo := config.RepositorySpec{Owner: "orang-gaboets", Name: "octostate", Visibility: "internal"}
+	plan := &gitopsplan.Report{Organization: "orang-gaboets", Actions: []gitopsplan.Action{{
+		ResourceType: gitopsplan.ActionResourceTypeRepository,
+		Operation:    gitopsplan.ActionOperationUpdate,
+		ResourceID:   repositoryResourceID(desiredRepo.Owner, desiredRepo.Name),
+		Executable:   true,
+		Changes:      []gitopsplan.FieldChange{{Field: "visibility", From: "public", To: "internal"}},
+	}}}
+	plan.Normalize()
+
+	var editReq *gh.Repository
+	repoSvc := &testRepoService{editFunc: func(_ context.Context, _, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+		editReq = repository
+		return &gh.Repository{}, nil, nil
+	}}
+	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo},
+	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if editReq == nil || editReq.GetVisibility() != "internal" || editReq.Private != nil {
+		t.Fatalf("unexpected internal update payload: %#v", editReq)
 	}
 }
 
@@ -1639,6 +1707,38 @@ func TestExecuteManagedTemplateCreatePrecedesConsumer(t *testing.T) {
 	}
 }
 
+func TestExecuteOrdinaryManagedTemplateCreatePrecedesConsumer(t *testing.T) {
+	t.Parallel()
+
+	source := config.RepositorySpec{Owner: "orang-gaboets", Name: "source", Visibility: "private"}
+	source.SetManagedIsTemplate(true)
+	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
+	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual})
+	if err != nil {
+		t.Fatalf("Build returned error: %v", err)
+	}
+
+	var creates []string
+	repoSvc := &testRepoService{
+		createFunc: func(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			creates = append(creates, owner+"/"+repository.GetName())
+			return &gh.Repository{}, nil, nil
+		},
+		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
+			creates = append(creates, templateOwner+"/"+templateRepo+"->"+request.GetName())
+			return &gh.Repository{}, nil, nil
+		},
+	}
+	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if want := []string{"orang-gaboets/source", "orang-gaboets/source->consumer"}; !reflect.DeepEqual(creates, want) {
+		t.Fatalf("unexpected repository write order: got %#v want %#v", creates, want)
+	}
+}
+
 func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *testing.T) {
 	t.Parallel()
 
@@ -1780,6 +1880,7 @@ func withOrganizationService(service organizations.Service) func(*Options) {
 
 func withRepoService(service interface {
 	CreateFromTemplate(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error)
+	Create(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	Delete(context.Context, string, string) (*gh.Response, error)
 	Edit(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	Get(context.Context, string, string) (*gh.Repository, *gh.Response, error)
@@ -1883,12 +1984,20 @@ func (m *testOrganizationService) ListOrgInvitationTeams(ctx context.Context, or
 
 type testRepoService struct {
 	createFromTemplateFunc func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error)
+	createFunc             func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	deleteFunc             func(context.Context, string, string) (*gh.Response, error)
 	editFunc               func(context.Context, string, string, *gh.Repository) (*gh.Repository, *gh.Response, error)
 	getFunc                func(context.Context, string, string) (*gh.Repository, *gh.Response, error)
 	listByOrgFunc          func(context.Context, string, *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error)
 	replaceAllTopicsFunc   func(context.Context, string, string, []string) ([]string, *gh.Response, error)
 	listAllTopicsFunc      func(context.Context, string, string) ([]string, *gh.Response, error)
+}
+
+func (m *testRepoService) Create(ctx context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	if m.createFunc != nil {
+		return m.createFunc(ctx, owner, repository)
+	}
+	return &gh.Repository{}, nil, nil
 }
 
 func (m *testRepoService) CreateFromTemplate(ctx context.Context, templateOwner, templateRepo string, req *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {

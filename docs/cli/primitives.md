@@ -30,9 +30,9 @@ This reference uses canonical command names. Common aliases such as `org`,
 
 ## Proposal mode
 
-The repository, topic, team, team membership, team repository permission, and
-organization invite mutation commands documented below also support
-`--to-config <organization.yaml>`. Proposal mode updates the existing local
+The repository, topic, team, team membership, team repository permission,
+organization invite, and organization membership mutation commands documented
+below also support `--to-config <organization.yaml>`. Proposal mode updates the existing local
 configuration instead of calling GitHub, so GitHub authentication is not
 required for these operations.
 
@@ -96,19 +96,25 @@ therefore valid, reviewable config that stays pending until the repository
 exists.
 
 `organization invite` proposals record the invite locally instead of sending
-it, so the username form is written as a `username:` invite (trimmed) without
-the live user-ID lookup. New proposed invites use the `direct_member` role,
-matching what GitHub applies when the live path sends no explicit role; an
-invite that omits `role:` resolves to `direct_member` for the same reason.
+it. The command accepts a `username`, `user_id`, or `email` identity, plus the
+invitation role and team slugs. The username form is written trimmed without the
+live user-ID lookup, and team slugs are recorded directly, so each must
+reference a team the config declares or validation rejects the write. An
+invitation that omits `role:` resolves to `direct_member`, matching what GitHub
+applies when the live path sends no explicit role.
 
-Matching is identity-only: an invite whose username or `user_id` is already
-declared is a no-op, and because the command has no `--role` flag it never
-rewrites the retained entry. When the declared invite carries a different role
-or `team_slugs:`, the no-op result reports that retained shape rather than
-`direct_member`, since `config apply` sends the retained role and team
-assignments. Note that identity matching cannot span forms: a `username:`
-invite and a `user_id:` invite for the same person are not recognised as
-duplicates, because resolving one to the other would require a live lookup.
+Matching remains identity-only. If the same invitation identity is already
+declared, proposal mode is a semantic no-op and reports the retained role and
+team assignments rather than claiming newly supplied metadata was applied, since
+`config apply` sends the retained values. Note that identity matching cannot
+span forms: a `username:` invite and a `user_id:` invite for the same person are
+not recognised as duplicates, because resolving one to the other would require a
+live lookup.
+
+`organization membership set` proposals upsert the matching top-level `members:`
+entry: a missing member is added, an existing member's role is updated, and an
+identical entry is a deterministic no-op. Membership is durable desired state,
+distinct from the transitional invitation above.
 
 A *username* invite that duplicates a declared top-level member is rejected by
 the existing config validation. That check applies to username invites only:
@@ -186,7 +192,7 @@ Flags:
 ### `octostate organization invite`
 
 ```bash
-octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username>) [--to-config <organization.yaml> | --dry-run]
+octostate organization invite --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> (--id <user-id> | --username <username> | --email <email>) [--role <role>] [--team-slug <slug>]... [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -195,10 +201,38 @@ Flags:
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
 - `--app-key-path`: Path to the GitHub App's private key file (required if using GitHub App authentication)
 - `--org` (required): GitHub organization name
-- `--id` (required unless `--username` is provided): GitHub user ID to invite
-- `--username` (required unless `--id` is provided): GitHub username to invite
-- `--to-config` (optional): Record the invite in an existing local organization config instead of creating it in GitHub; the username form is stored trimmed, with no user-ID lookup
-- `--dry-run` (optional): Preview the invitation request without creating it (username lookups are skipped in dry-run mode)
+- `--id`, `--username`, `--email`: the invitation identity; provide exactly one
+- `--role` (optional): `admin`, `direct_member`, or `billing_manager`; defaults to `direct_member`
+- `--team-slug` (optional, repeatable): team slug to assign the invitation to. Live mode resolves each slug to its team ID and fails if a slug cannot be resolved, rather than sending an invitation without the requested team
+- `--to-config` (optional): Record the invite in an existing local organization config instead of creating it in GitHub; the username form is stored trimmed, with no user-ID lookup. Team slugs are written to `invites[].team_slugs` with no GitHub lookup, so each slug must reference a team the config declares or validation rejects the write
+- `--dry-run` (optional): Preview the invitation request, including role and team slugs, without creating it (username lookups are skipped in dry-run mode)
+
+An invite is the transitional resource that precedes membership. To set durable
+`members:` state, use `organization membership set` below.
+
+### `octostate organization membership set`
+
+```bash
+octostate organization membership set --org <org> --username <username> [--role <role>] [--to-config <organization.yaml> | --dry-run]
+```
+
+Sets durable organization membership, the resource represented by top-level
+`members:` in desired state. This is deliberately separate from
+`organization invite`: an invitation is transitional, while membership is the
+state GitOps reconciles.
+
+Flags:
+- `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
+- `--app-id`, `--installation-id`, `--app-key-path`: GitHub App authentication
+- `--org` (required): GitHub organization name
+- `--username` (required): GitHub username whose membership is being set
+- `--role` (optional): `admin` or `member`; defaults to `member`. Invitation-only roles such as `direct_member` and `billing_manager` are rejected here
+- `--to-config` (optional): Add or update the matching top-level `members:` entry instead of calling GitHub; an identical entry is a deterministic no-op
+- `--dry-run` (optional): Preview the requested membership without mutating
+
+Live mode reports what was requested rather than claiming the user is already an
+active member: for a user who is not yet a member, GitHub records a pending
+membership the user must accept.
 
 ## Repository
 
@@ -219,7 +253,7 @@ Flags:
 ### `octostate repo create-from-template`
 
 ```bash
-octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false] [--include-all-branches true|false] [--to-config <organization.yaml> | --dry-run]
+octostate repo create-from-template --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> [--template-org <template-org>] --template-name <template-name> --org <org> --name <repo-name> [--desc <description>] [--topics <t1,t2>] [--private true|false | --visibility public|private|internal] [--include-all-branches true|false] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -234,9 +268,23 @@ Flags:
 - `--desc` (optional): Repository description
 - `--topics` (optional): Comma-separated list of repository topics
 - `--private` (optional): Create a private repository (default is public)
+- `--visibility` (optional): Select `public`, `private`, or `internal`; cannot be combined with `--private`. Live template creation with `internal` is unsupported, but `--to-config` may record it for later planning.
 - `--include-all-branches` (optional): Include all branches from the template repository (default is false)
 - `--to-config` (optional): Add the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository creation without creating it
+
+### `octostate repo create`
+
+`repo create` (alias `repo new`) creates an ordinary organization repository
+when `--template-name` is omitted. Supplying `--template-name` selects the
+template-based path; `--template-org` defaults to `--org`. It supports the
+same live, `--dry-run`, and `--to-config` modes. `--include-all-branches` is
+valid only with a template. Existing `repo create-from-template` invocations
+remain available for explicit template creation. For ordinary creation, use
+`--visibility public|private|internal`. Live template creation with `internal`
+is unsupported; `--to-config` may still record an internal template-backed
+desired state, which planning marks non-executable while the repository is
+missing.
 
 ### `octostate repo delete`
 
@@ -265,7 +313,7 @@ Flags:
 ### `octostate repo edit`
 
 ```bash
-octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--to-config <organization.yaml> | --dry-run]
+octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --org <org> --name <repo-name> [--desc <description>] [--homepage <homepage-url>] [--private true|false | --visibility public|private|internal] [--is-template true|false] [--archived true|false] [--allow-forking true|false] [--to-config <organization.yaml> | --dry-run]
 ```
 
 Flags:
@@ -278,9 +326,10 @@ Flags:
 - `--desc` (optional): Repository description
 - `--homepage` (optional): Repository homepage URL
 - `--private` (optional): Set repository to private/public
+- `--visibility` (optional): Set repository visibility to `public`, `private`, or `internal`; cannot be combined with `--private`
 - `--is-template` (optional): Set or unset repository as a template
 - `--archived` (optional): Archive/unarchive the repository
-- `--allow-forking` (optional): Allow/disallow private forking of the repository
+- `--allow-forking` (optional): Allow/disallow forking of a private or internal repository
 - `--to-config` (optional): Apply the repository proposal to an existing local organization config
 - `--dry-run` (optional): Preview repository edits without updating the repository
 

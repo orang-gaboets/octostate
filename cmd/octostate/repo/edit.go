@@ -27,6 +27,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 		newDesc         string
 		newHomepage     string
 		newPrivate      bool
+		newVisibility   string
 		newIsTemplate   bool
 		newArchived     bool
 		newAllowForking bool
@@ -44,6 +45,10 @@ func EditRepo(svc repos.Service) *cobra.Command {
 			octostate repo edit --app-id <app-id> --installation-id <installation-id> --app-key-path <path> --org <org> --name <repo-name> --desc "New description" --homepage "https://example.com" --private=true --is-template=false --archived=false --allow-forking=true`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
+			selected, err := selectedVisibility(cmd, newPrivate, newVisibility)
+			if err != nil {
+				return err
+			}
 			var opts = repos.EditOptions{
 				Repo:  name,
 				Owner: org,
@@ -60,6 +65,10 @@ func EditRepo(svc repos.Service) *cobra.Command {
 			if cmd.Flags().Changed("private") {
 				opts.Private = &newPrivate
 				changedFields = append(changedFields, "private")
+			}
+			if cmd.Flags().Changed("visibility") {
+				opts.Visibility = &selected
+				changedFields = append(changedFields, "visibility")
 			}
 			if cmd.Flags().Changed("is-template") {
 				opts.IsTemplate = &newIsTemplate
@@ -100,6 +109,7 @@ func EditRepo(svc repos.Service) *cobra.Command {
 					isTemplate:   newIsTemplate,
 					archived:     newArchived,
 					allowForking: newAllowForking,
+					visibility:   selected,
 				})
 			}
 
@@ -137,9 +147,10 @@ func EditRepo(svc repos.Service) *cobra.Command {
 	cmd.Flags().StringVar(&newDesc, "desc", "", "New description for the repository")
 	cmd.Flags().StringVar(&newHomepage, "homepage", "", "New homepage URL for the repository")
 	cmd.Flags().BoolVar(&newPrivate, "private", false, "Set the repository to private")
+	cmd.Flags().StringVar(&newVisibility, "visibility", "", "Repository visibility: public, private, or internal")
 	cmd.Flags().BoolVar(&newIsTemplate, "is-template", false, "Set the repository as a template")
 	cmd.Flags().BoolVar(&newArchived, "archived", false, "Archive the repository")
-	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow private forking of the repository")
+	cmd.Flags().BoolVar(&newAllowForking, "allow-forking", false, "Allow forking of a private or internal repository")
 	cmd.Flags().StringVar(&toConfig, "to-config", "", "Write the proposal to an organization.yaml file instead of GitHub")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
@@ -155,6 +166,7 @@ type editConfigValues struct {
 	isTemplate   bool
 	archived     bool
 	allowForking bool
+	visibility   string
 }
 
 func editRepoToConfig(cmd *cobra.Command, path, org, name string, values editConfigValues) error {
@@ -181,6 +193,9 @@ func editRepoToConfig(cmd *cobra.Command, path, org, name string, values editCon
 				repository.Visibility = "public"
 			}
 		}
+		if cmd.Flags().Changed("visibility") {
+			repository.Visibility = values.visibility
+		}
 		if cmd.Flags().Changed("is-template") {
 			repository.SetManagedIsTemplate(values.isTemplate)
 		}
@@ -198,6 +213,9 @@ func editRepoToConfig(cmd *cobra.Command, path, org, name string, values editCon
 		}
 		if cmd.Flags().Changed("private") && before.Visibility != repository.Visibility {
 			changedFields = append(changedFields, "private")
+		}
+		if cmd.Flags().Changed("visibility") && before.Visibility != repository.Visibility {
+			changedFields = append(changedFields, "visibility")
 		}
 		if cmd.Flags().Changed("is-template") && before.IsTemplateOption() != repository.IsTemplateOption() {
 			changedFields = append(changedFields, "is-template")

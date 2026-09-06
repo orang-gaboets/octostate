@@ -56,8 +56,8 @@ func TestBootstrapRepositoriesMaterializesManagedFields(t *testing.T) {
 	if privateRepo.Owner != "" || privateRepo.Name != "octostate" || privateRepo.Visibility != "private" {
 		t.Fatalf("unexpected private repo bootstrap result: %#v", privateRepo)
 	}
-	if _, managed := privateRepo.ManagedAllowForking(); managed {
-		t.Fatalf("expected private allow_forking to stay unmanaged, got %#v", privateRepo.AllowForkingOption())
+	if value, managed := privateRepo.ManagedAllowForking(); !managed || !value {
+		t.Fatalf("expected managed private allow_forking=true, got value=%v managed=%v", value, managed)
 	}
 	if value, managed := privateRepo.ManagedDescription(); !managed || value != "GitOps CLI" {
 		t.Fatalf("expected managed description, got value=%q managed=%v", value, managed)
@@ -70,13 +70,27 @@ func TestBootstrapRepositoriesMaterializesManagedFields(t *testing.T) {
 	if publicRepo.Owner != "shared-platform" {
 		t.Fatalf("expected external owner, got %#v", publicRepo.Owner)
 	}
-	if value, managed := publicRepo.ManagedAllowForking(); !managed || value {
-		t.Fatalf("expected managed allow_forking=false, got value=%v managed=%v", value, managed)
+	if _, managed := publicRepo.ManagedAllowForking(); managed {
+		t.Fatalf("expected public allow_forking to stay unmanaged, got %#v", publicRepo.AllowForkingOption())
 	}
 	if value, managed := publicRepo.ManagedHomepage(); !managed || value != "" {
 		t.Fatalf("expected explicit empty managed homepage, got value=%q managed=%v", value, managed)
 	}
 	if value, managed := publicRepo.ManagedIsTemplate(); !managed || !value {
 		t.Fatalf("expected managed is_template=true, got value=%v managed=%v", value, managed)
+	}
+}
+
+func TestBootstrapRepositoriesPreservesInternalVisibility(t *testing.T) {
+	t.Parallel()
+
+	got := bootstrapRepositories("acme", []state.Repository{{
+		Owner: "acme", Name: "platform", Visibility: "internal", AllowForking: true,
+	}})
+	if len(got) != 1 || got[0].Visibility != "internal" {
+		t.Fatalf("expected internal visibility to be preserved, got %#v", got)
+	}
+	if value, managed := got[0].ManagedAllowForking(); !managed || !value {
+		t.Fatalf("expected internal allow_forking=true to be managed, got value=%v managed=%v", value, managed)
 	}
 }
