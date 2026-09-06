@@ -263,8 +263,7 @@ The `live-integration` job references the protected environment
 settings before activation; the repository workflow does not create or change
 them:
 
-- require the `@orang-gaboets/octostate-live-testers` reviewer team where that
-  environment feature is supported;
+- require the `@orang-gaboets/octostate-live-testers` reviewer team;
 - allow self-review initially if that is the approved operating choice; and
 - restrict the environment to the `main` branch.
 
