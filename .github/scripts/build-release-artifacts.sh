@@ -45,10 +45,11 @@ build_archive() {
   local archive=$4
   local executable=octostate$extension
   local stage="$work_dir/$goos-$goarch"
+  local ldflags="-s -w -X main.buildVersion=${tag}"
 
   mkdir -p "$stage"
   GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
-    go build -trimpath -ldflags='-s -w' -o "$stage/$executable" ./cmd/octostate
+    go build -trimpath -ldflags="$ldflags" -o "$stage/$executable" ./cmd/octostate
   cp "$repo_root/LICENSE" "$repo_root/README.md" "$repo_root/CHANGELOG.md" "$stage/"
   touch -t 197001010000 "$stage"/*
 
@@ -74,6 +75,7 @@ if [[ "$(uname -s)" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
   mkdir -p "$smoke_dir"
   tar -xzf "$output_dir/octostate_${version}_linux_amd64.tar.gz" -C "$smoke_dir"
   "$smoke_dir/octostate" --help >/dev/null
+  [[ "$("$smoke_dir"/octostate --version)" == "octostate $tag" ]]
 fi
 
 (
