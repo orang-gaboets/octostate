@@ -356,6 +356,31 @@ func TestBuildAdoptConfigDeduplicatesOptedInPendingInvitationIdentities(t *testi
 	}
 }
 
+func TestBuildAdoptConfigOmitsPendingUsernameConflictingWithConfigOnlyMember(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Members:      []config.OrganizationMemberSpec{{Username: "carol", Role: "member"}},
+		},
+		Actual: &state.OrganizationState{
+			Organization:       "org-a",
+			PendingInvitations: []state.PendingInvitation{{Username: "carol", Role: "direct_member"}},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 0 {
+		t.Fatalf("expected member-conflicting pending invite to be omitted, got %#v", got.Invites)
+	}
+	if report := config.Validate(got); !report.Valid {
+		t.Fatalf("expected adopted config to validate, got %#v", report.Errors)
+	}
+}
+
 func assertAdoptedMembers(t *testing.T, members []config.OrganizationMemberSpec) {
 	t.Helper()
 

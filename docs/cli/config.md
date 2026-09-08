@@ -102,6 +102,11 @@ teams:
 
 Build or update desired state from live GitHub.
 
+Pending invitations are transitional onboarding state rather than durable
+organization policy, so sync-from-live excludes them by default. Use
+`--include-pending-invites` only when intentionally capturing current in-flight
+access requests for review or bootstrap adoption.
+
 ### Bootstrap desired-state config from live GitHub state
 
 ```bash

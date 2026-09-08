@@ -67,14 +67,14 @@ func BuildAdoptConfig(opt AdoptOptions) (config.OrganizationConfig, error) {
 	}
 
 	desired.Organization = organization
+	desired.Members = adoptOrganizationMembers(desired.Members, actualMembers)
 	desired.Invites = adoptInvites(desired.Invites, actual.Members)
 	if opt.IncludePendingInvitations {
-		desired.Invites, err = mergePendingInvitations(desired.Invites, actual.PendingInvitations, actualMembers)
+		desired.Invites, err = mergePendingInvitations(desired.Invites, actual.PendingInvitations, desired.Members)
 		if err != nil {
 			return config.OrganizationConfig{}, err
 		}
 	}
-	desired.Members = adoptOrganizationMembers(desired.Members, actualMembers)
 	desired.Repositories = adoptRepositories(organization, desired.Repositories, actual.Repositories)
 	desired.Teams = adoptTeams(organization, desired.Teams, actual.Teams, membersByTeam, permissionsByTeam)
 
