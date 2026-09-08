@@ -122,6 +122,11 @@ existing packages.
 
 For the supported reusable API:
 
+The compatibility contract also covers externally importable types, interfaces,
+constants, variables, or other API elements that form part of the exported
+contract of a supported package, even when they are declared in an otherwise
+implementation-oriented package.
+
 - preserve source compatibility within the documented `v1` contract;
 - prefer additive changes where practical;
 - deprecate obsolete APIs before removal where feasible;
