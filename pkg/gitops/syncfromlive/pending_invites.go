@@ -2,6 +2,7 @@ package syncfromlive
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/orang-gaboets/octostate/pkg/github"
@@ -53,19 +54,90 @@ func mergePendingInvitations(
 		if pendingUsernameConflictsMember(invite, members) {
 			continue
 		}
-		key := inviteIdentityKey(invite)
-		if _, ok := seen[key]; ok {
+		keys := pendingInvitationIdentityKeys(invitation)
+		if pendingInvitationAlreadySeen(seen, keys) {
 			continue
 		}
-		seen[key] = struct{}{}
-		if index, ok := indexByIdentity[key]; ok {
+		for _, key := range keys {
+			seen[key] = struct{}{}
+		}
+		matchingIndexes := pendingInvitationDesiredIndexes(indexByIdentity, keys)
+		if len(matchingIndexes) > 0 {
+			index := matchingIndexes[0]
 			merged[index] = invite
+			if len(matchingIndexes) > 1 {
+				merged = removeInviteIndexes(merged, matchingIndexes[1:])
+				indexByIdentity = inviteIndexesByIdentity(merged)
+			}
 			continue
 		}
-		indexByIdentity[key] = len(merged)
+		indexByIdentity[inviteIdentityKey(invite)] = len(merged)
 		merged = append(merged, invite)
 	}
 	return merged, nil
+}
+
+func pendingInvitationIdentityKeys(invitation state.PendingInvitation) []string {
+	keys := make([]string, 0, 2)
+	if username := strings.TrimSpace(invitation.Username); username != "" {
+		keys = append(keys, "username\x00"+strings.ToLower(username))
+	}
+	if email := strings.TrimSpace(invitation.Email); email != "" {
+		keys = append(keys, "email\x00"+strings.ToLower(email))
+	}
+	return keys
+}
+
+func pendingInvitationAlreadySeen(seen map[string]struct{}, keys []string) bool {
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func pendingInvitationDesiredIndexes(indexByIdentity map[string]int, keys []string) []int {
+	indexes := make([]int, 0, len(keys))
+	for _, key := range keys {
+		if index, ok := indexByIdentity[key]; ok {
+			found := false
+			for _, existing := range indexes {
+				if existing == index {
+					found = true
+					break
+				}
+			}
+			if !found {
+				indexes = append(indexes, index)
+			}
+		}
+	}
+	// Preserve existing invite order when both aliases are already declared.
+	sort.Ints(indexes)
+	return indexes
+}
+
+func removeInviteIndexes(invites []config.InviteSpec, indexes []int) []config.InviteSpec {
+	remove := make(map[int]struct{}, len(indexes))
+	for _, index := range indexes {
+		remove[index] = struct{}{}
+	}
+	result := make([]config.InviteSpec, 0, len(invites)-len(remove))
+	for index, invite := range invites {
+		if _, ok := remove[index]; !ok {
+			result = append(result, invite)
+		}
+	}
+	return result
+}
+
+func inviteIndexesByIdentity(invites []config.InviteSpec) map[string]int {
+	indexes := make(map[string]int, len(invites))
+	for index, invite := range invites {
+		indexes[inviteIdentityKey(invite)] = index
+	}
+	return indexes
 }
 
 func pendingInvitationToInviteSpec(invitation state.PendingInvitation) (config.InviteSpec, error) {

@@ -334,6 +334,32 @@ func TestBuildAdoptConfigMergesOptedInPendingInvitations(t *testing.T) {
 	}
 }
 
+func TestBuildAdoptConfigMatchesPendingInvitationAliasesAcrossIdentityKinds(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Invites: []config.InviteSpec{
+				{Email: config.OptionalString{Present: true, Value: "alice@example.com"}, Role: "direct_member"},
+			},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "alice", Email: "alice@example.com", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" {
+		t.Fatalf("expected one preferred username invite, got %#v", got.Invites)
+	}
+}
+
 func TestBuildAdoptConfigDeduplicatesOptedInPendingInvitationIdentities(t *testing.T) {
 	t.Parallel()
 
