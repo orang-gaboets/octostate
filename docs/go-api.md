@@ -149,8 +149,8 @@ This policy makes #259 actionable: `pkg/github/client.New` is a deprecated,
 source-compatible constructor retained for existing consumers. It should remain
 until the project selects an appropriate removal boundary and completes the
 required migration communication. This documentation work does not remove it;
-consumers needing construction errors should use `NewPAT` as documented by that
-API's deprecation guidance.
+consumers needing construction errors should use `NewPAT`, as recommended by the
+`New` deprecation comment.
 
 ## Module downloads and source archives
 
