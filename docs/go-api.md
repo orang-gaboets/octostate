@@ -89,6 +89,18 @@ Octostate uses one Go module and one release version stream for both its CLI and
 its Go packages. Go API compatibility is therefore a release concern alongside
 CLI compatibility; there is no separate SDK version or package release stream.
 
+For the current `v1` module, the normal release boundaries are:
+
+| Release | Go API expectation |
+| --- | --- |
+| Patch release, such as `v1.3.1` | Preserve source compatibility; limit changes to compatible fixes, documentation, and internal implementation updates. |
+| Minor release, such as `v1.4.0` | Preserve source compatibility; additive APIs and deprecations are allowed. |
+| Major release, such as `v2.0.0` | May introduce source-incompatible changes. The Go module path becomes `github.com/orang-gaboets/octostate/v2`, and migration notes must describe the break. |
+
+An exceptional source-incompatible change within `v1` requires an explicit
+maintainer decision, a tracked compatibility rationale, and release notes that
+explain the impact. It is not the normal alternative to a major release.
+
 ### Existing importable APIs
 
 For an existing `v1` package outside an `internal` directory, an exported
