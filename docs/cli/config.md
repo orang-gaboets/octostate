@@ -194,7 +194,7 @@ Behavior:
 Adopt rules:
 - Pending invites are excluded by default
 - `--include-pending-invites` merges live pending invites into `invites:`; matching identities are refreshed in their existing positions and new identities append deterministically
-- Unrelated config-only invites remain, and identity matching never infers equivalence across username, email, and user ID forms
+- Unrelated config-only invites remain; adopt does not perform additional live cross-kind resolution, but username and email aliases carried by the same collected invitation are treated as one invitation
 - Top-level durable org membership is adopted into `members:`
 - Presence-aware repository fields are only updated from live when they are already explicitly managed in config
 - Newly adopted repositories leave presence-aware repository fields unmanaged; add those fields manually to `organization.yaml` if you want them explicit today
