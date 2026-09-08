@@ -25,7 +25,7 @@ func bootstrapPendingInvitations(
 			continue
 		}
 		keys := pendingInvitationIdentityKeys(invitation)
-		index := -1
+		var index int
 		matchingIndexes := pendingInvitationIndexes(indexByIdentity, keys)
 		if len(matchingIndexes) == 0 {
 			index = len(invites)
@@ -69,7 +69,7 @@ func mergePendingInvitations(
 			continue
 		}
 		keys := pendingInvitationIdentityKeys(invitation)
-		index := -1
+		var index int
 		matchingIndexes := pendingInvitationIndexes(indexByIdentity, keys)
 		if len(matchingIndexes) == 0 {
 			index = len(merged)
