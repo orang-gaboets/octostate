@@ -2,6 +2,7 @@ package syncfromlive
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -285,6 +286,173 @@ func TestBuildAdoptConfigDropsInvitesSatisfiedByLiveMembers(t *testing.T) {
 	}
 	if report := config.Validate(got); !report.Valid {
 		t.Fatalf("expected adopted config to validate after removing satisfied invites, got %#v", report)
+	}
+}
+
+func TestBuildAdoptConfigMergesOptedInPendingInvitations(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "org-a",
+		Invites: []config.InviteSpec{
+			{Username: config.OptionalString{Present: true, Value: "octocat"}, Role: "direct_member", TeamSlugs: []string{"platform"}},
+			{UserID: config.OptionalInt64{Present: true, Value: 42}, Role: "direct_member"},
+		},
+		Teams: []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+	actual := &state.OrganizationState{
+		Organization: "org-a",
+		PendingInvitations: []state.PendingInvitation{
+			{Username: "octocat", Role: "admin", TeamSlugs: []string{"platform"}},
+			{Email: "new@example.com", Role: "billing_manager"},
+		},
+		Teams: []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+	}
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired:                   desired,
+		Actual:                    actual,
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 3 {
+		t.Fatalf("expected one replaced, one config-only, and one appended invite, got %#v", got.Invites)
+	}
+	if got.Invites[0].Role != "admin" || !reflect.DeepEqual(got.Invites[0].TeamSlugs, []string{"platform"}) {
+		t.Fatalf("expected matching invite to be refreshed in place, got %#v", got.Invites[0])
+	}
+	if !got.Invites[1].UserID.Present || got.Invites[1].UserID.Value != 42 {
+		t.Fatalf("expected config-only user ID invite to remain, got %#v", got.Invites[1])
+	}
+	if !got.Invites[2].Email.Present || got.Invites[2].Email.Value != "new@example.com" {
+		t.Fatalf("expected new email invite to append, got %#v", got.Invites[2])
+	}
+	if report := config.Validate(got); !report.Valid {
+		t.Fatalf("expected adopted config to validate, got %#v", report.Errors)
+	}
+}
+
+func TestBuildAdoptConfigMatchesPendingInvitationAliasesAcrossIdentityKinds(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Invites: []config.InviteSpec{
+				{Email: config.OptionalString{Present: true, Value: "alice@example.com"}, Role: "direct_member"},
+			},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "alice", Email: "alice@example.com", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" {
+		t.Fatalf("expected one preferred username invite, got %#v", got.Invites)
+	}
+}
+
+func TestBuildAdoptConfigDeduplicatesOverlappingPendingInvitationAliases(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{Organization: "org-a"},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "alice", Role: "direct_member"},
+				{Username: "alice", Email: "alice@example.com", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" {
+		t.Fatalf("expected one username invite, got %#v", got.Invites)
+	}
+}
+
+func TestBuildAdoptConfigMergesExistingPendingInvitationAliasBridge(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Invites: []config.InviteSpec{
+				{Username: config.OptionalString{Present: true, Value: "alice"}, Role: "direct_member"},
+				{Email: config.OptionalString{Present: true, Value: "alice@example.com"}, Role: "direct_member"},
+			},
+		},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "alice", Email: "alice@example.com", Role: "admin"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" || got.Invites[0].Role != "admin" {
+		t.Fatalf("expected one refreshed username invite, got %#v", got.Invites)
+	}
+}
+
+func TestBuildAdoptConfigDeduplicatesOptedInPendingInvitationIdentities(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{Organization: "org-a"},
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Username: "Octocat", Role: "direct_member"},
+				{Username: "octocat", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || got.Invites[0].Username.Value != "Octocat" {
+		t.Fatalf("expected one deterministic invite, got %#v", got.Invites)
+	}
+}
+
+func TestBuildAdoptConfigOmitsPendingUsernameConflictingWithConfigOnlyMember(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{
+			Organization: "org-a",
+			Members:      []config.OrganizationMemberSpec{{Username: "carol", Role: "member"}},
+		},
+		Actual: &state.OrganizationState{
+			Organization:       "org-a",
+			PendingInvitations: []state.PendingInvitation{{Username: "carol", Role: "direct_member"}},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 0 {
+		t.Fatalf("expected member-conflicting pending invite to be omitted, got %#v", got.Invites)
+	}
+	if report := config.Validate(got); !report.Valid {
+		t.Fatalf("expected adopted config to validate, got %#v", report.Errors)
 	}
 }
 

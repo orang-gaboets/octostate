@@ -722,6 +722,57 @@ func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
 	}
 }
 
+func TestCollectOrganizationForSyncFromLiveOptInIncludesPendingInvitations(t *testing.T) {
+	t.Parallel()
+
+	orgSvc := &organizationServiceStub{
+		listMembersFunc: func(_ context.Context, _ string, _ *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
+			return []*gh.User{}, &gh.Response{}, nil
+		},
+		listPendingOrgInvitationsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Invitation, *gh.Response, error) {
+			return []*gh.Invitation{{
+				ID:        githubpkg.Ptr(int64(7)),
+				Email:     githubpkg.Ptr("dev@example.com"),
+				Role:      githubpkg.Ptr("direct_member"),
+				TeamCount: githubpkg.Ptr(1),
+			}}, &gh.Response{}, nil
+		},
+		listOrgInvitationTeamsFunc: func(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			return []*gh.Team{{Slug: githubpkg.Ptr("platform")}}, &gh.Response{}, nil
+		},
+	}
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, _ string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			return []*gh.Repository{}, &gh.Response{}, nil
+		},
+	}
+	teamSvc := &teamServiceStub{
+		listTeamsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			return []*gh.Team{{Slug: githubpkg.Ptr("platform"), Name: githubpkg.Ptr("Platform"), Privacy: githubpkg.Ptr("closed")}}, &gh.Response{}, nil
+		},
+		listTeamMembersBySlugFunc: func(_ context.Context, _ string, _ string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+			return []*gh.User{}, &gh.Response{}, nil
+		},
+		listTeamReposBySlugFunc: func(_ context.Context, _ string, _ string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+			return []*gh.Repository{}, &gh.Response{}, nil
+		},
+	}
+
+	actual, err := CollectOrganizationForSyncFromLive(context.Background(), CollectOrganizationOptions{
+		OrgName:                   "org-a",
+		OrganizationService:       orgSvc,
+		RepositoryService:         repoSvc,
+		TeamService:               teamSvc,
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(actual.PendingInvitations) != 1 || actual.PendingInvitations[0].Email != "dev@example.com" || len(actual.PendingInvitations[0].TeamSlugs) != 1 {
+		t.Fatalf("expected opted-in pending invitation state, got %#v", actual.PendingInvitations)
+	}
+}
+
 func TestCollectOrganizationForMaterializeAllowsUnusedServicesToBeNil(t *testing.T) {
 	t.Parallel()
 

@@ -12,8 +12,9 @@ import (
 // AdoptOptions defines the inputs required to merge supported live GitHub
 // state back into an existing desired GitOps config.
 type AdoptOptions struct {
-	Desired config.OrganizationConfig
-	Actual  *state.OrganizationState
+	Desired                   config.OrganizationConfig
+	Actual                    *state.OrganizationState
+	IncludePendingInvitations bool
 }
 
 // Validate checks whether the adopt inputs are usable.
@@ -66,8 +67,14 @@ func BuildAdoptConfig(opt AdoptOptions) (config.OrganizationConfig, error) {
 	}
 
 	desired.Organization = organization
-	desired.Invites = adoptInvites(desired.Invites, actual.Members)
 	desired.Members = adoptOrganizationMembers(desired.Members, actualMembers)
+	desired.Invites = adoptInvites(desired.Invites, actual.Members)
+	if opt.IncludePendingInvitations {
+		desired.Invites, err = mergePendingInvitations(desired.Invites, actual.PendingInvitations, desired.Members)
+		if err != nil {
+			return config.OrganizationConfig{}, err
+		}
+	}
 	desired.Repositories = adoptRepositories(organization, desired.Repositories, actual.Repositories)
 	desired.Teams = adoptTeams(organization, desired.Teams, actual.Teams, membersByTeam, permissionsByTeam)
 
