@@ -66,13 +66,17 @@ gh workflow run release-please.yml \
   -f release_commit=<tagged-commit-sha>
 ```
 
-Staging assets before publication is required by GitHub immutable-release
-protection. Organization immutable-release policy is currently `none`, so
-Octostate uses the repository-level **Enable release immutability** setting in
-GitHub repository settings. This applies to future releases only: after
-publication, GitHub protects the release tag and assets from modification or
-deletion while leaving release notes editable. Existing release history,
-including v1.2.0, remains unchanged.
+GitHub recommends staging all assets on the draft Release before publication.
+As verified on 2026-09-09 through the [organization immutable-release
+settings](https://api.github.com/orgs/orang-gaboets/settings/immutable-releases)
+and the repository's **Settings → General → Releases** page, the organization
+policy is `none` and Octostate's repository-level **Enable release immutability**
+setting is enabled. Recheck both settings before release operations because
+the effective policy can change. Immutable-release enforcement applies to
+future releases only: after publication, GitHub protects release assets from
+modification or deletion and locks the associated tag while the release exists;
+if the release is deleted, its former tag name cannot be reused. Release notes
+remain editable. Existing release history, including v1.2.0, remains unchanged.
 
 ## Compatibility Notes for Releases
 
