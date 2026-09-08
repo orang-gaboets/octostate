@@ -69,12 +69,12 @@ been documented as a recommended API.
 The current module was audited by package family. The classifications below
 describe intended use; they do not move or hide any existing package.
 
-| Surface | Current packages | Intended role |
+| Current packages | Visibility | Support status and intended role |
 | --- | --- | --- |
-| Supported reusable API | `pkg/gitops/config`, `pkg/gitops/state`, `pkg/gitops/plan`, `pkg/gitops/diff`, `pkg/gitops/snapshot` | Recommended building blocks for loading desired state, representing state, planning, and offline analysis |
-| Implementation-oriented but currently importable | `pkg/github` and its service packages; `pkg/gitops/collector`, `pkg/gitops/apply`, `pkg/gitops/syncfromlive` | Engine and GitHub integration internals that external modules can currently import, but which are not the primary stable SDK surface |
-| CLI-only surface | `cmd/**` | Executable command wiring and command-specific behavior; install the `cmd/octostate` command rather than importing these packages |
-| Internal/non-importable | `internal/**`, `cmd/octostate/internal/**`, `pkg/gitops/internal/**` | Implementation details protected by Go's `internal` import rule |
+| `pkg/gitops/config`, `pkg/gitops/state`, `pkg/gitops/plan`, `pkg/gitops/diff`, `pkg/gitops/snapshot` | Externally importable | Supported reusable API: recommended building blocks for loading desired state, representing state, planning, and offline analysis |
+| `pkg/github` (including `client`, `logging`, and resource services); `pkg/gitops/collector`, `pkg/gitops/apply`, `pkg/gitops/syncfromlive` | Externally importable | Implementation-oriented and not the primary stable SDK surface; existing exported APIs remain compatibility-sensitive |
+| Non-`internal` packages under `cmd/**`, including `cmd/octostate/*` | Importable according to normal Go package rules, except executable `main` packages | CLI-only implementation surface; install `cmd/octostate` rather than importing command packages |
+| `internal/**`, `cmd/octostate/internal/**`, `pkg/gitops/internal/**` | Non-importable from external modules | Implementation details protected by Go's `internal` import rule |
 
 The supported reusable API list is intentionally focused. A package being
 implementation-oriented does not make its existing exported API safe to break
