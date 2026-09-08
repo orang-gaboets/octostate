@@ -364,6 +364,27 @@ func TestBuildBootstrapConfigIncludesOptedInPendingInvitations(t *testing.T) {
 	}
 }
 
+func TestBuildBootstrapConfigDeduplicatesOverlappingPendingInvitationAliases(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Email: "alice@example.com", Role: "direct_member"},
+				{Username: "alice", Email: "alice@example.com", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" {
+		t.Fatalf("expected one preferred username invite, got %#v", got.Invites)
+	}
+}
+
 func TestBuildBootstrapConfigRejectsOptedInPendingInvitationWithoutStableIdentity(t *testing.T) {
 	t.Parallel()
 

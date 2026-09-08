@@ -14,7 +14,7 @@ func bootstrapPendingInvitations(
 	members []config.OrganizationMemberSpec,
 ) ([]config.InviteSpec, error) {
 	invites := make([]config.InviteSpec, 0, len(invitations))
-	seen := make(map[string]struct{}, len(invitations))
+	indexByIdentity := make(map[string]int, len(invitations))
 	for _, invitation := range invitations {
 		invite, err := pendingInvitationToInviteSpec(invitation)
 		if err != nil {
@@ -23,12 +23,23 @@ func bootstrapPendingInvitations(
 		if pendingUsernameConflictsMember(invite, members) {
 			continue
 		}
-		key := inviteIdentityKey(invite)
-		if _, ok := seen[key]; ok {
-			continue
+		keys := pendingInvitationIdentityKeys(invitation)
+		index := -1
+		for _, key := range keys {
+			if existing, ok := indexByIdentity[key]; ok {
+				index = existing
+				break
+			}
 		}
-		seen[key] = struct{}{}
-		invites = append(invites, invite)
+		if index < 0 {
+			index = len(invites)
+			invites = append(invites, invite)
+		} else if !invites[index].Username.Present && invite.Username.Present {
+			invites[index] = invite
+		}
+		for _, key := range keys {
+			indexByIdentity[key] = index
+		}
 	}
 	return invites, nil
 }
@@ -40,11 +51,11 @@ func mergePendingInvitations(
 ) ([]config.InviteSpec, error) {
 	merged := append([]config.InviteSpec{}, desired...)
 	indexByIdentity := make(map[string]int, len(merged))
+	pendingIndexes := make(map[int]struct{}, len(invitations))
 	for i, invite := range merged {
 		indexByIdentity[inviteIdentityKey(invite)] = i
 	}
 
-	seen := make(map[string]struct{}, len(invitations))
 	for _, invitation := range invitations {
 		invite, err := pendingInvitationToInviteSpec(invitation)
 		if err != nil {
@@ -54,28 +65,24 @@ func mergePendingInvitations(
 			continue
 		}
 		keys := pendingInvitationIdentityKeys(invitation)
-		unseen := false
-		matched := false
+		index := -1
 		for _, key := range keys {
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			unseen = true
-			seen[key] = struct{}{}
-			if index, ok := indexByIdentity[key]; ok {
-				merged[index] = invite
-				matched = true
+			if existing, ok := indexByIdentity[key]; ok {
+				index = existing
 				break
 			}
 		}
-		if matched {
-			continue
+		if index < 0 {
+			index = len(merged)
+			merged = append(merged, invite)
+			pendingIndexes[index] = struct{}{}
+		} else if _, fromPending := pendingIndexes[index]; !fromPending ||
+			(!merged[index].Username.Present && invite.Username.Present) {
+			merged[index] = invite
 		}
-		if !unseen {
-			continue
+		for _, key := range keys {
+			indexByIdentity[key] = index
 		}
-		indexByIdentity[inviteIdentityKey(invite)] = len(merged)
-		merged = append(merged, invite)
 	}
 	return merged, nil
 }
