@@ -2,6 +2,7 @@ package syncfromlive
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/orang-gaboets/octostate/pkg/github"
@@ -25,17 +26,20 @@ func bootstrapPendingInvitations(
 		}
 		keys := pendingInvitationIdentityKeys(invitation)
 		index := -1
-		for _, key := range keys {
-			if existing, ok := indexByIdentity[key]; ok {
-				index = existing
-				break
-			}
-		}
-		if index < 0 {
+		matchingIndexes := pendingInvitationIndexes(indexByIdentity, keys)
+		if len(matchingIndexes) == 0 {
 			index = len(invites)
 			invites = append(invites, invite)
-		} else if !invites[index].Username.Present && invite.Username.Present {
-			invites[index] = invite
+		} else {
+			index = canonicalInviteIndex(matchingIndexes)
+			if len(matchingIndexes) > 1 {
+				invites[index] = invite
+				removeIndexes := inviteIndexesExcept(matchingIndexes, index)
+				invites, _ = removeInviteIndexes(invites, nil, removeIndexes)
+				indexByIdentity = inviteIndexesByIdentity(invites)
+			} else if !invites[index].Username.Present && invite.Username.Present {
+				invites[index] = invite
+			}
 		}
 		for _, key := range keys {
 			indexByIdentity[key] = index
@@ -66,19 +70,22 @@ func mergePendingInvitations(
 		}
 		keys := pendingInvitationIdentityKeys(invitation)
 		index := -1
-		for _, key := range keys {
-			if existing, ok := indexByIdentity[key]; ok {
-				index = existing
-				break
-			}
-		}
-		if index < 0 {
+		matchingIndexes := pendingInvitationIndexes(indexByIdentity, keys)
+		if len(matchingIndexes) == 0 {
 			index = len(merged)
 			merged = append(merged, invite)
 			pendingIndexes[index] = struct{}{}
-		} else if _, fromPending := pendingIndexes[index]; !fromPending ||
-			(!merged[index].Username.Present && invite.Username.Present) {
-			merged[index] = invite
+		} else {
+			index = canonicalInviteIndex(matchingIndexes)
+			if len(matchingIndexes) > 1 {
+				merged[index] = invite
+				removeIndexes := inviteIndexesExcept(matchingIndexes, index)
+				merged, pendingIndexes = removeInviteIndexes(merged, pendingIndexes, removeIndexes)
+				indexByIdentity = inviteIndexesByIdentity(merged)
+			} else if _, fromPending := pendingIndexes[index]; !fromPending ||
+				(!merged[index].Username.Present && invite.Username.Present) {
+				merged[index] = invite
+			}
 		}
 		for _, key := range keys {
 			indexByIdentity[key] = index
@@ -96,6 +103,68 @@ func pendingInvitationIdentityKeys(invitation state.PendingInvitation) []string 
 		keys = append(keys, "email\x00"+strings.ToLower(email))
 	}
 	return keys
+}
+
+func pendingInvitationIndexes(indexByIdentity map[string]int, keys []string) []int {
+	indexes := make([]int, 0, len(keys))
+	for _, key := range keys {
+		if index, ok := indexByIdentity[key]; ok && !slices.Contains(indexes, index) {
+			indexes = append(indexes, index)
+		}
+	}
+	return indexes
+}
+
+func canonicalInviteIndex(indexes []int) int {
+	canonical := indexes[0]
+	for _, index := range indexes[1:] {
+		if index < canonical {
+			canonical = index
+		}
+	}
+	return canonical
+}
+
+func inviteIndexesExcept(indexes []int, keep int) []int {
+	result := make([]int, 0, len(indexes)-1)
+	for _, index := range indexes {
+		if index != keep {
+			result = append(result, index)
+		}
+	}
+	return result
+}
+
+func removeInviteIndexes(
+	invites []config.InviteSpec,
+	pendingIndexes map[int]struct{},
+	removeIndexes []int,
+) ([]config.InviteSpec, map[int]struct{}) {
+	remove := make(map[int]struct{}, len(removeIndexes))
+	for _, index := range removeIndexes {
+		remove[index] = struct{}{}
+	}
+	result := make([]config.InviteSpec, 0, len(invites)-len(remove))
+	resultPendingIndexes := make(map[int]struct{}, len(pendingIndexes))
+	for index, invite := range invites {
+		if _, ok := remove[index]; ok {
+			continue
+		}
+		resultIndex := len(result)
+		result = append(result, invite)
+		if _, ok := pendingIndexes[index]; ok {
+			resultPendingIndexes[resultIndex] = struct{}{}
+		}
+	}
+	return result, resultPendingIndexes
+}
+
+func inviteIndexesByIdentity(invites []config.InviteSpec) map[string]int {
+	indexes := make(map[string]int, len(invites))
+	for index, invite := range invites {
+		indexes[inviteIdentityKey(invite)] = index
+	}
+	return indexes
 }
 
 func pendingInvitationToInviteSpec(invitation state.PendingInvitation) (config.InviteSpec, error) {
