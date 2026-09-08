@@ -19,10 +19,11 @@ import (
 // bounded fan-out across top-level GitHub reads and nested member / invitation /
 // team detail reads.
 type CollectOrganizationOptions struct {
-	OrgName             string
-	OrganizationService organizations.Service
-	RepositoryService   repos.Service
-	TeamService         teams.Service
+	OrgName                   string
+	OrganizationService       organizations.Service
+	RepositoryService         repos.Service
+	TeamService               teams.Service
+	IncludePendingInvitations bool
 }
 
 type collectOrganizationBehavior struct {
@@ -99,9 +100,10 @@ func CollectOrganizationForBootstrap(ctx context.Context, opt CollectOrganizatio
 // for sync-from-live proposal generation.
 func CollectOrganizationForSyncFromLive(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
-		includeMembers:      true,
-		includeRepositories: true,
-		includeTeams:        true,
+		includeMembers:            true,
+		includePendingInvitations: opt.IncludePendingInvitations,
+		includeRepositories:       true,
+		includeTeams:              true,
 	})
 }
 

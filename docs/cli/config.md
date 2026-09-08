@@ -108,6 +108,7 @@ Build or update desired state from live GitHub.
 export OCTOSTATE_GITHUB_TOKEN="<token>"
 octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config
 octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --write
+octostate config sync-from-live --mode bootstrap --org orang-gaboets --config-dir ./config --include-pending-invites
 ```
 
 Flags:
@@ -115,6 +116,7 @@ Flags:
 - `--org` (required): GitHub organization to read from live state
 - `--config-dir` (required): Path to the config directory containing or receiving `organization.yaml`
 - `--write`: Write the generated `organization.yaml` into `--config-dir` instead of printing YAML to stdout
+- `--include-pending-invites`: Include current pending organization invitations in bootstrap or adopt output; rejected for materialize
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
@@ -134,6 +136,10 @@ Behavior:
 
 Bootstrap rules:
 - Pending invites are excluded by default
+- `--include-pending-invites` opts into collecting pending invites for the generated `invites:` section
+- Opted-in invites use the live username when available, otherwise the live email; invitation record IDs are never emitted as `user_id`
+- Opted-in invites preserve the live role and attached team slugs, and are ordered deterministically
+- Username invites that conflict with durable top-level members are omitted so the generated config remains valid
 - Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
 - `allow_forking` is included for private or internal repositories and omitted for public repositories
@@ -181,6 +187,8 @@ Behavior:
 
 Adopt rules:
 - Pending invites are excluded by default
+- `--include-pending-invites` merges live pending invites into `invites:`; matching identities are refreshed in their existing positions and new identities append deterministically
+- Unrelated config-only invites remain, and identity matching never infers equivalence across username, email, and user ID forms
 - Top-level durable org membership is adopted into `members:`
 - Presence-aware repository fields are only updated from live when they are already explicitly managed in config
 - Newly adopted repositories leave presence-aware repository fields unmanaged; add those fields manually to `organization.yaml` if you want them explicit today
@@ -199,6 +207,8 @@ octostate config sync-from-live --mode adopt --org orang-gaboets --config-dir ./
 ```
 
 ### Materialize unmanaged repository fields in an existing desired config
+
+`--include-pending-invites` is not supported with `--mode materialize`. Materialize remains repository-field-specific and does not collect or modify invitations.
 
 ```bash
 octostate config sync-from-live --mode materialize --org orang-gaboets --config-dir ./config

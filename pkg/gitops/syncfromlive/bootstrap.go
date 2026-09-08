@@ -12,7 +12,8 @@ import (
 // BootstrapOptions defines the inputs required to generate an initial desired
 // GitOps config from live organization state.
 type BootstrapOptions struct {
-	Actual *state.OrganizationState
+	Actual                    *state.OrganizationState
+	IncludePendingInvitations bool
 }
 
 // Validate checks whether the bootstrap inputs are usable.
@@ -49,11 +50,18 @@ func BuildBootstrapConfig(opt BootstrapOptions) (config.OrganizationConfig, erro
 	if err != nil {
 		return config.OrganizationConfig{}, err
 	}
+	invites := []config.InviteSpec{}
+	if opt.IncludePendingInvitations {
+		invites, err = bootstrapPendingInvitations(actual.PendingInvitations, members)
+		if err != nil {
+			return config.OrganizationConfig{}, err
+		}
+	}
 
 	return config.OrganizationConfig{
 		Organization: organization,
 		Members:      members,
-		Invites:      []config.InviteSpec{},
+		Invites:      invites,
 		Repositories: bootstrapRepositories(organization, actual.Repositories),
 		Teams:        bootstrapTeams(actual.Teams, membersByTeam, permissionsByTeam),
 	}, nil

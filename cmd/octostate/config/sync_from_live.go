@@ -51,14 +51,15 @@ var (
 // SyncFromLiveConfigCmd creates the config sync-from-live command.
 func SyncFromLiveConfigCmd() *cobra.Command {
 	var (
-		token          string
-		appID          int64
-		installationID int64
-		appKeyPath     string
-		mode           string
-		organization   string
-		configDir      string
-		write          bool
+		token                 string
+		appID                 int64
+		installationID        int64
+		appKeyPath            string
+		mode                  string
+		organization          string
+		configDir             string
+		write                 bool
+		includePendingInvites bool
 	)
 
 	cmd := &cobra.Command{
@@ -86,6 +87,7 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 				organization,
 				configDir,
 				write,
+				includePendingInvites,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
@@ -105,6 +107,7 @@ func SyncFromLiveConfigCmd() *cobra.Command {
 	cmd.Flags().StringVar(&organization, "org", "", "GitHub organization to read from live state")
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing or receiving organization.yaml")
 	cmd.Flags().BoolVar(&write, "write", false, "Write the generated organization.yaml into --config-dir instead of printing YAML to stdout")
+	cmd.Flags().BoolVar(&includePendingInvites, "include-pending-invites", false, "Include pending organization invitations in bootstrap or adopt output")
 	github.MarkRequiredFlags(cmd, "mode", "org", "config-dir")
 
 	return cmd
@@ -122,17 +125,14 @@ func syncFromLiveConfig(
 	appID, installationID int64,
 	appKeyPath, mode, organization, configDir string,
 	write bool,
+	includePendingInvites bool,
 ) ([]byte, *syncFromLiveWriteResult, error) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	organization = strings.TrimSpace(organization)
 	configDir = strings.TrimSpace(configDir)
 
-	switch mode {
-	case syncFromLiveModeBootstrap:
-	case syncFromLiveModeAdopt:
-	case syncFromLiveModeMaterialize:
-	default:
-		return nil, nil, fmt.Errorf("sync-from-live mode %q is not supported", mode)
+	if err := validateSyncFromLiveMode(mode, includePendingInvites); err != nil {
+		return nil, nil, err
 	}
 
 	if organization == "" {
@@ -185,10 +185,11 @@ func syncFromLiveConfig(
 	}
 
 	actual, err := collectState(ctx, collector.CollectOrganizationOptions{
-		OrgName:             organization,
-		OrganizationService: client.Organizations(),
-		RepositoryService:   client.Repositories(),
-		TeamService:         client.Teams(),
+		OrgName:                   organization,
+		OrganizationService:       client.Organizations(),
+		RepositoryService:         client.Repositories(),
+		TeamService:               client.Teams(),
+		IncludePendingInvitations: includePendingInvites,
 	})
 	if err != nil {
 		return nil, nil, runtimePhaseError("collect live GitHub state", err)
@@ -197,11 +198,15 @@ func syncFromLiveConfig(
 	var cfg gitopsconfig.OrganizationConfig
 	switch mode {
 	case syncFromLiveModeBootstrap:
-		cfg, err = buildSyncFromLiveBootstrap(syncfromlive.BootstrapOptions{Actual: actual})
+		cfg, err = buildSyncFromLiveBootstrap(syncfromlive.BootstrapOptions{
+			Actual:                    actual,
+			IncludePendingInvitations: includePendingInvites,
+		})
 	case syncFromLiveModeAdopt:
 		cfg, err = buildSyncFromLiveAdopt(syncfromlive.AdoptOptions{
-			Desired: desired,
-			Actual:  actual,
+			Desired:                   desired,
+			Actual:                    actual,
+			IncludePendingInvitations: includePendingInvites,
 		})
 	case syncFromLiveModeMaterialize:
 		cfg, err = buildSyncFromLiveMaterialize(syncfromlive.MaterializeOptions{
@@ -235,6 +240,20 @@ func syncFromLiveConfig(
 		Mode:         mode,
 		Path:         targetPath,
 	}, nil
+}
+
+func validateSyncFromLiveMode(mode string, includePendingInvites bool) error {
+	switch mode {
+	case syncFromLiveModeBootstrap, syncFromLiveModeAdopt:
+		return nil
+	case syncFromLiveModeMaterialize:
+		if includePendingInvites {
+			return fmt.Errorf("--include-pending-invites is not supported with sync-from-live mode %q: %w", mode, github.ErrInvalidFieldValue)
+		}
+		return nil
+	default:
+		return fmt.Errorf("sync-from-live mode %q is not supported", mode)
+	}
 }
 
 func writeSyncFromLiveConfigFile(mode, configDir string, yamlBytes []byte) (string, error) {
