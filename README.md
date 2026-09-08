@@ -83,8 +83,8 @@ Automation and control repositories should pin an explicit version. Prefer a
 pinned release archive with checksum verification, or use
 `go install ...@v<version>` when a Go-native installation is appropriate;
 avoid `@latest` for reproducible automation. Go developers embedding Octostate
-should import the Go module; contributors should clone the repository and follow
-the development guide.
+should follow the [Go API and consumer guide](docs/go-api.md); contributors
+should clone the repository and follow the development guide.
 
 ## Authentication
 
