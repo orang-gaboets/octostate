@@ -92,8 +92,13 @@ func pendingInvitationIdentityKeys(invitation state.PendingInvitation) []string 
 }
 
 func pendingInvitationToInviteSpec(invitation state.PendingInvitation) (config.InviteSpec, error) {
+	role := strings.TrimSpace(invitation.Role)
+	if role != "" && role != "admin" && role != "direct_member" && role != "billing_manager" {
+		return config.InviteSpec{}, fmt.Errorf("pending invitation %d has unsupported role %q: %w", invitation.ID, role, github.ErrInvalidFieldValue)
+	}
+
 	invite := config.InviteSpec{
-		Role:      strings.TrimSpace(invitation.Role),
+		Role:      role,
 		TeamSlugs: append([]string{}, invitation.TeamSlugs...),
 	}
 

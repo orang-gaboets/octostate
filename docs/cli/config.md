@@ -145,6 +145,7 @@ Bootstrap rules:
 - Opted-in invites use the live username when available, otherwise the live email; invitation record IDs are never emitted as `user_id`
 - Opted-in invites preserve the live role and attached team slugs, and are ordered deterministically
 - Username invites that conflict with durable top-level members are omitted so the generated config remains valid
+- Pending invitations with roles not supported by octostate, such as `hiring_manager`, fail explicitly instead of generating non-recreatable desired state
 - Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
 - `allow_forking` is included for private or internal repositories and omitted for public repositories

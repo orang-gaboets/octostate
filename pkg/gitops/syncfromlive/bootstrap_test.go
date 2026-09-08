@@ -378,3 +378,18 @@ func TestBuildBootstrapConfigRejectsOptedInPendingInvitationWithoutStableIdentit
 		t.Fatalf("expected missing stable identity error, got %v", err)
 	}
 }
+
+func TestBuildBootstrapConfigRejectsUnsupportedPendingInvitationRole(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization:       "org-a",
+			PendingInvitations: []state.PendingInvitation{{Username: "alice", Role: "hiring_manager"}},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), `unsupported role "hiring_manager"`) {
+		t.Fatalf("expected unsupported role error, got %v", err)
+	}
+}
