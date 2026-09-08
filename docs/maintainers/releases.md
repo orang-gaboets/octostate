@@ -66,9 +66,13 @@ gh workflow run release-please.yml \
   -f release_commit=<tagged-commit-sha>
 ```
 
-Staging assets before publication preserves the ordering required by future
-GitHub immutable-release protection tracked in #266. It does not claim that
-immutable-release protection is currently enabled.
+Staging assets before publication is required by GitHub immutable-release
+protection. Organization immutable-release policy is currently `none`, so
+Octostate uses the repository-level **Enable release immutability** setting in
+GitHub repository settings. This applies to future releases only: after
+publication, GitHub protects the release tag and assets from modification or
+deletion while leaving release notes editable. Existing release history,
+including v1.2.0, remains unchanged.
 
 ## Compatibility Notes for Releases
 
@@ -140,8 +144,8 @@ what a reader of an old release sees. A tag-qualified link no longer follows
 later changes to `main`.
 
 This convention is about addressing the release tag; it does not by itself make
-that tag immutable. GitHub-enforced release and tag immutability is tracked
-separately in #266.
+that tag immutable. The repository-level GitHub immutable-release setting above
+provides the separate platform-level protection for future releases.
 
 For a worked example of the tagged form, the v1.2.0 document resolves at its own
 tag:
