@@ -78,6 +78,17 @@ modification or deletion and locks the associated tag while the release exists;
 if the release is deleted, its former tag name cannot be reused. Release notes
 remain editable. Existing release history, including v1.2.0, remains unchanged.
 
+After the next normal Release Please publication, read back the release state
+before considering the immutability check complete:
+
+```bash
+RELEASE_TAG=v1.3.0 # replace with the published release tag
+gh api "repos/orang-gaboets/octostate/releases/tags/${RELEASE_TAG}" --jq '.immutable'
+```
+
+Require `true`. This read-only check confirms that GitHub applied immutable
+release protection without attempting destructive tag or asset mutations.
+
 ## Compatibility Notes for Releases
 
 When a release includes a concrete upgrade adaptation for existing
