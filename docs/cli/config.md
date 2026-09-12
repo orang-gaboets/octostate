@@ -299,6 +299,7 @@ octostate config apply --config-dir ./config
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--check`: Run apply preflight validation without mutating GitHub
+- `--require-executable`: Fail when a desired create or update cannot be executed. Cannot be combined with `--dry-run`, which never evaluates the requirement
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
@@ -350,6 +351,33 @@ Live apply output fields:
 - `data.plan_summary`
 - `data.executed_actions`
 - `data.skipped_actions`
+
+### Unfulfillable desired actions versus unsupported drift
+
+An action can be non-executable for two different reasons, and automation needs
+to tell them apart:
+
+- a `delete` or `remove` is drift Octostate intentionally declines to
+  reconcile, and is expected to remain non-executable; and
+- a `create` or `update` is a requested mutation that planning has already
+  determined will not happen, such as a repository whose managed template
+  dependency cannot be satisfied.
+
+By default both are reported in `skipped_actions` and the command succeeds.
+That default is unchanged.
+
+`--require-executable` makes only the second kind a failure. Unsupported
+destructive drift still does not fail the command, so a workflow can tolerate
+drift it does not reconcile while still requiring its own requested changes to
+be achievable. The flag applies to `config apply` and to
+`config apply --check`, so preflight and live apply share one policy.
+
+With the flag set, live `config apply` refuses before performing any GitHub
+write, so a stated requirement cannot leave a partially applied plan.
+
+`--check` remains best-effort preflight. The flag does not promise that a
+later GitHub write will succeed; it reports what Octostate already knows during
+planning.
 
 Exit codes:
 - `0`: apply, check, or dry-run completed successfully
