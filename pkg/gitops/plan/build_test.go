@@ -177,6 +177,85 @@ func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 	}
 }
 
+func TestBuildPendingInvitationMetadataIsCreateTimeIntent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		desiredRole  string
+		actualRole   string
+		desiredTeams []string
+		actualTeams  []string
+	}{
+		{
+			name:         "role and teams match",
+			desiredRole:  "direct_member",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform"},
+			actualTeams:  []string{"platform"},
+		},
+		{
+			name:         "role differs",
+			desiredRole:  "admin",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform"},
+			actualTeams:  []string{"platform"},
+		},
+		{
+			name:         "teams differ",
+			desiredRole:  "direct_member",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform", "backend"},
+			actualTeams:  []string{"platform"},
+		},
+		{
+			name:         "role and teams differ",
+			desiredRole:  "admin",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform", "backend"},
+			actualTeams:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			report, err := Build(context.Background(), Options{
+				Desired: config.OrganizationConfig{
+					Organization: "orang-gaboets",
+					Invites: []config.InviteSpec{{
+						Username:  presentString("alice"),
+						Role:      tt.desiredRole,
+						TeamSlugs: tt.desiredTeams,
+					}},
+					Teams: []config.TeamSpec{
+						{Slug: "platform", Name: "Platform", Privacy: "closed"},
+						{Slug: "backend", Name: "Backend", Privacy: "closed"},
+					},
+				},
+				Actual: &state.OrganizationState{
+					Organization: "orang-gaboets",
+					Teams: []state.Team{
+						{Slug: "platform", Name: "Platform", Privacy: "closed"},
+						{Slug: "backend", Name: "Backend", Privacy: "closed"},
+					},
+					PendingInvitations: []state.PendingInvitation{{
+						ID: 1, Username: "Alice", Role: tt.actualRole, TeamSlugs: tt.actualTeams,
+					}},
+				},
+			})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			if report.Summary.HasChanges || len(report.Actions) != 0 {
+				t.Fatalf("expected matching pending invitation identity to satisfy invite, got %#v", report)
+			}
+		})
+	}
+}
+
 func TestBuildResolvesUnnormalizedRepositoryOwners(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: " org-a ",
