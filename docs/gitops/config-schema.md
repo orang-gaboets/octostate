@@ -93,6 +93,40 @@ An invite that does not declare exactly one identity is reported by the
 identity rules above and takes no part in duplicate detection, so a malformed
 entry never masks or manufactures a duplicate.
 
+### Invitation reconciliation semantics
+
+Organization invitations are transitional resources. `role` and `team_slugs`
+are create-time intent: when no matching member or pending invitation exists,
+they determine the role and teams sent with the new invitation. They are not
+continuously managed fields of an invitation after GitHub has created it.
+
+For plan, `config apply`, and `config apply --check`, a pending invitation
+whose identity matches the desired `username`, `email`, or `user_id` invite
+satisfies that transitional desired resource. This remains true when the
+pending invitation's role or attached teams differ from the configured
+`role` or `team_slugs`. Such differences produce no update action, skipped
+action, or apply/check failure. The same identity-only rule is used by
+offline `audit diff`; it does not perform live identity lookups or infer
+equivalence across identity kinds.
+
+When the invitation is missing, the configured `role` and `team_slugs` are
+still used during creation. Existing pending invitations are never
+automatically canceled and recreated to change these fields.
+
+This contract follows the documented GitHub organization-invitation API:
+GitHub documents [listing pending invitations](https://docs.github.com/en/rest/orgs/members#list-pending-organization-invitations),
+[creating invitations](https://docs.github.com/en/rest/orgs/members#create-an-organization-invitation)
+with role and team IDs, [canceling an invitation](https://docs.github.com/en/rest/orgs/members#cancel-an-organization-invitation),
+and [listing invitation teams](https://docs.github.com/en/rest/orgs/members#list-organization-invitation-teams).
+It does not document a safe update operation for the role or team assignments
+of an existing organization invitation. The separate [membership role
+endpoint](https://docs.github.com/en/rest/orgs/members#set-organization-membership-for-a-user)
+does not provide invitation team assignments and is not documented as an
+update operation for pending invitation metadata. Exact pending-invitation
+reconciliation would therefore require a separate design for destructive
+cancellation/recreation, including its policy, failure, acceptance-race, and
+notification consequences; it is not part of the current contract.
+
 ## Repositories
 
 Each repository entry requires:
