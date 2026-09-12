@@ -71,7 +71,8 @@ func (opt *Options) Validate() error {
 }
 
 // Result captures the actions executed and the actions skipped by one apply
-// run.//
+// run.
+//
 // The skipped set holds every non-executable action, which covers two different
 // situations: destructive drift Octostate intentionally declines to reconcile,
 // and a desired create or update that planning determined cannot execute. Use
