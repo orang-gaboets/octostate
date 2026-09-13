@@ -74,15 +74,11 @@ func (p planner) planTeams() []Action {
 	return actions
 }
 
-func (p planner) planTeamMembers() []Action {
+func (p planner) planTeamMembers(memberPlan organizationMemberPlan) []Action {
 	actions := make([]Action, 0)
 	actualMembers := make(map[string]state.TeamMember, len(p.actual.TeamMembers))
 	for _, member := range p.actual.TeamMembers {
 		actualMembers[teamMemberKey(member.TeamSlug, member.Username)] = member
-	}
-	actualOrganizationMembers := make(map[string]struct{}, len(p.actual.Members))
-	for _, member := range p.actual.Members {
-		actualOrganizationMembers[organizationMemberKey(member.Username)] = struct{}{}
 	}
 
 	desiredMembers := make(map[string]config.TeamMemberSpec)
@@ -92,14 +88,14 @@ func (p planner) planTeamMembers() []Action {
 			desiredMembers[key] = member
 			actualMember, ok := actualMembers[key]
 			if !ok {
-				_, organizationMemberExists := actualOrganizationMembers[organizationMemberKey(member.Username)]
-				executable := organizationMemberExists
+				availability := memberPlan.availabilityFor(member.Username)
+				executable := availability.executable
 				message := fmt.Sprintf("add team membership %s", teamMemberID(team.Slug, member.Username))
-				if !organizationMemberExists {
+				if !executable {
 					message = fmt.Sprintf(
-						"team membership %s requires organization member %s to exist first",
+						"team membership %s is not executable: %s",
 						teamMemberID(team.Slug, member.Username),
-						organizationMemberID(member.Username),
+						availability.diagnostic,
 					)
 				}
 				actions = append(actions, Action{

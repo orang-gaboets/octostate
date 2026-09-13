@@ -7,8 +7,15 @@ import (
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
-func (p planner) planOrganizationMembers() []Action {
+func (p planner) computeOrganizationMemberPlan() organizationMemberPlan {
 	actions := make([]Action, 0)
+	availability := make(map[string]organizationMemberAvailability, len(p.actual.Members)+len(p.desired.Members))
+
+	// A member already present live is available to dependents regardless of
+	// what this plan does.
+	for _, member := range p.actual.Members {
+		availability[organizationMemberKey(member.Username)] = organizationMemberAvailability{executable: true}
+	}
 
 	actualMembers := make(map[string]state.OrganizationMember, len(p.actual.Members))
 	for _, member := range p.actual.Members {
@@ -22,13 +29,23 @@ func (p planner) planOrganizationMembers() []Action {
 
 		actualMember, ok := actualMembers[key]
 		if !ok {
-			actions = append(actions, Action{
+			action := Action{
 				ResourceType: ActionResourceTypeOrganizationMember,
 				Operation:    ActionOperationCreate,
 				ResourceID:   organizationMemberID(member.Username),
 				Executable:   true,
 				Message:      fmt.Sprintf("create organization member %s", organizationMemberID(member.Username)),
-			})
+			}
+			actions = append(actions, action)
+			// A supported create makes the member available to dependents that
+			// are ordered after it.
+			availability[key] = organizationMemberAvailability{
+				executable: action.Executable,
+				diagnostic: fmt.Sprintf(
+					"organization member %s cannot be created by this plan",
+					organizationMemberID(member.Username),
+				),
+			}
 			continue
 		}
 
@@ -65,5 +82,5 @@ func (p planner) planOrganizationMembers() []Action {
 		})
 	}
 
-	return actions
+	return organizationMemberPlan{actions: actions, availability: availability}
 }
