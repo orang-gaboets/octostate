@@ -118,14 +118,14 @@ the package migration must be tracked separately and handled at an appropriate
 compatibility boundary. This document does not authorize moving or removing
 existing packages.
 
-### Supported reusable packages
-
-For the supported reusable API:
-
 The compatibility contract also covers externally importable types, interfaces,
 constants, variables, or other API elements that form part of the exported
 contract of a supported package, even when they are declared in an otherwise
 implementation-oriented package.
+
+### Supported reusable packages
+
+For the supported reusable API:
 
 - preserve source compatibility within the documented `v1` contract;
 - prefer additive changes where practical;
