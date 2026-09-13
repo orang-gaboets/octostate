@@ -61,6 +61,12 @@ its entry in `checksums.txt`, and place the `octostate` executable on `PATH`.
 Official archives are available for macOS (Intel and Apple Silicon), Linux
 (amd64 and arm64), and Windows (amd64).
 
+To inspect the version of an installed executable:
+
+```bash
+octostate --version
+```
+
 To verify one downloaded archive, replace the placeholder with its filename:
 
 ```bash

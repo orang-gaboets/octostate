@@ -19,12 +19,14 @@ func newRootCmd() *cobra.Command {
 		Use:           "octostate",
 		Short:         "Octostate CLI",
 		Long:          "A CLI tool for GitHub operations and GitOps",
+		Version:       currentVersion(),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
 			cmd.SetContext(ghlogging.WithVerbose(cmd.Context(), verbose, cmd.ErrOrStderr()))
 		},
 	}
+	cmd.SetVersionTemplate("{{.Name}} {{.Version}}\n")
 
 	cmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable diagnostic logs on stderr")
 
