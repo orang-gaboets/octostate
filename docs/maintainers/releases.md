@@ -66,17 +66,30 @@ gh workflow run release-please.yml \
   -f release_commit=<tagged-commit-sha>
 ```
 
-GitHub recommends staging all assets on the draft Release before publication.
-As verified on 2026-09-09 through the [organization immutable-release
-settings](https://api.github.com/orgs/orang-gaboets/settings/immutable-releases)
-and the repository's **Settings → General → Releases** page, the organization
-policy is `none` and Octostate's repository-level **Enable release immutability**
-setting is enabled. Recheck both settings before release operations because
-the effective policy can change. Immutable-release enforcement applies to
-future releases only: after publication, GitHub protects release assets from
-modification or deletion and locks the associated tag while the release exists;
-if the release is deleted, its former tag name cannot be reused. Release notes
-remain editable. Existing release history, including v1.2.0, remains unchanged.
+GitHub recommends staging all assets on the draft Release before publication;
+see the [immutable releases guidance][github-immutable-releases]. As verified
+on 2026-09-15 with the read-only API checks below, the organization policy is
+`none` and Octostate's repository-level **Enable release immutability** setting
+is enabled without organization enforcement. Recheck both endpoints before
+release operations because the effective policy can change:
+
+```bash
+gh api orgs/orang-gaboets/settings/immutable-releases \
+  --jq '.enforced_repositories'
+# none
+
+gh api repos/orang-gaboets/octostate/immutable-releases \
+  --jq '{enabled,enforced_by_owner}'
+# {"enabled":true,"enforced_by_owner":false}
+```
+
+For the setting workflow, see GitHub's [preventing release changes
+guidance][github-prevent-release-changes]. Immutable-release enforcement
+applies to future releases only: after publication, GitHub protects release
+assets from modification or deletion and locks the associated tag while the
+release exists; if the release is deleted, its former tag name cannot be
+reused. Release notes remain editable. Existing release history, including
+v1.2.0, remains unchanged.
 
 After the next normal Release Please publication, read back the release state
 before considering the immutability check complete:
@@ -167,6 +180,9 @@ tag:
 <https://github.com/orang-gaboets/octostate/blob/v1.2.0/docs/maintainers/v1.2.0-compatibility.md>.
 That is the shape to reproduce; it is not the pointer the v1.2.0 Release body
 carries, for the reason given below.
+
+[github-immutable-releases]: https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases
+[github-prevent-release-changes]: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes
 
 If the published Release body does not contain exactly one correct
 tag-qualified pointer - for example the pointer is missing, duplicated, points
