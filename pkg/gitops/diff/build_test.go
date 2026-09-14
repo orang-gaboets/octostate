@@ -373,6 +373,84 @@ func TestBuildNoDriftWhenDesiredMatchesSnapshot(t *testing.T) {
 	}
 }
 
+func TestBuildPendingInvitationMetadataIsCreateTimeIntent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		desiredRole  string
+		actualRole   string
+		desiredTeams []string
+		actualTeams  []string
+	}{
+		{
+			name:         "role and teams match",
+			desiredRole:  "direct_member",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform"},
+			actualTeams:  []string{"platform"},
+		},
+		{
+			name:         "role differs",
+			desiredRole:  "admin",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform"},
+			actualTeams:  []string{"platform"},
+		},
+		{
+			name:         "teams differ",
+			desiredRole:  "direct_member",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform", "backend"},
+			actualTeams:  []string{"platform"},
+		},
+		{
+			name:         "role and teams differ",
+			desiredRole:  "admin",
+			actualRole:   "direct_member",
+			desiredTeams: []string{"platform", "backend"},
+			actualTeams:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			desired := config.OrganizationConfig{
+				Organization: "orang-gaboets",
+				Invites: []config.InviteSpec{{
+					Username:  presentString("alice"),
+					Role:      tt.desiredRole,
+					TeamSlugs: tt.desiredTeams,
+				}},
+				Teams: []config.TeamSpec{
+					{Slug: "platform", Name: "Platform", Privacy: "closed"},
+					{Slug: "backend", Name: "Backend", Privacy: "closed"},
+				},
+			}
+			snap := snapshot.NewActualSnapshot(time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC), &state.OrganizationState{
+				Organization: "orang-gaboets",
+				Teams: []state.Team{
+					{Slug: "platform", Name: "Platform", Privacy: "closed"},
+					{Slug: "backend", Name: "Backend", Privacy: "closed"},
+				},
+				PendingInvitations: []state.PendingInvitation{{
+					ID: 1, Username: "Alice", Role: tt.actualRole, TeamSlugs: tt.actualTeams,
+				}},
+			})
+			report, err := Build(Options{Desired: desired, Snapshot: &snap})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			if report.Summary.HasChanges || len(report.Actions) != 0 {
+				t.Fatalf("expected matching pending invitation identity to satisfy invite, got %#v", report)
+			}
+		})
+	}
+}
+
 func TestBuildPlansInternalRepositoryVisibilityDrift(t *testing.T) {
 	t.Parallel()
 
