@@ -40,7 +40,6 @@ jobs:
 
   live-integration:
     needs: trusted-dispatch
-    if: ${{ needs.trusted-dispatch.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment:
