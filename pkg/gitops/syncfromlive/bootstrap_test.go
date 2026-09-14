@@ -3,6 +3,7 @@ package syncfromlive
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -319,5 +320,119 @@ func assertBootstrapRoundTrip(t *testing.T, got config.OrganizationConfig) {
 	roundTripped := loadBootstrapConfig(t, encoded)
 	if report := config.Validate(roundTripped); !report.Valid {
 		t.Fatalf("expected round-tripped bootstrap config to validate, got %#v", report)
+	}
+}
+
+func TestBuildBootstrapConfigIncludesOptedInPendingInvitations(t *testing.T) {
+	t.Parallel()
+
+	actual := &state.OrganizationState{
+		Organization: "org-a",
+		Members:      []state.OrganizationMember{{Username: "alice", Role: "member"}},
+		PendingInvitations: []state.PendingInvitation{
+			{Username: "zeta", Role: "admin", TeamSlugs: []string{"ops", "platform"}},
+			{Email: "dev@example.com", Role: "direct_member", TeamSlugs: []string{"platform"}},
+			{Username: "alice", Role: "direct_member"},
+		},
+		Teams: []state.Team{
+			{Slug: "platform", Name: "Platform", Privacy: "closed"},
+			{Slug: "ops", Name: "Ops", Privacy: "closed"},
+		},
+	}
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual:                    actual,
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 2 {
+		t.Fatalf("expected two opted-in invites, got %#v", got.Invites)
+	}
+	if !got.Invites[0].Email.Present || got.Invites[0].Email.Value != "dev@example.com" {
+		t.Fatalf("expected email identity first, got %#v", got.Invites[0])
+	}
+	if !got.Invites[1].Username.Present || got.Invites[1].Username.Value != "zeta" || got.Invites[1].Role != "admin" {
+		t.Fatalf("expected username invite with role, got %#v", got.Invites[1])
+	}
+	if !reflect.DeepEqual(got.Invites[1].TeamSlugs, []string{"ops", "platform"}) {
+		t.Fatalf("expected sorted team slugs, got %#v", got.Invites[1].TeamSlugs)
+	}
+	if report := config.Validate(got); !report.Valid {
+		t.Fatalf("expected generated config to validate, got %#v", report.Errors)
+	}
+}
+
+func TestBuildBootstrapConfigDeduplicatesOverlappingPendingInvitationAliases(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Email: "alice@example.com", Role: "direct_member"},
+				{Username: "alice", Email: "alice@example.com", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" {
+		t.Fatalf("expected one preferred username invite, got %#v", got.Invites)
+	}
+}
+
+func TestBuildBootstrapConfigMergesPendingInvitationAliasBridge(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization: "org-a",
+			PendingInvitations: []state.PendingInvitation{
+				{Email: "alice@example.com", Role: "direct_member"},
+				{Username: "alice", Role: "direct_member"},
+				{Username: "alice", Email: "alice@example.com", Role: "direct_member"},
+			},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.Invites) != 1 || !got.Invites[0].Username.Present || got.Invites[0].Username.Value != "alice" {
+		t.Fatalf("expected one preferred username invite, got %#v", got.Invites)
+	}
+}
+
+func TestBuildBootstrapConfigRejectsOptedInPendingInvitationWithoutStableIdentity(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization:       "org-a",
+			PendingInvitations: []state.PendingInvitation{{ID: 42, Role: "direct_member"}},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "neither username nor email") {
+		t.Fatalf("expected missing stable identity error, got %v", err)
+	}
+}
+
+func TestBuildBootstrapConfigRejectsUnsupportedPendingInvitationRole(t *testing.T) {
+	t.Parallel()
+
+	_, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization:       "org-a",
+			PendingInvitations: []state.PendingInvitation{{Username: "alice", Role: "hiring_manager"}},
+		},
+		IncludePendingInvitations: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), `unsupported role "hiring_manager"`) {
+		t.Fatalf("expected unsupported role error, got %v", err)
 	}
 }

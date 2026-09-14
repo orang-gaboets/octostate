@@ -81,6 +81,83 @@ func TestSyncFromLiveConfigCmdPrintsBootstrapYAML(t *testing.T) {
 	}
 }
 
+func TestSyncFromLiveConfigCmdIncludesOptedInPendingInvitations(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets", Invites: []gitopsconfig.InviteSpec{}, Repositories: []gitopsconfig.RepositorySpec{}, Teams: []gitopsconfig.TeamSpec{}}
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{}, nil
+	}
+	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		if !opt.IncludePendingInvitations {
+			t.Fatal("expected pending invitations to be included in collector options")
+		}
+		return actual, nil
+	}
+	buildSyncFromLiveBootstrap = func(opt syncfromlive.BootstrapOptions) (gitopsconfig.OrganizationConfig, error) {
+		if !opt.IncludePendingInvitations {
+			t.Fatal("expected pending invitations to be included in bootstrap options")
+		}
+		return cfg, nil
+	}
+	validateSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	encodeSyncFromLiveConfig = func(gitopsconfig.OrganizationConfig) ([]byte, error) {
+		return []byte("organization: orang-gaboets\ninvites: []\nrepositories: []\nteams: []\n"), nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "bootstrap",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+		"--include-pending-invites",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := out.String(); got != "organization: orang-gaboets\ninvites: []\nrepositories: []\nteams: []\n" {
+		t.Fatalf("unexpected YAML output: %q", got)
+	}
+}
+
+func TestSyncFromLiveConfigCmdRejectsPendingInvitesForMaterializeBeforeAuth(t *testing.T) {
+	restoreSyncFromLiveHooks(t)
+	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("authentication should not run for an invalid mode combination")
+		return nil, nil
+	}
+
+	cmd := SyncFromLiveConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--mode", "materialize",
+		"--org", "orang-gaboets",
+		"--config-dir", "./config",
+		"--token", "secret-token",
+		"--include-pending-invites",
+	})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "not supported with sync-from-live mode") {
+		t.Fatalf("expected invalid mode combination error, got %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("expected no stdout output, got %q", out.String())
+	}
+}
+
 func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 	restoreSyncFromLiveHooks(t)
 
@@ -1282,7 +1359,7 @@ func runGeneratedOwnershipFailure(t *testing.T, mode string) ([]byte, *syncFromL
 		return nil, nil
 	}
 
-	stdout, writeResult, err := syncFromLiveConfig(context.Background(), "secret-token", 0, 0, "", mode, "org-a", configDir, true)
+	stdout, writeResult, err := syncFromLiveConfig(context.Background(), "secret-token", 0, 0, "", mode, "org-a", configDir, true, false)
 	if generatedValidationCalls != 1 {
 		t.Fatalf("expected generated config to be validated once, got %d", generatedValidationCalls)
 	}
