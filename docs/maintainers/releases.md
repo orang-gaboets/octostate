@@ -66,9 +66,41 @@ gh workflow run release-please.yml \
   -f release_commit=<tagged-commit-sha>
 ```
 
-Staging assets before publication preserves the ordering required by future
-GitHub immutable-release protection tracked in #266. It does not claim that
-immutable-release protection is currently enabled.
+GitHub recommends staging all assets on the draft Release before publication;
+see the [immutable releases guidance][github-immutable-releases]. As verified
+on 2026-09-15 with the read-only API checks below, the organization policy is
+`none` and Octostate's repository-level **Enable release immutability** setting
+is enabled without organization enforcement. Recheck both endpoints before
+release operations because the effective policy can change:
+
+```bash
+gh api orgs/orang-gaboets/settings/immutable-releases \
+  --jq '.enforced_repositories'
+# none
+
+gh api repos/orang-gaboets/octostate/immutable-releases \
+  --jq '{enabled,enforced_by_owner}'
+# {"enabled":true,"enforced_by_owner":false}
+```
+
+For the setting workflow, see GitHub's [preventing release changes
+guidance][github-prevent-release-changes]. Immutable-release enforcement
+applies to future releases only: after publication, GitHub protects release
+assets from modification or deletion and locks the associated tag while the
+release exists; if the release is deleted, its former tag name cannot be
+reused. Release notes remain editable. Existing release history, including
+v1.2.0, remains unchanged.
+
+After the next normal Release Please publication, read back the release state
+before considering the immutability check complete:
+
+```bash
+RELEASE_TAG=v1.3.0 # replace with the published release tag
+gh api "repos/orang-gaboets/octostate/releases/tags/${RELEASE_TAG}" --jq '.immutable'
+```
+
+Require `true`. This read-only check confirms that GitHub applied immutable
+release protection without attempting destructive tag or asset mutations.
 
 ## Compatibility Notes for Releases
 
@@ -140,14 +172,17 @@ what a reader of an old release sees. A tag-qualified link no longer follows
 later changes to `main`.
 
 This convention is about addressing the release tag; it does not by itself make
-that tag immutable. GitHub-enforced release and tag immutability is tracked
-separately in #266.
+that tag immutable. The repository-level GitHub immutable-release setting above
+provides the separate platform-level protection for future releases.
 
 For a worked example of the tagged form, the v1.2.0 document resolves at its own
 tag:
 <https://github.com/orang-gaboets/octostate/blob/v1.2.0/docs/maintainers/v1.2.0-compatibility.md>.
 That is the shape to reproduce; it is not the pointer the v1.2.0 Release body
 carries, for the reason given below.
+
+[github-immutable-releases]: https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases
+[github-prevent-release-changes]: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes
 
 If the published Release body does not contain exactly one correct
 tag-qualified pointer - for example the pointer is missing, duplicated, points
