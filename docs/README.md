@@ -12,6 +12,12 @@ documentation.
 - [Project README](../README.md) — concise project overview and core mental
   model.
 
+## Embedding Octostate in Go
+
+- [Go API and consumer guide](go-api.md) — choose between CLI installation,
+  Go-module embedding, and repository development, and understand the
+  supported package and compatibility policy.
+
 ## Using the CLI
 
 - [Config commands](cli/config.md) — validate, sync-from-live, plan, and apply
