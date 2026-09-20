@@ -633,7 +633,7 @@ func TestApplyConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 		return nil, nil
 	}
 
-	_, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply)
+	_, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply, false)
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -788,7 +788,7 @@ func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
 
 	fixture := setupApplyTemplateOrderingFixture(t)
 
-	result, preview, checkResult, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck)
+	result, preview, checkResult, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

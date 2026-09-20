@@ -80,9 +80,16 @@ func (b builder) planTeamMembers() []Action {
 	for _, member := range b.actual.TeamMembers {
 		actualMembers[teamMemberKey(member.TeamSlug, member.Username)] = member
 	}
-	actualOrganizationMembers := make(map[string]struct{}, len(b.actual.Members))
+	// A member is available to a team membership if it already exists live or
+	// if this desired state declares it, since a declared member yields an
+	// executable create in the same report. Mirrors the same-plan availability
+	// the live planner computes.
+	availableOrganizationMembers := make(map[string]struct{}, len(b.actual.Members)+len(b.desired.Members))
 	for _, member := range b.actual.Members {
-		actualOrganizationMembers[organizationMemberKey(member.Username)] = struct{}{}
+		availableOrganizationMembers[organizationMemberKey(member.Username)] = struct{}{}
+	}
+	for _, member := range b.desired.Members {
+		availableOrganizationMembers[organizationMemberKey(member.Username)] = struct{}{}
 	}
 
 	desiredMembers := make(map[string]config.TeamMemberSpec)
@@ -92,7 +99,7 @@ func (b builder) planTeamMembers() []Action {
 			desiredMembers[key] = member
 			actualMember, ok := actualMembers[key]
 			if !ok {
-				_, organizationMemberExists := actualOrganizationMembers[organizationMemberKey(member.Username)]
+				_, organizationMemberExists := availableOrganizationMembers[organizationMemberKey(member.Username)]
 				executable := organizationMemberExists
 				message := fmt.Sprintf("add team membership %s", teamMemberID(team.Slug, member.Username))
 				if !organizationMemberExists {
