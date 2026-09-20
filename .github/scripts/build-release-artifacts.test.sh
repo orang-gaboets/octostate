@@ -101,6 +101,7 @@ mismatch_stderr="$fixture/mismatch.stderr"
 if (
   cd "$fixture/repo"
   export PATH="$stub_bin:$PATH"
+  # shellcheck disable=SC2329 # exported to the child Bash process for uname lookup
   uname() {
     case "${1:-}" in
       -s) echo Linux ;;
