@@ -1,0 +1,11 @@
+organization: octostate-test
+members: []
+invites: []
+repositories:
+  - name: octostate-fixture-repo
+    visibility: public
+    description: Persistent fixture for Octostate live integration testing.
+    topics: []
+    archived: false
+    is_template: false
+teams: []
