@@ -60,6 +60,63 @@ for artifact in "${expected[@]}"; do
   done
 done
 
+stub_bin="$fixture/stub-bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/go" <<'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+output=''
+while (($#)); do
+  case "$1" in
+    -o)
+      output=$2
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$output" ]]
+cat > "$output" <<'SCRIPT'
+#!/usr/bin/env bash
+
+case "${1:-}" in
+  --help)
+    ;;
+  --version)
+    echo 'octostate v0.0.1'
+    ;;
+esac
+SCRIPT
+chmod +x "$output"
+EOF
+chmod +x "$stub_bin/go"
+
+mismatch_output="$fixture/mismatch-output"
+mismatch_stderr="$fixture/mismatch.stderr"
+if (
+  cd "$fixture/repo"
+  export PATH="$stub_bin:$PATH"
+  # shellcheck disable=SC2329 # exported to the child Bash process for uname lookup
+  uname() {
+    case "${1:-}" in
+      -s) echo Linux ;;
+      -m) echo x86_64 ;;
+      *) return 1 ;;
+    esac
+  }
+  export -f uname
+  bash .github/scripts/build-release-artifacts.sh v0.0.0 "$mismatch_output"
+) 2>"$mismatch_stderr"; then
+  echo 'version mismatch was accepted' >&2
+  exit 1
+fi
+grep -Fqx 'release version mismatch: actual=octostate v0.0.1 expected=octostate v0.0.0' "$mismatch_stderr"
+
 if (cd "$fixture/repo" && bash .github/scripts/build-release-artifacts.sh invalid "$output") 2>/dev/null; then
   echo 'invalid release tag was accepted' >&2
   exit 1

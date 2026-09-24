@@ -75,7 +75,13 @@ if [[ "$(uname -s)" == "Linux" && "$(uname -m)" == "x86_64" ]]; then
   mkdir -p "$smoke_dir"
   tar -xzf "$output_dir/octostate_${version}_linux_amd64.tar.gz" -C "$smoke_dir"
   "$smoke_dir/octostate" --help >/dev/null
-  [[ "$("$smoke_dir"/octostate --version)" == "octostate $tag" ]]
+  actual_version=$("$smoke_dir/octostate" --version)
+  expected_version="octostate $tag"
+  if [[ "$actual_version" != "$expected_version" ]]; then
+    printf 'release version mismatch: actual=%s expected=%s\n' \
+      "$actual_version" "$expected_version" >&2
+    exit 1
+  fi
 fi
 
 (
