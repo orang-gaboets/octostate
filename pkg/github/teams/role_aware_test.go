@@ -34,6 +34,33 @@ type roleAwareTeamMemberService struct {
 	requested  []int
 }
 
+func TestListTeamMembersWithRolesOptionsValidate(t *testing.T) {
+	service := &roleAwareTeamMemberService{}
+	for _, test := range []struct {
+		name    string
+		options ListTeamMembersWithRolesBySlugOptions
+		wantErr error
+	}{
+		{name: "nil service", options: ListTeamMembersWithRolesBySlugOptions{Org: existingTeam.Org, Slug: existingTeam.Slug}, wantErr: github.ErrNilService},
+		{name: "missing organization", options: ListTeamMembersWithRolesBySlugOptions{Service: service, Slug: existingTeam.Slug}, wantErr: github.ErrMissingRequiredField},
+		{name: "missing team slug", options: ListTeamMembersWithRolesBySlugOptions{Service: service, Org: existingTeam.Org}, wantErr: github.ErrMissingRequiredField},
+		{name: "valid", options: ListTeamMembersWithRolesBySlugOptions{Service: service, Org: existingTeam.Org, Slug: existingTeam.Slug}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.options.Validate()
+			if test.wantErr == nil {
+				if err != nil {
+					t.Fatalf("Validate returned error: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("Validate error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func (s *roleAwareTeamMemberService) ListTeamMembersBySlugWithRoles(_ context.Context, _, _ string, opts *gh.ListOptions) ([]TeamMember, *gh.Response, error) {
 	page := opts.Page
 	s.requested = append(s.requested, page)
