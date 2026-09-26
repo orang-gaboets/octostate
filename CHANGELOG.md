@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.3.0](https://github.com/orang-gaboets/octostate/compare/v1.2.0...v1.3.0) (2026-09-26)
+
+
+### Features
+
+* **actions:** add reusable config review workflow for control repositories ([#270](https://github.com/orang-gaboets/octostate/issues/270)) ([cc5dd7c](https://github.com/orang-gaboets/octostate/commit/cc5dd7c291157294015e1ba7084c7269944452cf))
+* **cli:** add --version reporting ([#296](https://github.com/orang-gaboets/octostate/issues/296)) ([118d3c9](https://github.com/orang-gaboets/octostate/commit/118d3c9c880f895045c0ab5f4b0f17dbc5fd36b8))
+* **organization:** complete invitation options and add membership command ([#287](https://github.com/orang-gaboets/octostate/issues/287)) ([4b18e22](https://github.com/orang-gaboets/octostate/commit/4b18e220e3b21f711faaa84e554afcc626c5c37a))
+* **repo:** add ordinary creation and private forking reconciliation ([#285](https://github.com/orang-gaboets/octostate/issues/285)) ([62e9366](https://github.com/orang-gaboets/octostate/commit/62e93663c86a9b583847336a1624c87ca650bfcc))
+* **repo:** support internal repository visibility ([#292](https://github.com/orang-gaboets/octostate/issues/292)) ([f03b77d](https://github.com/orang-gaboets/octostate/commit/f03b77dc7ead000d74359d430c5adf4d86a145e7))
+* **sync-from-live:** optionally include pending organization invitations ([#298](https://github.com/orang-gaboets/octostate/issues/298)) ([2151d68](https://github.com/orang-gaboets/octostate/commit/2151d680267960b19cd86bf92c492022419b2abf))
+
+
+### Bug Fixes
+
+* **ci:** report release version mismatches ([#305](https://github.com/orang-gaboets/octostate/issues/305)) ([26b6bd3](https://github.com/orang-gaboets/octostate/commit/26b6bd35d848d481d439e28986521676f63ad5f8))
+* **ci:** require configured release and lifecycle labels ([#252](https://github.com/orang-gaboets/octostate/issues/252)) ([acea7cc](https://github.com/orang-gaboets/octostate/commit/acea7cca13132d5650206cef7aac450260f78193))
+* **gitops:** honor same-plan member dependencies and flag unfulfillable actions ([#286](https://github.com/orang-gaboets/octostate/issues/286)) ([2661e34](https://github.com/orang-gaboets/octostate/commit/2661e345f13262ed0793c7855492ab65553938c5))
+* **security:** pin privileged Actions and harden GitHub credentials ([#271](https://github.com/orang-gaboets/octostate/issues/271)) ([3aa4a21](https://github.com/orang-gaboets/octostate/commit/3aa4a21b4851d38c64eb9160b467e427aac5c2c2))
+
+
+### Performance Improvements
+
+* **collector:** collect team member roles in one request ([#307](https://github.com/orang-gaboets/octostate/issues/307)) ([96b3459](https://github.com/orang-gaboets/octostate/commit/96b3459dc24a4379737fffe6d228da0563daef3b))
+
 ## [1.2.0](https://github.com/orang-gaboets/octostate/compare/v1.1.1...v1.2.0) (2026-08-27)
 
 
