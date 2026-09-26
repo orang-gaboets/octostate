@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
@@ -160,21 +161,29 @@ func TestListDirectTeamMembersPrefersInheritanceAwareLister(t *testing.T) {
 }
 
 func TestListDirectTeamMembersRejectsInvalidRoleEvenOnInheritedRow(t *testing.T) {
-	service := &inheritanceAwareTeamMemberService{
-		inheritedPages: map[int][]TeamMemberWithInheritance{
-			0: {{Username: "bob", Role: TeamMemberRole(""), Inherited: true}},
-		},
-	}
-	got, err := ListDirectTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
-		Service: service,
-		Org:     existingTeam.Org,
-		Slug:    existingTeam.Slug,
-	})
-	if !errors.Is(err, github.ErrValidationFailed) {
-		t.Fatalf("error = %v, want %v", err, github.ErrValidationFailed)
-	}
-	if got != nil {
-		t.Fatalf("members = %#v, want nil for invalid inherited role", got)
+	for _, test := range []struct {
+		name string
+		role TeamMemberRole
+	}{
+		{name: "missing"},
+		{name: "unsupported", role: TeamMemberRole("owner")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := &inheritanceAwareTeamMemberService{
+				inheritedPages: map[int][]TeamMemberWithInheritance{
+					0: {{Username: "bob", Role: test.role, Inherited: true}},
+				},
+			}
+			got, err := ListDirectTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
+				Service: service,
+				Org:     existingTeam.Org,
+				Slug:    existingTeam.Slug,
+			})
+			assertInvalidTeamMemberRoleError(t, err)
+			if got != nil {
+				t.Fatalf("members = %#v, want nil for invalid inherited role", got)
+			}
+		})
 	}
 }
 
@@ -292,13 +301,27 @@ func TestListTeamMembersWithRolesRejectsMissingOrUnsupportedRole(t *testing.T) {
 				Org:     existingTeam.Org,
 				Slug:    existingTeam.Slug,
 			})
-			if !errors.Is(err, github.ErrValidationFailed) {
-				t.Fatalf("error = %v, want %v", err, github.ErrValidationFailed)
-			}
+			assertInvalidTeamMemberRoleError(t, err)
 			if got != nil {
 				t.Fatalf("members = %#v, want nil on invalid role", got)
 			}
 		})
+	}
+}
+
+func assertInvalidTeamMemberRoleError(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("error = %v, want %v", err, github.ErrValidationFailed)
+	}
+	for _, want := range []string{
+		existingTeam.Org,
+		existingTeam.Slug,
+		"GitHub did not return a recognized role value",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
 	}
 }
 

@@ -355,7 +355,10 @@ func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersB
 
 			for _, member := range members {
 				if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
-					return nil, fmt.Errorf("team member %q has invalid role %q: %w", member.Username, member.Role, github.ErrValidationFailed)
+					return nil, fmt.Errorf(
+						"GitHub did not return a recognized role value for team member %q in organization %q, team %q (received role %q): %w",
+						member.Username, option.Org, option.Slug, member.Role, github.ErrValidationFailed,
+					)
 				}
 				allMembers = append(allMembers, member)
 			}
@@ -420,7 +423,10 @@ func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMe
 
 		for _, member := range members {
 			if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
-				return nil, fmt.Errorf("team member %q has invalid role %q: %w", member.Username, member.Role, github.ErrValidationFailed)
+				return nil, fmt.Errorf(
+					"GitHub did not return a recognized role value for team member %q in organization %q, team %q (received role %q): %w",
+					member.Username, option.Org, option.Slug, member.Role, github.ErrValidationFailed,
+				)
 			}
 			if member.Inherited {
 				continue
