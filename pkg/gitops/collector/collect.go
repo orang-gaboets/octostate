@@ -325,7 +325,7 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 		teamSlug := team.Slug
 
 		tasks = append(tasks, func(groupCtx context.Context) error {
-			members, err := teams.ListTeamMembersWithRolesBySlug(groupCtx, teams.ListTeamMembersWithRolesBySlugOptions{
+			members, err := teams.ListTeamMembersBySlugWithRoles(groupCtx, teams.ListTeamMembersBySlugWithRolesOptions{
 				Service: opt.TeamService,
 				Org:     opt.OrgName,
 				Slug:    teamSlug,

@@ -38,13 +38,13 @@ func TestListTeamMembersWithRolesOptionsValidate(t *testing.T) {
 	service := &roleAwareTeamMemberService{}
 	for _, test := range []struct {
 		name    string
-		options ListTeamMembersWithRolesBySlugOptions
+		options ListTeamMembersBySlugWithRolesOptions
 		wantErr error
 	}{
-		{name: "nil service", options: ListTeamMembersWithRolesBySlugOptions{Org: existingTeam.Org, Slug: existingTeam.Slug}, wantErr: github.ErrNilService},
-		{name: "missing organization", options: ListTeamMembersWithRolesBySlugOptions{Service: service, Slug: existingTeam.Slug}, wantErr: github.ErrMissingRequiredField},
-		{name: "missing team slug", options: ListTeamMembersWithRolesBySlugOptions{Service: service, Org: existingTeam.Org}, wantErr: github.ErrMissingRequiredField},
-		{name: "valid", options: ListTeamMembersWithRolesBySlugOptions{Service: service, Org: existingTeam.Org, Slug: existingTeam.Slug}},
+		{name: "nil service", options: ListTeamMembersBySlugWithRolesOptions{Org: existingTeam.Org, Slug: existingTeam.Slug}, wantErr: github.ErrNilService},
+		{name: "missing organization", options: ListTeamMembersBySlugWithRolesOptions{Service: service, Slug: existingTeam.Slug}, wantErr: github.ErrMissingRequiredField},
+		{name: "missing team slug", options: ListTeamMembersBySlugWithRolesOptions{Service: service, Org: existingTeam.Org}, wantErr: github.ErrMissingRequiredField},
+		{name: "valid", options: ListTeamMembersBySlugWithRolesOptions{Service: service, Org: existingTeam.Org, Slug: existingTeam.Slug}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.options.Validate()
@@ -76,13 +76,13 @@ func (s *roleAwareTeamMemberService) ListTeamMembersBySlugWithRoles(_ context.Co
 
 func TestListTeamMembersWithRolesFallsBackToRoleFilters(t *testing.T) {
 	service := &filteredTeamMemberService{}
-	got, err := ListTeamMembersWithRolesBySlug(context.Background(), ListTeamMembersWithRolesBySlugOptions{
+	got, err := ListTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
 		Service: service,
 		Org:     existingTeam.Org,
 		Slug:    existingTeam.Slug,
 	})
 	if err != nil {
-		t.Fatalf("ListTeamMembersWithRolesBySlug returned error: %v", err)
+		t.Fatalf("ListTeamMembersBySlugWithRoles returned error: %v", err)
 	}
 	want := []TeamMember{
 		{Username: "member-user", Role: TeamMemberRoleMember},
@@ -103,13 +103,13 @@ func TestListTeamMembersWithRolesUsesRoleAwareServiceAndPaginates(t *testing.T) 
 			2: {{Username: "zulu", Role: TeamMemberRoleMaintainer}},
 		},
 	}
-	got, err := ListTeamMembersWithRolesBySlug(context.Background(), ListTeamMembersWithRolesBySlugOptions{
+	got, err := ListTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
 		Service: service,
 		Org:     existingTeam.Org,
 		Slug:    existingTeam.Slug,
 	})
 	if err != nil {
-		t.Fatalf("ListTeamMembersWithRolesBySlug returned error: %v", err)
+		t.Fatalf("ListTeamMembersBySlugWithRoles returned error: %v", err)
 	}
 	want := []TeamMember{
 		{Username: "alpha", Role: TeamMemberRoleMember},
@@ -135,7 +135,7 @@ func TestListTeamMembersWithRolesRejectsMissingOrUnsupportedRole(t *testing.T) {
 			service := &roleAwareTeamMemberService{pages: map[int][]TeamMember{
 				0: {{Username: "alice", Role: test.role}},
 			}}
-			got, err := ListTeamMembersWithRolesBySlug(context.Background(), ListTeamMembersWithRolesBySlugOptions{
+			got, err := ListTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
 				Service: service,
 				Org:     existingTeam.Org,
 				Slug:    existingTeam.Slug,
@@ -159,7 +159,7 @@ func TestListTeamMembersWithRolesDoesNotReturnPartialResultsOnPageError(t *testi
 		},
 		pageErrors: map[int]error{2: pageErr},
 	}
-	got, err := ListTeamMembersWithRolesBySlug(context.Background(), ListTeamMembersWithRolesBySlugOptions{
+	got, err := ListTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
 		Service: service,
 		Org:     existingTeam.Org,
 		Slug:    existingTeam.Slug,

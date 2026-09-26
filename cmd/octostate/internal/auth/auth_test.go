@@ -211,13 +211,13 @@ func TestGitHubTeamServiceRoleAwareListingDecodesRolesAndPaginates(t *testing.T)
 
 	client := newGitHubClientWithTransport(t, transport)
 	service := githubClientWrapper{Client: client}.Teams()
-	members, err := teams.ListTeamMembersWithRolesBySlug(context.Background(), teams.ListTeamMembersWithRolesBySlugOptions{
+	members, err := teams.ListTeamMembersBySlugWithRoles(context.Background(), teams.ListTeamMembersBySlugWithRolesOptions{
 		Service: service,
 		Org:     "acme",
 		Slug:    "platform",
 	})
 	if err != nil {
-		t.Fatalf("ListTeamMembersWithRolesBySlug returned error: %v", err)
+		t.Fatalf("ListTeamMembersBySlugWithRoles returned error: %v", err)
 	}
 	want := []teams.TeamMember{
 		{Username: "alice", Role: teams.TeamMemberRoleMember},
@@ -245,7 +245,7 @@ func TestGitHubTeamServiceRoleAwareListingHonorsCancellation(t *testing.T) {
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := teams.ListTeamMembersWithRolesBySlug(ctx, teams.ListTeamMembersWithRolesBySlugOptions{
+	_, err := teams.ListTeamMembersBySlugWithRoles(ctx, teams.ListTeamMembersBySlugWithRolesOptions{
 		Service: githubClientWrapper{Client: client}.Teams(),
 		Org:     "acme",
 		Slug:    "platform",

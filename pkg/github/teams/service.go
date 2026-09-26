@@ -335,11 +335,11 @@ func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOpti
 	return allMembers, nil
 }
 
-// ListTeamMembersWithRolesBySlug lists a team's members and their roles. When
+// ListTeamMembersBySlugWithRoles lists a team's members and their roles. When
 // the service supports TeamMemberRoleLister, GitHub's all-role response is
 // used. Existing Service implementations fall back to the member and
 // maintainer filters.
-func ListTeamMembersWithRolesBySlug(ctx context.Context, option ListTeamMembersWithRolesBySlugOptions) ([]TeamMember, error) {
+func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersBySlugWithRolesOptions) ([]TeamMember, error) {
 	if err := option.Validate(); err != nil {
 		return nil, err
 	}
