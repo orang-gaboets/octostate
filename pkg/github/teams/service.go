@@ -396,6 +396,48 @@ func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersB
 	return allMembers, nil
 }
 
+// ListDirectTeamMembersBySlugWithRoles lists a team's direct members and
+// their roles. When the service exposes inheritance metadata, inherited rows
+// are excluded. Older service implementations retain the role-aware or
+// role-filtered compatibility path and are treated as reporting direct rows.
+func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersBySlugWithRolesOptions) ([]TeamMember, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	inheritanceLister, ok := option.Service.(TeamMemberInheritanceLister)
+	if !ok {
+		return ListTeamMembersBySlugWithRoles(ctx, option)
+	}
+
+	listOptions := &gh.ListOptions{PerPage: 100}
+	var directMembers []TeamMember
+	for {
+		members, resp, err := inheritanceLister.ListTeamMembersBySlugWithInheritance(ctx, option.Org, option.Slug, listOptions)
+		if err != nil {
+			return nil, github.WrapError(err, fmt.Sprintf("failed to list members for team %s/%s", option.Org, option.Slug))
+		}
+
+		for _, member := range members {
+			if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
+				return nil, fmt.Errorf("team member %q has invalid role %q: %w", member.Username, member.Role, github.ErrValidationFailed)
+			}
+			if member.Inherited {
+				continue
+			}
+			directMembers = append(directMembers, TeamMember{Username: member.Username, Role: member.Role})
+		}
+
+		if resp == nil || resp.NextPage == 0 {
+			break
+		}
+		listOptions.Page = resp.NextPage
+	}
+
+	ghlogging.Debugf(ctx, "listed %d direct members for team %s/%s", len(directMembers), option.Org, option.Slug)
+	return directMembers, nil
+}
+
 // ListTeams retrieves all teams in a GitHub organization.
 func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, error) {
 	if err := option.Validate(); err != nil {

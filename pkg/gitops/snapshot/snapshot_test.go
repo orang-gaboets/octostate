@@ -282,6 +282,9 @@ func TestReadActualSuccess(t *testing.T) {
 	stateDir := t.TempDir()
 	written := NewActualSnapshot(time.Date(2026, 3, 10, 7, 8, 9, 0, time.UTC), &state.OrganizationState{
 		Organization: "orang-gaboets",
+		TeamMembers: []state.TeamMember{
+			{TeamSlug: "platform", Username: "alice", Role: "maintainer"},
+		},
 		PendingInvitations: []state.PendingInvitation{
 			{Username: "zoe", TeamSlugs: []string{"writers", "admins"}},
 		},
@@ -305,6 +308,28 @@ func TestReadActualSuccess(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*got, written) {
 		t.Fatalf("unexpected snapshot contents:\n got %#v\nwant %#v", *got, written)
+	}
+}
+
+func TestReadActualLegacyTeamMembersRemainDirect(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(ActualPath(stateDir)), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	legacySnapshot := []byte(`{"pulled_at":"2026-09-26T00:00:00Z","organization":"acme","team_members":[{"team_slug":"parent","username":"bob","role":"member"}]}`)
+	if err := os.WriteFile(ActualPath(stateDir), legacySnapshot, 0o600); err != nil {
+		t.Fatalf("write legacy snapshot: %v", err)
+	}
+
+	got, err := ReadActual(stateDir)
+	if err != nil {
+		t.Fatalf("ReadActual returned error: %v", err)
+	}
+	want := []state.TeamMember{{TeamSlug: "parent", Username: "bob", Role: "member"}}
+	if !reflect.DeepEqual(got.TeamMembers, want) {
+		t.Fatalf("legacy team members = %#v, want direct rows %#v", got.TeamMembers, want)
 	}
 }
 

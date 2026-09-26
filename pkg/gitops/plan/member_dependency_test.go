@@ -116,6 +116,58 @@ func TestBuildTeamMembershipExecutableWhenMemberAlreadyLive(t *testing.T) {
 	}
 }
 
+func TestBuildTreatsInheritedOnlyParentMembershipAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	for _, includeParentMembership := range []bool{false, true} {
+		name := "omitted from desired"
+		parentMembers := []config.TeamMemberSpec{}
+		if includeParentMembership {
+			name = "desired as direct"
+			parentMembers = []config.TeamMemberSpec{{Username: "bob", Role: "member"}}
+		}
+		t.Run(name, func(t *testing.T) {
+			desired := config.OrganizationConfig{
+				Organization: "acme",
+				Members:      []config.OrganizationMemberSpec{{Username: "bob", Role: "member"}},
+				Teams: []config.TeamSpec{
+					{Slug: "parent", Name: "Parent", Privacy: "closed", Members: parentMembers},
+					{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent", Members: []config.TeamMemberSpec{{Username: "bob", Role: "member"}}},
+				},
+			}
+			// The live parent response contained only inherited membership for bob,
+			// so direct-only collection keeps only the child's direct row.
+			actual := &state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{Username: "bob", Role: "member"}},
+				Teams: []state.Team{
+					{Slug: "parent", Name: "Parent", Privacy: "closed"},
+					{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
+				},
+				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+			}
+
+			report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			action, ok := actionByID(report.Actions, ActionResourceTypeTeamMember, "parent/bob")
+			if !includeParentMembership {
+				if ok {
+					t.Fatalf("inherited-only parent member produced action: %#v", action)
+				}
+				return
+			}
+			if !ok {
+				t.Fatalf("desired direct parent membership produced no action: %#v", report.Actions)
+			}
+			if action.Operation != ActionOperationCreate || !action.Executable {
+				t.Fatalf("direct parent membership action = %#v, want executable create", action)
+			}
+		})
+	}
+}
+
 // A role update on an existing membership is unaffected by the dependency rule.
 func TestBuildTeamMembershipRoleUpdateUnchanged(t *testing.T) {
 	t.Parallel()

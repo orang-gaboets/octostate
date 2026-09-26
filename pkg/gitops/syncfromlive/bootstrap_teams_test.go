@@ -1,6 +1,7 @@
 package syncfromlive
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
@@ -21,6 +22,39 @@ func TestBootstrapTeamMembersGroupsByNormalizedSlug(t *testing.T) {
 	want := []config.TeamMemberSpec{{Username: "alice", Role: "maintainer"}}
 	if len(got["platform"]) != 1 || got["platform"][0] != want[0] {
 		t.Fatalf("unexpected grouped team members: %#v", got)
+	}
+}
+
+func TestBootstrapExcludesInheritedOnlyParentMembership(t *testing.T) {
+	t.Parallel()
+
+	got, err := BuildBootstrapConfig(BootstrapOptions{
+		Actual: &state.OrganizationState{
+			Organization: "acme",
+			Members:      []state.OrganizationMember{{Username: "bob", Role: "member"}},
+			Teams: []state.Team{
+				{Slug: "parent", Name: "Parent", Privacy: "closed"},
+				{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
+			},
+			// The collector omits bob's inherited-only parent membership and keeps
+			// the direct membership on the child team.
+			TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildBootstrapConfig returned error: %v", err)
+	}
+
+	teamsBySlug := make(map[string]config.TeamSpec, len(got.Teams))
+	for _, team := range got.Teams {
+		teamsBySlug[team.Slug] = team
+	}
+	if members := teamsBySlug["parent"].Members; len(members) != 0 {
+		t.Fatalf("parent team members = %#v, want no inherited-only membership", members)
+	}
+	wantChildMembers := []config.TeamMemberSpec{{Username: "bob", Role: "member"}}
+	if members := teamsBySlug["child"].Members; !reflect.DeepEqual(members, wantChildMembers) {
+		t.Fatalf("child team members = %#v, want %#v", members, wantChildMembers)
 	}
 }
 

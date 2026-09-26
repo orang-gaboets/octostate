@@ -145,6 +145,7 @@ Bootstrap rules:
 - `--include-pending-invites` opts into collecting pending invites for the generated `invites:` section
 - Opted-in invites use the live username when available, otherwise the live email; invitation record IDs are never emitted as `user_id`
 - Opted-in invites preserve the live role and attached team slugs, and are ordered deterministically
+- Team `members:` contain direct memberships only; inherited-only parent-team members are omitted
 - Username invites that conflict with durable top-level members are omitted so the generated config remains valid
 - Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
@@ -186,6 +187,7 @@ Behavior:
   - team repository permissions
 - Preserves existing invites that are still transitional; removes invites already satisfied by live org membership
 - Preserves existing config-only declarations; `adopt` does not auto-remove config that is missing from live state
+- Only direct live team memberships are added; inherited-only memberships are not materialized as explicit team `members:` entries
 - Prints the adopted YAML to stdout by default
 - Validates the merged config before printing or writing it
 - With `--write`, atomically replaces `<config-dir>/organization.yaml`

@@ -66,7 +66,7 @@ That file can declare:
 - pending invitations
 - repositories
 - teams
-- team memberships
+- direct team memberships
 - team repository permissions
 
 Validation is deliberately split into two steps:
@@ -104,7 +104,8 @@ The collector currently reads:
 - pending invitations
 - repositories
 - teams
-- team members with member or maintainer roles
+- direct team members with member or maintainer roles; inherited rows are
+  excluded from normalized state
 - team repository permissions
 
 The collector uses bounded concurrency for read-only GitHub calls:
