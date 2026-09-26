@@ -12,6 +12,7 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	githubteams "github.com/orang-gaboets/octostate/pkg/github/teams"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
@@ -710,7 +711,7 @@ func BenchmarkCollectOrganizationConcurrency(b *testing.B) {
 	const teamCount = 12
 	const callDelay = 200 * time.Microsecond
 
-	buildServices := func() (*organizationServiceStub, *repositoryServiceStub, *teamServiceStub) {
+	buildServices := func() (*organizationServiceStub, *repositoryServiceStub, *roleAwareTeamServiceStub) {
 		orgSvc := &organizationServiceStub{
 			listMembersFunc: func(_ context.Context, _ string, opts *gh.ListMembersOptions) ([]*gh.User, *gh.Response, error) {
 				time.Sleep(callDelay)
@@ -746,26 +747,28 @@ func BenchmarkCollectOrganizationConcurrency(b *testing.B) {
 				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr("octostate"), Visibility: githubpkg.Ptr("private")}}, &gh.Response{}, nil
 			},
 		}
-		teamSvc := &teamServiceStub{
-			listTeamsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
-				time.Sleep(callDelay)
-				teams := make([]*gh.Team, 0, teamCount)
-				for i := 0; i < teamCount; i++ {
-					slug := fmt.Sprintf("team-%02d", i)
-					teams = append(teams, &gh.Team{Slug: githubpkg.Ptr(slug), Name: githubpkg.Ptr(slug), Privacy: githubpkg.Ptr("closed"), Organization: &gh.Organization{Login: githubpkg.Ptr(orgName)}})
-				}
-				return teams, &gh.Response{}, nil
+		teamSvc := &roleAwareTeamServiceStub{
+			teamServiceStub: &teamServiceStub{
+				listTeamsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+					time.Sleep(callDelay)
+					teams := make([]*gh.Team, 0, teamCount)
+					for i := 0; i < teamCount; i++ {
+						slug := fmt.Sprintf("team-%02d", i)
+						teams = append(teams, &gh.Team{Slug: githubpkg.Ptr(slug), Name: githubpkg.Ptr(slug), Privacy: githubpkg.Ptr("closed"), Organization: &gh.Organization{Login: githubpkg.Ptr(orgName)}})
+					}
+					return teams, &gh.Response{}, nil
+				},
+				listTeamReposBySlugFunc: func(_ context.Context, _ string, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+					time.Sleep(callDelay)
+					return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr(slug + "-repo"), Permissions: &gh.RepositoryPermissions{Push: githubpkg.Ptr(true)}}}, &gh.Response{}, nil
+				},
 			},
-			listTeamMembersBySlugFunc: func(_ context.Context, _ string, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+			listTeamMembersWithRolesFunc: func(_ context.Context, _, slug string, _ *gh.ListOptions) ([]githubteams.TeamMember, *gh.Response, error) {
 				time.Sleep(callDelay)
-				if opts.Role == "member" {
-					return []*gh.User{{Login: githubpkg.Ptr(slug + "-member")}}, &gh.Response{}, nil
-				}
-				return []*gh.User{{Login: githubpkg.Ptr(slug + "-maintainer")}}, &gh.Response{}, nil
-			},
-			listTeamReposBySlugFunc: func(_ context.Context, _ string, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
-				time.Sleep(callDelay)
-				return []*gh.Repository{{Owner: &gh.User{Login: githubpkg.Ptr(orgName)}, Name: githubpkg.Ptr(slug + "-repo"), Permissions: &gh.RepositoryPermissions{Push: githubpkg.Ptr(true)}}}, &gh.Response{}, nil
+				return []githubteams.TeamMember{
+					{Username: slug + "-member", Role: githubteams.TeamMemberRoleMember},
+					{Username: slug + "-maintainer", Role: githubteams.TeamMemberRoleMaintainer},
+				}, &gh.Response{}, nil
 			},
 		}
 		return orgSvc, repoSvc, teamSvc
