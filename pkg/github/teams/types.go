@@ -44,7 +44,7 @@ type Service interface {
 	ListTeams(ctx context.Context, org string, opts *gh.ListOptions) ([]*gh.Team, *gh.Response, error)
 }
 
-// TeamMember is a user and their direct role on a GitHub team.
+// TeamMember is a user and the role reported for them on a GitHub team.
 type TeamMember struct {
 	Username string
 	Role     TeamMemberRole
