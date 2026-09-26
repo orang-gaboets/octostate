@@ -42,8 +42,9 @@ type githubTeamServiceWrapper struct {
 }
 
 type teamMemberResponse struct {
-	Login string `json:"login"`
-	Role  string `json:"role"`
+	Login     string `json:"login"`
+	Role      string `json:"role"`
+	Inherited bool   `json:"inherited"`
 }
 
 func (s repositoriesServiceWrapper) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
@@ -51,6 +52,39 @@ func (s repositoriesServiceWrapper) ListAllTopics(ctx context.Context, owner, re
 }
 
 func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithRoles(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]teams.TeamMember, *gh.Response, error) {
+	response, resp, err := s.listTeamMembersBySlug(ctx, org, slug, opts)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	members := make([]teams.TeamMember, 0, len(response))
+	for _, member := range response {
+		members = append(members, teams.TeamMember{
+			Username: member.Login,
+			Role:     teams.TeamMemberRole(member.Role),
+		})
+	}
+	return members, resp, nil
+}
+
+func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithInheritance(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]teams.TeamMemberWithInheritance, *gh.Response, error) {
+	response, resp, err := s.listTeamMembersBySlug(ctx, org, slug, opts)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	members := make([]teams.TeamMemberWithInheritance, 0, len(response))
+	for _, member := range response {
+		members = append(members, teams.TeamMemberWithInheritance{
+			Username:  member.Login,
+			Role:      teams.TeamMemberRole(member.Role),
+			Inherited: member.Inherited,
+		})
+	}
+	return members, resp, nil
+}
+
+func (s githubTeamServiceWrapper) listTeamMembersBySlug(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]teamMemberResponse, *gh.Response, error) {
 	query := url.Values{}
 	query.Set("role", string(teams.TeamMemberRoleAll))
 	if opts != nil {
@@ -73,15 +107,7 @@ func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithRoles(ctx context.Con
 	if err != nil {
 		return nil, resp, err
 	}
-
-	members := make([]teams.TeamMember, 0, len(response))
-	for _, member := range response {
-		members = append(members, teams.TeamMember{
-			Username: member.Login,
-			Role:     teams.TeamMemberRole(member.Role),
-		})
-	}
-	return members, resp, nil
+	return response, resp, nil
 }
 
 func (g githubClientWrapper) Organizations() organizations.Service { return g.Client.Organizations }

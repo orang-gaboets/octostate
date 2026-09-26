@@ -50,9 +50,25 @@ type TeamMember struct {
 	Role     TeamMemberRole
 }
 
+// TeamMemberWithInheritance is a team member together with GitHub's direct vs.
+// inherited membership classification.
+type TeamMemberWithInheritance struct {
+	Username  string
+	Role      TeamMemberRole
+	Inherited bool
+}
+
 // TeamMemberRoleLister is an optional capability for listing team members
 // together with their roles in one request. Service implementations that do
 // not provide this capability remain supported through role-filtered reads.
 type TeamMemberRoleLister interface {
 	ListTeamMembersBySlugWithRoles(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]TeamMember, *gh.Response, error)
+}
+
+// TeamMemberInheritanceLister is an optional capability for listing team
+// members with their roles and whether membership is inherited through a
+// child team. Service implementations without this capability remain
+// supported by direct-membership helpers using the role-aware or legacy path.
+type TeamMemberInheritanceLister interface {
+	ListTeamMembersBySlugWithInheritance(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]TeamMemberWithInheritance, *gh.Response, error)
 }

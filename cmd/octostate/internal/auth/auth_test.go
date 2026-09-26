@@ -236,6 +236,72 @@ func TestGitHubTeamServiceRoleAwareListingDecodesRolesAndPaginates(t *testing.T)
 	}
 }
 
+func TestGitHubTeamServiceInheritanceAwareListing(t *testing.T) {
+	var requestedPages []string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/orgs/acme/teams/platform/members" {
+			t.Errorf("request = %s %s, want GET /orgs/acme/teams/platform/members", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("role"); got != "all" {
+			t.Errorf("role query = %q, want all", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "100" {
+			t.Errorf("per_page query = %q, want 100", got)
+		}
+		page := r.URL.Query().Get("page")
+		requestedPages = append(requestedPages, page)
+		switch page {
+		case "":
+			nextPageURL := *r.URL
+			nextQuery := nextPageURL.Query()
+			nextQuery.Set("page", "2")
+			nextPageURL.RawQuery = nextQuery.Encode()
+			return jsonResponse(r, http.Header{"Link": {fmt.Sprintf(`<%s>; rel="next"`, nextPageURL.String())}}, `[{"login":"alice","role":"member","inherited":false},{"login":"bob","role":"maintainer","inherited":true}]`), nil
+		case "2":
+			return jsonResponse(r, nil, `[{"login":"carol","role":"member","inherited":true}]`), nil
+		default:
+			t.Errorf("unexpected page query %q", page)
+			return jsonResponse(r, nil, "[]"), nil
+		}
+	})
+
+	client := newGitHubClientWithTransport(t, transport)
+	service := githubClientWrapper{Client: client}.Teams()
+	lister, ok := service.(teams.TeamMemberInheritanceLister)
+	if !ok {
+		t.Fatal("team service does not implement TeamMemberInheritanceLister")
+	}
+	var members []teams.TeamMemberWithInheritance
+	listOptions := &gh.ListOptions{PerPage: 100}
+	for {
+		pageMembers, response, err := lister.ListTeamMembersBySlugWithInheritance(context.Background(), "acme", "platform", listOptions)
+		if err != nil {
+			t.Fatalf("ListTeamMembersBySlugWithInheritance returned error: %v", err)
+		}
+		members = append(members, pageMembers...)
+		if response == nil || response.NextPage == 0 {
+			break
+		}
+		listOptions.Page = response.NextPage
+	}
+	want := []teams.TeamMemberWithInheritance{
+		{Username: "alice", Role: teams.TeamMemberRoleMember, Inherited: false},
+		{Username: "bob", Role: teams.TeamMemberRoleMaintainer, Inherited: true},
+		{Username: "carol", Role: teams.TeamMemberRoleMember, Inherited: true},
+	}
+	if len(members) != len(want) {
+		t.Fatalf("members = %#v, want %#v", members, want)
+	}
+	for i := range want {
+		if members[i] != want[i] {
+			t.Errorf("member[%d] = %#v, want %#v", i, members[i], want[i])
+		}
+	}
+	if len(requestedPages) != 2 || requestedPages[0] != "" || requestedPages[1] != "2" {
+		t.Fatalf("requested pages = %#v, want [empty 2]", requestedPages)
+	}
+}
+
 func TestGitHubTeamServiceRoleAwareListingHonorsCancellation(t *testing.T) {
 	client := newGitHubClientWithTransport(t, roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		if err := r.Context().Err(); err != nil {
