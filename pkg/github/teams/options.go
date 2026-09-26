@@ -296,6 +296,25 @@ func (opt *ListTeamMembersBySlugOptions) Validate() error {
 	return nil
 }
 
+// ListTeamMembersWithRolesBySlugOptions defines the inputs for listing all
+// members of a team together with their member or maintainer role.
+type ListTeamMembersWithRolesBySlugOptions struct {
+	Service Service
+	Org     string
+	Slug    string
+}
+
+// Validate checks if the ListTeamMembersWithRolesBySlugOptions are valid.
+func (opt *ListTeamMembersWithRolesBySlugOptions) Validate() error {
+	if opt.Service == nil {
+		return github.ErrNilService
+	}
+	if opt.Org == "" || opt.Slug == "" {
+		return github.ErrMissingRequiredField
+	}
+	return nil
+}
+
 // ListTeamsOptions defines the options for listing teams in an organization.
 type ListTeamsOptions struct {
 	Service Service

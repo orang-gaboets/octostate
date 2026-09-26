@@ -42,7 +42,6 @@ type collectorConcurrencyLimits struct {
 
 type collectedTeamDetails struct {
 	members         []state.TeamMember
-	maintainers     []state.TeamMember
 	repositoryPerms []state.TeamRepositoryPermission
 }
 
@@ -315,7 +314,7 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 	}
 
 	teamDetails := make([]collectedTeamDetails, len(collectedTeams))
-	tasks := make([]orderedtasks.Task, 0, len(collectedTeams)*3)
+	tasks := make([]orderedtasks.Task, 0, len(collectedTeams)*2)
 
 	for i, team := range collectedTeams {
 		if team == nil || team.Slug == "" {
@@ -326,30 +325,15 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 		teamSlug := team.Slug
 
 		tasks = append(tasks, func(groupCtx context.Context) error {
-			members, err := teams.ListTeamMembersBySlug(groupCtx, teams.ListTeamMembersBySlugOptions{
+			members, err := teams.ListTeamMembersWithRolesBySlug(groupCtx, teams.ListTeamMembersWithRolesBySlugOptions{
 				Service: opt.TeamService,
 				Org:     opt.OrgName,
 				Slug:    teamSlug,
-				Role:    teams.TeamMemberRoleMember,
 			})
 			if err != nil {
 				return err
 			}
-			teamDetails[index].members = teamMembersFromUsers(teamSlug, "member", members)
-			return nil
-		})
-
-		tasks = append(tasks, func(groupCtx context.Context) error {
-			maintainers, err := teams.ListTeamMembersBySlug(groupCtx, teams.ListTeamMembersBySlugOptions{
-				Service: opt.TeamService,
-				Org:     opt.OrgName,
-				Slug:    teamSlug,
-				Role:    teams.TeamMemberRoleMaintainer,
-			})
-			if err != nil {
-				return err
-			}
-			teamDetails[index].maintainers = teamMembersFromUsers(teamSlug, "maintainer", maintainers)
+			teamDetails[index].members = teamMembersFromRoleAwareUsers(teamSlug, members)
 			return nil
 		})
 
@@ -376,11 +360,22 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 	repoPermissionsState := make([]state.TeamRepositoryPermission, 0)
 	for i := range teamDetails {
 		membersState = append(membersState, teamDetails[i].members...)
-		membersState = append(membersState, teamDetails[i].maintainers...)
 		repoPermissionsState = append(repoPermissionsState, teamDetails[i].repositoryPerms...)
 	}
 
 	return teamsState, membersState, repoPermissionsState, nil
+}
+
+func teamMembersFromRoleAwareUsers(teamSlug string, members []teams.TeamMember) []state.TeamMember {
+	result := make([]state.TeamMember, 0, len(members))
+	for _, member := range members {
+		result = append(result, state.TeamMember{
+			TeamSlug: teamSlug,
+			Username: member.Username,
+			Role:     string(member.Role),
+		})
+	}
+	return result
 }
 
 func organizationMembersFromUsers(users []*githubpkg.User, role string) []state.OrganizationMember {
@@ -473,21 +468,6 @@ func teamsFromTeams(teamsIn []*githubpkg.Team) []state.Team {
 			Description: team.Description,
 			Privacy:     team.Privacy.String(),
 			ParentSlug:  parentSlug(team.ParentTeam),
-		})
-	}
-	return result
-}
-
-func teamMembersFromUsers(teamSlug, role string, users []*githubpkg.User) []state.TeamMember {
-	result := make([]state.TeamMember, 0, len(users))
-	for _, user := range users {
-		if user == nil {
-			continue
-		}
-		result = append(result, state.TeamMember{
-			TeamSlug: teamSlug,
-			Username: derefString(user.Login),
-			Role:     role,
 		})
 	}
 	return result

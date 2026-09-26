@@ -43,3 +43,16 @@ type Service interface {
 	// ListTeams lists teams in an organization.
 	ListTeams(ctx context.Context, org string, opts *gh.ListOptions) ([]*gh.Team, *gh.Response, error)
 }
+
+// TeamMember is a user and their direct role on a GitHub team.
+type TeamMember struct {
+	Username string
+	Role     TeamMemberRole
+}
+
+// TeamMemberRoleLister is an optional capability for listing team members
+// together with their roles in one request. Service implementations that do
+// not provide this capability remain supported through role-filtered reads.
+type TeamMemberRoleLister interface {
+	ListTeamMembersBySlugWithRoles(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]TeamMember, *gh.Response, error)
+}
