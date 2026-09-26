@@ -58,7 +58,7 @@ Current collector concurrency limits:
 - top-level fan-out: `4`
 - organization member role reads: `2`
 - invitation team lookups: `8`
-- per-team member / maintainer / repo-permission reads: `8`
+- per-team member-role and repository-permission reads: `8`
 
 ### `pkg/gitops/plan`
 - Compares desired config with live `OrganizationState`

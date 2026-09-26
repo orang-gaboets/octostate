@@ -104,15 +104,14 @@ The collector currently reads:
 - pending invitations
 - repositories
 - teams
-- team members
-- team maintainers
+- team members with member or maintainer roles
 - team repository permissions
 
 The collector uses bounded concurrency for read-only GitHub calls:
 - top-level collector fan-out: `4`
 - organization member role reads: `2`
 - invitation team lookups: `8`
-- per-team member / maintainer / repo-permission reads: `8`
+- per-team member-role and repository-permission reads: `8`
 
 Important implementation rule:
 - concurrent branches write into per-phase buffers

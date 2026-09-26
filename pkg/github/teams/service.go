@@ -335,6 +335,67 @@ func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOpti
 	return allMembers, nil
 }
 
+// ListTeamMembersBySlugWithRoles lists a team's members and their roles. When
+// the service supports TeamMemberRoleLister, GitHub's all-role response is
+// used. Existing Service implementations fall back to the member and
+// maintainer filters.
+func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersBySlugWithRolesOptions) ([]TeamMember, error) {
+	if err := option.Validate(); err != nil {
+		return nil, err
+	}
+
+	if roleLister, ok := option.Service.(TeamMemberRoleLister); ok {
+		listOptions := &gh.ListOptions{PerPage: 100}
+		var allMembers []TeamMember
+		for {
+			members, resp, err := roleLister.ListTeamMembersBySlugWithRoles(ctx, option.Org, option.Slug, listOptions)
+			if err != nil {
+				return nil, github.WrapError(err, fmt.Sprintf("failed to list members for team %s/%s", option.Org, option.Slug))
+			}
+
+			for _, member := range members {
+				if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
+					return nil, fmt.Errorf("team member %q has invalid role %q: %w", member.Username, member.Role, github.ErrValidationFailed)
+				}
+				allMembers = append(allMembers, member)
+			}
+
+			if resp == nil || resp.NextPage == 0 {
+				break
+			}
+			listOptions.Page = resp.NextPage
+		}
+
+		ghlogging.Debugf(ctx, "listed %d members with roles for team %s/%s", len(allMembers), option.Org, option.Slug)
+		return allMembers, nil
+	}
+
+	var allMembers []TeamMember
+	for _, role := range []TeamMemberRole{TeamMemberRoleMember, TeamMemberRoleMaintainer} {
+		users, err := ListTeamMembersBySlug(ctx, ListTeamMembersBySlugOptions{
+			Service: option.Service,
+			Org:     option.Org,
+			Slug:    option.Slug,
+			Role:    role,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			if user == nil {
+				continue
+			}
+			username := ""
+			if user.Login != nil {
+				username = *user.Login
+			}
+			allMembers = append(allMembers, TeamMember{Username: username, Role: role})
+		}
+	}
+
+	return allMembers, nil
+}
+
 // ListTeams retrieves all teams in a GitHub organization.
 func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, error) {
 	if err := option.Validate(); err != nil {

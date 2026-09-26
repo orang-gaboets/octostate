@@ -3,7 +3,11 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 
 	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/github"
@@ -32,15 +36,61 @@ type repositoriesServiceWrapper struct {
 	*gh.RepositoriesService
 }
 
+type githubTeamServiceWrapper struct {
+	teams.Service
+	client *gh.Client
+}
+
+type teamMemberResponse struct {
+	Login string `json:"login"`
+	Role  string `json:"role"`
+}
+
 func (s repositoriesServiceWrapper) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
 	return s.RepositoriesService.ListAllTopics(ctx, owner, repo, nil)
+}
+
+func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithRoles(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]teams.TeamMember, *gh.Response, error) {
+	query := url.Values{}
+	query.Set("role", string(teams.TeamMemberRoleAll))
+	if opts != nil {
+		if opts.PerPage > 0 {
+			query.Set("per_page", strconv.Itoa(opts.PerPage))
+		}
+		if opts.Page > 0 {
+			query.Set("page", strconv.Itoa(opts.Page))
+		}
+	}
+
+	endpoint := fmt.Sprintf("orgs/%s/teams/%s/members?%s", url.PathEscape(org), url.PathEscape(slug), query.Encode())
+	req, err := s.client.NewRequest(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var response []teamMemberResponse
+	resp, err := s.client.Do(req, &response)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	members := make([]teams.TeamMember, 0, len(response))
+	for _, member := range response {
+		members = append(members, teams.TeamMember{
+			Username: member.Login,
+			Role:     teams.TeamMemberRole(member.Role),
+		})
+	}
+	return members, resp, nil
 }
 
 func (g githubClientWrapper) Organizations() organizations.Service { return g.Client.Organizations }
 func (g githubClientWrapper) Repositories() repos.Service {
 	return repositoriesServiceWrapper{g.Client.Repositories}
 }
-func (g githubClientWrapper) Teams() teams.Service { return g.Client.Teams }
+func (g githubClientWrapper) Teams() teams.Service {
+	return githubTeamServiceWrapper{Service: g.Client.Teams, client: g.Client}
+}
 func (g githubClientWrapper) Users() users.Service { return g.Client.Users }
 
 var (

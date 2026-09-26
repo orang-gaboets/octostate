@@ -3,12 +3,16 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	githubclient "github.com/orang-gaboets/octostate/pkg/github/client"
+	"github.com/orang-gaboets/octostate/pkg/github/teams"
 	"github.com/spf13/cobra"
 )
 
@@ -173,5 +177,111 @@ func TestNewClientEmptyEnvironmentWithoutCredentials(t *testing.T) {
 	_, err := NewClient(context.Background(), "", 0, 0, "")
 	if !errors.Is(err, github.ErrNoValidCredentials) {
 		t.Fatalf("expected %v, got %v", github.ErrNoValidCredentials, err)
+	}
+}
+
+func TestGitHubTeamServiceRoleAwareListingDecodesRolesAndPaginates(t *testing.T) {
+	var requestedPages []string
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/orgs/acme/teams/platform/members" {
+			t.Errorf("request = %s %s, want GET /orgs/acme/teams/platform/members", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("role"); got != "all" {
+			t.Errorf("role query = %q, want all", got)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "100" {
+			t.Errorf("per_page query = %q, want 100", got)
+		}
+		page := r.URL.Query().Get("page")
+		requestedPages = append(requestedPages, page)
+		switch page {
+		case "":
+			nextPageURL := *r.URL
+			nextQuery := nextPageURL.Query()
+			nextQuery.Set("page", "2")
+			nextPageURL.RawQuery = nextQuery.Encode()
+			return jsonResponse(r, http.Header{"Link": {fmt.Sprintf(`<%s>; rel="next"`, nextPageURL.String())}}, `[{"login":"alice","role":"member","inherited":false}]`), nil
+		case "2":
+			return jsonResponse(r, nil, `[{"login":"bob","role":"maintainer","inherited":true}]`), nil
+		default:
+			t.Errorf("unexpected page query %q", page)
+			return jsonResponse(r, nil, "[]"), nil
+		}
+	})
+
+	client := newGitHubClientWithTransport(t, transport)
+	service := githubClientWrapper{Client: client}.Teams()
+	members, err := teams.ListTeamMembersBySlugWithRoles(context.Background(), teams.ListTeamMembersBySlugWithRolesOptions{
+		Service: service,
+		Org:     "acme",
+		Slug:    "platform",
+	})
+	if err != nil {
+		t.Fatalf("ListTeamMembersBySlugWithRoles returned error: %v", err)
+	}
+	want := []teams.TeamMember{
+		{Username: "alice", Role: teams.TeamMemberRoleMember},
+		{Username: "bob", Role: teams.TeamMemberRoleMaintainer},
+	}
+	if len(members) != len(want) {
+		t.Fatalf("members = %#v, want %#v", members, want)
+	}
+	for i := range want {
+		if members[i] != want[i] {
+			t.Errorf("member[%d] = %#v, want %#v", i, members[i], want[i])
+		}
+	}
+	if len(requestedPages) != 2 || requestedPages[0] != "" || requestedPages[1] != "2" {
+		t.Fatalf("requested pages = %#v, want [empty 2]", requestedPages)
+	}
+}
+
+func TestGitHubTeamServiceRoleAwareListingHonorsCancellation(t *testing.T) {
+	client := newGitHubClientWithTransport(t, roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if err := r.Context().Err(); err != nil {
+			return nil, err
+		}
+		return jsonResponse(r, nil, "[]"), nil
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := teams.ListTeamMembersBySlugWithRoles(ctx, teams.ListTeamMembersBySlugWithRolesOptions{
+		Service: githubClientWrapper{Client: client}.Teams(),
+		Org:     "acme",
+		Slug:    "platform",
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want %v", err, context.Canceled)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func newGitHubClientWithTransport(t *testing.T, transport http.RoundTripper) *gh.Client {
+	t.Helper()
+	client, err := gh.NewClient(
+		gh.WithEnterpriseURLs("https://api.github.test/", "https://uploads.github.test/"),
+		gh.WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	if err != nil {
+		t.Fatalf("gh.NewClient returned error: %v", err)
+	}
+	return client
+}
+
+func jsonResponse(request *http.Request, headers http.Header, body string) *http.Response {
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	headers.Set("Content-Type", "application/json")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     headers,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    request,
 	}
 }
