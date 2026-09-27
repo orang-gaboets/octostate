@@ -355,10 +355,7 @@ func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersB
 
 			for _, member := range members {
 				if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
-					return nil, fmt.Errorf(
-						"GitHub did not return a recognized role value for team member %q in organization %q, team %q (received role %q): %w",
-						member.Username, option.Org, option.Slug, member.Role, github.ErrValidationFailed,
-					)
+					return nil, invalidTeamMemberRoleError(option.Org, option.Slug, member.Username, member.Role)
 				}
 				allMembers = append(allMembers, member)
 			}
@@ -422,11 +419,9 @@ func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMe
 		}
 
 		for _, member := range members {
+			// Validate inherited rows too, so malformed GitHub data still fails closed.
 			if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
-				return nil, fmt.Errorf(
-					"GitHub did not return a recognized role value for team member %q in organization %q, team %q (received role %q): %w",
-					member.Username, option.Org, option.Slug, member.Role, github.ErrValidationFailed,
-				)
+				return nil, invalidTeamMemberRoleError(option.Org, option.Slug, member.Username, member.Role)
 			}
 			if member.Inherited {
 				continue
@@ -442,6 +437,13 @@ func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMe
 
 	ghlogging.Debugf(ctx, "listed %d direct members for team %s/%s", len(directMembers), option.Org, option.Slug)
 	return directMembers, nil
+}
+
+func invalidTeamMemberRoleError(org, slug, username string, role TeamMemberRole) error {
+	return fmt.Errorf(
+		"GitHub did not return a recognized role value for team member %q in organization %q, team %q (received role %q): %w",
+		username, org, slug, role, github.ErrValidationFailed,
+	)
 }
 
 // ListTeams retrieves all teams in a GitHub organization.
