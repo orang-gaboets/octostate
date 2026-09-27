@@ -57,7 +57,7 @@ type Team struct {
 	ParentSlug  string `json:"parent_slug"`
 }
 
-// TeamMember is a current team membership.
+// TeamMember is a current direct team membership.
 type TeamMember struct {
 	TeamSlug string `json:"team_slug"`
 	Username string `json:"username"`

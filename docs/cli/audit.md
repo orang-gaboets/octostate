@@ -70,6 +70,14 @@ organization member roles, run `octostate audit pull` once before using
 `audit diff` so the stored snapshot includes the current `members[].role`
 values.
 
+Snapshots written before direct and inherited team membership were
+distinguished may contain inherited-only parent-team rows. The existing
+`team_members` snapshot shape has no provenance field, so those legacy rows
+are deterministically treated as direct memberships and can continue to
+produce removal drift. Run `octostate audit pull` once to refresh the snapshot;
+new snapshots include only direct team memberships. No snapshot format change
+is required.
+
 ## `octostate audit diff`
 
 Diff desired state against the stored snapshot.

@@ -249,6 +249,10 @@ Supported team member roles:
 - `member`
 - `maintainer`
 
+Team `members` declare direct membership on that team. Membership inherited
+from child teams is effective membership and is not an explicit parent-team
+`members` entry.
+
 Supported team privacy values:
 
 - `closed`

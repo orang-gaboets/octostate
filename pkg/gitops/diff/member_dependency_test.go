@@ -45,6 +45,64 @@ func TestBuildTeamMembershipExecutableWhenMemberDeclaredInDesiredState(t *testin
 	t.Fatalf("no team membership action emitted: %#v", report.Actions)
 }
 
+func TestBuildTreatsInheritedOnlyParentMembershipAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	for _, includeParentMembership := range []bool{false, true} {
+		name := "omitted from desired"
+		parentMembers := []config.TeamMemberSpec{}
+		if includeParentMembership {
+			name = "desired as direct"
+			parentMembers = []config.TeamMemberSpec{{Username: "bob", Role: "member"}}
+		}
+		t.Run(name, func(t *testing.T) {
+			desired := config.OrganizationConfig{
+				Organization: "acme",
+				Members:      []config.OrganizationMemberSpec{{Username: "bob", Role: "member"}},
+				Teams: []config.TeamSpec{
+					{Slug: "parent", Name: "Parent", Privacy: "closed", Members: parentMembers},
+					{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent", Members: []config.TeamMemberSpec{{Username: "bob", Role: "member"}}},
+				},
+			}
+			// The live parent response contained only inherited membership for bob,
+			// so the snapshot contains only the child's direct row.
+			snapshotState := &snapshot.ActualSnapshot{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{Username: "bob", Role: "member"}},
+				Teams: []state.Team{
+					{Slug: "parent", Name: "Parent", Privacy: "closed"},
+					{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
+				},
+				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+			}
+
+			report, err := Build(Options{Desired: desired, Snapshot: snapshotState})
+			if err != nil {
+				t.Fatalf("Build returned error: %v", err)
+			}
+			var parentAction *Action
+			for i := range report.Actions {
+				if report.Actions[i].ResourceType == ActionResourceTypeTeamMember && report.Actions[i].ResourceID == "parent/bob" {
+					parentAction = &report.Actions[i]
+					break
+				}
+			}
+			if !includeParentMembership {
+				if parentAction != nil {
+					t.Fatalf("inherited-only parent member produced action: %#v", *parentAction)
+				}
+				return
+			}
+			if parentAction == nil {
+				t.Fatalf("desired direct parent membership produced no action: %#v", report.Actions)
+			}
+			if parentAction.Operation != ActionOperationCreate || !parentAction.Executable {
+				t.Fatalf("direct parent membership action = %#v, want executable create", *parentAction)
+			}
+		})
+	}
+}
+
 // A team member neither live nor declared never reaches planning: validation
 // rejects it first. That is why the unavailable-prerequisite branch in
 // planning is defensive rather than a reachable state through Build.

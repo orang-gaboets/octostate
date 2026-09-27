@@ -230,6 +230,61 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 	}
 }
 
+func TestBuildAdoptDoesNotAddInheritedOnlyParentMembership(t *testing.T) {
+	t.Parallel()
+
+	for _, hasExistingParentDeclaration := range []bool{false, true} {
+		name := "does not add inherited-only row"
+		parentMembers := []config.TeamMemberSpec{}
+		if hasExistingParentDeclaration {
+			name = "preserves existing desired declaration"
+			parentMembers = []config.TeamMemberSpec{{Username: "bob", Role: "member"}}
+		}
+		t.Run(name, func(t *testing.T) {
+			got, err := BuildAdoptConfig(AdoptOptions{
+				Desired: config.OrganizationConfig{
+					Organization: "acme",
+					Members:      []config.OrganizationMemberSpec{{Username: "bob", Role: "member"}},
+					Teams: []config.TeamSpec{
+						{Slug: "parent", Name: "Parent", Privacy: "closed", Members: parentMembers},
+						{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
+					},
+				},
+				Actual: &state.OrganizationState{
+					Organization: "acme",
+					Members:      []state.OrganizationMember{{Username: "bob", Role: "member"}},
+					Teams: []state.Team{
+						{Slug: "parent", Name: "Parent", Privacy: "closed"},
+						{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
+					},
+					// The direct-only collector state has the child row, not the
+					// inherited-only parent row.
+					TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+				},
+			})
+			if err != nil {
+				t.Fatalf("BuildAdoptConfig returned error: %v", err)
+			}
+
+			teamsBySlug := make(map[string]config.TeamSpec, len(got.Teams))
+			for _, team := range got.Teams {
+				teamsBySlug[team.Slug] = team
+			}
+			wantParentMembers := []config.TeamMemberSpec{}
+			if hasExistingParentDeclaration {
+				wantParentMembers = []config.TeamMemberSpec{{Username: "bob", Role: "member"}}
+			}
+			if members := teamsBySlug["parent"].Members; !reflect.DeepEqual(members, wantParentMembers) {
+				t.Fatalf("parent team members = %#v, want %#v", members, wantParentMembers)
+			}
+			wantChildMembers := []config.TeamMemberSpec{{Username: "bob", Role: "member"}}
+			if members := teamsBySlug["child"].Members; !reflect.DeepEqual(members, wantChildMembers) {
+				t.Fatalf("child team members = %#v, want %#v", members, wantChildMembers)
+			}
+		})
+	}
+}
+
 func TestBuildAdoptConfigDropsInvitesSatisfiedByLiveMembers(t *testing.T) {
 	t.Parallel()
 
