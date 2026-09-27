@@ -107,6 +107,16 @@ organization policy, so sync-from-live excludes them by default. Use
 `--include-pending-invites` only when intentionally capturing current in-flight
 access requests for review or bootstrap adoption.
 
+**Upgrade note for generated configs:** Configurations generated before
+octostate distinguished direct from inherited team memberships may contain
+inherited-only parent-team members as explicit `members:` entries. After
+upgrading, those entries are treated as desired direct memberships and can
+produce executable `create` actions in `config plan` and `config apply`.
+Before applying a post-upgrade plan, review and remove inherited-only parent
+entries, or generate a fresh config with `sync-from-live --mode bootstrap` and
+review it before replacing the old file. `sync-from-live --mode adopt` preserves
+existing declarations and will not remove those entries.
+
 ### Bootstrap desired-state config from live GitHub state
 
 ```bash
