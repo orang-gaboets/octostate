@@ -49,7 +49,8 @@ func (r *CheckResult) Normalize() {
 }
 
 // Check validates the executable portion of a planner report without mutating
-// GitHub state.
+// GitHub state. It does not bind the target to a caller-authorized organization;
+// use CheckForOrganization when that boundary is required.
 func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
@@ -105,6 +106,15 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	}
 	result.Normalize()
 	return result, nil
+}
+
+// CheckForOrganization runs apply preflight only when the desired organization
+// matches the independently supplied expected organization.
+func CheckForOrganization(ctx context.Context, opt Options, expectedOrganization string) (*CheckResult, error) {
+	if err := config.CheckExpectedOrganization(opt.Desired.Organization, expectedOrganization); err != nil {
+		return nil, err
+	}
+	return Check(ctx, opt)
 }
 
 func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action, failures *preflightFailures) []gitopsplan.Action {

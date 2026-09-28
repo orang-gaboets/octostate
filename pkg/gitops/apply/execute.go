@@ -104,7 +104,9 @@ func (r *Result) Normalize() {
 	}
 }
 
-// Execute applies the executable portion of a planner report to GitHub.
+// Execute applies the executable portion of a planner report to GitHub. It does
+// not bind the target to a caller-authorized organization; use
+// ExecuteForOrganization when that boundary is required.
 func Execute(ctx context.Context, opt Options) (*Result, error) {
 	if err := opt.Validate(); err != nil {
 		return nil, err
@@ -166,6 +168,15 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 
 	result.Normalize()
 	return result, nil
+}
+
+// ExecuteForOrganization applies a plan only when the desired organization
+// matches the independently supplied expected organization.
+func ExecuteForOrganization(ctx context.Context, opt Options, expectedOrganization string) (*Result, error) {
+	if err := config.CheckExpectedOrganization(opt.Desired.Organization, expectedOrganization); err != nil {
+		return nil, err
+	}
+	return Execute(ctx, opt)
 }
 
 type executor struct {
