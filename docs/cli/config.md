@@ -338,8 +338,8 @@ Flags:
 
 Behavior:
 - Loads `<config-dir>/organization.yaml`
-- Verifies `--expected-org`, when supplied, before authentication or live collection in all apply modes
 - Runs semantic validation before contacting GitHub
+- Verifies `--expected-org`, when supplied, before authentication or live collection in all apply modes
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub

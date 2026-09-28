@@ -12,7 +12,6 @@ import (
 )
 
 func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
-	const sentinel = "__OCTOSTATE_EXPECTED_ORG_UNSET__"
 	workflowBytes, err := os.ReadFile(filepath.Join("..", "..", "..", ".github", "workflows", "config-review.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +20,8 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 		On struct {
 			WorkflowCall struct {
 				Inputs map[string]struct {
-					Default string `yaml:"default"`
+					Default any    `yaml:"default"`
+					Type    string `yaml:"type"`
 				} `yaml:"inputs"`
 			} `yaml:"workflow_call"`
 		} `yaml:"on"`
@@ -36,8 +36,11 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 	if err := yaml.Unmarshal(workflowBytes, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	if got := workflow.On.WorkflowCall.Inputs["expected_org"].Default; got != sentinel {
-		t.Fatalf("expected reserved workflow default %q, got %q", sentinel, got)
+	if got := workflow.On.WorkflowCall.Inputs["expected_org"]; got.Default != "" || got.Type != "string" {
+		t.Fatalf("expected empty organization default, got %#v", got)
+	}
+	if got := workflow.On.WorkflowCall.Inputs["bind_expected_org"]; got.Default != false || got.Type != "boolean" {
+		t.Fatalf("expected opt-in binding default, got %#v", got)
 	}
 
 	steps := workflow.Jobs["config-review"].Steps
@@ -47,6 +50,9 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 			if step.Name == stepName {
 				if step.Env["EXPECTED_ORG"] != "${{ inputs.expected_org }}" {
 					t.Fatalf("%s must receive the caller input through its environment", stepName)
+				}
+				if step.Env["BIND_EXPECTED_ORG"] != "${{ inputs.bind_expected_org }}" {
+					t.Fatalf("%s must receive the binding switch through its environment", stepName)
 				}
 				run = step.Run
 				break
@@ -59,12 +65,16 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 		for _, tc := range []struct {
 			name     string
 			expected string
+			bind     bool
 			bound    bool
+			rejected bool
 		}{
-			{name: "omitted", expected: sentinel},
-			{name: "valid", expected: "org-a", bound: true},
-			{name: "empty", expected: "", bound: true},
-			{name: "whitespace", expected: "  ", bound: true},
+			{name: "omitted"},
+			{name: "valid", expected: "org-a", bind: true, bound: true},
+			{name: "empty", bind: true, bound: true},
+			{name: "whitespace", expected: "  ", bind: true, bound: true},
+			{name: "former-sentinel", expected: "__OCTOSTATE_EXPECTED_ORG_UNSET__", bind: true, bound: true},
+			{name: "unbound-value", expected: "org-a", rejected: true},
 		} {
 			t.Run(stepName+"/"+tc.name, func(t *testing.T) {
 				tmp := t.TempDir()
@@ -74,14 +84,29 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 				}
 				log := filepath.Join(tmp, "args")
 				command := exec.Command("bash", "-c", run)
+				bindValue := "false"
+				if tc.bind {
+					bindValue = "true"
+				}
 				command.Env = append(os.Environ(),
 					"PATH="+tmp+":"+os.Getenv("PATH"),
 					"ARG_LOG="+log,
 					"CONFIG_DIR=./config",
 					"OCTOSTATE_TOKEN=token",
 					"EXPECTED_ORG="+tc.expected,
+					"BIND_EXPECTED_ORG="+bindValue,
 				)
-				if output, err := command.CombinedOutput(); err != nil {
+				output, err := command.CombinedOutput()
+				if tc.rejected {
+					if err == nil {
+						t.Fatalf("unbound expected value unexpectedly succeeded: %s", output)
+					}
+					if _, statErr := os.Stat(log); !os.IsNotExist(statErr) {
+						t.Fatalf("unbound expected value invoked octostate: %v", statErr)
+					}
+					return
+				}
+				if err != nil {
 					t.Fatalf("workflow step failed: %v\n%s", err, output)
 				}
 				data, err := os.ReadFile(log)

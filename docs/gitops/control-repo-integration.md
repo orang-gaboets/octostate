@@ -162,6 +162,7 @@ jobs:
     with:
       config_dir: ./config
       octostate_version: <release-or-40-character-commit-with-expected-org>
+      bind_expected_org: true
       expected_org: ${{ vars.OCTOSTATE_EXPECTED_ORG }}
     secrets:
       octostate_token: ${{ secrets.OCTOSTATE_TOKEN }}
@@ -187,13 +188,12 @@ instead of downloading a newer toolchain automatically.
 
 - `config_dir` is optional and defaults to `./config`; it must contain the
   desired-state `organization.yaml` required by Octostate.
-- `expected_org` is optional for existing callers. When omitted, the review
-  remains unbound. When supplied, including as an empty or whitespace-only
-  value, it is forwarded to both live commands; empty values and mismatches
-  fail before GitHub authentication or collection. The called workflow uses a
-  reserved internal default to distinguish omission from an explicitly empty
-  caller variable. The CLI revision selected by `octostate_version` must support
-  `--expected-org` when this input is supplied.
+- `bind_expected_org` defaults to `false` for existing callers. Set it to
+  `true` to forward `expected_org` to both live commands. An empty or
+  whitespace-only value then fails before GitHub authentication or collection,
+  as does a mismatch. A nonempty `expected_org` without the binding switch
+  fails instead of silently running unbound. The CLI revision selected by
+  `octostate_version` must support `--expected-org` when binding is enabled.
 - `octostate_token` is required and is passed explicitly as `--token` only to
   the live plan and preflight steps. It may be a PAT or a pre-created GitHub
   App installation token; this workflow does not mint credentials or accept a
