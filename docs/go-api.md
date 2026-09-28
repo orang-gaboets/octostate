@@ -83,6 +83,26 @@ supported packages when possible. If a package should eventually move behind
 an `internal` boundary, track that migration separately and choose a compatible
 transition rather than moving it as unrelated cleanup.
 
+## Bind a live GitOps target
+
+For credentials that can access multiple organizations, obtain an expected
+GitHub organization login from trusted caller configuration, independently of
+the desired-state file. Before collecting live state using
+`collector.CollectOrganization`, call
+`config.CheckExpectedOrganization(desired.Organization, expectedOrg)`. The
+check requires a nonblank expected value and compares trimmed logins without
+regard to case; a mismatch must stop the invocation before live reads.
+
+For subsequent operations, use `plan.BuildForOrganization(ctx, options,
+expectedOrg)`, `apply.CheckForOrganization(ctx, options, expectedOrg)`, and
+`apply.ExecuteForOrganization(ctx, options, expectedOrg)`. Each repeats the
+target check before using GitHub services. Existing `plan.Build`, `apply.Check`,
+and `apply.Execute` remain available with their previous signatures and are
+unbound; callers that need this boundary must migrate to the bound functions.
+No expected-organization field belongs in desired configuration. Cross-org
+repository templates remain supported as references, while managed repository
+owners remain subject to organization-local validation.
+
 ## Compatibility policy for the `v1` module
 
 Octostate uses one Go module and one release version stream for both its CLI and

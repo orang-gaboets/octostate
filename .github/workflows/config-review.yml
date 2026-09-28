@@ -8,6 +8,11 @@ on:
         required: false
         default: ./config
         type: string
+      expected_org:
+        description: Independently expected organization for live plan and preflight; omit for legacy unbound behavior
+        required: false
+        default: __OCTOSTATE_EXPECTED_ORG_UNSET__
+        type: string
       octostate_version:
         description: Octostate release tag or full commit SHA to install
         required: true
@@ -76,6 +81,7 @@ jobs:
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
           OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          EXPECTED_ORG: ${{ inputs.expected_org }}
         shell: bash
         run: |
           set -euo pipefail
@@ -85,12 +91,18 @@ jobs:
             exit 1
           fi
 
-          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN"
+          set --
+          if [[ "$EXPECTED_ORG" != "__OCTOSTATE_EXPECTED_ORG_UNSET__" ]]; then
+            set -- --expected-org "$EXPECTED_ORG"
+          fi
+
+          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" "$@"
 
       - name: Preflight configuration apply
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
           OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          EXPECTED_ORG: ${{ inputs.expected_org }}
         shell: bash
         run: |
           set -euo pipefail
@@ -100,4 +112,9 @@ jobs:
             exit 1
           fi
 
-          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check
+          set --
+          if [[ "$EXPECTED_ORG" != "__OCTOSTATE_EXPECTED_ORG_UNSET__" ]]; then
+            set -- --expected-org "$EXPECTED_ORG"
+          fi
+
+          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check "$@"

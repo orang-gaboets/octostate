@@ -20,12 +20,14 @@ The main GitOps flow looks like this:
 
 1. Load and normalize desired config from `config/organization.yaml`
 2. Validate that config semantically
-3. Build actual organization state:
+3. If a caller supplies `--expected-org` for a live command, verify it matches
+   the configured organization before authentication or live collection
+4. Build actual organization state:
    - from live GitHub for `config plan`, `config apply`, `config apply --check`, and `audit pull`
    - from `state/actual/snapshot.json` for `audit diff`
-4. Compare desired and actual state
-5. Emit a deterministic report
-6. Optionally execute the supported portion of that report
+5. Compare desired and actual state
+6. Emit a deterministic report
+7. Optionally execute the supported portion of that report
 
 ## Main Packages
 

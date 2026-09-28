@@ -19,12 +19,13 @@ Pull an actual-state snapshot from live GitHub.
 
 ```bash
 export OCTOSTATE_GITHUB_TOKEN="<token>"
-octostate audit pull --config-dir ./config --state-dir ./state
+octostate audit pull --config-dir ./config --state-dir ./state --expected-org orang-gaboets
 ```
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--state-dir` (required): Path to the state directory where the actual-state snapshot will be written
+- `--expected-org`: Optional caller-authorized organization, supplied independently of `organization.yaml`
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
@@ -32,6 +33,7 @@ Flags:
 
 Behavior:
 - Loads `<config-dir>/organization.yaml` to determine the target organization
+- When `--expected-org` is supplied, compares trimmed, case-insensitive organization logins and rejects an empty or mismatched value before authentication, live reads, or snapshot writing; omission retains legacy behavior
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Writes a stable JSON snapshot to `<state-dir>/actual/snapshot.json`
 - Prints a structured success result to stdout

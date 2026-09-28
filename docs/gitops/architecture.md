@@ -117,23 +117,26 @@ Current collector concurrency limits:
 ### `octostate config plan`
 1. Load and normalize `config/organization.yaml`
 2. Validate desired state semantically
-3. Collect live GitHub state through `collector`
-4. Build the reconciliation report through `plan`
-5. Normalize the final report and print JSON
+3. Verify optional caller-supplied `--expected-org` before authentication
+4. Collect live GitHub state through `collector`
+5. Build the reconciliation report through `plan`
+6. Normalize the final report and print JSON
 
 ### `octostate config apply`
 1. Load and validate desired state
-2. Collect live GitHub state
-3. Build the reconciliation report
-4. Execute supported `create` / `update` actions through `apply`
-5. Print executed and skipped actions as JSON
+2. Verify optional caller-supplied `--expected-org` before authentication
+3. Collect live GitHub state
+4. Build the reconciliation report
+5. Execute supported `create` / `update` actions through `apply`
+6. Print executed and skipped actions as JSON
 
 ### `octostate config apply --check`
 1. Load and validate desired state
-2. Collect live GitHub state
-3. Build the reconciliation report
-4. Run apply preflight validation without mutating GitHub
-5. Print the preflight result as JSON
+2. Verify optional caller-supplied `--expected-org` before authentication
+3. Collect live GitHub state
+4. Build the reconciliation report
+5. Run apply preflight validation without mutating GitHub
+6. Print the preflight result as JSON
 
 Check mode is best-effort. It consumes the same dependency-safe order as
 `config apply`, validates supported executor inputs, and adds read-only probes

@@ -44,6 +44,12 @@ supported GitOps state such as:
 - team memberships
 - team repository permissions
 
+For live commands, a control repo can independently supply the organization it
+authorizes as `--expected-org`. Keep that value in trusted workflow configuration,
+not in `organization.yaml` or a value read from that file. A mismatch fails
+before Octostate authenticates or contacts GitHub. This assertion is opt-in so
+existing integrations retain their previous behavior.
+
 ## Expected Outputs
 
 The engine works with a state directory that can hold actual-state snapshots
@@ -106,15 +112,16 @@ For pull requests that change `config/organization.yaml`, a control repo can run
 
 ```bash
 export OCTOSTATE_GITHUB_TOKEN="<token>"
+expected_org="<trusted-control-repo-organization>"
 octostate config validate --config-dir ./config
-octostate config plan --config-dir ./config
-octostate config apply --config-dir ./config --check
+octostate config plan --config-dir ./config --expected-org "$expected_org"
+octostate config apply --config-dir ./config --expected-org "$expected_org" --check
 ```
 
 After the PR is approved and merged, a post-merge workflow can run:
 
 ```bash
-octostate config apply --config-dir ./config
+octostate config apply --config-dir ./config --expected-org "$expected_org"
 ```
 
 ## Optional Reusable Configuration-Review Workflow
@@ -149,23 +156,29 @@ on:
 
 jobs:
   config-review:
-    uses: orang-gaboets/octostate/.github/workflows/config-review.yml@cc31d1e2332e71006f4d1cc7c70fa337ce7b8598
+    uses: orang-gaboets/octostate/.github/workflows/config-review.yml@<reviewed-workflow-commit-with-expected-org>
     permissions:
       contents: read
     with:
       config_dir: ./config
-      octostate_version: v1.2.0
+      octostate_version: <release-or-40-character-commit-with-expected-org>
+      expected_org: ${{ vars.OCTOSTATE_EXPECTED_ORG }}
     secrets:
       octostate_token: ${{ secrets.OCTOSTATE_TOKEN }}
 ```
 
-The immutable commit reference selects the reusable workflow file. The
-`octostate_version` input selects the CLI installed by that workflow; the two
-pins are independent and must be kept at compatible, trusted revisions. The
-input accepts a release-style tag such as `v1.2.0` or a full 40-character
-commit SHA. Branch names and `latest` are rejected. Use an immutable commit
-SHA for the strongest reproducibility, and use a release tag only when the
-repository's normal release process is the intended compatibility boundary.
+Replace the two revision placeholders with trusted, compatible pins before
+using this example. Set `OCTOSTATE_EXPECTED_ORG` as a trusted organization or
+repository configuration variable, independently of the desired-state file. An
+unset variable supplies an empty string and causes the
+live review steps to fail. The immutable commit reference selects the reusable
+workflow file. The `octostate_version` input selects the CLI installed by that
+workflow; the two pins are independent and must be kept at compatible, trusted
+revisions. The input accepts a release-style tag such as `v1.2.0` or a full
+40-character commit SHA. Branch names and `latest` are rejected. Use an
+immutable commit SHA for the strongest reproducibility, and use a release tag
+only when the repository's normal release process is the intended compatibility
+boundary.
 The selected CLI revision must build with Go `1.25.13`; the workflow sets
 `GOTOOLCHAIN=local`, so an incompatible revision fails during installation
 instead of downloading a newer toolchain automatically.
@@ -174,6 +187,13 @@ instead of downloading a newer toolchain automatically.
 
 - `config_dir` is optional and defaults to `./config`; it must contain the
   desired-state `organization.yaml` required by Octostate.
+- `expected_org` is optional for existing callers. When omitted, the review
+  remains unbound. When supplied, including as an empty or whitespace-only
+  value, it is forwarded to both live commands; empty values and mismatches
+  fail before GitHub authentication or collection. The called workflow uses a
+  reserved internal default to distinguish omission from an explicitly empty
+  caller variable. The CLI revision selected by `octostate_version` must support
+  `--expected-org` when this input is supplied.
 - `octostate_token` is required and is passed explicitly as `--token` only to
   the live plan and preflight steps. It may be a PAT or a pre-created GitHub
   App installation token; this workflow does not mint credentials or accept a
