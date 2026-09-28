@@ -568,7 +568,7 @@ func TestPlanConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 		return nil, nil
 	}
 
-	_, err := planConfig(context.Background(), "secret-token", 0, 0, "", "./config")
+	_, err := planConfig(context.Background(), "secret-token", 0, 0, "", "./config", nil)
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("unexpected error: %v", err)
 	}

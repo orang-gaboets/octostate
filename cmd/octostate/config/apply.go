@@ -45,6 +45,7 @@ func ApplyConfigCmd() *cobra.Command {
 		installationID int64
 		appKeyPath     string
 		configDir      string
+		expectedOrg    string
 		check          bool
 		dryRun         bool
 		requireExec    bool
@@ -83,6 +84,10 @@ func ApplyConfigCmd() *cobra.Command {
 			case dryRun:
 				mode = applyRunModeDryRun
 			}
+			var expected *string
+			if cmd.Flags().Changed("expected-org") {
+				expected = &expectedOrg
+			}
 
 			result, preview, checkResult, err := applyConfig(
 				cmd.Context(),
@@ -93,6 +98,7 @@ func ApplyConfigCmd() *cobra.Command {
 				configDir,
 				mode,
 				requireExec,
+				expected,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
@@ -128,6 +134,7 @@ func ApplyConfigCmd() *cobra.Command {
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
+	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live operation")
 	github.MarkRequiredFlags(cmd, "config-dir")
 
 	return cmd
@@ -140,6 +147,7 @@ func applyConfig(
 	appKeyPath, configDir string,
 	mode applyRunMode,
 	requireExecutable bool,
+	expectedOrg *string,
 ) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
@@ -154,6 +162,11 @@ func applyConfig(
 	organization := strings.TrimSpace(cfg.Organization)
 	if organization == "" {
 		return nil, nil, nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+	}
+	if expectedOrg != nil {
+		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
+			return nil, nil, nil, invalidConfigPhaseError("verify expected organization", err)
+		}
 	}
 
 	client, err := newApplyClient(ctx, token, appID, installationID, appKeyPath)
@@ -171,11 +184,17 @@ func applyConfig(
 		return nil, nil, nil, runtimePhaseError("collect live GitHub state", err)
 	}
 
-	report, err := buildApplyPlan(ctx, gitopsplan.Options{
+	planOptions := gitopsplan.Options{
 		Desired:     cfg,
 		Actual:      actual,
 		UserService: client.Users(),
-	})
+	}
+	var report *gitopsplan.Report
+	if expectedOrg != nil {
+		report, err = gitopsplan.BuildForOrganization(ctx, planOptions, *expectedOrg)
+	} else {
+		report, err = buildApplyPlan(ctx, planOptions)
+	}
 	if err != nil {
 		return nil, nil, nil, runtimePhaseError("build reconciliation plan", err)
 	}
@@ -183,7 +202,7 @@ func applyConfig(
 
 	switch mode {
 	case applyRunModeCheck:
-		checkResult, err := checkApply(ctx, gitopsapply.Options{
+		applyOptions := gitopsapply.Options{
 			Desired:                         cfg,
 			Actual:                          actual,
 			Plan:                            report,
@@ -192,7 +211,13 @@ func applyConfig(
 			RepositoryService:               client.Repositories(),
 			TeamService:                     client.Teams(),
 			UserService:                     client.Users(),
-		})
+		}
+		var checkResult *gitopsapply.CheckResult
+		if expectedOrg != nil {
+			checkResult, err = gitopsapply.CheckForOrganization(ctx, applyOptions, *expectedOrg)
+		} else {
+			checkResult, err = checkApply(ctx, applyOptions)
+		}
 		if err != nil {
 			return nil, nil, nil, runtimePhaseError("run apply preflight check", err)
 		}
@@ -203,7 +228,7 @@ func applyConfig(
 		preview.Normalize()
 		return nil, preview, nil, nil
 	default:
-		result, err := executeApply(ctx, gitopsapply.Options{
+		applyOptions := gitopsapply.Options{
 			Desired:                         cfg,
 			Actual:                          actual,
 			Plan:                            report,
@@ -212,7 +237,13 @@ func applyConfig(
 			RepositoryService:               client.Repositories(),
 			TeamService:                     client.Teams(),
 			UserService:                     client.Users(),
-		})
+		}
+		var result *gitopsapply.Result
+		if expectedOrg != nil {
+			result, err = gitopsapply.ExecuteForOrganization(ctx, applyOptions, *expectedOrg)
+		} else {
+			result, err = executeApply(ctx, applyOptions)
+		}
 		if err != nil {
 			return nil, nil, nil, runtimePhaseError("execute apply plan", err)
 		}

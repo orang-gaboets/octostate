@@ -40,6 +40,7 @@ func PullCmd() *cobra.Command {
 		appKeyPath     string
 		configDir      string
 		stateDir       string
+		expectedOrg    string
 	)
 
 	cmd := &cobra.Command{
@@ -52,6 +53,10 @@ func PullCmd() *cobra.Command {
 			OCTOSTATE_GITHUB_TOKEN="<token>" octostate audit pull --config-dir ./config --state-dir ./state
 			octostate audit pull --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config --state-dir /path/to/control-repo/state`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			var expected *string
+			if cmd.Flags().Changed("expected-org") {
+				expected = &expectedOrg
+			}
 			result, err := pullActualState(
 				cmd.Context(),
 				token,
@@ -60,6 +65,7 @@ func PullCmd() *cobra.Command {
 				appKeyPath,
 				configDir,
 				stateDir,
+				expected,
 			)
 			if err != nil {
 				return err
@@ -72,6 +78,7 @@ func PullCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "Path to the state directory where actual/snapshot.json will be written")
+	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live snapshot")
 
 	github.MarkRequiredFlags(cmd, "config-dir", "state-dir")
 
@@ -89,6 +96,7 @@ func pullActualState(
 	token string,
 	appID, installationID int64,
 	appKeyPath, configDir, stateDir string,
+	expectedOrg *string,
 ) (auditPullResult, error) {
 	cfg, err := loadAuditConfig(strings.TrimSpace(configDir))
 	if err != nil {
@@ -97,6 +105,11 @@ func pullActualState(
 	organization := strings.TrimSpace(cfg.Organization)
 	if organization == "" {
 		return auditPullResult{}, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+	}
+	if expectedOrg != nil {
+		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
+			return auditPullResult{}, err
+		}
 	}
 
 	client, err := newAuditClient(ctx, token, appID, installationID, appKeyPath)
