@@ -14,7 +14,7 @@ import (
 )
 
 func TestAuditPullExpectedOrganizationRejectsBeforeLiveWork(t *testing.T) {
-	for _, expected := range []string{"org-a", "", "  "} {
+	for _, expected := range []string{"org-a", "org?foo", "", "  "} {
 		t.Run("expected="+expected, func(t *testing.T) {
 			restore := replaceAuditHooks(t)
 			defer restore()

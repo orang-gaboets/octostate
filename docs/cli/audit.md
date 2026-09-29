@@ -33,7 +33,7 @@ Flags:
 
 Behavior:
 - Loads `<config-dir>/organization.yaml` to determine the target organization
-- When `--expected-org` is supplied, compares trimmed, case-insensitive organization logins and rejects an empty or mismatched value before authentication, live reads, or snapshot writing; omission retains legacy behavior
+- When `--expected-org` is supplied, requires a valid GitHub organization login and compares trimmed values without regard to case; an empty, invalid, or mismatched value is rejected before authentication, live reads, or snapshot writing. Omission retains legacy behavior
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Writes a stable JSON snapshot to `<state-dir>/actual/snapshot.json`
 - Prints a structured success result to stdout

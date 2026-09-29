@@ -90,8 +90,9 @@ GitHub organization login from trusted caller configuration, independently of
 the desired-state file. Before collecting live state using
 `collector.CollectOrganization`, call
 `config.CheckExpectedOrganization(desired.Organization, expectedOrg)`. The
-check requires a nonblank expected value and compares trimmed logins without
-regard to case; a mismatch must stop the invocation before live reads.
+check requires both values to be valid GitHub logins and compares trimmed
+values without regard to case; an invalid or mismatched value must stop the
+invocation before live reads.
 
 For subsequent operations, use `plan.BuildForOrganization(ctx, options,
 expectedOrg)`, `apply.CheckForOrganization(ctx, options, expectedOrg)`, and

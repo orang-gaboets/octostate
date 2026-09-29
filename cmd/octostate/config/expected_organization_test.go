@@ -16,7 +16,7 @@ import (
 )
 
 func TestPlanExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
-	for _, expected := range []string{"org-a", "", "  "} {
+	for _, expected := range []string{"org-a", "org?foo", "", "  "} {
 		t.Run("expected="+expected, func(t *testing.T) {
 			restorePlanHooks(t)
 			loadPlanConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
@@ -82,7 +82,7 @@ func TestApplyExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
 	}{
 		{name: "live"}, {name: "check", flag: "--check"}, {name: "dry-run", flag: "--dry-run"},
 	} {
-		for _, expected := range []string{"org-a", "", "  "} {
+		for _, expected := range []string{"org-a", "org?foo", "", "  "} {
 			t.Run(mode.name+"/expected="+expected, func(t *testing.T) {
 				restoreApplyHooks(t)
 				loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
