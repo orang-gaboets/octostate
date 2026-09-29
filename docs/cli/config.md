@@ -27,14 +27,15 @@ When `--token` is supplied, including as `--token=`, it takes precedence over
 
 `config plan` and every `config apply` mode support optional `--expected-org`.
 Supply this value independently from `organization.yaml`, such as from a trusted
-control-repository setting. Octostate trims whitespace and compares GitHub
-organization logins without regard to case. An explicitly empty value or a
-mismatch fails before authentication, collection, preflight, or GitHub writes;
-the command prints no success result and returns exit code `2`. Omitting the
-flag preserves the previous unbound behavior for compatibility. This is a
-runtime assertion, not a desired-state schema field. `sync-from-live` already
-selects its live target through caller-supplied `--org`; offline validation and
-snapshot comparison do not authenticate to a live organization.
+control-repository setting. Octostate trims whitespace, requires both values to
+be valid GitHub logins, and compares them without regard to case. An empty,
+invalid, or mismatched value fails before authentication, collection, preflight,
+or GitHub writes; the command prints no success result and returns exit code
+`2`. Omitting the flag preserves the previous unbound behavior for compatibility.
+This is a runtime assertion, not a desired-state schema field.
+`sync-from-live` already selects its live target through caller-supplied `--org`;
+offline validation and snapshot comparison do not authenticate to a live
+organization.
 
 ## Command Comparison
 
