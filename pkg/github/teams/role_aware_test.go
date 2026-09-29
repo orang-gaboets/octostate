@@ -315,8 +315,8 @@ func assertInvalidTeamMemberRoleError(t *testing.T, err error) {
 		t.Fatalf("error = %v, want %v", err, github.ErrValidationFailed)
 	}
 	for _, want := range []string{
-		existingTeam.Org,
-		existingTeam.Slug,
+		"organization \"" + existingTeam.Org + "\"",
+		"team \"" + existingTeam.Slug + "\"",
 		"GitHub did not return a recognized role value",
 	} {
 		if !strings.Contains(err.Error(), want) {
