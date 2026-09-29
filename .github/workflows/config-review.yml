@@ -8,6 +8,16 @@ on:
         required: false
         default: ./config
         type: string
+      expected_org:
+        description: Independently expected organization for live plan and preflight when binding is enabled
+        required: false
+        default: ''
+        type: string
+      bind_expected_org:
+        description: Bind live commands to expected_org; false keeps legacy unbound behavior
+        required: false
+        default: false
+        type: boolean
       octostate_version:
         description: Octostate release tag or full commit SHA to install
         required: true
@@ -76,6 +86,8 @@ jobs:
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
           OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          EXPECTED_ORG: ${{ inputs.expected_org }}
+          BIND_EXPECTED_ORG: ${{ inputs.bind_expected_org }}
         shell: bash
         run: |
           set -euo pipefail
@@ -84,13 +96,24 @@ jobs:
             echo "octostate_token is required for config plan" >&2
             exit 1
           fi
+          if [[ "$BIND_EXPECTED_ORG" != "true" && -n "$EXPECTED_ORG" ]]; then
+            echo "expected_org requires bind_expected_org: true" >&2
+            exit 1
+          fi
 
-          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN"
+          set --
+          if [[ "$BIND_EXPECTED_ORG" == "true" ]]; then
+            set -- --expected-org "$EXPECTED_ORG"
+          fi
+
+          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" "$@"
 
       - name: Preflight configuration apply
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
           OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          EXPECTED_ORG: ${{ inputs.expected_org }}
+          BIND_EXPECTED_ORG: ${{ inputs.bind_expected_org }}
         shell: bash
         run: |
           set -euo pipefail
@@ -99,5 +122,14 @@ jobs:
             echo "octostate_token is required for config apply --check" >&2
             exit 1
           fi
+          if [[ "$BIND_EXPECTED_ORG" != "true" && -n "$EXPECTED_ORG" ]]; then
+            echo "expected_org requires bind_expected_org: true" >&2
+            exit 1
+          fi
 
-          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check
+          set --
+          if [[ "$BIND_EXPECTED_ORG" == "true" ]]; then
+            set -- --expected-org "$EXPECTED_ORG"
+          fi
+
+          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check "$@"

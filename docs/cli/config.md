@@ -25,6 +25,18 @@ When `--token` is supplied, including as `--token=`, it takes precedence over
 `OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
 `GITHUB_TOKEN`.
 
+`config plan` and every `config apply` mode support optional `--expected-org`.
+Supply this value independently from `organization.yaml`, such as from a trusted
+control-repository setting. Octostate trims whitespace, requires both values to
+be valid GitHub logins, and compares them without regard to case. An empty,
+invalid, or mismatched value fails before authentication, collection, preflight,
+or GitHub writes; the command prints no success result and returns exit code
+`2`. Omitting the flag preserves the previous unbound behavior for compatibility.
+This is a runtime assertion, not a desired-state schema field.
+`sync-from-live` already selects its live target through caller-supplied `--org`;
+offline validation and snapshot comparison do not authenticate to a live
+organization.
+
 ## Command Comparison
 
 Use these commands at different points in the GitOps workflow:
@@ -278,6 +290,7 @@ octostate config plan --config-dir ./config
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--expected-org`: Independently expected organization for this live plan
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
@@ -286,6 +299,7 @@ Flags:
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
+- Verifies `--expected-org`, when supplied, before authentication or live collection
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds a deterministic, read-only reconciliation plan
 - Prints a Terraform-style split JSON preview to stdout
@@ -311,7 +325,7 @@ Action behavior:
 Example use:
 
 ```bash
-octostate config plan --config-dir ./config
+octostate config plan --config-dir ./config --expected-org orang-gaboets
 ```
 
 ## `octostate config apply`
@@ -326,6 +340,7 @@ octostate config apply --config-dir ./config
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
+- `--expected-org`: Independently expected organization for check, dry-run, or live apply
 - `--check`: Run apply preflight validation without mutating GitHub
 - `--require-executable`: Fail when a desired create or update cannot be executed. Cannot be combined with `--dry-run`, which never evaluates the requirement
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
@@ -337,6 +352,7 @@ Flags:
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
+- Verifies `--expected-org`, when supplied, before authentication or live collection in all apply modes
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
@@ -409,23 +425,23 @@ planning.
 
 Exit codes:
 - `0`: apply, check, or dry-run completed successfully
-- `2`: configuration semantic validation failed, or mutually exclusive apply flags were used
+- `2`: configuration semantic validation or expected-organization assertion failed, or mutually exclusive apply flags were used
 - `1`: load/auth/collection/planning/check/apply failure
 
 Example check:
 
 ```bash
-octostate config apply --config-dir ./config --check
+octostate config apply --config-dir ./config --expected-org orang-gaboets --check
 ```
 
 Example dry-run:
 
 ```bash
-octostate config apply --config-dir ./config --dry-run
+octostate config apply --config-dir ./config --expected-org orang-gaboets --dry-run
 ```
 
 Example live apply:
 
 ```bash
-octostate config apply --config-dir ./config
+octostate config apply --config-dir ./config --expected-org orang-gaboets
 ```

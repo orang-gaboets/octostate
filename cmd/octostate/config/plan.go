@@ -33,6 +33,7 @@ func PlanConfigCmd() *cobra.Command {
 		installationID int64
 		appKeyPath     string
 		configDir      string
+		expectedOrg    string
 	)
 
 	cmd := &cobra.Command{
@@ -45,6 +46,10 @@ func PlanConfigCmd() *cobra.Command {
 			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config plan --config-dir ./config
 			octostate config plan --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			var expected *string
+			if cmd.Flags().Changed("expected-org") {
+				expected = &expectedOrg
+			}
 			report, err := planConfig(
 				cmd.Context(),
 				token,
@@ -52,6 +57,7 @@ func PlanConfigCmd() *cobra.Command {
 				installationID,
 				appKeyPath,
 				configDir,
+				expected,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
@@ -67,6 +73,7 @@ func PlanConfigCmd() *cobra.Command {
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
+	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live operation")
 	github.MarkRequiredFlags(cmd, "config-dir")
 
 	return cmd
@@ -77,6 +84,7 @@ func planConfig(
 	token string,
 	appID, installationID int64,
 	appKeyPath, configDir string,
+	expectedOrg *string,
 ) (*gitopsplan.Report, error) {
 	cfg, err := loadPlanConfig(strings.TrimSpace(configDir))
 	if err != nil {
@@ -91,6 +99,11 @@ func planConfig(
 	organization := strings.TrimSpace(cfg.Organization)
 	if organization == "" {
 		return nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+	}
+	if expectedOrg != nil {
+		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
+			return nil, invalidConfigPhaseError("verify expected organization", err)
+		}
 	}
 
 	client, err := newPlanClient(ctx, token, appID, installationID, appKeyPath)
@@ -108,11 +121,17 @@ func planConfig(
 		return nil, runtimePhaseError("collect live GitHub state", err)
 	}
 
-	report, err := buildPlanReport(ctx, gitopsplan.Options{
+	planOptions := gitopsplan.Options{
 		Desired:     cfg,
 		Actual:      actual,
 		UserService: client.Users(),
-	})
+	}
+	var report *gitopsplan.Report
+	if expectedOrg != nil {
+		report, err = gitopsplan.BuildForOrganization(ctx, planOptions, *expectedOrg)
+	} else {
+		report, err = buildPlanReport(ctx, planOptions)
+	}
 	if err != nil {
 		return nil, runtimePhaseError("build reconciliation plan", err)
 	}

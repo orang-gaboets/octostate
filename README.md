@@ -123,23 +123,29 @@ octostate config validate --config-dir ./config
 
 # Prefer the environment-backed token source for live commands
 export OCTOSTATE_GITHUB_TOKEN="<token>"
+# Set this independently to the organization you authorize for this run
+expected_org="<your-org>"
 
 # Preview the live reconciliation plan
-octostate config plan --config-dir ./config
+octostate config plan --config-dir ./config --expected-org "$expected_org"
 
 # Run best-effort, non-mutating apply preflight
-octostate config apply --config-dir ./config --check
+octostate config apply --config-dir ./config --expected-org "$expected_org" --check
 ```
 
 Use a short-lived, least-privilege credential and avoid shared systems. The
 legacy `--token` flag remains supported, but may expose the token through
 process inspection.
+`--expected-org` compares this separately supplied organization with the one in
+`organization.yaml` before authentication or live work. It is opt-in for
+existing callers; automation with access to multiple organizations should
+source it from trusted control-repository settings, not the desired file.
 
 Review the plan and preflight result before intentionally applying supported
 create/update actions:
 
 ```bash
-octostate config apply --config-dir ./config
+octostate config apply --config-dir ./config --expected-org "$expected_org"
 ```
 
 > [!WARNING]
