@@ -92,7 +92,10 @@ the desired-state file. Before collecting live state using
 `config.CheckExpectedOrganization(desired.Organization, expectedOrg)`. The
 check requires both values to be valid GitHub logins and compares trimmed
 values without regard to case; an invalid or mismatched value must stop the
-invocation before live reads.
+invocation before live reads. On failure, it returns a
+`*config.ExpectedOrganizationError`; use `errors.As` and inspect its `Kind`
+field to distinguish missing expected/configured values, invalid logins, and
+mismatches.
 
 For subsequent operations, use `plan.BuildForOrganization(ctx, options,
 expectedOrg)`, `apply.CheckForOrganization(ctx, options, expectedOrg)`, and

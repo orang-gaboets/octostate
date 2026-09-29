@@ -2,6 +2,54 @@ package config
 
 import "fmt"
 
+// ExpectedOrganizationErrorKind classifies why target binding failed.
+type ExpectedOrganizationErrorKind string
+
+const (
+	// ExpectedOrganizationErrorMissingExpected indicates the caller omitted the expected organization.
+	ExpectedOrganizationErrorMissingExpected ExpectedOrganizationErrorKind = "missing_expected"
+	// ExpectedOrganizationErrorInvalidExpected indicates the expected organization is not a valid GitHub login.
+	ExpectedOrganizationErrorInvalidExpected ExpectedOrganizationErrorKind = "invalid_expected"
+	// ExpectedOrganizationErrorMissingConfigured indicates the desired configuration omitted its organization.
+	ExpectedOrganizationErrorMissingConfigured ExpectedOrganizationErrorKind = "missing_configured"
+	// ExpectedOrganizationErrorInvalidConfigured indicates the configured organization is not a valid GitHub login.
+	ExpectedOrganizationErrorInvalidConfigured ExpectedOrganizationErrorKind = "invalid_configured"
+	// ExpectedOrganizationErrorMismatch indicates the expected and configured organizations differ.
+	ExpectedOrganizationErrorMismatch ExpectedOrganizationErrorKind = "mismatch"
+)
+
+// ExpectedOrganizationError describes a failure to bind a configured target
+// to an independently supplied expected organization. Inspect Kind to classify
+// the error; Error returns its human-readable message.
+type ExpectedOrganizationError struct {
+	// Kind classifies the validation failure.
+	Kind ExpectedOrganizationErrorKind
+
+	configured string
+	expected   string
+}
+
+// Error implements the error interface.
+func (e *ExpectedOrganizationError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	switch e.Kind {
+	case ExpectedOrganizationErrorMissingExpected:
+		return "expected organization is required"
+	case ExpectedOrganizationErrorInvalidExpected:
+		return "expected organization must be a valid GitHub login"
+	case ExpectedOrganizationErrorMissingConfigured:
+		return "configured organization is required"
+	case ExpectedOrganizationErrorInvalidConfigured:
+		return "configured organization must be a valid GitHub login"
+	case ExpectedOrganizationErrorMismatch:
+		return fmt.Sprintf("configured organization %q does not match expected organization %q", e.configured, e.expected)
+	default:
+		return "expected organization validation failed"
+	}
+}
+
 // LoadErrorKind classifies the loader failure so later commands can turn it
 // into structured reports without reparsing free-form strings.
 type LoadErrorKind string
