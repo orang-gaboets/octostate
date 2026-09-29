@@ -1,11 +1,13 @@
+//go:build !windows
+
 package config
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -77,20 +79,12 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 			{name: "unbound-value", expected: "org-a", rejected: true},
 		} {
 			t.Run(stepName+"/"+tc.name, func(t *testing.T) {
-				tmp := t.TempDir()
-				stub := filepath.Join(tmp, "octostate")
-				if err := os.WriteFile(stub, []byte("#!/usr/bin/env bash\nprintf '%s\\0' \"$@\" >\"$ARG_LOG\"\n"), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				log := filepath.Join(tmp, "args")
-				command := exec.Command("bash", "-c", run)
+				command := exec.Command("bash", "-c", "octostate() { printf '%s\\0' \"$@\"; }\n"+run)
 				bindValue := "false"
 				if tc.bind {
 					bindValue = "true"
 				}
 				command.Env = append(os.Environ(),
-					"PATH="+tmp+":"+os.Getenv("PATH"),
-					"ARG_LOG="+log,
 					"CONFIG_DIR=./config",
 					"OCTOSTATE_TOKEN=token",
 					"EXPECTED_ORG="+tc.expected,
@@ -98,26 +92,18 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 				)
 				output, err := command.CombinedOutput()
 				if tc.rejected {
-					if err == nil {
-						t.Fatalf("unbound expected value unexpectedly succeeded: %s", output)
-					}
-					if _, statErr := os.Stat(log); !os.IsNotExist(statErr) {
-						t.Fatalf("unbound expected value invoked octostate: %v", statErr)
+					if err == nil || !strings.Contains(string(output), "expected_org requires bind_expected_org: true") || strings.Contains(string(output), "\x00") {
+						t.Fatalf("expected rejection before octostate, got error %v and output %q", err, output)
 					}
 					return
 				}
 				if err != nil {
 					t.Fatalf("workflow step failed: %v\n%s", err, output)
 				}
-				data, err := os.ReadFile(log)
-				if err != nil {
-					t.Fatalf("workflow step did not invoke octostate: %v", err)
+				if !strings.HasSuffix(string(output), "\x00") {
+					t.Fatalf("workflow step did not invoke octostate: %q", output)
 				}
-				parts := bytes.Split(data, []byte{0})
-				args := make([]string, 0, len(parts)-1)
-				for _, part := range parts[:len(parts)-1] {
-					args = append(args, string(part))
-				}
+				args := strings.Split(strings.TrimSuffix(string(output), "\x00"), "\x00")
 				index := slices.Index(args, "--expected-org")
 				if !tc.bound && index >= 0 {
 					t.Fatalf("unbound call unexpectedly received target flag: %#v", args)
