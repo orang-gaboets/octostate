@@ -68,14 +68,13 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 			name     string
 			expected string
 			bind     bool
-			bound    bool
 			rejected bool
 		}{
 			{name: "omitted"},
-			{name: "valid", expected: "org-a", bind: true, bound: true},
-			{name: "empty", bind: true, bound: true},
-			{name: "whitespace", expected: "  ", bind: true, bound: true},
-			{name: "former-sentinel", expected: "__OCTOSTATE_EXPECTED_ORG_UNSET__", bind: true, bound: true},
+			{name: "valid", expected: "org-a", bind: true},
+			{name: "empty", bind: true},
+			{name: "whitespace", expected: "  ", bind: true},
+			{name: "former-sentinel", expected: "__OCTOSTATE_EXPECTED_ORG_UNSET__", bind: true},
 			{name: "unbound-value", expected: "org-a", rejected: true},
 		} {
 			t.Run(stepName+"/"+tc.name, func(t *testing.T) {
@@ -105,10 +104,10 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 				}
 				args := strings.Split(strings.TrimSuffix(string(output), "\x00"), "\x00")
 				index := slices.Index(args, "--expected-org")
-				if !tc.bound && index >= 0 {
+				if !tc.bind && index >= 0 {
 					t.Fatalf("unbound call unexpectedly received target flag: %#v", args)
 				}
-				if tc.bound && (index < 0 || index+1 >= len(args) || args[index+1] != tc.expected) {
+				if tc.bind && (index < 0 || index+1 >= len(args) || args[index+1] != tc.expected) {
 					t.Fatalf("caller target %q was not forwarded: %#v", tc.expected, args)
 				}
 			})
