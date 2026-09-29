@@ -17,6 +17,8 @@ func TestCheckExpectedOrganization(t *testing.T) {
 		{name: "exact match", configured: "org-a", expected: "org-a"},
 		{name: "normalized match", configured: " Org-A ", expected: " org-a "},
 		{name: "mismatch", configured: "org-b", expected: "org-a", wantError: `configured organization "org-b" does not match expected organization "org-a"`},
+		{name: "Unicode fold in expected value", configured: "kube", expected: "Kube", wantError: "expected organization must contain only ASCII characters"},
+		{name: "Unicode configured value", configured: "Kube", expected: "kube", wantError: "configured organization must contain only ASCII characters"},
 		{name: "missing expected", configured: "org-a", expected: "", wantError: "expected organization is required"},
 		{name: "whitespace expected", configured: "org-a", expected: "  ", wantError: "expected organization is required"},
 		{name: "missing configured", configured: "  ", expected: "org-a", wantError: "configured organization is required"},
