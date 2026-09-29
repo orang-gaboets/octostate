@@ -200,18 +200,23 @@ func applyConfig(
 	}
 	report.Normalize()
 
-	switch mode {
-	case applyRunModeCheck:
-		applyOptions := gitopsapply.Options{
-			Desired:                         cfg,
-			Actual:                          actual,
-			Plan:                            report,
-			RequireExecutableDesiredActions: requireExecutable,
-			OrganizationService:             client.Organizations(),
-			RepositoryService:               client.Repositories(),
-			TeamService:                     client.Teams(),
-			UserService:                     client.Users(),
-		}
+	if mode == applyRunModeDryRun {
+		preview := previewFromPlan(report)
+		preview.Normalize()
+		return nil, preview, nil, nil
+	}
+
+	applyOptions := gitopsapply.Options{
+		Desired:                         cfg,
+		Actual:                          actual,
+		Plan:                            report,
+		RequireExecutableDesiredActions: requireExecutable,
+		OrganizationService:             client.Organizations(),
+		RepositoryService:               client.Repositories(),
+		TeamService:                     client.Teams(),
+		UserService:                     client.Users(),
+	}
+	if mode == applyRunModeCheck {
 		var checkResult *gitopsapply.CheckResult
 		if expectedOrg != nil {
 			checkResult, err = gitopsapply.CheckForOrganization(ctx, applyOptions, *expectedOrg)
@@ -223,31 +228,17 @@ func applyConfig(
 		}
 		checkResult.Normalize()
 		return nil, nil, checkResult, nil
-	case applyRunModeDryRun:
-		preview := previewFromPlan(report)
-		preview.Normalize()
-		return nil, preview, nil, nil
-	default:
-		applyOptions := gitopsapply.Options{
-			Desired:                         cfg,
-			Actual:                          actual,
-			Plan:                            report,
-			RequireExecutableDesiredActions: requireExecutable,
-			OrganizationService:             client.Organizations(),
-			RepositoryService:               client.Repositories(),
-			TeamService:                     client.Teams(),
-			UserService:                     client.Users(),
-		}
-		var result *gitopsapply.Result
-		if expectedOrg != nil {
-			result, err = gitopsapply.ExecuteForOrganization(ctx, applyOptions, *expectedOrg)
-		} else {
-			result, err = executeApply(ctx, applyOptions)
-		}
-		if err != nil {
-			return nil, nil, nil, runtimePhaseError("execute apply plan", err)
-		}
-		result.Normalize()
-		return result, nil, nil, nil
 	}
+
+	var result *gitopsapply.Result
+	if expectedOrg != nil {
+		result, err = gitopsapply.ExecuteForOrganization(ctx, applyOptions, *expectedOrg)
+	} else {
+		result, err = executeApply(ctx, applyOptions)
+	}
+	if err != nil {
+		return nil, nil, nil, runtimePhaseError("execute apply plan", err)
+	}
+	result.Normalize()
+	return result, nil, nil, nil
 }
