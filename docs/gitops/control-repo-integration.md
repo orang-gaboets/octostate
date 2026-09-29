@@ -189,10 +189,11 @@ instead of downloading a newer toolchain automatically.
 - `config_dir` is optional and defaults to `./config`; it must contain the
   desired-state `organization.yaml` required by Octostate.
 - `bind_expected_org` defaults to `false` for existing callers. Set it to
-  `true` to forward `expected_org` to both live commands. An empty or
-  whitespace-only value then fails before GitHub authentication or collection,
-  as does a mismatch. A nonempty `expected_org` without the binding switch
-  fails instead of silently running unbound. The CLI revision selected by
+  `true` to forward `expected_org` to both live commands. The expected and
+  configured organizations must be valid GitHub logins; empty, invalid, or
+  mismatched values fail before GitHub authentication or collection. A nonempty
+  `expected_org` without the binding switch fails instead of silently running
+  unbound. The CLI revision selected by
   `octostate_version` must support `--expected-org` when binding is enabled.
 - `octostate_token` is required and is passed explicitly as `--token` only to
   the live plan and preflight steps. It may be a PAT or a pre-created GitHub
