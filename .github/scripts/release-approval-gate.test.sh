@@ -391,8 +391,12 @@ unset GH_STUB_MERGE_MODE
 # integration that feeds the finalized head to its existing merge precondition.
 WORKFLOW_FILE="$SCRIPT_DIR/../workflows/automerge-release-please.yml"
 assert_contains "steps.final-release-state.outputs.authorization_finalized == 'true'" "$WORKFLOW_FILE"
+# This assertion checks the literal GitHub Actions expression.
+# shellcheck disable=SC2016
 assert_contains 'PR_HEAD_SHA: ${{ steps.final-release-state.outputs.authorized_head_sha }}' "$WORKFLOW_FILE"
 assert_contains 'release_approval_gate_merge' "$WORKFLOW_FILE"
+# This assertion checks the literal shell command and its variable references.
+# shellcheck disable=SC2016
 assert_contains 'gh pr merge --admin --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"' "$SCRIPT_DIR/release-approval-gate.sh"
 assert_not_contains 'merge_ready=true' "$WORKFLOW_FILE"
 assert_line_order 'name: Wait for release checks' 'name: Finalize release approval for verified head' "$WORKFLOW_FILE"
