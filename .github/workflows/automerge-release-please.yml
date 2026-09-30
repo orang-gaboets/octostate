@@ -184,7 +184,7 @@ jobs:
             sleep "$poll_interval_seconds"
           done
 
-      - name: Revalidate release PR before merge
+      - name: Finalize release approval for verified head
         id: final-release-state
         if: ${{ steps.release-approval.outputs.should_merge == 'true' }}
         shell: bash
@@ -202,12 +202,14 @@ jobs:
           set -euo pipefail
           source .github/scripts/release-approval-gate.sh
           release_approval_gate_final
-          echo "merge_ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Merge release-please PR
-        if: ${{ steps.release-approval.outputs.should_merge == 'true' && steps.final-release-state.outputs.merge_ready == 'true' }}
+        if: ${{ steps.release-approval.outputs.should_merge == 'true' && steps.final-release-state.outputs.authorization_finalized == 'true' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: gh pr merge --admin --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+          PR_HEAD_SHA: ${{ steps.final-release-state.outputs.authorized_head_sha }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/release-approval-gate.sh
+          release_approval_gate_merge

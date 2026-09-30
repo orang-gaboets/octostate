@@ -9,6 +9,11 @@ release_gate_write_output() {
   printf 'should_merge=%s\n' "$1" >> "$GITHUB_OUTPUT"
 }
 
+release_gate_write_finalization_output() {
+  printf 'authorization_finalized=true\n' >> "$GITHUB_OUTPUT"
+  printf 'authorized_head_sha=%s\n' "$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+}
+
 release_gate_has_label() {
   local pr_json="$1"
   local label="$2"
@@ -303,5 +308,14 @@ release_approval_gate_final() {
     return 1
   fi
 
-  release_gate_validate_live_state
+  if ! release_gate_validate_live_state; then
+    return 1
+  fi
+
+  release_gate_write_finalization_output
+  echo "Finalized one-shot publisher approval for PR #$PR_NUMBER at verified head $PR_HEAD_SHA."
+}
+
+release_approval_gate_merge() {
+  gh pr merge --admin --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
 }
