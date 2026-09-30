@@ -64,8 +64,17 @@ The standard readiness pass should include:
 
 Before applying the configured release approval label, verify that
 `autorelease: pending` is present. After the configured release approval label
-is applied, both labels must be present, and the workflow must re-check the
-live state before merging.
+is applied, both labels must be present. After required release checks, the
+workflow re-reads the live PR and finalizes approval only if the labels,
+Release Please PR identity, and event head SHA still match. It passes that
+verified SHA to `gh pr merge --match-head-commit`.
+
+Removing the approval label before finalization prevents merge. Once approval
+is finalized for the verified SHA, label removal is not guaranteed to revoke
+an in-flight merge: the existing concurrency policy may cancel the run before
+the merge step, or a merge request that has started may complete. GitHub does
+not make the final label read and merge request atomic. A retry re-reads the
+live state; API/read failures fail closed.
 
 ### Major releases: `vX.0.0`
 

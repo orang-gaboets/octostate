@@ -327,8 +327,12 @@ an authorized maintainer.
 - Unauthorized approval attempts leave a PR comment from the release-please app bot
 - If `release-please` updates the PR head after approval, the stale configured approval label is removed and must be re-applied
 - The workflow requires both the configured approval label and `autorelease: pending` before merging
-- The workflow fails closed if either required label is absent
-- The workflow revalidates the live PR state immediately before merging; confirmed missing lifecycle state invalidates approval, while unreadable state fails closed without removing approval
+- After the required release checks finish, the workflow fetches the live PR again and validates its base, head repository and branch, draft state, bot author, exact event head SHA, and both required labels
+- Only a successful final validation finalizes publisher approval for that exact head SHA; the workflow records `authorization_finalized=true` and `authorized_head_sha` as step outputs
+- The merge step requires the finalization output and passes `authorized_head_sha` to `gh pr merge --match-head-commit`
+- The final live read and merge API request are separate operations; they do not provide atomic label revocation
+- Approval removed before finalization prevents merge. After successful finalization, removing the approval label is not guaranteed to revoke an in-flight merge: the existing workflow concurrency policy may cancel the run before the merge step, or an already-started merge may complete
+- If a live read confirms `autorelease: pending` is absent while the approval label remains, the workflow invalidates the stale approval. A retry performs a new live-state validation. Missing labels or changed PR state prevent finalization; API/read failures fail closed and preserve the approval label when invalidity cannot be confirmed
 - Apply the configured approval label additively; do not replace existing labels or remove Release Please lifecycle labels
 - Release Please owns the normal transition from `autorelease: pending` to its post-publication lifecycle state
 - The workflow waits for the `CI`, `CodeQL Security`, and `Go vulnerability monitoring` release checks to complete before merging; see [Code scanning and Code Quality](code-scanning.md) for the ownership and identity guide
