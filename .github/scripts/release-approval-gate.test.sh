@@ -139,6 +139,21 @@ assert_not_contains() {
   fi
 }
 
+assert_line_order() {
+  local first="$1"
+  local second="$2"
+  local file="$3"
+  local first_line
+  local second_line
+
+  first_line="$(grep -nF -- "$first" "$file" | head -n 1 | cut -d: -f1)"
+  second_line="$(grep -nF -- "$second" "$file" | head -n 1 | cut -d: -f1)"
+  if [ -z "$first_line" ] || [ -z "$second_line" ] || [ "$first_line" -ge "$second_line" ]; then
+    echo "expected '$first' before '$second' in $file" >&2
+    exit 1
+  fi
+}
+
 assert_no_finalized_authorization() {
   assert_not_contains 'authorization_finalized=' "$GITHUB_OUTPUT"
   assert_not_contains 'authorized_head_sha=' "$GITHUB_OUTPUT"
@@ -271,6 +286,21 @@ assert_status 0 "$GATE_STATUS"
 assert_contains 'authorization_finalized=true' "$GITHUB_OUTPUT"
 assert_contains 'authorized_head_sha=head-sha' "$GITHUB_OUTPUT"
 
+# Simulate the configured approval being removed after initial approval while
+# prerequisite checks run. The post-check final read must reject that state.
+EVENT_ACTION=labeled
+EVENT_LABEL="$RELEASE_READY_LABEL"
+EVENT_LABELS_JSON="$both_labels"
+write_pr "$both_labels"
+run_gate release_approval_gate_initial
+assert_status 0 "$GATE_STATUS"
+assert_contains 'should_merge=true' "$GITHUB_OUTPUT"
+write_pr '[{"name":"autorelease: pending"}]'
+run_gate release_approval_gate_final
+assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
+assert_no_gh_mutation
+
 # A retry must re-read live state. The approval is absent in the new fixture,
 # so the successful prior authorization cannot be reused.
 write_pr '[{"name":"autorelease: pending"}]'
@@ -365,6 +395,8 @@ assert_contains 'PR_HEAD_SHA: ${{ steps.final-release-state.outputs.authorized_h
 assert_contains 'release_approval_gate_merge' "$WORKFLOW_FILE"
 assert_contains 'gh pr merge --admin --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"' "$SCRIPT_DIR/release-approval-gate.sh"
 assert_not_contains 'merge_ready=true' "$WORKFLOW_FILE"
+assert_line_order 'name: Wait for release checks' 'name: Finalize release approval for verified head' "$WORKFLOW_FILE"
+assert_line_order 'name: Finalize release approval for verified head' 'name: Merge release-please PR' "$WORKFLOW_FILE"
 
 export GH_STUB_MODE=unauthorized
 EVENT_ACTION=labeled
