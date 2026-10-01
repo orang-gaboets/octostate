@@ -21,9 +21,6 @@ func checkedActualPath(path string, createParents bool) (string, error) {
 	absolutePath = filepath.Clean(absolutePath)
 
 	root := filepath.VolumeName(absolutePath) + string(filepath.Separator)
-	if filepath.VolumeName(absolutePath) == "" {
-		root = string(filepath.Separator)
-	}
 	rootInfo, err := os.Lstat(root)
 	if err != nil {
 		return "", fmt.Errorf("inspect snapshot path root %q: %w", root, err)
