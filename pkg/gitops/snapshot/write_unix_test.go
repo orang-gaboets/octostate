@@ -13,7 +13,7 @@ import (
 func TestWriteActualCreatesTheSnapshotPrivate(t *testing.T) {
 	t.Parallel()
 
-	path, err := WriteActual(t.TempDir(), sampleSnapshot())
+	path, err := WriteActual(physicalTempDir(t), sampleSnapshot())
 	if err != nil {
 		t.Fatal(err)
 	}

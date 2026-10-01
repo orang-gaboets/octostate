@@ -22,7 +22,7 @@ func sampleSnapshot() ActualSnapshot {
 func TestWriteActualOutputIsUnchangedByteForByte(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := physicalTempDir(t)
 	path, err := WriteActual(dir, sampleSnapshot())
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestWriteActualOutputIsUnchangedByteForByte(t *testing.T) {
 func TestWriteActualCreatesTheSnapshotOnFirstWrite(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := physicalTempDir(t)
 	path, err := WriteActual(dir, sampleSnapshot())
 	if err != nil {
 		t.Fatalf("first write must create the snapshot: %v", err)
@@ -64,7 +64,7 @@ func TestWriteActualCreatesTheSnapshotOnFirstWrite(t *testing.T) {
 func TestWriteActualReplacesAnExistingSnapshot(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := physicalTempDir(t)
 	if _, err := WriteActual(dir, sampleSnapshot()); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestWriteActualReplacesAnExistingSnapshot(t *testing.T) {
 func TestWriteActualLeavesNoTemporaryFiles(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := physicalTempDir(t)
 	path, err := WriteActual(dir, sampleSnapshot())
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestWriteActualLeavesNoTemporaryFiles(t *testing.T) {
 func TestWriteActualRefusesASymlinkedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := physicalTempDir(t)
 	path := ActualPath(dir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)

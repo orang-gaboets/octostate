@@ -52,13 +52,18 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 	}
 }
 
-// ActualPath returns the canonical path of the actual snapshot under stateDir.
+// ActualPath returns the lexical path of the actual snapshot under stateDir.
+// It does not inspect or resolve filesystem components; ReadActual and
+// WriteActual reject symlinked components and, on Windows, reparse points
+// before accessing the snapshot.
 func ActualPath(stateDir string) string {
 	return filepath.Join(strings.TrimSpace(stateDir), actualSnapshotRelativePath)
 }
 
 // ReadActual loads the actual-state snapshot from
-// <state-dir>/actual/snapshot.json.
+// <state-dir>/actual/snapshot.json. It rejects symlinked path components and,
+// on Windows, reparse points; an existing snapshot must be a regular file.
+// Path validation is not atomic with the subsequent file open.
 func ReadActual(stateDir string) (*ActualSnapshot, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
@@ -66,7 +71,11 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 	}
 
 	path := ActualPath(stateDir)
-	file, err := os.Open(path)
+	checkedPath, err := checkedActualPath(path, false)
+	if err != nil {
+		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
+	}
+	file, err := os.Open(checkedPath)
 	if err != nil {
 		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
 	}
@@ -97,7 +106,9 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 }
 
 // WriteActual writes the actual-state snapshot to
-// <state-dir>/actual/snapshot.json.
+// <state-dir>/actual/snapshot.json. It rejects symlinked path components and,
+// on Windows, reparse points; an existing snapshot must be a regular file.
+// Path validation is not atomic with the subsequent file replacement.
 func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
@@ -108,8 +119,9 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	}
 
 	path := ActualPath(stateDir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", fmt.Errorf("create snapshot directory: %w", err)
+	checkedPath, err := checkedActualPath(path, true)
+	if err != nil {
+		return "", fmt.Errorf("write snapshot %s: %w", path, err)
 	}
 
 	encoded, err := json.MarshalIndent(snapshot, "", "  ")
@@ -123,7 +135,7 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	// 0600 matches what the previous os.CreateTemp path produced on first
 	// write. The snapshot carries organization member and invitation data,
 	// so first creation must not widen it.
-	if err := filereplace.WriteFile(path, encoded, 0o600); err != nil {
+	if err := filereplace.WriteFile(checkedPath, encoded, 0o600); err != nil {
 		return "", fmt.Errorf("write snapshot: %w", err)
 	}
 
