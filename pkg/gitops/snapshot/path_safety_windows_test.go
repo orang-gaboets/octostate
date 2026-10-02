@@ -39,11 +39,7 @@ func TestWriteActualRejectsWindowsJunctionPath(t *testing.T) {
 	}
 
 	junctionPath := filepath.Join(stateDir, "actual")
-	command := fmt.Sprintf(`mklink /J "%s" "%s"`, junctionPath, externalActual)
-	output, err := exec.Command("cmd.exe", "/c", command).CombinedOutput()
-	if err != nil {
-		t.Skipf("directory junction unavailable: %v: %s", err, output)
-	}
+	replaceDirectoryWithLink(t, junctionPath, externalActual)
 
 	_, err = ReadActual(stateDir)
 	if err == nil || !strings.Contains(err.Error(), junctionPath) || !hasSymlinkOrReparseReason(err) {
