@@ -66,6 +66,62 @@ func TestWriteActualRejectsSymlinkedPathComponentsAndPreservesTarget(t *testing.
 	}
 }
 
+func TestActualSnapshotOperationsStayInOpenedDirectoryAfterSymlinkSwap(t *testing.T) {
+	root := physicalTempDir(t)
+	stateDir := filepath.Join(root, "state")
+	snapshotPath, err := WriteActual(stateDir, sampleSnapshot())
+	if err != nil {
+		t.Fatalf("write initial snapshot: %v", err)
+	}
+
+	externalStateDir := filepath.Join(root, "external-state")
+	externalPath, err := WriteActual(externalStateDir, sampleSnapshot())
+	if err != nil {
+		t.Fatalf("write external snapshot: %v", err)
+	}
+	externalBefore, err := os.ReadFile(externalPath)
+	if err != nil {
+		t.Fatalf("read external snapshot before swap: %v", err)
+	}
+
+	parent, name, err := openSnapshotParent(snapshotPath, false)
+	if err != nil {
+		t.Fatalf("open snapshot parent: %v", err)
+	}
+	defer func() {
+		_ = parent.Close()
+	}()
+
+	actualDir := filepath.Dir(snapshotPath)
+	movedActualDir := filepath.Join(root, "moved-actual")
+	if err := os.Rename(actualDir, movedActualDir); err != nil {
+		t.Fatalf("move opened snapshot directory: %v", err)
+	}
+	replaceDirectoryWithLink(t, actualDir, filepath.Dir(externalPath))
+
+	replacement := sampleSnapshot()
+	replacement.Organization = "replacement"
+	if err := writeActualSnapshotAt(parent, name, snapshotPath, replacement); err != nil {
+		t.Fatalf("write through opened snapshot directory: %v", err)
+	}
+
+	got, err := readActualSnapshotAt(parent, name, snapshotPath)
+	if err != nil {
+		t.Fatalf("read through opened snapshot directory: %v", err)
+	}
+	if got.Organization != replacement.Organization {
+		t.Fatalf("organization = %q, want %q", got.Organization, replacement.Organization)
+	}
+
+	externalAfter, err := os.ReadFile(externalPath)
+	if err != nil {
+		t.Fatalf("read external snapshot after swap: %v", err)
+	}
+	if !bytes.Equal(externalAfter, externalBefore) {
+		t.Fatalf("directory swap changed external snapshot: before %q, after %q", externalBefore, externalAfter)
+	}
+}
+
 func TestWriteActualCreatesCompletelyMissingStateDirectory(t *testing.T) {
 	t.Parallel()
 

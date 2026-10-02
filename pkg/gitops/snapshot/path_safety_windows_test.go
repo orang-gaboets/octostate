@@ -12,6 +12,15 @@ import (
 	"testing"
 )
 
+func replaceDirectoryWithLink(t *testing.T, path, target string) {
+	t.Helper()
+	command := fmt.Sprintf(`mklink /J "%s" "%s"`, path, target)
+	output, err := exec.Command("cmd.exe", "/c", command).CombinedOutput()
+	if err != nil {
+		t.Fatalf("replace directory with junction: %v: %s", err, output)
+	}
+}
+
 func TestWriteActualRejectsWindowsJunctionPath(t *testing.T) {
 	root := physicalTempDir(t)
 	stateDir := filepath.Join(root, "state")

@@ -23,10 +23,11 @@ the unsafe path component without displaying a link target.
 
 Pass a physical path whose components contain no symbolic links or reparse
 points. For example, on macOS, `/tmp` and `/var` are commonly symlink aliases;
-resolve those aliases before passing a path beneath them. The component checks
-and the later file operation are separate filesystem operations, so they do
-not prevent another process from replacing a checked path component
-concurrently.
+resolve those aliases before passing a path beneath them. Snapshot reads and
+writes use rooted filesystem operations and keep directory handles open while
+traversing, so replacing a checked path component cannot redirect the file
+operation to another directory. Snapshot access fails closed on platforms where
+Go cannot provide stable rooted filesystem operations.
 
 ## `octostate audit pull`
 
