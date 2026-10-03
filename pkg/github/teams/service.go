@@ -6,6 +6,7 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
+	"github.com/orang-gaboets/octostate/internal/pagination"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 )
@@ -195,11 +196,14 @@ func ListTeamRepoPermissionsBySlug(ctx context.Context, option ListTeamRepoPermi
 
 		allRepos = append(allRepos, github.TeamRepositoryPermissionsFromGhRepos(ghRepos)...)
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list repository permissions for team %s/%s: %w", option.Org, option.Slug, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d repository permissions for team %s/%s", len(allRepos), option.Org, option.Slug)
@@ -324,11 +328,14 @@ func ListTeamMembersBySlug(ctx context.Context, option ListTeamMembersBySlugOpti
 
 		allMembers = append(allMembers, github.UsersFromGhUsers(ghMembers)...)
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list members for team %s/%s: %w", option.Org, option.Slug, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d members for team %s/%s", len(allMembers), option.Org, option.Slug)
@@ -360,10 +367,14 @@ func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersB
 				allMembers = append(allMembers, member)
 			}
 
-			if resp == nil || resp.NextPage == 0 {
+			next, err := pagination.Next(resp, listOptions.Page)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list members for team %s/%s: %w", option.Org, option.Slug, err)
+			}
+			if next == 0 {
 				break
 			}
-			listOptions.Page = resp.NextPage
+			listOptions.Page = next
 		}
 
 		ghlogging.Debugf(ctx, "listed %d members with roles for team %s/%s", len(allMembers), option.Org, option.Slug)
@@ -428,10 +439,14 @@ func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMe
 			directMembers = append(directMembers, TeamMember{Username: member.Username, Role: member.Role})
 		}
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list members for team %s/%s: %w", option.Org, option.Slug, err)
+		}
+		if next == 0 {
 			break
 		}
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d direct members for team %s/%s", len(directMembers), option.Org, option.Slug)
@@ -457,11 +472,14 @@ func ListTeams(ctx context.Context, option ListTeamsOptions) ([]*github.Team, er
 
 		allTeams = append(allTeams, github.TeamsFromGhTeams(ghTeams)...)
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list teams for organization %s: %w", option.Org, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d teams for organization %s", len(allTeams), option.Org)

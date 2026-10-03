@@ -6,6 +6,7 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
+	"github.com/orang-gaboets/octostate/internal/pagination"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 	"github.com/orang-gaboets/octostate/pkg/github/topics"
@@ -177,11 +178,14 @@ func ListOrgRepos(ctx context.Context, option ListOrgReposOptions) ([]*github.Re
 			allRepos = append(allRepos, &repo)
 		}
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list repositories for organization %s: %w", option.Org, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d repositories for organization %s", len(allRepos), option.Org)
