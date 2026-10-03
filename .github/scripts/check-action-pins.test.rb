@@ -45,6 +45,22 @@ class CheckActionPinsTest < Minitest::Test
     assert_empty stderr
   end
 
+  def test_ignores_action_inputs_named_uses
+    path = write_workflow("uses-input.yml", <<~YAML)
+      jobs:
+        build:
+          steps:
+            - uses: ./actions/wrapper
+              with:
+                uses: main
+    YAML
+
+    stdout, stderr, status = run_checker(path)
+
+    assert_predicate status, :success?, "#{stdout}#{stderr}"
+    assert_empty stderr
+  end
+
   def test_rejects_mutable_external_github_refs_with_path_and_ref
     path = write_workflow("mutable.yml", <<~YAML)
       jobs:

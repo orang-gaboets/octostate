@@ -8,15 +8,21 @@ module ActionPinChecker
     Dir.glob(".github/workflows/*.{yml,yaml}").sort
   end
 
-  def self.uses_values(node, values = [])
-    case node
-    when Hash
-      node.each do |key, value|
-        values << value if key.to_s == "uses"
-        uses_values(value, values)
+  def self.uses_values(workflow)
+    jobs = workflow.is_a?(Hash) ? workflow["jobs"] : nil
+    return [] unless jobs.is_a?(Hash)
+
+    values = []
+    jobs.each_value do |job|
+      next unless job.is_a?(Hash)
+
+      values << job["uses"] if job.key?("uses")
+      steps = job["steps"]
+      if steps.is_a?(Array)
+        steps.each do |step|
+          values << step["uses"] if step.is_a?(Hash) && step.key?("uses")
+        end
       end
-    when Array
-      node.each { |value| uses_values(value, values) }
     end
     values
   end
