@@ -4,7 +4,6 @@ package snapshot
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,8 +13,7 @@ import (
 
 func replaceDirectoryWithLink(t *testing.T, path, target string) {
 	t.Helper()
-	command := fmt.Sprintf(`mklink /J "%s" "%s"`, path, target)
-	output, err := exec.Command("cmd.exe", "/c", command).CombinedOutput()
+	output, err := exec.Command("cmd.exe", "/c", "mklink", "/J", path, target).CombinedOutput()
 	if err != nil {
 		t.Fatalf("replace directory with junction: %v: %s", err, output)
 	}
