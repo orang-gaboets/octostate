@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	gh "github.com/google/go-github/v88/github"
+	"github.com/orang-gaboets/octostate/internal/pagination"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 )
@@ -102,11 +103,14 @@ func ListMembers(ctx context.Context, option ListMembersOptions) ([]*github.User
 
 		members = append(members, github.UsersFromGhUsers(ghMembers)...)
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list members for organization %s: %w", option.OrgName, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d members for organization %s", len(members), option.OrgName)
@@ -132,11 +136,14 @@ func ListPendingInvitations(ctx context.Context, option ListPendingInvitationsOp
 
 		invitations = append(invitations, github.OrganizationInvitationsFromGhInvitations(ghInvitations)...)
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list pending invitations for organization %s: %w", option.OrgName, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d pending invitations for organization %s", len(invitations), option.OrgName)
@@ -164,11 +171,14 @@ func ListInvitationTeams(ctx context.Context, option ListInvitationTeamsOptions)
 
 		teams = append(teams, github.TeamsFromGhTeams(ghTeams)...)
 
-		if resp == nil || resp.NextPage == 0 {
+		next, err := pagination.Next(resp, listOptions.Page)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list invitation teams for organization %s invitation %d: %w", option.OrgName, option.InvitationID, err)
+		}
+		if next == 0 {
 			break
 		}
-
-		listOptions.Page = resp.NextPage
+		listOptions.Page = next
 	}
 
 	ghlogging.Debugf(ctx, "listed %d invitation teams for organization %s invitation %d", len(teams), option.OrgName, option.InvitationID)
