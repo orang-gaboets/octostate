@@ -13,6 +13,22 @@ For PAT authentication, export `OCTOSTATE_GITHUB_TOKEN` before running a live
 read. `audit pull` also supports GitHub App authentication with `--app-id`,
 `--installation-id`, and `--app-key-path`.
 
+## State-directory paths
+
+`audit pull` and `audit diff` reject symbolic links and, on Windows, all
+reparse points in every component of the cleaned absolute path to the snapshot,
+including ancestors of `--state-dir`, `<state-dir>`, `actual`, and an existing
+`snapshot.json`. Existing snapshot files must be regular files. Errors identify
+the unsafe path component without displaying a link target.
+
+Pass a physical path whose components contain no symbolic links or reparse
+points. For example, on macOS, `/tmp` and `/var` are commonly symlink aliases;
+resolve those aliases before passing a path beneath them. Snapshot reads and
+writes use rooted filesystem operations and keep directory handles open while
+traversing, so replacing a checked path component cannot redirect the file
+operation to another directory. Snapshot access fails closed on platforms where
+Go cannot provide stable rooted filesystem operations.
+
 ## `octostate audit pull`
 
 Pull an actual-state snapshot from live GitHub.

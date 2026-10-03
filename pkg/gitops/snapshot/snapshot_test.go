@@ -135,7 +135,7 @@ func TestNewActualSnapshotNilActualInitializesSlices(t *testing.T) {
 func TestWriteActualWritesSnapshotFile(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	snapshot := ActualSnapshot{
 		PulledAt:     time.Date(2026, 3, 10, 7, 8, 9, 0, time.UTC),
 		Organization: "orang-gaboets",
@@ -176,7 +176,7 @@ func TestWriteActualWritesSnapshotFile(t *testing.T) {
 func TestWriteActualOverwritesExistingSnapshotFile(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	actualDir := filepath.Join(stateDir, "actual")
 	if err := os.MkdirAll(actualDir, 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -232,7 +232,7 @@ func TestWriteActualRejectsEmptyStateDir(t *testing.T) {
 func TestWriteActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	_, err := WriteActual(stateDir, ActualSnapshot{
 		Organization: "orang-gaboets",
 		ResolvedInviteUserIDsByUsername: map[string]int64{
@@ -251,7 +251,7 @@ func TestWriteActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing
 func TestWriteActualNormalizesPulledAtToUTC(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	snapshot := ActualSnapshot{
 		PulledAt:     time.Date(2026, 3, 10, 15, 4, 5, 0, time.FixedZone("SGT", 8*60*60)),
 		Organization: "orang-gaboets",
@@ -279,7 +279,7 @@ func TestWriteActualNormalizesPulledAtToUTC(t *testing.T) {
 func TestReadActualSuccess(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	written := NewActualSnapshot(time.Date(2026, 3, 10, 7, 8, 9, 0, time.UTC), &state.OrganizationState{
 		Organization: "orang-gaboets",
 		TeamMembers: []state.TeamMember{
@@ -314,7 +314,7 @@ func TestReadActualSuccess(t *testing.T) {
 func TestReadActualLegacyTeamMembersRemainDirect(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	if err := os.MkdirAll(filepath.Dir(ActualPath(stateDir)), 0o755); err != nil {
 		t.Fatalf("create actual-state directory: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestReadActualEmptyStateDir(t *testing.T) {
 func TestReadActualMissingSnapshot(t *testing.T) {
 	t.Parallel()
 
-	_, err := ReadActual(t.TempDir())
+	_, err := ReadActual(physicalTempDir(t))
 	if err == nil {
 		t.Fatal("expected error for missing snapshot")
 	}
@@ -360,7 +360,7 @@ func TestReadActualMissingSnapshot(t *testing.T) {
 func TestReadActualMalformedJSON(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -381,7 +381,7 @@ func TestReadActualMalformedJSON(t *testing.T) {
 func TestReadActualRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -414,7 +414,7 @@ func TestReadActualRejectsUnknownFields(t *testing.T) {
 func TestReadActualRejectsMultipleJSONValues(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -438,7 +438,7 @@ func TestReadActualRejectsMultipleJSONValues(t *testing.T) {
 func TestReadActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -473,7 +473,7 @@ func TestReadActualRejectsConflictingResolvedInviteUserIDsByUsername(t *testing.
 func TestReadActualRejectsSnapshotMembersMissingRole(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -506,7 +506,7 @@ func TestReadActualRejectsSnapshotMembersMissingRole(t *testing.T) {
 func TestReadActualRejectsSnapshotMembersMissingUsername(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)
@@ -539,7 +539,7 @@ func TestReadActualRejectsSnapshotMembersMissingUsername(t *testing.T) {
 func TestReadActualNormalizesLoadedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	stateDir := t.TempDir()
+	stateDir := physicalTempDir(t)
 	path := filepath.Join(stateDir, "actual", "snapshot.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir actual dir: %v", err)

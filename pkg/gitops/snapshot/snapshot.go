@@ -52,13 +52,19 @@ func NewActualSnapshot(pulledAt time.Time, actual *state.OrganizationState) Actu
 	}
 }
 
-// ActualPath returns the canonical path of the actual snapshot under stateDir.
+// ActualPath returns the lexical path of the actual snapshot under stateDir.
+// It does not inspect or resolve filesystem components; ReadActual and
+// WriteActual reject symlinked components and, on Windows, reparse points,
+// while using rooted operations to prevent path replacement from redirecting
+// snapshot access.
 func ActualPath(stateDir string) string {
 	return filepath.Join(strings.TrimSpace(stateDir), actualSnapshotRelativePath)
 }
 
 // ReadActual loads the actual-state snapshot from
-// <state-dir>/actual/snapshot.json.
+// <state-dir>/actual/snapshot.json. It rejects symlinked path components and,
+// on Windows, reparse points; an existing snapshot must be a regular file.
+// Rooted file operations prevent later path changes from redirecting the read.
 func ReadActual(stateDir string) (*ActualSnapshot, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
@@ -66,13 +72,48 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 	}
 
 	path := ActualPath(stateDir)
-	file, err := os.Open(path)
+	parent, name, err := openSnapshotParent(path, false)
 	if err != nil {
 		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
 	}
 	defer func() {
+		_ = parent.Close() //nolint:errcheck // best-effort cleanup after reading the snapshot
+	}()
+
+	snapshot, err := readActualSnapshotAt(parent, name, path)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot, nil
+}
+
+func readActualSnapshotAt(parent *os.Root, name, path string) (*ActualSnapshot, error) {
+	info, err := parent.Lstat(name)
+	if err != nil {
+		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
+	}
+	if isSymlinkOrReparsePoint(info) {
+		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: symbolic links and reparse points are not allowed", path, path)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: destination must be a regular file", path, path)
+	}
+
+	file, err := parent.Open(name)
+	if err != nil {
+		// Do not include the OS error: it can contain a raced symlink target.
+		return nil, fmt.Errorf("open actual-state snapshot %s safely", path)
+	}
+	defer func() {
 		_ = file.Close() //nolint:errcheck // best-effort cleanup after reading the snapshot
 	}()
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect opened actual-state snapshot %s: %w", path, err)
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) {
+		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: changed while opening", path, path)
+	}
 
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
@@ -97,7 +138,9 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 }
 
 // WriteActual writes the actual-state snapshot to
-// <state-dir>/actual/snapshot.json.
+// <state-dir>/actual/snapshot.json. It rejects symlinked path components and,
+// on Windows, reparse points; an existing snapshot must be a regular file.
+// Rooted file operations prevent later path changes from redirecting the write.
 func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	stateDir = strings.TrimSpace(stateDir)
 	if stateDir == "" {
@@ -108,13 +151,35 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	}
 
 	path := ActualPath(stateDir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", fmt.Errorf("create snapshot directory: %w", err)
+	parent, name, err := openSnapshotParent(path, true)
+	if err != nil {
+		return "", fmt.Errorf("write snapshot %s: %w", path, err)
+	}
+	defer func() {
+		_ = parent.Close() //nolint:errcheck // best-effort cleanup after writing the snapshot
+	}()
+	if err := writeActualSnapshotAt(parent, name, path, snapshot); err != nil {
+		return "", err
+	}
+
+	return path, nil
+}
+
+func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSnapshot) error {
+	if info, err := parent.Lstat(name); err == nil {
+		if isSymlinkOrReparsePoint(info) {
+			return fmt.Errorf("write snapshot %s: unsafe snapshot path component %q: symbolic links and reparse points are not allowed", path, path)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("write snapshot %s: unsafe snapshot path component %q: destination must be a regular file", path, path)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("write snapshot %s: inspect destination: %w", path, err)
 	}
 
 	encoded, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("encode snapshot: %w", err)
+		return fmt.Errorf("encode snapshot: %w", err)
 	}
 	// json.Encoder.Encode terminated the document with a newline; MarshalIndent
 	// does not, so add it back to keep the file byte-identical.
@@ -123,11 +188,11 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	// 0600 matches what the previous os.CreateTemp path produced on first
 	// write. The snapshot carries organization member and invitation data,
 	// so first creation must not widen it.
-	if err := filereplace.WriteFile(path, encoded, 0o600); err != nil {
-		return "", fmt.Errorf("write snapshot: %w", err)
+	if err := filereplace.WriteFileInRoot(parent, name, encoded, 0o600); err != nil {
+		return fmt.Errorf("write snapshot %s: %w", path, err)
 	}
 
-	return path, nil
+	return nil
 }
 
 func clonePendingInvitations(invitations []state.PendingInvitation) []state.PendingInvitation {
