@@ -6,21 +6,26 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
           args: --timeout=5m
@@ -29,10 +34,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -40,68 +47,17 @@ jobs:
       - name: Run actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
+      - name: Check workflow Action pins
+        run: ruby .github/scripts/check-action-pins.rb
+
+      - name: Test workflow Action pin checker
+        run: ruby .github/scripts/check-action-pins.test.rb
+
       - name: Validate pinned GitHub App action inputs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-
-          ruby -ryaml <<'RUBY'
-          def write_permission?(value)
-            case value
-            when String
-              %w[write write-all].include?(value)
-            when Hash
-              value.values.any? { |entry| write_permission?(entry) }
-            else
-              false
-            end
-          end
-
-          def privileged?(node)
-            case node
-            when Hash
-              node.any? do |key, value|
-                (key.to_s == "permissions" && write_permission?(value)) ||
-                  (key.to_s == "secrets" && (value == "inherit" || value.is_a?(Hash))) ||
-                  privileged?(value)
-              end
-            when Array
-              node.any? { |entry| privileged?(entry) }
-            when String
-              node.match?(/\$\{\{[^}]*\bsecrets(?:\.|\[)/)
-            else
-              false
-            end
-          end
-
-          def action_refs(node)
-            case node
-            when Hash
-              node.each_with_object([]) do |(key, value), refs|
-                refs << value if key.to_s == "uses" && value.is_a?(String)
-                refs.concat(action_refs(value))
-              end
-            when Array
-              node.flat_map { |entry| action_refs(entry) }
-            else
-              []
-            end
-          end
-
-          Dir[".github/workflows/*.{yml,yaml}"].sort.each do |path|
-            workflow = YAML.safe_load(File.read(path), aliases: true)
-            next unless privileged?(workflow)
-
-            action_refs(workflow).each do |action|
-              next if action.start_with?("./")
-              ref = action.split("@", 2)[1]
-              next if ref&.match?(/\A[0-9a-f]{40}\z/)
-
-              abort "#{path} contains an unpinned privileged Action: #{action}"
-            end
-          end
-          RUBY
 
           app_token_action='actions/create-github-app-token'
           if ! action_refs="$(
@@ -148,10 +104,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: false
@@ -187,7 +145,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Verify Bash syntax
         run: |
@@ -226,10 +186,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -255,10 +217,12 @@ jobs:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -272,10 +236,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
