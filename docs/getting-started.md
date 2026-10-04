@@ -144,8 +144,10 @@ It checks the YAML structure and semantic rules before any live operation.
 
 Stop before running a live command. The plan, apply, and `audit pull` commands
 below derive the target organization from `config/organization.yaml`; they do
-not accept a separate `--org` flag. The separate `sync-from-live` workflows
-use `--org` and are documented in the [config reference](cli/config.md).
+not accept a separate `--org` flag. Their optional `--expected-org` assertion
+binds that target to a caller-authorized organization. The separate
+`sync-from-live` workflows use `--org` and are documented in the
+[config reference](cli/config.md).
 
 Replace:
 
@@ -161,6 +163,8 @@ printf 'GitHub token: '
 read -r -s OCTOSTATE_GITHUB_TOKEN
 printf '\n'
 export OCTOSTATE_GITHUB_TOKEN
+# Set this independently of organization.yaml to the organization you authorize
+expected_org="<your-org>"
 ```
 
 The commands below use the environment-backed token source, so the token is
@@ -184,7 +188,8 @@ Build a deterministic reconciliation preview:
 
 ```bash
 octostate config plan \
-  --config-dir ./config
+  --config-dir ./config \
+  --expected-org "$expected_org"
 ```
 
 Review the executable actions and skipped drift. A plan is a preview; it does
@@ -197,6 +202,7 @@ Run the supported apply-path checks before considering any write:
 ```bash
 octostate config apply \
   --config-dir ./config \
+  --expected-org "$expected_org" \
   --check
 ```
 
@@ -215,7 +221,8 @@ are correct:
 
 ```bash
 octostate config apply \
-  --config-dir ./config
+  --config-dir ./config \
+  --expected-org "$expected_org"
 ```
 
 `config apply` executes the supported create/update portion of the plan. It does
@@ -228,7 +235,8 @@ Pull a normalized actual-state snapshot:
 ```bash
 octostate audit pull \
   --config-dir ./config \
-  --state-dir ./state
+  --state-dir ./state \
+  --expected-org "$expected_org"
 ```
 
 This reads GitHub without mutating it and writes:
