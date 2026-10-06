@@ -99,7 +99,7 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
 	}
 	if isSymlinkOrReparsePoint(info) {
-		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: symbolic links and reparse points are not allowed", path, path)
+		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: %s", path, path, unsafeSnapshotPathReason)
 	}
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: destination must be a regular file", path, path)
@@ -177,7 +177,7 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSnapshot) error {
 	if info, err := parent.Lstat(name); err == nil {
 		if isSymlinkOrReparsePoint(info) {
-			return fmt.Errorf("write snapshot %s: unsafe snapshot path component %q: symbolic links and reparse points are not allowed", path, path)
+			return fmt.Errorf("write snapshot %s: unsafe snapshot path component %q: %s", path, path, unsafeSnapshotPathReason)
 		}
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("write snapshot %s: unsafe snapshot path component %q: destination must be a regular file", path, path)

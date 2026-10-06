@@ -40,7 +40,7 @@ func TestWriteActualRejectsWindowsJunctionPath(t *testing.T) {
 	replaceDirectoryWithLink(t, junctionPath, externalActual)
 
 	_, err = ReadActual(stateDir)
-	if err == nil || !strings.Contains(err.Error(), junctionPath) || !hasSymlinkOrReparseReason(err) {
+	if err == nil || !strings.Contains(err.Error(), junctionPath) || !hasSymlinkOrReparseReason(err) || !strings.Contains(strings.ToLower(err.Error()), "physical path") {
 		t.Fatalf("expected junction path to be identified in read rejection error, got %v", err)
 	}
 	if strings.Contains(err.Error(), targetPath) {
@@ -48,7 +48,7 @@ func TestWriteActualRejectsWindowsJunctionPath(t *testing.T) {
 	}
 
 	_, err = WriteActual(stateDir, sampleSnapshot())
-	if err == nil || !strings.Contains(err.Error(), junctionPath) || !hasSymlinkOrReparseReason(err) {
+	if err == nil || !strings.Contains(err.Error(), junctionPath) || !hasSymlinkOrReparseReason(err) || !strings.Contains(strings.ToLower(err.Error()), "physical path") {
 		t.Fatalf("expected junction path to be identified in rejection error, got %v", err)
 	}
 	if strings.Contains(err.Error(), targetPath) {

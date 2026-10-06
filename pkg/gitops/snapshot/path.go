@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const unsafeSnapshotPathReason = "symbolic links and reparse points are not allowed; resolve the links and pass the physical path"
+
 // openSnapshotParent opens the snapshot's parent directory and walks to it
 // through stable directory handles. Component identity checks detect a path
 // entry changed between Lstat and OpenRoot; later path changes cannot redirect
@@ -83,7 +85,7 @@ func openSnapshotParentWithHook(path string, createParents bool, afterLstat func
 			return nil, "", fmt.Errorf("inspect snapshot path component %q: %w", currentPath, err)
 		}
 		if isSymlinkOrReparsePoint(info) {
-			return nil, "", fmt.Errorf("unsafe snapshot path component %q: symbolic links and reparse points are not allowed", currentPath)
+			return nil, "", fmt.Errorf("unsafe snapshot path component %q: %s", currentPath, unsafeSnapshotPathReason)
 		}
 		if !info.IsDir() {
 			return nil, "", fmt.Errorf("unsafe snapshot path component %q: parent must be a directory", currentPath)

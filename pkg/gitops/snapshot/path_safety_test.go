@@ -415,6 +415,9 @@ func assertUnsafeSnapshotPathError(t *testing.T, err error, component string) {
 	if !strings.Contains(message, "symlink") && !strings.Contains(message, "symbolic link") {
 		t.Fatalf("error does not explain symlink rejection: %v", err)
 	}
+	if !strings.Contains(message, "physical path") {
+		t.Fatalf("error does not explain how to fix the unsafe path: %v", err)
+	}
 	if !strings.Contains(err.Error(), component) {
 		t.Fatalf("error does not identify unsafe component %q: %v", component, err)
 	}
