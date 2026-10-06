@@ -122,6 +122,100 @@ func TestActualSnapshotOperationsStayInOpenedDirectoryAfterSymlinkSwap(t *testin
 	}
 }
 
+func TestOpenSnapshotParentRejectsComponentChangedAfterLstat(t *testing.T) {
+	t.Parallel()
+
+	root := physicalTempDir(t)
+	stateDir := filepath.Join(root, "state")
+	snapshotPath, err := WriteActual(stateDir, sampleSnapshot())
+	if err != nil {
+		t.Fatalf("write initial snapshot: %v", err)
+	}
+
+	replacementStateDir := filepath.Join(root, "replacement-state")
+	replacementSnapshotPath, err := WriteActual(replacementStateDir, sampleSnapshot())
+	if err != nil {
+		t.Fatalf("write replacement snapshot: %v", err)
+	}
+	replacementBefore, err := os.ReadFile(replacementSnapshotPath)
+	if err != nil {
+		t.Fatalf("read replacement snapshot before swap: %v", err)
+	}
+
+	movedStateDir := filepath.Join(root, "moved-state")
+	parent, _, err := openSnapshotParentWithHook(snapshotPath, false, func(componentPath string) {
+		if componentPath != stateDir {
+			return
+		}
+		if err := os.Rename(stateDir, movedStateDir); err != nil {
+			t.Fatalf("move checked state directory: %v", err)
+		}
+		if err := os.Rename(replacementStateDir, stateDir); err != nil {
+			t.Fatalf("replace checked state directory: %v", err)
+		}
+	})
+	if parent != nil {
+		_ = parent.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "changed while opening") {
+		t.Fatalf("expected replaced component to be rejected after opening, got %v", err)
+	}
+	if strings.Contains(err.Error(), replacementStateDir) {
+		t.Fatalf("component replacement error exposed the redirected path %q: %v", replacementStateDir, err)
+	}
+
+	replacementAfter, err := os.ReadFile(ActualPath(stateDir))
+	if err != nil {
+		t.Fatalf("read replacement snapshot after swap: %v", err)
+	}
+	if !bytes.Equal(replacementAfter, replacementBefore) {
+		t.Fatalf("component replacement changed redirected snapshot: before %q, after %q", replacementBefore, replacementAfter)
+	}
+}
+
+func TestReadActualRejectsSnapshotChangedAfterLstat(t *testing.T) {
+	t.Parallel()
+
+	root := physicalTempDir(t)
+	snapshotPath, err := WriteActual(filepath.Join(root, "state"), sampleSnapshot())
+	if err != nil {
+		t.Fatalf("write initial snapshot: %v", err)
+	}
+
+	parent, name, err := openSnapshotParent(snapshotPath, false)
+	if err != nil {
+		t.Fatalf("open snapshot parent: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := parent.Close(); err != nil {
+			t.Errorf("close snapshot parent: %v", err)
+		}
+	})
+
+	movedPath := filepath.Join(root, "moved-snapshot.json")
+	replacement := []byte(`{"organization":"redirected"}`)
+	got, err := readActualSnapshotAtWithHook(parent, name, snapshotPath, func(path string) {
+		if path != snapshotPath {
+			t.Fatalf("snapshot hook path = %q, want %q", path, snapshotPath)
+		}
+		if err := os.Rename(snapshotPath, movedPath); err != nil {
+			t.Fatalf("move checked snapshot: %v", err)
+		}
+		if err := os.WriteFile(snapshotPath, replacement, 0o600); err != nil {
+			t.Fatalf("replace checked snapshot: %v", err)
+		}
+	})
+	if got != nil {
+		t.Fatalf("read returned replacement snapshot: %#v", got)
+	}
+	if err == nil || !strings.Contains(err.Error(), "changed while opening") {
+		t.Fatalf("expected replaced snapshot to be rejected after opening, got %v", err)
+	}
+	if strings.Contains(err.Error(), "redirected") {
+		t.Fatalf("snapshot replacement error exposed file contents: %v", err)
+	}
+}
+
 func TestWriteActualCreatesCompletelyMissingStateDirectory(t *testing.T) {
 	t.Parallel()
 

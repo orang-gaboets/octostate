@@ -88,6 +88,12 @@ func ReadActual(stateDir string) (*ActualSnapshot, error) {
 }
 
 func readActualSnapshotAt(parent *os.Root, name, path string) (*ActualSnapshot, error) {
+	return readActualSnapshotAtWithHook(parent, name, path, nil)
+}
+
+// readActualSnapshotAtWithHook lets tests replace the file after inspection
+// and before Open without relying on timing-sensitive races.
+func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat func(path string)) (*ActualSnapshot, error) {
 	info, err := parent.Lstat(name)
 	if err != nil {
 		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, err)
@@ -97,6 +103,9 @@ func readActualSnapshotAt(parent *os.Root, name, path string) (*ActualSnapshot, 
 	}
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: destination must be a regular file", path, path)
+	}
+	if afterLstat != nil {
+		afterLstat(path)
 	}
 
 	file, err := parent.Open(name)

@@ -15,6 +15,12 @@ import (
 // entry changed between Lstat and OpenRoot; later path changes cannot redirect
 // operations rooted at the returned handle.
 func openSnapshotParent(path string, createParents bool) (*os.Root, string, error) {
+	return openSnapshotParentWithHook(path, createParents, nil)
+}
+
+// openSnapshotParentWithHook lets tests replace a component after inspection
+// and before OpenRoot without relying on timing-sensitive races.
+func openSnapshotParentWithHook(path string, createParents bool, afterLstat func(path string)) (*os.Root, string, error) {
 	if runtime.GOOS == "js" || runtime.GOOS == "plan9" {
 		return nil, "", fmt.Errorf("snapshot path operations are unsupported on %s", runtime.GOOS)
 	}
@@ -81,6 +87,9 @@ func openSnapshotParent(path string, createParents bool) (*os.Root, string, erro
 		}
 		if !info.IsDir() {
 			return nil, "", fmt.Errorf("unsafe snapshot path component %q: parent must be a directory", currentPath)
+		}
+		if afterLstat != nil {
+			afterLstat(currentPath)
 		}
 
 		next, err := current.OpenRoot(component)
