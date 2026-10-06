@@ -379,6 +379,14 @@ the workflow's trusted checkout, token scope, actor and repository checks,
 approval and lifecycle checks, live-state revalidation, and exact-head-SHA
 merge guard intact.
 
+GitHub's default Actions event policy blocks `pull_request_target` for affected
+public repositories that do not have an applicable explicit event policy.
+Runs continue while the default is in evaluation mode; the scheduled
+enforcement date is November 2, 2026. Check the effective settings for this
+repository rather than assuming the default applies or that another policy
+overrides it. See GitHub's guidance on the
+[`pull_request_target` default](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
+
 `pull_request` is not a safe drop-in replacement for this privileged workflow:
 GitHub runs the workflow definition from the PR merge commit. A PR could change
 that definition and alter how the App credential is handled before the release
@@ -414,8 +422,11 @@ policy can still restrict the event. Also confirm the workflow still uses the
 trusted checkout and release gates described above.
 
 If a run is blocked, GitHub reports that the event is not allowed for the
-workflow path. An authorized repository admin should restore the active,
-workflow-scoped event rule and verify the effective policy again. Do not
+workflow path. Identify which applicable policy scope blocks the event and
+have an admin for that scope correct it. Keep any exception scoped to this
+repository and workflow path; if the restricting scope cannot support a narrow
+exception, keep auto-merge blocked and reassess the event design. After the
+change, verify the effective policy across all applicable scopes. Do not
 remove the workflow's release checks or broaden the event allowance to recover
 auto-merge. Let the next legitimate release PR event exercise the corrected
 policy.
