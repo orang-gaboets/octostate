@@ -60,6 +60,11 @@ The standard readiness pass should include:
 - affected offline GitOps checks pass
 - targeted live sandbox checks pass when the change touches live behavior
 - release automation checks pass
+- before relying on release auto-merge, the effective Actions policy is active
+  and allows `pull_request_target` only for
+  `.github/workflows/automerge-release-please.yml`; record the applicable
+  repository and inherited policy settings and the Policy Insights result or
+  its unavailability (see [Actions event policy](./releases.md#actions-event-policy))
 - evidence is recorded in the relevant PR or maintainer doc
 
 Before applying the configured release approval label, verify that
