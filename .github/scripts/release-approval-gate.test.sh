@@ -66,6 +66,13 @@ case "${1:-}" in
       comment)
         printf '%s\n' "$*" >> "$GH_STUB_LOG"
         ;;
+      merge)
+        printf '%s\n' "$*" >> "$GH_STUB_LOG"
+        if [ "${GH_STUB_MERGE_MODE:-}" = "fail" ]; then
+          echo "gh: simulated merge failure" >&2
+          exit 1
+        fi
+        ;;
       *)
         echo "unexpected gh pr operation: ${2:-}" >&2
         exit 99
@@ -120,6 +127,36 @@ assert_contains() {
     cat "$file" >&2 || true
     exit 1
   }
+}
+
+assert_not_contains() {
+  local needle="$1"
+  local file="$2"
+  if grep -F -- "$needle" "$file" >/dev/null; then
+    echo "expected $file not to contain: $needle" >&2
+    cat "$file" >&2 || true
+    exit 1
+  fi
+}
+
+assert_line_order() {
+  local first="$1"
+  local second="$2"
+  local file="$3"
+  local first_line
+  local second_line
+
+  first_line="$(grep -nF -- "$first" "$file" | head -n 1 | cut -d: -f1)"
+  second_line="$(grep -nF -- "$second" "$file" | head -n 1 | cut -d: -f1)"
+  if [ -z "$first_line" ] || [ -z "$second_line" ] || [ "$first_line" -ge "$second_line" ]; then
+    echo "expected '$first' before '$second' in $file" >&2
+    exit 1
+  fi
+}
+
+assert_no_finalized_authorization() {
+  assert_not_contains 'authorization_finalized=' "$GITHUB_OUTPUT"
+  assert_not_contains 'authorized_head_sha=' "$GITHUB_OUTPUT"
 }
 
 write_pr() {
@@ -246,22 +283,50 @@ EVENT_LABEL="$RELEASE_READY_LABEL"
 write_pr "$both_labels"
 run_gate release_approval_gate_final
 assert_status 0 "$GATE_STATUS"
+assert_contains 'authorization_finalized=true' "$GITHUB_OUTPUT"
+assert_contains 'authorized_head_sha=head-sha' "$GITHUB_OUTPUT"
+
+# Simulate the configured approval being removed after initial approval while
+# prerequisite checks run. The post-check final read must reject that state.
+EVENT_ACTION=labeled
+EVENT_LABEL="$RELEASE_READY_LABEL"
+EVENT_LABELS_JSON="$both_labels"
+write_pr "$both_labels"
+run_gate release_approval_gate_initial
+assert_status 0 "$GATE_STATUS"
+assert_contains 'should_merge=true' "$GITHUB_OUTPUT"
+write_pr '[{"name":"autorelease: pending"}]'
+run_gate release_approval_gate_final
+assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
+assert_no_gh_mutation
+
+# A retry must re-read live state. The approval is absent in the new fixture,
+# so the successful prior authorization cannot be reused.
+write_pr '[{"name":"autorelease: pending"}]'
+run_gate release_approval_gate_final
+assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
+assert_no_gh_mutation
 
 write_pr '[{"name":"release: ready"}]'
 run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
 assert_contains 'pr edit' "$GH_LOG"
 assert_contains '--remove-label release: ready' "$GH_LOG"
 
 write_pr '[{"name":"autorelease: pending"}]'
 run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
 assert_no_gh_mutation
 
 export GH_STUB_MODE=read-failure
 write_pr "$both_labels"
 run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
 assert_no_gh_mutation
 assert_contains 'preserving release: ready' "$TEST_ROOT/stderr"
 unset GH_STUB_MODE
@@ -270,6 +335,7 @@ export GH_STUB_MODE=invalid-json
 write_pr "$both_labels"
 run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
 assert_no_gh_mutation
 assert_contains 'not valid JSON' "$TEST_ROOT/stderr"
 unset GH_STUB_MODE
@@ -278,6 +344,7 @@ export GH_STUB_REMOVE_MODE=fail
 write_pr '[{"name":"release: ready"}]'
 run_gate release_approval_gate_final
 assert_status 1 "$GATE_STATUS"
+assert_no_finalized_authorization
 assert_contains 'manual remediation is required' "$TEST_ROOT/stderr"
 unset GH_STUB_REMOVE_MODE
 
@@ -287,6 +354,7 @@ assert_final_reject() {
   write_pr "$both_labels" "$@"
   run_gate release_approval_gate_final
   assert_status 1 "$GATE_STATUS"
+  assert_no_finalized_authorization
   assert_no_gh_mutation
   echo "checked final precondition: $description"
 }
@@ -297,6 +365,42 @@ assert_final_reject 'head repository' main 'release-please--branches--main' 'oth
 assert_final_reject 'draft state' main 'release-please--branches--main' 'orang-gaboets/octostate' true
 assert_final_reject 'author' main 'release-please--branches--main' 'orang-gaboets/octostate' false 'someone-else'
 assert_final_reject 'head SHA' main 'release-please--branches--main' 'orang-gaboets/octostate' false 'app/orang-gaboets-release-please' other-sha
+
+# The merge wrapper receives only the SHA finalized by the live-state gate,
+# and its command failure must remain a workflow failure.
+write_pr "$both_labels"
+run_gate release_approval_gate_final
+assert_status 0 "$GATE_STATUS"
+# If the run reaches merge after a label is removed, its one-shot authorization
+# remains bound to the finalized SHA. This fixture does not model whether
+# GitHub Actions cancels the run before that step.
+FINALIZED_HEAD_SHA="$(sed -n 's/^authorized_head_sha=//p' "$GITHUB_OUTPUT")"
+write_pr '[{"name":"autorelease: pending"}]'
+PR_HEAD_SHA="$FINALIZED_HEAD_SHA"
+run_gate release_approval_gate_merge
+assert_status 0 "$GATE_STATUS"
+assert_contains 'pr merge --admin --squash --delete-branch --match-head-commit head-sha https://github.com/orang-gaboets/octostate/pull/250' "$GH_LOG"
+
+export GH_STUB_MERGE_MODE=fail
+run_gate release_approval_gate_merge
+assert_status 1 "$GATE_STATUS"
+assert_contains 'pr merge --admin --squash --delete-branch --match-head-commit head-sha https://github.com/orang-gaboets/octostate/pull/250' "$GH_LOG"
+unset GH_STUB_MERGE_MODE
+
+# The shell harness does not execute GitHub's merge API. Guard the workflow
+# integration that feeds the finalized head to its existing merge precondition.
+WORKFLOW_FILE="$SCRIPT_DIR/../workflows/automerge-release-please.yml"
+assert_contains "steps.final-release-state.outputs.authorization_finalized == 'true'" "$WORKFLOW_FILE"
+# This assertion checks the literal GitHub Actions expression.
+# shellcheck disable=SC2016
+assert_contains 'PR_HEAD_SHA: ${{ steps.final-release-state.outputs.authorized_head_sha }}' "$WORKFLOW_FILE"
+assert_contains 'release_approval_gate_merge' "$WORKFLOW_FILE"
+# This assertion checks the literal shell command and its variable references.
+# shellcheck disable=SC2016
+assert_contains 'gh pr merge --admin --squash --delete-branch --match-head-commit "$PR_HEAD_SHA" "$PR_URL"' "$SCRIPT_DIR/release-approval-gate.sh"
+assert_not_contains 'merge_ready=true' "$WORKFLOW_FILE"
+assert_line_order 'name: Wait for release checks' 'name: Finalize release approval for verified head' "$WORKFLOW_FILE"
+assert_line_order 'name: Finalize release approval for verified head' 'name: Merge release-please PR' "$WORKFLOW_FILE"
 
 export GH_STUB_MODE=unauthorized
 EVENT_ACTION=labeled
