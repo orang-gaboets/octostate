@@ -71,8 +71,8 @@ Before applying the configured release approval label, verify that
 `autorelease: pending` is present. After the configured release approval label
 is applied, both labels must be present. After required release checks, the
 workflow re-reads the live PR and finalizes approval only if the labels,
-Release Please PR identity, and event head SHA still match. It passes that
-verified SHA to `gh pr merge --match-head-commit`.
+open PR state, Release Please PR identity, and event head SHA still match. It
+passes that verified SHA to `gh pr merge --match-head-commit`.
 
 Removing the approval label before finalization prevents merge. Once approval
 is finalized for the verified SHA, label removal is not guaranteed to revoke

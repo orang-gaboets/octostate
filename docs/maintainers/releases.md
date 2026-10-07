@@ -327,7 +327,7 @@ an authorized maintainer.
 - Unauthorized approval attempts leave a PR comment from the release-please app bot
 - If `release-please` updates the PR head after approval, the stale configured approval label is removed and must be re-applied
 - The workflow requires both the configured approval label and `autorelease: pending` before merging
-- After the required release checks finish, the workflow fetches the live PR again and validates its base, head repository and branch, draft state, bot author, exact event head SHA, and both required labels
+- After the required release checks finish, the workflow fetches the live PR again and validates its open state, base, head repository and branch, draft state, bot author, exact event head SHA, and both required labels
 - Only a successful final validation finalizes publisher approval for that exact head SHA; the workflow records `authorization_finalized=true` and `authorized_head_sha` as step outputs
 - The merge step requires the finalization output and passes `authorized_head_sha` to `gh pr merge --match-head-commit`
 - The final live read and merge API request are separate operations; they do not provide atomic label revocation
