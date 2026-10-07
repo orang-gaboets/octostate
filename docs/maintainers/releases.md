@@ -429,7 +429,12 @@ exception, keep auto-merge blocked and reassess the event design. After the
 change, verify the effective policy across all applicable scopes. Do not
 remove the workflow's release checks or broaden the event allowance to recover
 auto-merge. Let the next legitimate release PR event exercise the corrected
-policy.
+policy. A policy change does not create a new event for an existing PR. If a
+release PR was blocked, first confirm the effective policy and inspect the live
+PR to ensure it remains eligible and still has `autorelease: pending`. Then an
+authorized publisher can remove and reapply the configured approval label to
+trigger a fresh `labeled` event and rerun the gate. Leave `autorelease: pending`
+in place.
 
 When Policy Insights is available, review whether this workflow is reported as
 affected by an event policy. If Insights is unavailable, record that
