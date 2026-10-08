@@ -57,3 +57,45 @@ func TestWriteFileReplacesAnExistingDestination(t *testing.T) {
 		t.Fatalf("existing file mode = %v, want the original 0600 to be preserved", info.Mode().Perm())
 	}
 }
+
+func TestWriteFileInRootPreservesExistingMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snapshot.json")
+	if err := os.WriteFile(path, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Errorf("close opened directory: %v", err)
+		}
+	})
+
+	if err := filereplace.WriteFileInRoot(root, "snapshot.json", []byte("fresh"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "fresh" {
+		t.Fatalf("contents = %q", body)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("existing file mode = %v, want 0640 to be preserved", info.Mode().Perm())
+	}
+}

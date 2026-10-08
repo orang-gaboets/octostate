@@ -1,6 +1,8 @@
 package filereplace
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -86,6 +88,72 @@ func WriteFile(path string, contents []byte, perm os.FileMode) error {
 	return writeAtomic(path, contents, perm, destinationExists)
 }
 
+// WriteFileInRoot writes contents to a single file relative to an already
+// opened directory. The root keeps temporary-file creation and replacement
+// anchored to the same directory if its original path is renamed or replaced.
+func WriteFileInRoot(root *os.Root, name string, contents []byte, perm os.FileMode) error {
+	if root == nil || !filepath.IsLocal(name) || name == "." || name == ".." || filepath.Base(name) != name {
+		return fmt.Errorf("file name must be a single path component")
+	}
+
+	switch info, err := root.Lstat(name); {
+	case err == nil:
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("stat existing file %s: target is not a regular file", name)
+		}
+		perm = info.Mode().Perm()
+	case errors.Is(err, fs.ErrNotExist):
+		// Creating the destination; perm applies as given.
+	default:
+		return fmt.Errorf("stat destination %s: %w", name, err)
+	}
+
+	tempName, tempFile, err := createTempInRoot(root)
+	if err != nil {
+		return fmt.Errorf("create temporary file in opened directory: %w", err)
+	}
+	replaced := false
+	defer func() {
+		if !replaced {
+			_ = tempFile.Close()      //nolint:errcheck // best-effort cleanup for temp files
+			_ = root.Remove(tempName) //nolint:errcheck // best-effort cleanup for temp files
+		}
+	}()
+
+	if err := writeTemporaryFile(tempFile, tempName, contents, perm); err != nil {
+		return err
+	}
+	if err := root.Rename(tempName, name); err != nil {
+		return fmt.Errorf("rename temporary file into place at %s: %w", name, err)
+	}
+	replaced = true
+
+	if parent, err := root.Open("."); err == nil {
+		_ = parent.Sync()  // best effort after commit; replacement already succeeded
+		_ = parent.Close() //nolint:errcheck // best-effort cleanup after commit
+	}
+	return nil
+}
+
+func createTempInRoot(root *os.Root) (string, *os.File, error) {
+	for range 100 {
+		var random [16]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return "", nil, fmt.Errorf("generate temporary file name: %w", err)
+		}
+		name := ".octostate-" + hex.EncodeToString(random[:])
+		file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return "", nil, err
+		}
+		return name, file, nil
+	}
+	return "", nil, fmt.Errorf("unable to allocate a unique temporary file name")
+}
+
 // writeAtomic stages contents in a same-directory temporary file and commits it
 // over path, so a reader never observes a partially written file.
 func writeAtomic(path string, contents []byte, perm os.FileMode, destinationExists bool) error {
@@ -104,20 +172,8 @@ func writeAtomic(path string, contents []byte, perm os.FileMode, destinationExis
 		}
 	}()
 
-	if n, err := tempFile.Write(contents); err != nil {
-		return fmt.Errorf("write temporary file %s: %w", tempPath, err)
-	} else if n != len(contents) {
-		return fmt.Errorf("write temporary file %s: %w", tempPath, io.ErrShortWrite)
-	}
-
-	if err := tempFile.Chmod(perm); err != nil {
-		return fmt.Errorf("set temporary file mode %s: %w", tempPath, err)
-	}
-	if err := tempFile.Sync(); err != nil {
-		return fmt.Errorf("sync temporary file %s: %w", tempPath, err)
-	}
-	if err := tempFile.Close(); err != nil {
-		return fmt.Errorf("close temporary file %s: %w", tempPath, err)
+	if err := writeTemporaryFile(tempFile, tempPath, contents, perm); err != nil {
+		return err
 	}
 
 	if destinationExists {
@@ -137,5 +193,23 @@ func writeAtomic(path string, contents []byte, perm os.FileMode, destinationExis
 
 	_ = syncParentDir(dir) // best effort after commit; replacement already succeeded
 
+	return nil
+}
+
+func writeTemporaryFile(file *os.File, name string, contents []byte, perm os.FileMode) error {
+	if n, err := file.Write(contents); err != nil {
+		return fmt.Errorf("write temporary file %s: %w", name, err)
+	} else if n != len(contents) {
+		return fmt.Errorf("write temporary file %s: %w", name, io.ErrShortWrite)
+	}
+	if err := file.Chmod(perm); err != nil {
+		return fmt.Errorf("set temporary file mode %s: %w", name, err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync temporary file %s: %w", name, err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close temporary file %s: %w", name, err)
+	}
 	return nil
 }
