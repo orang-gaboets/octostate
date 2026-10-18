@@ -107,14 +107,14 @@ jobs:
       - name: Plan configuration
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
-          OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          OCTOSTATE_GITHUB_TOKEN: ${{ secrets.octostate_token }}
           EXPECTED_ORG: ${{ inputs.expected_org }}
           BIND_EXPECTED_ORG: ${{ inputs.bind_expected_org }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "$OCTOSTATE_TOKEN" ]]; then
+          if [[ -z "$OCTOSTATE_GITHUB_TOKEN" ]]; then
             echo "octostate_token is required for config plan" >&2
             exit 1
           fi
@@ -128,19 +128,19 @@ jobs:
             set -- --expected-org "$EXPECTED_ORG"
           fi
 
-          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" "$@"
+          octostate config plan --config-dir "$CONFIG_DIR" "$@"
 
       - name: Preflight configuration apply
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
-          OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          OCTOSTATE_GITHUB_TOKEN: ${{ secrets.octostate_token }}
           EXPECTED_ORG: ${{ inputs.expected_org }}
           BIND_EXPECTED_ORG: ${{ inputs.bind_expected_org }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "$OCTOSTATE_TOKEN" ]]; then
+          if [[ -z "$OCTOSTATE_GITHUB_TOKEN" ]]; then
             echo "octostate_token is required for config apply --check" >&2
             exit 1
           fi
@@ -154,4 +154,4 @@ jobs:
             set -- --expected-org "$EXPECTED_ORG"
           fi
 
-          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check "$@"
+          octostate config apply --config-dir "$CONFIG_DIR" --check "$@"

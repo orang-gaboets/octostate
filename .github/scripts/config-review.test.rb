@@ -37,9 +37,12 @@ class ConfigReviewWorkflowTest < Minitest::Test
     @env = {
       "PATH" => "#{@stubs}:/usr/bin:/bin", "RUNNER_TEMP" => @runner,
       "GITHUB_PATH" => File.join(@tmp, "github-path"),
+      "GITHUB_ENV" => File.join(@tmp, "github-env"),
+      "GITHUB_OUTPUT" => File.join(@tmp, "github-output"),
+      "GITHUB_STEP_SUMMARY" => File.join(@tmp, "github-summary"),
       "EVENTS" => File.join(@tmp, "events"), "BUILD_STATE" => File.join(@tmp, "build-state"),
-      "REAL_GIT" => @git, "SOURCE" => @source, "REVISION" => @sha,
-      "FAKE_CLI" => File.join(@stubs, "octostate"), "EXPECTED_TOKEN" => SECRET
+      "REAL_GIT" => @git, "SOURCE" => @source,
+      "FAKE_CLI" => File.join(@stubs, "octostate")
     }
     write_stubs
     reset_run
@@ -57,13 +60,13 @@ class ConfigReviewWorkflowTest < Minitest::Test
 
   def write_stub(name, body)
     path = File.join(@stubs, name)
-    File.write(path, "#!#{RbConfig.ruby}\nrequire 'json'\nrequire 'fileutils'\n#{body}")
+    File.write(path, "#!#{RbConfig.ruby}\nrequire 'json'\nrequire 'fileutils'\nTOKEN = #{SECRET.inspect}\n#{body}")
     FileUtils.chmod(0755, path)
   end
 
   def write_stubs
     write_stub("git", <<~'RUBY')
-      File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "git", args: ARGV, token: !!ENV["OCTOSTATE_GITHUB_TOKEN"]) }
+      File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "git", args: ARGV, token: ENV.values.include?(TOKEN)) }
       command = ARGV.find { |a| %w[fetch checkout rev-parse].include?(a) }
       exit 21 if command && ENV["FAIL_GIT"] == command
       if command == "rev-parse" && ENV["WRONG_HEAD"]
@@ -77,17 +80,12 @@ class ConfigReviewWorkflowTest < Minitest::Test
       exec ENV.fetch("REAL_GIT"), *ARGV
     RUBY
     write_stub("go", <<~'RUBY')
-      File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "go", args: ARGV, cwd: Dir.pwd, gowork: ENV["GOWORK"], token: !!ENV["OCTOSTATE_GITHUB_TOKEN"]) }
+      File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "go", args: ARGV, cwd: Dir.pwd, gowork: ENV["GOWORK"], token: ENV.values.include?(TOKEN)) }
       exit 22 if ENV["FAIL_GO"] == ARGV.first
       case ARGV.first
-      when "build", "install"
-        if ARGV.first == "build"
-          revision = IO.popen([ENV.fetch("REAL_GIT"), "rev-parse", "HEAD"], &:read).strip
-          binary = ARGV.fetch(ARGV.index("-o") + 1)
-        else
-          revision = ENV.fetch("REVISION")
-          binary = File.join(ENV.fetch("GOBIN"), "octostate")
-        end
+      when "build"
+        revision = IO.popen([ENV.fetch("REAL_GIT"), "rev-parse", "HEAD"], &:read).strip
+        binary = ARGV.fetch(ARGV.index("-o") + 1)
         FileUtils.mkdir_p(File.dirname(binary))
         FileUtils.cp(ENV.fetch("FAKE_CLI"), binary)
         File.write(ENV.fetch("BUILD_STATE"), JSON.generate(revision: revision))
@@ -104,9 +102,9 @@ class ConfigReviewWorkflowTest < Minitest::Test
     RUBY
     write_stub("octostate", <<~'RUBY')
       token = ENV["OCTOSTATE_GITHUB_TOKEN"]
-      File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "octostate", args: ARGV, token: !!token, correct_token: token == ENV["EXPECTED_TOKEN"]) }
+      File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "octostate", args: ARGV, token: ENV.values.include?(TOKEN), correct_token: token == TOKEN) }
       if ENV["ASSERT_ENV_AUTH"] && ARGV[1] != "validate"
-        abort "environment authentication required" unless token == ENV["EXPECTED_TOKEN"] && !ARGV.include?("--token")
+        abort "environment authentication required" unless token == TOKEN && !ARGV.include?("--token")
       end
       puts '{"status":"ok"}'
       warn "command diagnostic"
@@ -116,7 +114,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
 
   def reset_run
     File.write(@env.fetch("EVENTS"), "")
-    File.write(@env.fetch("GITHUB_PATH"), "")
+    %w[GITHUB_PATH GITHUB_ENV GITHUB_OUTPUT GITHUB_STEP_SUMMARY].each { |key| File.write(@env.fetch(key), "") }
     @results = []
     @path = @env.fetch("PATH")
   end
@@ -228,5 +226,56 @@ class ConfigReviewWorkflowTest < Minitest::Test
       assert_equal @inputs["config_dir"], args.fetch(args.index("--config-dir") + 1)
     end
     refute File.exist?(File.join(@caller, "injected"))
+  end
+
+  def test_live_commands_authenticate_without_token_arguments_or_persistence
+    assert run_review("ASSERT_ENV_AUTH" => "1").success?, diagnostic
+    calls = events("octostate")
+    assert_equal ["config", "plan", "--config-dir", "config directory"], calls[1].fetch("args")
+    assert_equal ["config", "apply", "--config-dir", "config directory", "--check"], calls[2].fetch("args")
+    calls.drop(1).each { |call| assert call.fetch("correct_token") }
+    refute_includes diagnostic, SECRET
+    refute_includes File.read(@env.fetch("EVENTS")), SECRET
+    %w[GITHUB_PATH GITHUB_ENV GITHUB_OUTPUT GITHUB_STEP_SUMMARY].each do |key|
+      refute_includes File.read(@env.fetch(key)), SECRET
+    end
+  end
+
+  def test_missing_credentials_stop_each_live_command
+    @secret = ""
+    JOB.fetch("steps").select { |s| ["Plan configuration", "Preflight configuration apply"].include?(s["name"]) }.each do |step|
+      reset_run
+      refute run_step(step).success?
+      assert_includes diagnostic, "octostate_token is required"
+      assert_empty events("octostate")
+    end
+  end
+
+  def test_expected_organization_is_forwarded_to_both_live_commands
+    @inputs["expected_org"] = "acme"
+    @inputs["bind_expected_org"] = true
+    assert run_review("ASSERT_ENV_AUTH" => "1").success?, diagnostic
+    assert_equal ["config", "plan", "--config-dir", "config directory", "--expected-org", "acme"], events("octostate")[1].fetch("args")
+    assert_equal ["config", "apply", "--config-dir", "config directory", "--check", "--expected-org", "acme"], events("octostate")[2].fetch("args")
+  end
+
+  def test_expected_organization_without_binding_stops_before_plan
+    @inputs["expected_org"] = "acme"
+    refute run_review.success?
+    assert_equal ["validate"], events("octostate").map { |call| call["args"][1] }
+    assert_includes diagnostic, "expected_org requires bind_expected_org"
+    refute_includes diagnostic, SECRET
+  end
+
+  def test_command_failures_preserve_output_and_stop_later_steps
+    %w[validate plan apply].each_with_index do |command, index|
+      reset_run
+      status = run_review("FAIL_COMMAND" => command)
+      assert_equal 23, status.exitstatus, diagnostic
+      assert_equal %w[validate plan apply].take(index + 1), events("octostate").map { |call| call["args"][1] }
+      result = @results.last
+      assert_equal "{\"status\":\"ok\"}\n", result.fetch(:out)
+      assert_equal "command diagnostic\n", result.fetch(:err)
+    end
   end
 end
