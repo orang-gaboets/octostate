@@ -53,6 +53,9 @@ jobs:
       - name: Test workflow Action pin checker
         run: ruby .github/scripts/check-action-pins.test.rb
 
+      - name: Test reusable config review
+        run: ruby .github/scripts/config-review.test.rb
+
       - name: Validate pinned GitHub App action inputs
         env:
           GH_TOKEN: ${{ github.token }}
