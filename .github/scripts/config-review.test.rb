@@ -42,7 +42,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
       "GITHUB_STEP_SUMMARY" => File.join(@tmp, "github-summary"),
       "EVENTS" => File.join(@tmp, "events"), "BUILD_STATE" => File.join(@tmp, "build-state"),
       "REAL_GIT" => @git, "SOURCE" => @source,
-      "FAKE_CLI" => File.join(@stubs, "octostate")
+      "FAKE_CLI" => File.join(@tmp, "fake-octostate")
     }
     write_stubs
     reset_run
@@ -58,8 +58,8 @@ class ConfigReviewWorkflowTest < Minitest::Test
     out
   end
 
-  def write_stub(name, body)
-    path = File.join(@stubs, name)
+  def write_stub(name, body, directory: @stubs)
+    path = File.join(directory, name)
     File.write(path, "#!#{RbConfig.ruby}\nrequire 'json'\nrequire 'fileutils'\nTOKEN = #{SECRET.inspect}\n#{body}")
     FileUtils.chmod(0755, path)
   end
@@ -100,7 +100,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
         abort "unexpected go command"
       end
     RUBY
-    write_stub("octostate", <<~'RUBY')
+    write_stub("fake-octostate", <<~'RUBY', directory: @tmp)
       token = ENV["OCTOSTATE_GITHUB_TOKEN"]
       File.open(ENV.fetch("EVENTS"), "a") { |f| f.puts JSON.generate(tool: "octostate", args: ARGV, token: ENV.values.include?(TOKEN), correct_token: token == TOKEN) }
       if ENV["ASSERT_ENV_AUTH"] && ARGV[1] != "validate"
@@ -171,6 +171,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
     assert_equal "./cmd/octostate", build["args"].last
     assert_includes diagnostic, @sha
     assert_includes diagnostic, "vcs.modified=false"
+    assert_equal "#{File.join(@runner, "octostate-bin")}\n", File.read(@env.fetch("GITHUB_PATH"))
     assert_equal %w[validate plan apply], events("octostate").map { |e| e["args"][1] }
     assert_empty Dir.glob(File.join(@runner, "octostate-source.*")), "temporary source must be removed"
   end
