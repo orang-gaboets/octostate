@@ -204,6 +204,10 @@ published release. This migration also applies to consumers already using an
 unreleased workflow commit. Workflow and CLI pins remain independent; choose
 compatible revisions for both.
 
+The selected CLI commit must support `OCTOSTATE_GITHUB_TOKEN` authentication,
+introduced in commit `3aa4a21b4851d38c64eb9160b467e427aac5c2c2`. Older
+revisions requiring `--token` are incompatible with the updated workflow.
+
 ### Contract and safety boundaries
 
 - `config_dir` is optional and defaults to `./config`; it must contain the
@@ -215,9 +219,11 @@ compatible revisions for both.
   `expected_org` without the binding switch fails instead of silently running
   unbound. The CLI revision selected by
   `octostate_version` must support `--expected-org` when binding is enabled.
-- `octostate_token` is required and is passed explicitly as `--token` only to
-  the live plan and preflight steps. It may be a PAT or a pre-created GitHub
-  App installation token; this workflow does not mint credentials or accept a
+- `octostate_token` remains the required caller secret. It is mapped to
+  `OCTOSTATE_GITHUB_TOKEN` only in the live plan and preflight steps; it is
+  absent during installation and offline validation and is never expanded into
+  Octostate's command arguments. It may be a PAT or a pre-created GitHub App
+  installation token; this workflow does not mint credentials or accept a
   private key.
 - The caller-supplied token must have the organization, repository, team, and
   other read/preflight capabilities needed by the declared configuration.
@@ -226,10 +232,10 @@ compatible revisions for both.
   `GITHUB_TOKEN` permission set supplied by the caller.
 - The workflow's `contents: read` permission controls its automatic repository
   token and does not reduce or expand the separate caller-supplied token.
-- Use a short-lived, least-privilege token. Because the current CLI accepts
-  authentication through `--token`, the token can be visible to process
-  inspection on a shared runner even though it is not echoed or persisted by
-  this workflow.
+- Use a short-lived, least-privilege token. Environment authentication removes
+  the token from process arguments, but a compromised runner can still read or
+  use the credential. The workflow does not print it or persist it in artifacts
+  or repository files.
 - The caller owns triggers, trusted refs, fork-PR handling, approvals, branch
   protection, environments, notifications, and any later live apply. Do not
   check out an untrusted pull-request head while exposing
