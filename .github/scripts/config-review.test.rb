@@ -176,6 +176,45 @@ class ConfigReviewWorkflowTest < Minitest::Test
     assert_empty Dir.glob(File.join(@runner, "octostate-source.*")), "temporary source must be removed"
   end
 
+  def test_real_source_installer_smoke
+    sha = ENV["CONFIG_REVIEW_REAL_SOURCE_SMOKE_SHA"]
+    skip "set CONFIG_REVIEW_REAL_SOURCE_SMOKE_SHA in CI to run the real-source smoke test" unless sha
+
+    assert_match(/\A[0-9a-f]{40}\z/, sha)
+    install_step = JOB.fetch("steps").find { |step| step["name"] == "Install Octostate" }
+    bin_dir = File.join(@runner, "real-source-smoke-bin")
+    env = {
+      "PATH" => ENV.fetch("PATH"),
+      "HOME" => ENV.fetch("HOME"),
+      "GOCACHE" => File.join(@tmp, "go-build-cache"),
+      "GOTOOLCHAIN" => "local",
+      "RUNNER_TEMP" => @runner, "GITHUB_PATH" => @env.fetch("GITHUB_PATH"),
+      "OCTOSTATE_VERSION" => sha, "OCTOSTATE_BIN_DIR" => bin_dir
+    }
+    %w[HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy].each do |key|
+      env[key] = ENV[key] if ENV.key?(key)
+    end
+
+    out, err, status = Open3.capture3(
+      env, "bash", "--noprofile", "--norc", "-c", install_step.fetch("run"),
+      chdir: @caller, unsetenv_others: true
+    )
+    assert status.success?, "real installer failed (#{status.exitstatus}):\n#{out}#{err}"
+
+    binary = File.join(bin_dir, "octostate")
+    assert File.executable?(binary), "installer must produce an executable"
+    metadata, metadata_status = Open3.capture2(
+      env, "go", "version", "-m", binary, unsetenv_others: true
+    )
+    assert metadata_status.success?, "go version -m failed: #{metadata}"
+    assert_includes metadata, "vcs.revision=#{sha}"
+    assert_includes metadata, "vcs.modified=false"
+    _, help_err, help_status = Open3.capture3(env, binary, "--help", unsetenv_others: true)
+    assert help_status.success?, "installed Octostate could not run: #{help_err}"
+    assert_equal "#{bin_dir}\n", File.read(@env.fetch("GITHUB_PATH"))
+    assert_empty Dir.glob(File.join(@runner, "octostate-source.*")), "temporary source must be removed"
+  end
+
   def test_rejects_invalid_revisions_before_fetch_or_build
     ["v1.2.0", "main", "latest", @sha[0, 12], "", @sha.upcase, " #{@sha}", "#{@sha}\n", "$(touch injected)", "#{@sha}x"].each do |revision|
       reset_run
