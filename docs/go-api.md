@@ -131,10 +131,16 @@ order do not affect identity; list order and presence-aware managed fields do.
 The identity does not include file paths, timestamps, or other filesystem
 metadata.
 
-For a later apply, collect current actual state for that invocation, then use
-the reviewed API:
+For a later apply, check the currently loaded desired config before
+authenticating or collecting remote state. Then collect current actual state
+for that invocation and use the reviewed API:
 
 ```go
+if err := config.CheckExpectedDesiredStateIdentity(desired, reviewedIdentity); err != nil {
+	return err
+}
+
+// Authenticate and collect current actual state after the local check.
 options := apply.ReviewedOptions{
 	Desired:                desired,
 	Actual:                 actual, // collected for this invocation
@@ -151,17 +157,18 @@ if err != nil {
 }
 ```
 
-`CheckReviewed` and `ExecuteReviewed` verify the expected identity before
+`CheckReviewed` and `ExecuteReviewed` verify the expected identity again before
 planning, accept no caller-supplied plan, and build a fresh plan from the same
-`Desired` and supplied `Actual`. Go callers are responsible for collecting
-`Actual` immediately before the reviewed operation. An optional
-`ExpectedOrganization` field can also bind the target organization. Empty,
-malformed, unsupported-version, and mismatched identities return
-`*config.ExpectedDesiredStateIdentityError`; inspect `Kind` for a stable reason.
-`config.CheckExpectedDesiredStateIdentity` exposes the same assertion for
-callers that need to check locally before another API call. If a caller runs
-`CheckReviewed` before a later `ExecuteReviewed`, it must collect `Actual` again
-for the execution call.
+`Desired` and supplied `Actual`. The local precheck lets Go callers reject a
+changed desired config before authentication or remote collection; the reviewed
+API's second check protects the planning and mutation boundary. Go callers are
+responsible for collecting `Actual` immediately before the reviewed operation.
+The optional `ExpectedOrganization` field can also bind the target
+organization. Empty, malformed, unsupported-version, and mismatched identities
+return `*config.ExpectedDesiredStateIdentityError`; inspect `Kind` for a stable
+reason.
+If a caller runs `CheckReviewed` before a later `ExecuteReviewed`, it must
+collect `Actual` again for the execution call.
 The existing `apply.Check` and `apply.Execute` APIs retain their previous
 unbound behavior and signatures.
 
