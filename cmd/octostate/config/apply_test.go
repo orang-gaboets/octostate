@@ -132,6 +132,121 @@ func TestApplyConfigCmdSuccess(t *testing.T) {
 	if !reflect.DeepEqual(got, *want) {
 		t.Fatalf("unexpected apply result:\n got %#v\nwant %#v", got, *want)
 	}
+	var outputData map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Data, &outputData); err != nil {
+		t.Fatalf("decode raw apply data: %v", err)
+	}
+	var gotIdentity string
+	if err := json.Unmarshal(outputData["desired_config_identity"], &gotIdentity); err != nil {
+		t.Fatalf("decode desired config identity: %v; data=%s", err, string(envelope.Data))
+	}
+	wantIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute expected desired config identity: %v", err)
+	}
+	if gotIdentity != wantIdentity {
+		t.Fatalf("unexpected desired config identity: got %q want %q", gotIdentity, wantIdentity)
+	}
+}
+
+func TestApplyConfigCmdExpectedIdentityMismatchStopsBeforeAuthAndCollection(t *testing.T) {
+	restoreApplyHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		t.Fatal("authentication must not run after an expected identity mismatch")
+		return nil, nil
+	}
+	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		t.Fatal("live collection must not run after an expected identity mismatch")
+		return nil, nil
+	}
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--config-dir", "./config",
+		"--expected-config-identity", "octostate-config-v1:sha256:" + strings.Repeat("0", 64),
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected a desired config identity mismatch")
+	}
+	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
+		t.Fatalf("expected typed exit code %d, got code=%d ok=%v err=%v", validateExitCodeInvalidConfig, code, ok, err)
+	}
+	if !strings.Contains(err.Error(), "does not match expected identity") {
+		t.Fatalf("expected identity mismatch diagnostic, got %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("mismatch must not write stdout, got %q", out.String())
+	}
+	if errBuf.Len() == 0 {
+		t.Fatal("expected mismatch diagnostic on stderr")
+	}
+}
+
+func TestApplyConfigCmdReviewedCheckReturnsDesiredIdentity(t *testing.T) {
+	restoreApplyHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
+	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	identity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute desired config identity: %v", err)
+	}
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{
+			OrganizationsService: internalauth.MockOrganizationService{},
+			ReposService:         internalauth.MockRepoService{},
+			TeamsService:         internalauth.MockTeamsService{},
+			UsersService:         internalauth.MockUserService{},
+		}, nil
+	}
+	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return actual, nil
+	}
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--config-dir", "./config",
+		"--check",
+		"--expected-config-identity", identity,
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("reviewed check failed: %v; stderr=%s", err, errBuf.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+	envelope := decodeApplyEnvelope(t, out.Bytes())
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Data, &data); err != nil {
+		t.Fatalf("decode apply check data: %v", err)
+	}
+	var gotIdentity string
+	if err := json.Unmarshal(data["desired_config_identity"], &gotIdentity); err != nil {
+		t.Fatalf("decode desired config identity: %v; data=%s", err, string(envelope.Data))
+	}
+	if gotIdentity != identity {
+		t.Fatalf("unexpected desired config identity: got %q want %q", gotIdentity, identity)
+	}
 }
 
 func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
@@ -139,6 +254,10 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 
 	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
+	expectedIdentity, identityErr := gitopsconfig.DesiredStateIdentity(cfg)
+	if identityErr != nil {
+		t.Fatalf("compute desired config identity: %v", identityErr)
+	}
 	report := &gitopsplan.Report{
 		Organization: "orang-gaboets",
 		Actions: []gitopsplan.Action{
@@ -169,7 +288,10 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--dry-run"})
+	cmd.SetArgs([]string{
+		"--config-dir", "./config", "--token", "secret-token", "--dry-run",
+		"--expected-config-identity", expectedIdentity,
+	})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -186,6 +308,11 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	decodeApplyData(t, envelope.Data, &got)
 	normalizePlanPreviewForCompare(&got)
 	want := previewFromPlan(report)
+	wantIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute expected desired config identity: %v", err)
+	}
+	want.DesiredConfigIdentity = wantIdentity
 	normalizePlanPreviewForCompare(want)
 	if !reflect.DeepEqual(got, *want) {
 		t.Fatalf("unexpected dry-run preview:\n got %#v\nwant %#v", got, *want)
@@ -633,7 +760,7 @@ func TestApplyConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 		return nil, nil
 	}
 
-	_, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply, false, nil)
+	_, _, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply, false, nil, nil)
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -788,7 +915,7 @@ func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
 
 	fixture := setupApplyTemplateOrderingFixture(t)
 
-	result, preview, checkResult, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck, false, nil)
+	result, preview, checkResult, desiredConfigIdentity, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck, false, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -801,6 +928,9 @@ func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
 	if checkResult == nil {
 		t.Fatal("expected check result")
 		return
+	}
+	if desiredConfigIdentity == "" {
+		t.Fatal("expected desired config identity")
 	}
 	gotCheckResult := *checkResult
 	if gotCheckResult.Organization != fixture.desired.Organization {

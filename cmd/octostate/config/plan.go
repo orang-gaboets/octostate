@@ -50,7 +50,7 @@ func PlanConfigCmd() *cobra.Command {
 			if cmd.Flags().Changed("expected-org") {
 				expected = &expectedOrg
 			}
-			report, err := planConfig(
+			report, desiredConfigIdentity, err := planConfig(
 				cmd.Context(),
 				token,
 				appID,
@@ -65,6 +65,7 @@ func PlanConfigCmd() *cobra.Command {
 			}
 			report.Normalize()
 			preview := previewFromPlan(report)
+			preview.DesiredConfigIdentity = desiredConfigIdentity
 			preview.Normalize()
 			return cmdoutput.PrintJSON(cmd, preview)
 		},
@@ -85,30 +86,33 @@ func planConfig(
 	appID, installationID int64,
 	appKeyPath, configDir string,
 	expectedOrg *string,
-) (*gitopsplan.Report, error) {
+) (*gitopsplan.Report, string, error) {
 	cfg, err := loadPlanConfig(strings.TrimSpace(configDir))
 	if err != nil {
-		return nil, invalidConfigPhaseError("load config", err)
+		return nil, "", invalidConfigPhaseError("load config", err)
 	}
 
 	validation := validatePlanConfig(cfg)
 	if !validation.Valid {
-		return nil, exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `octostate config validate`"))
+		return nil, "", exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `octostate config validate`"))
 	}
-
 	organization := strings.TrimSpace(cfg.Organization)
 	if organization == "" {
-		return nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+		return nil, "", fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
 	}
 	if expectedOrg != nil {
 		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
-			return nil, invalidConfigPhaseError("verify expected organization", err)
+			return nil, "", invalidConfigPhaseError("verify expected organization", err)
 		}
+	}
+	desiredConfigIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		return nil, "", invalidConfigPhaseError("compute desired config identity", err)
 	}
 
 	client, err := newPlanClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
-		return nil, runtimePhaseError("create GitHub client", err)
+		return nil, "", runtimePhaseError("create GitHub client", err)
 	}
 
 	actual, err := collectPlanState(ctx, collector.CollectOrganizationOptions{
@@ -118,7 +122,7 @@ func planConfig(
 		TeamService:         client.Teams(),
 	})
 	if err != nil {
-		return nil, runtimePhaseError("collect live GitHub state", err)
+		return nil, "", runtimePhaseError("collect live GitHub state", err)
 	}
 
 	planOptions := gitopsplan.Options{
@@ -133,7 +137,7 @@ func planConfig(
 		report, err = buildPlanReport(ctx, planOptions)
 	}
 	if err != nil {
-		return nil, runtimePhaseError("build reconciliation plan", err)
+		return nil, "", runtimePhaseError("build reconciliation plan", err)
 	}
-	return report, nil
+	return report, desiredConfigIdentity, nil
 }

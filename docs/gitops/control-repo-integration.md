@@ -50,6 +50,13 @@ not in `organization.yaml` or a value read from that file. A mismatch fails
 before Octostate authenticates or contacts GitHub. This assertion is opt-in so
 existing integrations retain their previous behavior.
 
+For review-to-apply binding, capture `desired_config_identity` from the
+reviewed `config plan` output and carry it with the reviewed change through the
+control repo's approval process. Pass that same value to post-merge
+`config apply --expected-config-identity`. The caller owns how the identity is
+stored and associated with approval; Octostate does not persist approvals or
+review records.
+
 ## Expected Outputs
 
 The engine works with a state directory that can hold actual-state snapshots
@@ -65,8 +72,9 @@ Current shipped behavior:
 - `audit pull` writes `state/actual/snapshot.json`
 - `audit diff` reads `state/actual/snapshot.json`
 - `config plan` and `config apply --dry-run` print deterministic JSON to stdout
+- `config plan` includes `desired_config_identity` for the validated effective desired configuration
 - `config apply --check` prints a preflight JSON envelope to stdout
-- `config apply` prints an apply result envelope to stdout
+- `config apply` prints an apply result envelope to stdout, including the loaded desired configuration identity
 
 A control repo may choose to persist additional plan, diff, or event artifacts,
 but that storage policy belongs to the control repo, not this engine.
@@ -82,18 +90,21 @@ A typical control-repo PR workflow is:
 2. `octostate config plan`
    - Run on PR creation or update
    - Uses live GitHub state
-   - Produces deterministic executable/skipped actions for review
+   - Produces deterministic executable/skipped actions and `desired_config_identity` for review
 3. `octostate config apply --check`
    - Run after validation and planning, before human approval
    - Uses live GitHub state and read-only probes
    - Validates the supported apply path without mutating GitHub
+   - May receive the identity from the same plan output with `--expected-config-identity`
 4. Human review
    - Review the config diff, plan output, and check output
    - Approve or reject the PR using the control repo's normal policy
 5. Merge to `main`
    - The merged config becomes desired state
+   - The control repo carries forward the identity associated with the approved change
 6. `octostate config apply`
    - Run after the PR is merged
+   - Pass the carried value with `--expected-config-identity` so changed desired state is rejected before authentication or collection
    - Executes only supported create/update actions against live GitHub
 7. `octostate audit pull`
    - Run when the control repo wants to refresh the stored actual-state snapshot
@@ -111,18 +122,32 @@ PAT stored as a secret rather than the default Actions `GITHUB_TOKEN`.
 For pull requests that change `config/organization.yaml`, a control repo can run:
 
 ```bash
+set -euo pipefail
 export OCTOSTATE_GITHUB_TOKEN="<token>"
 expected_org="<trusted-control-repo-organization>"
 octostate config validate --config-dir ./config
-octostate config plan --config-dir ./config --expected-org "$expected_org"
-octostate config apply --config-dir ./config --expected-org "$expected_org" --check
+plan_output="$(octostate config plan --config-dir ./config --expected-org "$expected_org")"
+printf '%s\n' "$plan_output"
+reviewed_config_identity="$(jq -er '.desired_config_identity' <<<"$plan_output")"
+octostate config apply --config-dir ./config --expected-org "$expected_org" \
+  --expected-config-identity "$reviewed_config_identity" --check
+# Store reviewed_config_identity with this reviewed change using caller policy.
 ```
 
 After the PR is approved and merged, a post-merge workflow can run:
 
 ```bash
-octostate config apply --config-dir ./config --expected-org "$expected_org"
+expected_org="<trusted-control-repo-organization>"
+reviewed_config_identity="<identity carried from the approved review>"
+octostate config apply --config-dir ./config --expected-org "$expected_org" \
+  --expected-config-identity "$reviewed_config_identity"
 ```
+
+Apply reloads and verifies the current desired configuration, then collects
+current GitHub state and builds a fresh plan. It does not require the control
+repo to execute a saved plan, and it does not prevent GitHub state from changing
+after collection. `config apply --check` remains best-effort, non-mutating
+preflight rather than a transaction guarantee.
 
 ## Optional Reusable Configuration-Review Workflow
 

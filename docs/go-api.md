@@ -112,6 +112,59 @@ No expected-organization field belongs in desired configuration. Cross-org
 repository templates remain supported as references, while managed repository
 owners remain subject to organization-local validation.
 
+## Bind apply to a reviewed desired configuration
+
+During review, compute and retain the identity of the validated desired state:
+
+```go
+reviewedIdentity, err := config.DesiredStateIdentity(desired)
+if err != nil {
+	return err
+}
+```
+
+`DesiredStateIdentity` validates the config and hashes the exact canonical
+`config.EncodeYAML` bytes, including their final newline, prefixed by the bytes
+`octostate-config-v1` and one NUL byte. The returned format is
+`octostate-config-v1:sha256:<lowercase hex>`. YAML formatting, comments, and key
+order do not affect identity; list order and presence-aware managed fields do.
+The identity does not include file paths, timestamps, or other filesystem
+metadata.
+
+For a later apply, collect current actual state for that invocation, then use
+the reviewed API:
+
+```go
+options := apply.ReviewedOptions{
+	Desired:                desired,
+	Actual:                 actual, // collected for this invocation
+	ExpectedConfigIdentity: reviewedIdentity,
+	OrganizationService:    client.Organizations(),
+	RepositoryService:      client.Repositories(),
+	TeamService:            client.Teams(),
+	UserService:            client.Users(),
+}
+
+result, err := apply.ExecuteReviewed(ctx, options)
+if err != nil {
+	return err
+}
+```
+
+`CheckReviewed` and `ExecuteReviewed` verify the expected identity before
+planning, accept no caller-supplied plan, and build a fresh plan from the same
+`Desired` and supplied `Actual`. Go callers are responsible for collecting
+`Actual` immediately before the reviewed operation. An optional
+`ExpectedOrganization` field can also bind the target organization. Empty,
+malformed, unsupported-version, and mismatched identities return
+`*config.ExpectedDesiredStateIdentityError`; inspect `Kind` for a stable reason.
+`config.CheckExpectedDesiredStateIdentity` exposes the same assertion for
+callers that need to check locally before another API call. If a caller runs
+`CheckReviewed` before a later `ExecuteReviewed`, it must collect `Actual` again
+for the execution call.
+The existing `apply.Check` and `apply.Execute` APIs retain their previous
+unbound behavior and signatures.
+
 ## Compatibility policy for the `v1` module
 
 Octostate uses one Go module and one release version stream for both its CLI and

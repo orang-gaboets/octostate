@@ -40,15 +40,16 @@ const (
 // ApplyConfigCmd creates the config apply command.
 func ApplyConfigCmd() *cobra.Command {
 	var (
-		token          string
-		appID          int64
-		installationID int64
-		appKeyPath     string
-		configDir      string
-		expectedOrg    string
-		check          bool
-		dryRun         bool
-		requireExec    bool
+		token                  string
+		appID                  int64
+		installationID         int64
+		appKeyPath             string
+		configDir              string
+		expectedOrg            string
+		expectedConfigIdentity string
+		check                  bool
+		dryRun                 bool
+		requireExec            bool
 	)
 
 	cmd := &cobra.Command{
@@ -88,8 +89,12 @@ func ApplyConfigCmd() *cobra.Command {
 			if cmd.Flags().Changed("expected-org") {
 				expected = &expectedOrg
 			}
+			var expectedIdentity *string
+			if cmd.Flags().Changed("expected-config-identity") {
+				expectedIdentity = &expectedConfigIdentity
+			}
 
-			result, preview, checkResult, err := applyConfig(
+			result, preview, checkResult, desiredConfigIdentity, err := applyConfig(
 				cmd.Context(),
 				token,
 				appID,
@@ -99,6 +104,7 @@ func ApplyConfigCmd() *cobra.Command {
 				mode,
 				requireExec,
 				expected,
+				expectedIdentity,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
@@ -109,7 +115,7 @@ func ApplyConfigCmd() *cobra.Command {
 				return cmdoutput.PrintCheck(
 					cmd,
 					fmt.Sprintf("checked %d GitOps reconciliation action(s)", checkResult.PlanSummary.ExecutableActions),
-					checkResult,
+					identifiedCheckResult{DesiredConfigIdentity: desiredConfigIdentity, CheckResult: checkResult},
 				)
 			case applyRunModeDryRun:
 				return cmdoutput.PrintDryRun(
@@ -121,7 +127,7 @@ func ApplyConfigCmd() *cobra.Command {
 				return cmdoutput.PrintSuccess(
 					cmd,
 					fmt.Sprintf("applied %d GitOps reconciliation action(s)", len(result.Executed)),
-					result,
+					identifiedApplyResult{DesiredConfigIdentity: desiredConfigIdentity, Result: result},
 				)
 			}
 		},
@@ -135,6 +141,7 @@ func ApplyConfigCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
 	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live operation")
+	cmd.Flags().StringVar(&expectedConfigIdentity, "expected-config-identity", "", "Require the loaded desired configuration to match the identity reported during review")
 	github.MarkRequiredFlags(cmd, "config-dir")
 
 	return cmd
@@ -148,30 +155,39 @@ func applyConfig(
 	mode applyRunMode,
 	requireExecutable bool,
 	expectedOrg *string,
-) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, error) {
+	expectedIdentity *string,
+) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, string, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
-		return nil, nil, nil, invalidConfigPhaseError("load config", err)
+		return nil, nil, nil, "", invalidConfigPhaseError("load config", err)
 	}
 
 	validation := validateApplyConfig(cfg)
 	if !validation.Valid {
-		return nil, nil, nil, exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `octostate config validate`"))
+		return nil, nil, nil, "", exitcode.New(validateExitCodeInvalidConfig, errors.New("configuration is invalid; run `octostate config validate`"))
 	}
-
 	organization := strings.TrimSpace(cfg.Organization)
 	if organization == "" {
-		return nil, nil, nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
+		return nil, nil, nil, "", fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
 	}
 	if expectedOrg != nil {
 		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
-			return nil, nil, nil, invalidConfigPhaseError("verify expected organization", err)
+			return nil, nil, nil, "", invalidConfigPhaseError("verify expected organization", err)
+		}
+	}
+	desiredConfigIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		return nil, nil, nil, "", invalidConfigPhaseError("compute desired config identity", err)
+	}
+	if expectedIdentity != nil {
+		if err := gitopsconfig.CheckExpectedDesiredStateIdentity(cfg, *expectedIdentity); err != nil {
+			return nil, nil, nil, "", invalidConfigPhaseError("verify expected desired config identity", err)
 		}
 	}
 
 	client, err := newApplyClient(ctx, token, appID, installationID, appKeyPath)
 	if err != nil {
-		return nil, nil, nil, runtimePhaseError("create GitHub client", err)
+		return nil, nil, nil, "", runtimePhaseError("create GitHub client", err)
 	}
 
 	actual, err := collectApplyState(ctx, collector.CollectOrganizationOptions{
@@ -181,7 +197,40 @@ func applyConfig(
 		TeamService:         client.Teams(),
 	})
 	if err != nil {
-		return nil, nil, nil, runtimePhaseError("collect live GitHub state", err)
+		return nil, nil, nil, "", runtimePhaseError("collect live GitHub state", err)
+	}
+
+	if expectedIdentity != nil && mode != applyRunModeDryRun {
+		expectedOrganization := ""
+		if expectedOrg != nil {
+			expectedOrganization = *expectedOrg
+		}
+		reviewedOptions := gitopsapply.ReviewedOptions{
+			Desired:                         cfg,
+			Actual:                          actual,
+			ExpectedConfigIdentity:          *expectedIdentity,
+			ExpectedOrganization:            expectedOrganization,
+			RequireExecutableDesiredActions: requireExecutable,
+			OrganizationService:             client.Organizations(),
+			RepositoryService:               client.Repositories(),
+			TeamService:                     client.Teams(),
+			UserService:                     client.Users(),
+		}
+		if mode == applyRunModeCheck {
+			checkResult, err := gitopsapply.CheckReviewed(ctx, reviewedOptions)
+			if err != nil {
+				return nil, nil, nil, "", runtimePhaseError("run reviewed apply preflight check", err)
+			}
+			checkResult.Normalize()
+			return nil, nil, checkResult, desiredConfigIdentity, nil
+		}
+
+		result, err := gitopsapply.ExecuteReviewed(ctx, reviewedOptions)
+		if err != nil {
+			return nil, nil, nil, "", runtimePhaseError("execute reviewed apply", err)
+		}
+		result.Normalize()
+		return result, nil, nil, desiredConfigIdentity, nil
 	}
 
 	planOptions := gitopsplan.Options{
@@ -196,14 +245,15 @@ func applyConfig(
 		report, err = buildApplyPlan(ctx, planOptions)
 	}
 	if err != nil {
-		return nil, nil, nil, runtimePhaseError("build reconciliation plan", err)
+		return nil, nil, nil, "", runtimePhaseError("build reconciliation plan", err)
 	}
 	report.Normalize()
 
 	if mode == applyRunModeDryRun {
 		preview := previewFromPlan(report)
+		preview.DesiredConfigIdentity = desiredConfigIdentity
 		preview.Normalize()
-		return nil, preview, nil, nil
+		return nil, preview, nil, desiredConfigIdentity, nil
 	}
 
 	applyOptions := gitopsapply.Options{
@@ -224,10 +274,10 @@ func applyConfig(
 			checkResult, err = checkApply(ctx, applyOptions)
 		}
 		if err != nil {
-			return nil, nil, nil, runtimePhaseError("run apply preflight check", err)
+			return nil, nil, nil, "", runtimePhaseError("run apply preflight check", err)
 		}
 		checkResult.Normalize()
-		return nil, nil, checkResult, nil
+		return nil, nil, checkResult, desiredConfigIdentity, nil
 	}
 
 	var result *gitopsapply.Result
@@ -237,8 +287,18 @@ func applyConfig(
 		result, err = executeApply(ctx, applyOptions)
 	}
 	if err != nil {
-		return nil, nil, nil, runtimePhaseError("execute apply plan", err)
+		return nil, nil, nil, "", runtimePhaseError("execute apply plan", err)
 	}
 	result.Normalize()
-	return result, nil, nil, nil
+	return result, nil, nil, desiredConfigIdentity, nil
+}
+
+type identifiedApplyResult struct {
+	DesiredConfigIdentity string `json:"desired_config_identity"`
+	*gitopsapply.Result
+}
+
+type identifiedCheckResult struct {
+	DesiredConfigIdentity string `json:"desired_config_identity"`
+	*gitopsapply.CheckResult
 }
