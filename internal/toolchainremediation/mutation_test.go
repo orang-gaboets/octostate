@@ -60,14 +60,12 @@ func TestApplyCandidateRejectsMalformedGoMod(t *testing.T) {
 		want  string
 	}{
 		{
-			name: "missing toolchain directive",
+			name: "missing go directive",
 			goMod: strings.Join([]string{
 				"module example.com/test",
 				"",
-				"go 1.25.0",
-				"",
 			}, "\n"),
-			want: "missing toolchain directive",
+			want: "missing go directive",
 		},
 		{
 			name: "duplicate go directive",
