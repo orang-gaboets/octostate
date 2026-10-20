@@ -9,15 +9,14 @@
    cd octostate
    ```
 
-2. Install Go 1.25.0 or higher:
+2. Install Go 1.26.9 or higher:
 
    ```bash
    go version
    ```
 
-   The module includes a `toolchain go1.25.13` directive, so Go commands will
-   automatically prefer the patched 1.25.13 toolchain when toolchain switching
-   is enabled.
+   The module's `go 1.26.9` directive implies the `go1.26.9` toolchain.
+   Go commands automatically select it when toolchain switching is enabled.
 
 3. Install module dependencies:
 
@@ -96,11 +95,13 @@ trusted `main`, fetches `origin/main`, and switches to the exact detached
 `origin/main` commit before it runs the classifier or mints any write-capable
 token.
 
-`go.mod` remains the source of truth for the pinned toolchain directive, and
+`go.mod` remains the source of truth for the selected toolchain, and
 this development guide is the designated duplicate maintainer reference for
 that value. The remediation workflow updates only `go.mod` and this file's
 setup section when it proposes a patch-line toolchain bump; it must leave the
-`go` language-version directive unchanged.
+`go` language-version directive unchanged. When no explicit `toolchain`
+directive exists, the helper reads the implicit version from `go` and adds a
+`toolchain` directive for the newer patch.
 
 The remediation workflow pins the vulnerability scanner to
 `golang.org/x/vuln/cmd/govulncheck@v1.5.0` for both the initial and
