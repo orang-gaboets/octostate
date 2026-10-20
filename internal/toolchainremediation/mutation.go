@@ -16,6 +16,10 @@ const developmentDocSnippet = "" +
 	"   automatically prefer the patched %s toolchain when toolchain switching\n" +
 	"   is enabled."
 
+const implicitDevelopmentDocSnippet = "" +
+	"   The module's `go %s` directive implies the `%s` toolchain.\n" +
+	"   Go commands automatically select it when toolchain switching is enabled."
+
 // MutationResult reports the exact files changed by ApplyCandidate.
 type MutationResult struct {
 	CurrentVersion string   `json:"current_version"`
@@ -38,13 +42,13 @@ type goModState struct {
 	toolchainValueHi int
 }
 
-// Directives exposes the validated go and toolchain directives from go.mod.
+// Directives exposes the validated go directive and explicit or implied toolchain.
 type Directives struct {
 	GoDirective      string
 	ToolchainVersion GoVersion
 }
 
-// ApplyCandidate updates only the pinned toolchain directive in go.mod and the
+// ApplyCandidate adds or updates only the toolchain directive in go.mod and the
 // designated documentation snippet that duplicates that version.
 func ApplyCandidate(repoRoot, goModPath, developmentDocPath string, target GoVersion) (MutationResult, error) {
 	repoRoot, goModPath, developmentDocPath, err := resolveApplyPaths(repoRoot, goModPath, developmentDocPath)
@@ -72,7 +76,7 @@ func ApplyCandidate(repoRoot, goModPath, developmentDocPath string, target GoVer
 		return MutationResult{}, err
 	}
 
-	nextGoMod := replaceRange(goModData, state.toolchainValueLo, state.toolchainValueHi, []byte(target.String()))
+	nextGoMod := replaceToolchain(goModData, state, target)
 	nextDoc, err := replaceDevelopmentDocSnippet(docData, state.toolchain, target)
 	if err != nil {
 		return MutationResult{}, err
@@ -164,7 +168,7 @@ func VerifyCandidate(repoRoot, goModPath, developmentDocPath, scanPath string, t
 		return VerificationResult{}, fmt.Errorf("candidate toolchain does not match expected target %s", target.String())
 	}
 
-	expectedGoMod := replaceRange(headGoMod, headState.toolchainValueLo, headState.toolchainValueHi, []byte(target.String()))
+	expectedGoMod := replaceToolchain(headGoMod, headState, target)
 	if !bytes.Equal(workGoMod, expectedGoMod) {
 		return VerificationResult{}, errors.New("unexpected go.mod diff")
 	}
@@ -194,6 +198,7 @@ func parseGoMod(data []byte) (goModState, error) {
 	var state goModState
 	sawGo := false
 	sawToolchain := false
+	goLineEnd := 0
 	offset := 0
 
 	for _, rawLine := range lines {
@@ -219,6 +224,7 @@ func parseGoMod(data []byte) (goModState, error) {
 			}
 			state.goToken = fields[1]
 			state.goVersion = version
+			goLineEnd = offset + len(rawLine)
 			sawGo = true
 		case "toolchain":
 			if sawToolchain {
@@ -248,7 +254,9 @@ func parseGoMod(data []byte) (goModState, error) {
 		return goModState{}, errors.New("missing go directive")
 	}
 	if !sawToolchain {
-		return goModState{}, errors.New("missing toolchain directive")
+		state.toolchain = state.goVersion
+		state.toolchainValueLo = goLineEnd
+		state.toolchainValueHi = goLineEnd
 	}
 
 	return state, nil
@@ -280,12 +288,27 @@ func parseToolchainDirectiveVersion(raw string) (GoVersion, error) {
 
 func replaceDevelopmentDocSnippet(data []byte, current, target GoVersion) ([]byte, error) {
 	oldSnippet := []byte(fmt.Sprintf(developmentDocSnippet, current.String(), numericVersion(current)))
+	implicitSnippet := []byte(fmt.Sprintf(implicitDevelopmentDocSnippet, numericVersion(current), current.String()))
 	newSnippet := []byte(fmt.Sprintf(developmentDocSnippet, target.String(), numericVersion(target)))
-	count := bytes.Count(data, oldSnippet)
+	count := bytes.Count(data, oldSnippet) + bytes.Count(data, implicitSnippet)
 	if count != 1 {
 		return nil, fmt.Errorf("documentation replacement match count = %d, want 1", count)
 	}
+	if bytes.Contains(data, implicitSnippet) {
+		oldSnippet = implicitSnippet
+	}
 	return bytes.Replace(data, oldSnippet, newSnippet, 1), nil
+}
+
+func replaceToolchain(data []byte, state goModState, target GoVersion) []byte {
+	replacement := target.String()
+	if state.toolchainValueLo == state.toolchainValueHi {
+		replacement = "\ntoolchain " + replacement + "\n"
+		if data[state.toolchainValueLo-1] != '\n' {
+			replacement = "\n" + replacement
+		}
+	}
+	return replaceRange(data, state.toolchainValueLo, state.toolchainValueHi, []byte(replacement))
 }
 
 func numericVersion(v GoVersion) string {

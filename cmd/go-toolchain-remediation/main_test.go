@@ -81,6 +81,31 @@ func TestRunPrintsErrorsToStderrOnly(t *testing.T) {
 	}
 }
 
+func TestRunClassifyUsesImplicitToolchain(t *testing.T) {
+	t.Parallel()
+	goModPath := filepath.Join(t.TempDir(), "go.mod")
+	scanPath := filepath.Join(t.TempDir(), "scan.json")
+	writeTestFile(t, goModPath, "module example.com/test\n\ngo 1.25.13\n")
+	writeTestFile(t, scanPath,
+		`{"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.5.0","go_version":"go1.25.13","scan_level":"symbol","scan_mode":"source"}}`+"\n"+
+			`{"finding":{"osv":"GO-2026-0001","fixed_version":"v1.25.14","trace":[{"module":"stdlib","package":"net/http","function":"Serve"}]}}`+"\n")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"classify", "--go-mod", goModPath, "--scan", scanPath}, &stdout, &stderr); code != 0 || stderr.Len() != 0 {
+		t.Fatalf("classify exit %d, stderr %q", code, stderr.String())
+	}
+	var result struct {
+		Eligible       bool   `json:"eligible"`
+		CurrentVersion string `json:"current_version"`
+		TargetVersion  string `json:"target_version"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result.Eligible || result.CurrentVersion != "go1.25.13" || result.TargetVersion != "go1.25.14" {
+		t.Fatalf("unexpected classification: %#v", result)
+	}
+}
+
 func TestRunApplyAndVerifyRoundTrip(t *testing.T) {
 	t.Parallel()
 

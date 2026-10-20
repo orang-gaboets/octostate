@@ -29,6 +29,8 @@ documentation.
 
 ## Upgrading Octostate
 
+- [v1.3.0 compatibility notes](maintainers/v1.3.0-compatibility.md) — the Go
+  version required for source builds and compatible reusable-workflow pins.
 - [v1.2.0 compatibility notes](maintainers/v1.2.0-compatibility.md) — what users
   may need to change in existing configurations, scripts, or integrations when
   upgrading from v1.1.1 to v1.2.0.

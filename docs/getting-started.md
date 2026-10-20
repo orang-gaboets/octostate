@@ -11,7 +11,7 @@ intend to inspect.
 
 ## What you need
 
-- Go 1.25.0 or newer if you build from source, embed Octostate, or develop the
+- Go 1.26.9 or newer if you build from source, embed Octostate, or develop the
   repository. It is not required for normal CLI use from a prebuilt archive.
   The repository’s `go.mod` is the source of truth for the language version;
   the [development guide](maintainers/development.md) explains toolchain
