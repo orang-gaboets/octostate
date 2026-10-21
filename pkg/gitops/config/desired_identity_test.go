@@ -132,6 +132,55 @@ func TestDesiredStateIdentityPreservesManagedFieldPresence(t *testing.T) {
 	}
 }
 
+func TestDesiredStateIdentityTracksManagedRepositoryBooleanChanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		update func(*RepositorySpec)
+	}{
+		{name: "allow_forking", update: func(repo *RepositorySpec) { repo.AllowForking = true }},
+		{name: "archived", update: func(repo *RepositorySpec) { repo.Archived = true }},
+		{name: "is_template", update: func(repo *RepositorySpec) { repo.IsTemplate = true }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "organization.yaml")
+			contents := []byte("organization: orang-gaboets\nrepositories:\n  - name: service\n    visibility: private\n    allow_forking: false\n    archived: false\n    is_template: false\n")
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatalf("write organization config: %v", err)
+			}
+			cfg, err := LoadFile(path)
+			if err != nil {
+				t.Fatalf("load organization config: %v", err)
+			}
+
+			reviewedIdentity, err := DesiredStateIdentity(cfg)
+			if err != nil {
+				t.Fatalf("identify reviewed config: %v", err)
+			}
+			tt.update(&cfg.Repositories[0])
+
+			updatedIdentity, err := DesiredStateIdentity(cfg)
+			if err != nil {
+				t.Fatalf("identify changed config: %v", err)
+			}
+			if updatedIdentity == reviewedIdentity {
+				t.Fatalf("changing managed %s did not change identity %q", tt.name, reviewedIdentity)
+			}
+
+			err = CheckExpectedDesiredStateIdentity(cfg, reviewedIdentity)
+			var identityErr *ExpectedDesiredStateIdentityError
+			if !errors.As(err, &identityErr) || identityErr.Kind != ExpectedDesiredStateIdentityErrorMismatch {
+				t.Fatalf("expected old identity to be rejected after changing %s, got %v", tt.name, err)
+			}
+		})
+	}
+}
+
 func TestDesiredStateIdentityRejectsInvalidConfig(t *testing.T) {
 	t.Parallel()
 

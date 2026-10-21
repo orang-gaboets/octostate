@@ -3,6 +3,8 @@ package apply
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -227,6 +229,62 @@ func TestExecuteReviewedRejectsIdentityMismatchBeforeWrites(t *testing.T) {
 	}
 	if writes != 0 {
 		t.Fatalf("expected no writes after identity mismatch, got %d", writes)
+	}
+}
+
+func TestExecuteReviewedRejectsChangedManagedRepositoryBooleanBeforeWrites(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		update func(*config.RepositorySpec)
+	}{
+		{name: "allow_forking", update: func(repo *config.RepositorySpec) { repo.AllowForking = true }},
+		{name: "archived", update: func(repo *config.RepositorySpec) { repo.Archived = true }},
+		{name: "is_template", update: func(repo *config.RepositorySpec) { repo.IsTemplate = true }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "organization.yaml")
+			contents := []byte("organization: orang-gaboets\nrepositories:\n  - name: service\n    visibility: private\n    allow_forking: false\n    archived: false\n    is_template: false\n")
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatalf("write organization config: %v", err)
+			}
+			desired, err := config.LoadFile(path)
+			if err != nil {
+				t.Fatalf("load organization config: %v", err)
+			}
+			reviewedIdentity, err := config.DesiredStateIdentity(desired)
+			if err != nil {
+				t.Fatalf("identify reviewed config: %v", err)
+			}
+			tt.update(&desired.Repositories[0])
+
+			writes := 0
+			options := reviewedTestOptions(
+				desired,
+				&state.OrganizationState{Organization: "orang-gaboets"},
+				reviewedIdentity,
+			)
+			options.RepositoryService = &testRepoService{
+				createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+					writes++
+					return &gh.Repository{}, nil, nil
+				},
+			}
+
+			_, err = ExecuteReviewed(context.Background(), options)
+			var identityErr *config.ExpectedDesiredStateIdentityError
+			if !errors.As(err, &identityErr) || identityErr.Kind != config.ExpectedDesiredStateIdentityErrorMismatch {
+				t.Fatalf("expected changed %s to reject the reviewed identity, got %v", tt.name, err)
+			}
+			if writes != 0 {
+				t.Fatalf("expected no writes after changing %s, got %d", tt.name, writes)
+			}
+		})
 	}
 }
 
