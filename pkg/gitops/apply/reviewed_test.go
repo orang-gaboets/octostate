@@ -46,6 +46,79 @@ func TestCheckReviewedRejectsIdentityBeforePlanning(t *testing.T) {
 	}
 }
 
+func TestCheckReviewedRejectsWhitespaceExpectedOrganizationBeforePlanning(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Invites: []config.InviteSpec{{
+			UserID: config.OptionalInt64{Present: true, Value: 123},
+			Role:   "direct_member",
+		}},
+	}
+	identity, err := config.DesiredStateIdentity(desired)
+	if err != nil {
+		t.Fatalf("compute desired identity: %v", err)
+	}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		PendingInvitations: []state.PendingInvitation{{
+			ID: 10, Username: "octocat", Role: "direct_member",
+		}},
+	}
+	userLookups := 0
+	options := reviewedTestOptions(desired, actual, identity)
+	options.ExpectedOrganization = " \t "
+	options.UserService = &testUserService{
+		getByIDFunc: func(context.Context, int64) (*gh.User, *gh.Response, error) {
+			userLookups++
+			return &gh.User{Login: gh.Ptr("octocat")}, nil, nil
+		},
+	}
+
+	_, err = CheckReviewed(context.Background(), options)
+	var expectedOrgErr *config.ExpectedOrganizationError
+	if !errors.As(err, &expectedOrgErr) || expectedOrgErr.Kind != config.ExpectedOrganizationErrorMissingExpected {
+		t.Fatalf("expected missing expected-organization error, got %v", err)
+	}
+	if userLookups != 0 {
+		t.Fatalf("planner ran before expected-organization validation: user lookups=%d", userLookups)
+	}
+}
+
+func TestExecuteReviewedRejectsWhitespaceExpectedOrganizationBeforeWrites(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Name: "service", Visibility: "private",
+		}},
+	}
+	identity, err := config.DesiredStateIdentity(desired)
+	if err != nil {
+		t.Fatalf("compute desired identity: %v", err)
+	}
+	writes := 0
+	options := reviewedTestOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, identity)
+	options.ExpectedOrganization = " \t "
+	options.RepositoryService = &testRepoService{
+		createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			writes++
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err = ExecuteReviewed(context.Background(), options)
+	var expectedOrgErr *config.ExpectedOrganizationError
+	if !errors.As(err, &expectedOrgErr) || expectedOrgErr.Kind != config.ExpectedOrganizationErrorMissingExpected {
+		t.Fatalf("expected missing expected-organization error, got %v", err)
+	}
+	if writes != 0 {
+		t.Fatalf("expected no writes after expected-organization validation failure, got %d", writes)
+	}
+}
+
 func TestCheckReviewedBuildsFreshPlanFromProvidedActualState(t *testing.T) {
 	t.Parallel()
 

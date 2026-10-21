@@ -57,7 +57,7 @@ func buildReviewedApplyOptions(ctx context.Context, opt ReviewedOptions) (Option
 	if err := config.CheckExpectedDesiredStateIdentity(opt.Desired, opt.ExpectedConfigIdentity); err != nil {
 		return Options{}, err
 	}
-	if strings.TrimSpace(opt.ExpectedOrganization) != "" {
+	if opt.ExpectedOrganization != "" {
 		if err := config.CheckExpectedOrganization(opt.Desired.Organization, opt.ExpectedOrganization); err != nil {
 			return Options{}, err
 		}
