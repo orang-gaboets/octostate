@@ -198,6 +198,38 @@ func TestExecuteReviewedBuildsFreshPlanAndExecutesIt(t *testing.T) {
 	}
 }
 
+func TestExecuteReviewedRejectsIdentityMismatchBeforeWrites(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{{
+			Name: "service", Visibility: "private",
+		}},
+	}
+	writes := 0
+	options := reviewedTestOptions(
+		desired,
+		&state.OrganizationState{Organization: "orang-gaboets"},
+		"octostate-config-v1:sha256:"+strings.Repeat("0", 64),
+	)
+	options.RepositoryService = &testRepoService{
+		createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			writes++
+			return &gh.Repository{}, nil, nil
+		},
+	}
+
+	_, err := ExecuteReviewed(context.Background(), options)
+	var identityErr *config.ExpectedDesiredStateIdentityError
+	if !errors.As(err, &identityErr) || identityErr.Kind != config.ExpectedDesiredStateIdentityErrorMismatch {
+		t.Fatalf("expected desired-state identity mismatch, got %v", err)
+	}
+	if writes != 0 {
+		t.Fatalf("expected no writes after identity mismatch, got %d", writes)
+	}
+}
+
 func reviewedTestOptions(desired config.OrganizationConfig, actual *state.OrganizationState, identity string) ReviewedOptions {
 	return ReviewedOptions{
 		Desired:                desired,
