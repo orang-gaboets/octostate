@@ -55,7 +55,10 @@ reviewed `config plan` output and carry it with the reviewed change through the
 control repo's approval process. Pass that same value to post-merge
 `config apply --expected-config-identity`. The caller owns how the identity is
 stored and associated with approval; Octostate does not persist approvals or
-review records.
+review records. The identity covers desired configuration only; it does not
+attest to Octostate's planner semantics. Pin compatible Octostate versions for
+review and post-merge apply, and handle engine upgrades as reviewed integration
+changes.
 
 ## Expected Outputs
 
