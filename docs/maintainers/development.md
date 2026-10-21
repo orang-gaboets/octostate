@@ -9,13 +9,13 @@
    cd octostate
    ```
 
-2. Install Go 1.26.9 or higher:
+2. Install Go 1.26.10 or higher:
 
    ```bash
    go version
    ```
 
-   The module's `go 1.26.9` directive implies the `go1.26.9` toolchain.
+   The module's `go 1.26.10` directive implies the `go1.26.10` toolchain.
    Go commands automatically select it when toolchain switching is enabled.
 
 3. Install module dependencies:

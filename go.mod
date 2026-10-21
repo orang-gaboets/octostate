@@ -1,6 +1,6 @@
 module github.com/orang-gaboets/octostate
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.19.0

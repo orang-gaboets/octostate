@@ -16,7 +16,7 @@ treated as interchangeable:
 | Develop Octostate itself | `git clone https://github.com/orang-gaboets/octostate.git` | Obtains the repository for contributor development |
 
 Starting with v1.3.0, source installation, embedding, and repository development
-require Go 1.26.9 or newer. See the
+require Go 1.26.10 or newer. See the
 [v1.3.0 compatibility notes](maintainers/v1.3.0-compatibility.md) for upgrade
 guidance. Prebuilt CLI archives do not require a Go installation.
 
