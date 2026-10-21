@@ -25,6 +25,22 @@ type applyTemplateRepoService struct {
 	internalauth.MockRepoService
 }
 
+type applyReviewedRepoService struct {
+	internalauth.MockRepoService
+	createdRepositories []string
+	deletedRepositories []string
+}
+
+func (s *applyReviewedRepoService) Create(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	s.createdRepositories = append(s.createdRepositories, owner+"/"+repository.GetName())
+	return repository, nil, nil
+}
+
+func (s *applyReviewedRepoService) Delete(_ context.Context, owner, repository string) (*gh.Response, error) {
+	s.deletedRepositories = append(s.deletedRepositories, owner+"/"+repository)
+	return &gh.Response{}, nil
+}
+
 func (s applyTemplateRepoService) Get(_ context.Context, _, repo string) (*gh.Repository, *gh.Response, error) {
 	switch repo {
 	case "zzz-template":
@@ -246,6 +262,98 @@ func TestApplyConfigCmdReviewedCheckReturnsDesiredIdentity(t *testing.T) {
 	}
 	if gotIdentity != identity {
 		t.Fatalf("unexpected desired config identity: got %q want %q", gotIdentity, identity)
+	}
+}
+
+func TestApplyConfigCmdReviewedLiveApplyIncludesFreshPlanAndSkippedDrift(t *testing.T) {
+	restoreApplyHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []gitopsconfig.RepositorySpec{{
+			Name: "service", Visibility: "private",
+		}},
+	}
+	identity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute desired config identity: %v", err)
+	}
+	actual := &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{
+			Owner: "orang-gaboets", Name: "orphan", Visibility: "private",
+		}},
+	}
+	repoService := &applyReviewedRepoService{}
+	collectionCalls := 0
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+		return internalauth.MockClient{
+			OrganizationsService: internalauth.MockOrganizationService{},
+			ReposService:         repoService,
+			TeamsService:         internalauth.MockTeamsService{},
+			UsersService:         internalauth.MockUserService{},
+		}, nil
+	}
+	collectApplyState = func(_ context.Context, options collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		collectionCalls++
+		if options.OrgName != "orang-gaboets" {
+			t.Fatalf("unexpected collection organization %q", options.OrgName)
+		}
+		return actual, nil
+	}
+
+	cmd := ApplyConfigCmd()
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{
+		"--config-dir", "./config",
+		"--expected-config-identity", identity,
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("reviewed live apply failed: %v; stderr=%s", err, errBuf.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errBuf.String())
+	}
+	if collectionCalls != 1 {
+		t.Fatalf("expected one fresh live-state collection, got %d", collectionCalls)
+	}
+
+	envelope := decodeApplyEnvelope(t, out.Bytes())
+	if envelope.Status != string(cmdoutput.OperationResultStatusSuccess) {
+		t.Fatalf("unexpected status: got %q want %q", envelope.Status, cmdoutput.OperationResultStatusSuccess)
+	}
+	var outputData map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Data, &outputData); err != nil {
+		t.Fatalf("decode apply data: %v", err)
+	}
+	var gotIdentity string
+	if err := json.Unmarshal(outputData["desired_config_identity"], &gotIdentity); err != nil {
+		t.Fatalf("decode desired config identity: %v", err)
+	}
+	if gotIdentity != identity {
+		t.Fatalf("unexpected desired config identity: got %q want %q", gotIdentity, identity)
+	}
+	var result gitopsapply.Result
+	decodeApplyData(t, envelope.Data, &result)
+	result.Normalize()
+	if len(result.Executed) != 1 || result.Executed[0].ResourceID != "orang-gaboets/service" || result.Executed[0].Operation != gitopsplan.ActionOperationCreate {
+		t.Fatalf("expected the freshly planned service create, got %#v", result.Executed)
+	}
+	if len(result.SkippedDrift) != 1 || result.SkippedDrift[0].ResourceID != "orang-gaboets/orphan" || result.SkippedDrift[0].Operation != gitopsplan.ActionOperationDelete || result.SkippedDrift[0].Executable {
+		t.Fatalf("expected orphan repository delete to remain skipped drift, got %#v", result.SkippedDrift)
+	}
+	if !reflect.DeepEqual(repoService.createdRepositories, []string{"orang-gaboets/service"}) {
+		t.Fatalf("unexpected repository creates: %#v", repoService.createdRepositories)
+	}
+	if len(repoService.deletedRepositories) != 0 {
+		t.Fatalf("unsupported destructive drift must not be deleted: %#v", repoService.deletedRepositories)
 	}
 }
 
