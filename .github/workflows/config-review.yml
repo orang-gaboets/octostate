@@ -19,7 +19,7 @@ on:
         default: false
         type: boolean
       octostate_version:
-        description: Octostate release tag or full commit SHA to install
+        description: Reviewed full 40-character lowercase Octostate commit SHA to build
         required: true
         type: string
     secrets:
@@ -58,15 +58,37 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "$OCTOSTATE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ && ! "$OCTOSTATE_VERSION" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "octostate_version must be a release tag or full 40-character commit SHA" >&2
+          if [[ ! "$OCTOSTATE_VERSION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "octostate_version must be a full 40-character lowercase commit SHA; release tags are not accepted" >&2
+            exit 1
+          fi
+
+          source_dir="$(mktemp -d "$RUNNER_TEMP/octostate-source.XXXXXX")"
+          trap 'rm -rf -- "$source_dir"' EXIT
+          git -C "$source_dir" init --quiet
+          git -C "$source_dir" fetch --quiet --depth=1 --no-tags \
+            https://github.com/orang-gaboets/octostate.git "$OCTOSTATE_VERSION"
+          git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
+          if [[ "$(git -C "$source_dir" rev-parse HEAD)" != "$OCTOSTATE_VERSION" ]]; then
+            echo "Octostate source commit does not match octostate_version" >&2
             exit 1
           fi
 
           mkdir -p "$OCTOSTATE_BIN_DIR"
-          GOBIN="$OCTOSTATE_BIN_DIR" go install "github.com/orang-gaboets/octostate/cmd/octostate@${OCTOSTATE_VERSION}"
-          echo "$OCTOSTATE_BIN_DIR" >> "$GITHUB_PATH"
-          go version -m "$OCTOSTATE_BIN_DIR/octostate"
+          (
+            cd "$source_dir"
+            GOWORK=off go build -mod=readonly -buildvcs=true \
+              -o "$OCTOSTATE_BIN_DIR/octostate" ./cmd/octostate
+          )
+          build_info="$(go version -m "$OCTOSTATE_BIN_DIR/octostate")"
+          binary_revision="$(awk '$1 == "build" && sub(/^vcs.revision=/, "", $2) { print $2 }' <<< "$build_info")"
+          binary_modified="$(awk '$1 == "build" && sub(/^vcs.modified=/, "", $2) { print $2 }' <<< "$build_info")"
+          if [[ "$binary_revision" != "$OCTOSTATE_VERSION" || "$binary_modified" != "false" ]]; then
+            echo "Octostate binary must identify the requested commit and an unmodified source tree" >&2
+            exit 1
+          fi
+          printf 'Verified Octostate source commit: %s\n%s\n' "$OCTOSTATE_VERSION" "$build_info" >&2
+          printf '%s\n' "$OCTOSTATE_BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Validate configuration
         env:
@@ -85,14 +107,14 @@ jobs:
       - name: Plan configuration
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
-          OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          OCTOSTATE_GITHUB_TOKEN: ${{ secrets.octostate_token }}
           EXPECTED_ORG: ${{ inputs.expected_org }}
           BIND_EXPECTED_ORG: ${{ inputs.bind_expected_org }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "$OCTOSTATE_TOKEN" ]]; then
+          if [[ -z "$OCTOSTATE_GITHUB_TOKEN" ]]; then
             echo "octostate_token is required for config plan" >&2
             exit 1
           fi
@@ -106,19 +128,19 @@ jobs:
             set -- --expected-org "$EXPECTED_ORG"
           fi
 
-          octostate config plan --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" "$@"
+          octostate config plan --config-dir "$CONFIG_DIR" "$@"
 
       - name: Preflight configuration apply
         env:
           CONFIG_DIR: ${{ inputs.config_dir }}
-          OCTOSTATE_TOKEN: ${{ secrets.octostate_token }}
+          OCTOSTATE_GITHUB_TOKEN: ${{ secrets.octostate_token }}
           EXPECTED_ORG: ${{ inputs.expected_org }}
           BIND_EXPECTED_ORG: ${{ inputs.bind_expected_org }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ -z "$OCTOSTATE_TOKEN" ]]; then
+          if [[ -z "$OCTOSTATE_GITHUB_TOKEN" ]]; then
             echo "octostate_token is required for config apply --check" >&2
             exit 1
           fi
@@ -132,4 +154,4 @@ jobs:
             set -- --expected-org "$EXPECTED_ORG"
           fi
 
-          octostate config apply --config-dir "$CONFIG_DIR" --token "$OCTOSTATE_TOKEN" --check "$@"
+          octostate config apply --config-dir "$CONFIG_DIR" --check "$@"

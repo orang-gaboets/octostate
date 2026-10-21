@@ -161,7 +161,7 @@ jobs:
       contents: read
     with:
       config_dir: ./config
-      octostate_version: <release-or-40-character-commit-with-expected-org>
+      octostate_version: <reviewed-40-character-cli-commit-with-expected-org>
       bind_expected_org: true
       expected_org: ${{ vars.OCTOSTATE_EXPECTED_ORG }}
     secrets:
@@ -175,14 +175,38 @@ unset variable supplies an empty string and causes the
 live review steps to fail. The immutable commit reference selects the reusable
 workflow file. The `octostate_version` input selects the CLI installed by that
 workflow; the two pins are independent and must be kept at compatible, trusted
-revisions. The input accepts a release-style tag such as `v1.2.0` or a full
-40-character commit SHA. Branch names and `latest` are rejected. Use an
-immutable commit SHA for the strongest reproducibility, and use a release tag
-only when the repository's normal release process is the intended compatibility
-boundary.
+revisions. The input accepts only a full 40-character lowercase hexadecimal
+commit SHA. Release tags, branches, abbreviated SHAs, and `latest` are rejected.
+The caller must review and trust the selected commit; immutability identifies
+the source and does not establish that its code is trustworthy.
+
+The workflow fetches that commit from the fixed Octostate repository into a
+fresh runner temporary directory, verifies the detached Git checkout, and
+builds the CLI there with caller Go workspaces disabled. Before exposing the
+binary through `PATH`, it checks that the binary's embedded Git revision
+matches the input and that its source tree was unmodified. The verified SHA
+and build metadata are printed as diagnostics. Fetch, build, or identity
+verification failures stop the job before live review operations.
 The selected CLI revision must build with Go `1.26.9`; the workflow sets
 `GOTOOLCHAIN=local`, so an incompatible revision fails during installation
 instead of downloading a newer toolchain automatically.
+
+### Migrating existing workflow callers
+
+This narrows the earlier tag-or-SHA input contract. When upgrading the workflow
+pin, replace a tag-valued `octostate_version` with the full commit SHA of the
+release you intend to use, review that commit, and pin it explicitly. Existing
+full-SHA callers keep the same input shape. Callers pinned to an earlier
+workflow commit retain that revision's contract until they upgrade.
+
+The reusable workflow was introduced after v1.2.0 and has not yet appeared in a
+published release. This migration also applies to consumers already using an
+unreleased workflow commit. Workflow and CLI pins remain independent; choose
+compatible revisions for both.
+
+The selected CLI commit must support `OCTOSTATE_GITHUB_TOKEN` authentication,
+introduced in commit `3aa4a21b4851d38c64eb9160b467e427aac5c2c2`. Older
+revisions requiring `--token` are incompatible with the updated workflow.
 
 ### Contract and safety boundaries
 
@@ -195,9 +219,11 @@ instead of downloading a newer toolchain automatically.
   `expected_org` without the binding switch fails instead of silently running
   unbound. The CLI revision selected by
   `octostate_version` must support `--expected-org` when binding is enabled.
-- `octostate_token` is required and is passed explicitly as `--token` only to
-  the live plan and preflight steps. It may be a PAT or a pre-created GitHub
-  App installation token; this workflow does not mint credentials or accept a
+- `octostate_token` remains the required caller secret. It is mapped to
+  `OCTOSTATE_GITHUB_TOKEN` only in the live plan and preflight steps; it is
+  absent during installation and offline validation and is never expanded into
+  Octostate's command arguments. It may be a PAT or a pre-created GitHub App
+  installation token; this workflow does not mint credentials or accept a
   private key.
 - The caller-supplied token must have the organization, repository, team, and
   other read/preflight capabilities needed by the declared configuration.
@@ -206,10 +232,10 @@ instead of downloading a newer toolchain automatically.
   `GITHUB_TOKEN` permission set supplied by the caller.
 - The workflow's `contents: read` permission controls its automatic repository
   token and does not reduce or expand the separate caller-supplied token.
-- Use a short-lived, least-privilege token. Because the current CLI accepts
-  authentication through `--token`, the token can be visible to process
-  inspection on a shared runner even though it is not echoed or persisted by
-  this workflow.
+- Use a short-lived, least-privilege token. Environment authentication removes
+  the token from process arguments, but a compromised runner can still read or
+  use the credential. The workflow does not print it or persist it in artifacts
+  or repository files.
 - The caller owns triggers, trusted refs, fork-PR handling, approvals, branch
   protection, environments, notifications, and any later live apply. Do not
   check out an untrusted pull-request head while exposing
