@@ -53,21 +53,9 @@ jobs:
       - name: Test workflow Action pin checker
         run: ruby .github/scripts/check-action-pins.test.rb
 
-      - name: Select upstream commit for config review smoke test
-        id: config-review-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          sha="$(git ls-remote https://github.com/orang-gaboets/octostate.git refs/heads/main | awk 'NR == 1 { print $1 }')"
-          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "could not resolve upstream main to a full commit SHA" >&2
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Test reusable config review
         env:
-          CONFIG_REVIEW_REAL_SOURCE_SMOKE_SHA: ${{ steps.config-review-source.outputs.sha }}
+          CONFIG_REVIEW_REAL_SOURCE_SMOKE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
         run: ruby .github/scripts/config-review.test.rb
 
       - name: Validate pinned GitHub App action inputs
