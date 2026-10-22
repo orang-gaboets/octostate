@@ -259,6 +259,10 @@ release_approval_gate_initial() {
 release_gate_validate_live_state() {
   local validation_status=0
 
+  if ! jq -e '.state == "open"' <<<"$RELEASE_GATE_PR_JSON" >/dev/null; then
+    echo "Release PR is not open; merge is aborted." >&2
+    validation_status=1
+  fi
   if ! jq -e --arg expected "$EXPECTED_BASE_BRANCH" '.base.ref == $expected' <<<"$RELEASE_GATE_PR_JSON" >/dev/null; then
     echo "Release PR base branch changed; merge is aborted." >&2
     validation_status=1

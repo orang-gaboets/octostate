@@ -327,7 +327,7 @@ an authorized maintainer.
 - Unauthorized approval attempts leave a PR comment from the release-please app bot
 - If `release-please` updates the PR head after approval, the stale configured approval label is removed and must be re-applied
 - The workflow requires both the configured approval label and `autorelease: pending` before merging
-- After the required release checks finish, the workflow fetches the live PR again and validates its base, head repository and branch, draft state, bot author, exact event head SHA, and both required labels
+- After the required release checks finish, the workflow fetches the live PR again and validates its open state, base, head repository and branch, draft state, bot author, exact event head SHA, and both required labels
 - Only a successful final validation finalizes publisher approval for that exact head SHA; the workflow records `authorization_finalized=true` and `authorized_head_sha` as step outputs
 - The merge step requires the finalization output and passes `authorized_head_sha` to `gh pr merge --match-head-commit`
 - The final live read and merge API request are separate operations; they do not provide atomic label revocation
@@ -369,6 +369,81 @@ The configured GitHub App must be able to:
 Keep the release-please app in the `main-protection` ruleset bypass list before
 relying on this workflow; otherwise the direct merge can still fail with
 `REVIEW_REQUIRED`.
+
+### Actions event policy
+
+The release auto-merge workflow uses `pull_request_target` so its workflow
+definition and checked-out helpers come from the trusted base repository while
+it evaluates PR lifecycle events and uses the Release Please GitHub App. Keep
+the workflow's trusted checkout, token scope, actor and repository checks,
+approval and lifecycle checks, live-state revalidation, and exact-head-SHA
+merge guard intact.
+
+GitHub's default Actions event policy blocks `pull_request_target` for affected
+public repositories that do not have an applicable explicit event policy.
+Runs continue while the default is in evaluation mode; the scheduled
+enforcement date is November 2, 2026. Check the effective settings for this
+repository rather than assuming the default applies or that another policy
+overrides it. See GitHub's guidance on the
+[`pull_request_target` default](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
+
+`pull_request` is not a safe drop-in replacement for this privileged workflow:
+GitHub runs the workflow definition from the PR merge commit. A PR could change
+that definition and alter how the App credential is handled before the release
+actor check, which currently occurs after token generation. A `workflow_run`
+design could separate unprivileged PR work from a trusted privileged consumer,
+but it would need to relay the label action and actor, PR identity, and head
+SHA, then re-read and validate live PR state before any merge. The relay and
+untrusted event data add a second workflow boundary and state-transfer logic.
+GitHub also warns that artifacts from an earlier workflow may contain
+untrusted data, so the privileged consumer could not treat a relayed artifact
+as authoritative approval or execute its contents.
+For this workflow, retaining `pull_request_target` with a narrow event policy
+is the simpler design that preserves the current release checks. Reconsider
+this decision if the workflow's trust or credential model changes.
+
+Keep an **active** repository Actions workflow execution policy with both of
+these conditions:
+
+- Workflow path: `.github/workflows/automerge-release-please.yml`
+- Allowed event: `pull_request_target`
+
+The exception must cover this workflow path only. Do not allow
+`pull_request_target` organization-wide. Actions policies can also apply at
+organization and enterprise levels, so verify the effective policy at every
+applicable level. The repository policy list can include inherited policies
+with `has_parents=true`; see the [Actions policies REST API](https://docs.github.com/en/rest/actions/policies#list-repository-actions-policies).
+
+To verify the policy, open **Repository Settings → Actions → Policies** and
+confirm that the rule is active, targets the workflow path above, and allows
+`pull_request_target`. Review any applicable organization or enterprise rules
+as well. GitHub runs workflow execution policies in layers; a higher-level
+policy can still restrict the event. Also confirm the workflow still uses the
+trusted checkout and release gates described above.
+
+If a run is blocked, GitHub reports that the event is not allowed for the
+workflow path. Identify which applicable policy scope blocks the event and
+have an admin for that scope correct it. Keep any exception scoped to this
+repository and workflow path; if the restricting scope cannot support a narrow
+exception, keep auto-merge blocked and reassess the event design. After the
+change, verify the effective policy across all applicable scopes. Do not
+remove the workflow's release checks or broaden the event allowance to recover
+auto-merge. Let the next legitimate release PR event exercise the corrected
+policy. A policy change does not create a new event for an existing PR. If a
+release PR was blocked, first confirm the effective policy and inspect the live
+PR to ensure it remains eligible and still has `autorelease: pending`. Then an
+authorized publisher can remove and reapply the configured approval label to
+trigger a fresh `labeled` event and rerun the gate. Leave `autorelease: pending`
+in place.
+
+When Policy Insights is available, review whether this workflow is reported as
+affected by an event policy. If Insights is unavailable, record that
+limitation, the repository visibility, the effective repository and inherited
+policy settings, and the workflow trigger. Use GitHub's documented default
+policy to explain the impact, and label that conclusion as an inference rather
+than a Policy Insights result. See GitHub's guidance on
+[`pull_request_target`](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)
+and [workflow execution protections](https://docs.github.com/en/actions/how-tos/administer/control-workflow-execution).
 
 ## Release Approval Recovery
 

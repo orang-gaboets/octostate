@@ -167,6 +167,7 @@ write_pr() {
   local draft="${5:-false}"
   local author="${6:-app/orang-gaboets-release-please}"
   local head_sha="${7:-head-sha}"
+  local state="${8:-open}"
 
   jq -n \
     --arg base "$base" \
@@ -175,8 +176,9 @@ write_pr() {
     --argjson draft "$draft" \
     --arg author "$author" \
     --arg head_sha "$head_sha" \
+    --arg state "$state" \
     --argjson labels "$labels" \
-    '{base:{ref:$base},head:{ref:$head_ref,repo:{full_name:$head_repo},sha:$head_sha},draft:$draft,user:{login:$author},labels:$labels}' \
+    '{state:$state,base:{ref:$base},head:{ref:$head_ref,repo:{full_name:$head_repo},sha:$head_sha},draft:$draft,user:{login:$author},labels:$labels}' \
     > "$PR_FIXTURE"
 }
 
@@ -365,6 +367,7 @@ assert_final_reject 'head repository' main 'release-please--branches--main' 'oth
 assert_final_reject 'draft state' main 'release-please--branches--main' 'orang-gaboets/octostate' true
 assert_final_reject 'author' main 'release-please--branches--main' 'orang-gaboets/octostate' false 'someone-else'
 assert_final_reject 'head SHA' main 'release-please--branches--main' 'orang-gaboets/octostate' false 'app/orang-gaboets-release-please' other-sha
+assert_final_reject 'closed PR state' main 'release-please--branches--main' 'orang-gaboets/octostate' false 'app/orang-gaboets-release-please' head-sha closed
 
 # The merge wrapper receives only the SHA finalized by the live-state gate,
 # and its command failure must remain a workflow failure.
