@@ -50,7 +50,7 @@ The complete newcomer walkthrough, including a fuller example, is in
 
 ## Install
 
-Go 1.26.9 or newer is required only when installing from source with `go
+Go 1.26.10 or newer is required only when installing from source with `go
 install`, embedding Octostate in a Go program, or developing the repository. It
 is not required for normal CLI use from a prebuilt archive.
 
