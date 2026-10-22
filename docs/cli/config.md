@@ -33,6 +33,18 @@ invalid, or mismatched value fails before authentication, collection, preflight,
 or GitHub writes; the command prints no success result and returns exit code
 `2`. Omitting the flag preserves the previous unbound behavior for compatibility.
 This is a runtime assertion, not a desired-state schema field.
+
+`config plan` also prints `desired_config_identity`, a versioned identity of the
+validated effective configuration. Pass the identity captured from the
+reviewed plan to `config apply --expected-config-identity` to require that the
+loaded configuration is still the one reviewed. The identity ignores YAML
+formatting, comments, and key order after loading and normalization; list order
+and presence-aware field values remain significant.
+Its format is `octostate-config-v1:sha256:<64 lowercase hex>` and it hashes the
+canonical bytes emitted by the config encoder with a versioned domain prefix.
+When the flag is explicitly supplied, blank, malformed, unsupported-version,
+or mismatched values fail with exit code `2`, a stderr diagnostic, and no
+success JSON on stdout.
 `sync-from-live` already selects its live target through caller-supplied `--org`;
 offline validation and snapshot comparison do not authenticate to a live
 organization.
@@ -308,6 +320,7 @@ Behavior:
 
 Plan preview fields:
 - `organization`
+- `desired_config_identity`
 - `plan_summary`
 - `executable_actions`
 - `skipped_actions`
@@ -341,6 +354,7 @@ octostate config apply --config-dir ./config
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--expected-org`: Independently expected organization for check, dry-run, or live apply
+- `--expected-config-identity`: Require the loaded desired configuration to match the identity captured during review
 - `--check`: Run apply preflight validation without mutating GitHub
 - `--require-executable`: Fail when a desired create or update cannot be executed. Cannot be combined with `--dry-run`, which never evaluates the requirement
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
@@ -352,9 +366,10 @@ Flags:
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
+- Computes the desired configuration identity and verifies `--expected-config-identity`, when supplied, before authentication or live collection. Blank, malformed, unsupported-version, or mismatched values stop before planning or GitHub writes. Omitting the flag preserves the prior behavior.
 - Verifies `--expected-org`, when supplied, before authentication or live collection in all apply modes
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
-- Builds the deterministic reconciliation plan used by `config apply`
+- Builds the deterministic reconciliation plan from current live state. Guarded check and live apply rebuild it internally from the same desired config whose identity was verified; apply does not execute a saved stale plan.
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub
 - `--check` uses read-only GitHub probes for supported apply targets, including template repositories, repository update targets, team update targets, username-based invites, invitation team slugs, and team repository permission targets
 - `--check` inherits the same repository dependency gate for team repository permission targets, so a permission is only preflighted when its repository already exists or is created earlier in the same plan
@@ -375,6 +390,7 @@ Behavior:
 Check output fields:
 - `status`
 - `message`
+- `data.desired_config_identity`
 - `data.organization`
 - `data.plan_summary`
 - `data.checked_actions`
@@ -383,6 +399,7 @@ Check output fields:
 Dry-run output fields:
 - `status`
 - `message`
+- `data.desired_config_identity`
 - `data.organization`
 - `data.plan_summary`
 - `data.executable_actions`
@@ -391,6 +408,7 @@ Dry-run output fields:
 Live apply output fields:
 - `status`
 - `message`
+- `data.desired_config_identity`
 - `data.organization`
 - `data.plan_summary`
 - `data.executed_actions`
@@ -425,13 +443,21 @@ planning.
 
 Exit codes:
 - `0`: apply, check, or dry-run completed successfully
-- `2`: configuration semantic validation or expected-organization assertion failed, or mutually exclusive apply flags were used
+- `2`: configuration semantic validation, expected-organization assertion, or expected-config-identity assertion failed, or mutually exclusive apply flags were used
 - `1`: load/auth/collection/planning/check/apply failure
 
 Example check:
 
 ```bash
 octostate config apply --config-dir ./config --expected-org orang-gaboets --check
+```
+
+Guard a post-approval apply with the identity emitted by the reviewed plan:
+
+```bash
+octostate config apply --config-dir ./config \
+  --expected-org orang-gaboets \
+  --expected-config-identity "$reviewed_config_identity"
 ```
 
 Example dry-run:

@@ -9,10 +9,11 @@ import (
 // planPreview is the command-layer Terraform-style split view used by
 // `config plan` and `config apply --dry-run`.
 type planPreview struct {
-	Organization      string              `json:"organization"`
-	PlanSummary       gitopsplan.Summary  `json:"plan_summary"`
-	ExecutableActions []gitopsplan.Action `json:"executable_actions"`
-	SkippedActions    []gitopsplan.Action `json:"skipped_actions"`
+	Organization          string              `json:"organization"`
+	DesiredConfigIdentity string              `json:"desired_config_identity"`
+	PlanSummary           gitopsplan.Summary  `json:"plan_summary"`
+	ExecutableActions     []gitopsplan.Action `json:"executable_actions"`
+	SkippedActions        []gitopsplan.Action `json:"skipped_actions"`
 }
 
 func (p *planPreview) Normalize() {
