@@ -381,10 +381,10 @@ merge guard intact.
 
 GitHub's default Actions event policy blocks `pull_request_target` for affected
 public repositories that do not have an applicable explicit event policy.
-Runs continue while the default is in evaluation mode; the scheduled
-enforcement date is November 2, 2026. Check the effective settings for this
-repository rather than assuming the default applies or that another policy
-overrides it. See GitHub's guidance on the
+Runs continue while the default is in evaluation mode; see GitHub's linked
+guidance for the current enforcement schedule. Check the effective settings
+for this repository rather than assuming the default applies or that another
+policy overrides it. See GitHub's guidance on the
 [`pull_request_target` default](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
 
 `pull_request` is not a safe drop-in replacement for this privileged workflow:
