@@ -14,6 +14,7 @@ import (
 	gh "github.com/google/go-github/v88/github"
 
 	"github.com/orang-gaboets/octostate/internal/contributors"
+	"github.com/orang-gaboets/octostate/internal/pagination"
 )
 
 func main() {
@@ -80,7 +81,10 @@ func fetch(ctx context.Context, owner, name string) ([]contributors.Contributor,
 	if err != nil {
 		return nil, fmt.Errorf("construct GitHub client: %w", err)
 	}
+	return listContributors(ctx, client, owner, name)
+}
 
+func listContributors(ctx context.Context, client *gh.Client, owner, name string) ([]contributors.Contributor, error) {
 	var discovered []contributors.Contributor
 	listOpts := &gh.ListContributorsOptions{ListOptions: gh.ListOptions{PerPage: 100}}
 	for {
@@ -94,10 +98,14 @@ func fetch(ctx context.Context, owner, name string) ([]contributors.Contributor,
 				Type:  c.GetType(),
 			})
 		}
-		if response == nil || response.NextPage == 0 {
+		next, err := pagination.Next(response, listOpts.Page)
+		if err != nil {
+			return nil, fmt.Errorf("list contributors for %s/%s: %w", owner, name, err)
+		}
+		if next == 0 {
 			return discovered, nil
 		}
-		listOpts.Page = response.NextPage
+		listOpts.Page = next
 	}
 }
 

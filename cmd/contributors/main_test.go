@@ -2,8 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	gh "github.com/google/go-github/v88/github"
+
+	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
 func TestSplitRepositoryRejectsMalformedInput(t *testing.T) {
@@ -52,5 +60,36 @@ func TestRunReportsMalformedRepositoryWithoutContactingGitHub(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "owner/name") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+// A server whose Link header always points back at page 2 would otherwise be
+// polled forever; the list must stop after reading page 2 a single time.
+func TestListContributorsRejectsNonAdvancingPagination(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests > 10 {
+			http.Error(w, "pagination did not stop", http.StatusTeapot)
+			return
+		}
+		w.Header().Set("Link", `<http://`+r.Host+r.URL.Path+`?page=2>; rel="next"`)
+		_, _ = w.Write([]byte(`[{"login":"alice","type":"User"}]`))
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := gh.NewClient(gh.WithURLs(gh.Ptr(server.URL+"/"), nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := listContributors(context.Background(), client, "acme", "octostate")
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("error = %v, want %v", err, github.ErrValidationFailed)
+	}
+	if got != nil || requests != 2 {
+		t.Fatalf("got %d contributors after %d requests, want none after 2", len(got), requests)
 	}
 }
