@@ -129,7 +129,7 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: changed while opening", path, path)
 	}
 	if openedInfo.Size() > maxActualSnapshotJSONSize {
-		return nil, actualSnapshotSizeLimitError(&sizeguard.LimitExceededError{Limit: maxActualSnapshotJSONSize})
+		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, actualSnapshotSizeLimitError(&sizeguard.LimitExceededError{Limit: maxActualSnapshotJSONSize}))
 	}
 
 	var snapshot ActualSnapshot
@@ -152,7 +152,7 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 	})
 	if processErr != nil {
 		if errors.Is(processErr, sizeguard.ErrLimitExceeded) {
-			return nil, actualSnapshotSizeLimitError(processErr)
+			return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, actualSnapshotSizeLimitError(processErr))
 		}
 		var readErr *sizeguard.ReadError
 		if errors.As(processErr, &readErr) {
@@ -215,7 +215,7 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 	// does not, so add it back to keep the file byte-identical.
 	encoded = append(encoded, '\n')
 	if err := sizeguard.CheckSize(encoded, maxActualSnapshotJSONSize); err != nil {
-		return actualSnapshotSizeLimitError(err)
+		return fmt.Errorf("write snapshot %s: %w", path, actualSnapshotSizeLimitError(err))
 	}
 
 	// 0600 matches what the previous os.CreateTemp path produced on first

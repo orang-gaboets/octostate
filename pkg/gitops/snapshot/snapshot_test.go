@@ -452,6 +452,9 @@ func TestReadActualRejectsOversizedInputBeforeDecoding(t *testing.T) {
 	if !strings.Contains(err.Error(), "128 MiB") {
 		t.Fatalf("ReadActual error does not identify the supported size limit: %v", err)
 	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("ReadActual error does not identify the snapshot path %q: %v", path, err)
+	}
 }
 
 func writeSnapshotSpaces(t *testing.T, file *os.File, count int64) {
@@ -493,6 +496,9 @@ func TestWriteActualRejectsOversizedOutputWithoutReplacingSnapshot(t *testing.T)
 	}
 	if !strings.Contains(err.Error(), "128 MiB") {
 		t.Fatalf("WriteActual error does not identify the supported size limit: %v", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("WriteActual error does not identify the snapshot path %q: %v", path, err)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
