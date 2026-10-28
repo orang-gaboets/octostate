@@ -144,6 +144,7 @@ func collectOrganizationWithLimits(
 	behavior collectOrganizationBehavior,
 	limits collectorConcurrencyLimits,
 ) (*state.OrganizationState, error) {
+	opt.OrgName = strings.TrimSpace(opt.OrgName)
 	if err := opt.validateForBehavior(behavior); err != nil {
 		return nil, err
 	}

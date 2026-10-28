@@ -759,6 +759,32 @@ func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
 	}
 }
 
+func TestCollectOrganizationForMaterializeTrimsOrganizationBeforeCollection(t *testing.T) {
+	t.Parallel()
+
+	var collectedOrg string
+	repoSvc := &repositoryServiceStub{
+		listByOrgFunc: func(_ context.Context, org string, _ *gh.RepositoryListByOrgOptions) ([]*gh.Repository, *gh.Response, error) {
+			collectedOrg = org
+			return []*gh.Repository{}, &gh.Response{}, nil
+		},
+	}
+
+	actual, err := CollectOrganizationForMaterialize(context.Background(), CollectOrganizationOptions{
+		OrgName:           " org-b ",
+		RepositoryService: repoSvc,
+	}, "org-b")
+	if err != nil {
+		t.Fatalf("CollectOrganizationForMaterialize returned error: %v", err)
+	}
+	if collectedOrg != "org-b" {
+		t.Fatalf("repository service received organization %q, want %q", collectedOrg, "org-b")
+	}
+	if actual.Organization != "org-b" {
+		t.Fatalf("collected state has organization %q, want %q", actual.Organization, "org-b")
+	}
+}
+
 func TestCollectOrganizationForSyncFromLiveOptInIncludesPendingInvitations(t *testing.T) {
 	t.Parallel()
 
