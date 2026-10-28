@@ -85,7 +85,7 @@ func TestConfigReviewWorkflowExpectedOrganizationForwarding(t *testing.T) {
 				}
 				command.Env = append(os.Environ(),
 					"CONFIG_DIR=./config",
-					"OCTOSTATE_TOKEN=token",
+					"OCTOSTATE_GITHUB_TOKEN=token",
 					"EXPECTED_ORG="+tc.expected,
 					"BIND_EXPECTED_ORG="+bindValue,
 				)
