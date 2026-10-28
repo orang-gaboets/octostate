@@ -312,7 +312,7 @@ func TestReadActualSuccess(t *testing.T) {
 	}
 }
 
-func TestReadActualAcceptsSnapshotJustBelowSupportedLimit(t *testing.T) {
+func TestReadActualAcceptsSnapshotAtAndJustBelowSupportedLimit(t *testing.T) {
 	t.Parallel()
 
 	const maxSnapshotBytes = 128 << 20
@@ -334,24 +334,38 @@ func TestReadActualAcceptsSnapshotJustBelowSupportedLimit(t *testing.T) {
 		_ = file.Close()
 		t.Fatalf("write snapshot fixture: %v", err)
 	}
-	writeSnapshotSpaces(t, file, int64(maxSnapshotBytes-1-len(encoded)))
+	writeSnapshotSpaces(t, file, int64(maxSnapshotBytes-len(encoded)))
 	if err := file.Close(); err != nil {
 		t.Fatalf("close snapshot file: %v", err)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat snapshot file: %v", err)
-	}
-	if wantSize := int64(maxSnapshotBytes - 1); info.Size() != wantSize {
-		t.Fatalf("snapshot file size = %d, want %d", info.Size(), wantSize)
-	}
 
-	got, err := ReadActual(stateDir)
-	if err != nil {
-		t.Fatalf("ReadActual rejected a snapshot just below 128 MiB: %v", err)
-	}
-	if got.Organization != "acme" {
-		t.Fatalf("loaded organization = %q, want acme", got.Organization)
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{
+		{name: "exact limit", size: maxSnapshotBytes},
+		{name: "just below", size: maxSnapshotBytes - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.Truncate(path, tc.size); err != nil {
+				t.Fatalf("set snapshot file size to %d: %v", tc.size, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("stat snapshot file: %v", err)
+			}
+			if info.Size() != tc.size {
+				t.Fatalf("snapshot file size = %d, want %d", info.Size(), tc.size)
+			}
+
+			got, err := ReadActual(stateDir)
+			if err != nil {
+				t.Fatalf("ReadActual rejected a snapshot with %s size (%d bytes): %v", tc.name, tc.size, err)
+			}
+			if got.Organization != "acme" {
+				t.Fatalf("loaded organization = %q, want acme", got.Organization)
+			}
+		})
 	}
 }
 

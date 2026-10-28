@@ -246,7 +246,7 @@ func TestLoadFileRejectsOversizedInputBeforeDecoding(t *testing.T) {
 	}
 }
 
-func TestLoadFileAcceptsConfigJustBelowSupportedLimit(t *testing.T) {
+func TestLoadFileAcceptsConfigAtAndJustBelowSupportedLimit(t *testing.T) {
 	t.Parallel()
 
 	const maxDesiredStateBytes = 16 << 20
@@ -260,24 +260,38 @@ func TestLoadFileAcceptsConfigJustBelowSupportedLimit(t *testing.T) {
 		_ = file.Close()
 		t.Fatalf("write config prefix: %v", err)
 	}
-	writeConfigSpaces(t, file, int64(maxDesiredStateBytes-1-len(prefix)))
+	writeConfigSpaces(t, file, int64(maxDesiredStateBytes-len(prefix)))
 	if err := file.Close(); err != nil {
 		t.Fatalf("close config file: %v", err)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("stat config file: %v", err)
-	}
-	if wantSize := int64(maxDesiredStateBytes - 1); info.Size() != wantSize {
-		t.Fatalf("config file size = %d, want %d", info.Size(), wantSize)
-	}
 
-	got, err := LoadFile(path)
-	if err != nil {
-		t.Fatalf("LoadFile rejected a config just below 16 MiB: %v", err)
-	}
-	if got.Organization != "octostate" {
-		t.Fatalf("loaded organization = %q, want octostate", got.Organization)
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{
+		{name: "exact limit", size: maxDesiredStateBytes},
+		{name: "just below", size: maxDesiredStateBytes - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.Truncate(path, tc.size); err != nil {
+				t.Fatalf("set config file size to %d: %v", tc.size, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("stat config file: %v", err)
+			}
+			if info.Size() != tc.size {
+				t.Fatalf("config file size = %d, want %d", info.Size(), tc.size)
+			}
+
+			got, err := LoadFile(path)
+			if err != nil {
+				t.Fatalf("LoadFile rejected a config with %s size (%d bytes): %v", tc.name, tc.size, err)
+			}
+			if got.Organization != "octostate" {
+				t.Fatalf("loaded organization = %q, want octostate", got.Organization)
+			}
+		})
 	}
 }
 
