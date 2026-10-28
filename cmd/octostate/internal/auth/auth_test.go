@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	githubclient "github.com/orang-gaboets/octostate/pkg/github/client"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	githubclient "github.com/orang-gaboets/octostate/v2/pkg/github/client"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
 	"github.com/spf13/cobra"
 )
 

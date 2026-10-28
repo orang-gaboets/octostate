@@ -347,7 +347,7 @@ run_read_only_scenarios() {
     fail 'config validate returned an invalid result envelope'
     return 1
   fi
-  if ! run_octostate "$plan" config plan --config-dir "$config_dir"; then
+  if ! run_octostate "$plan" config plan --config-dir "$config_dir" --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'config plan failed'
     return 1
   fi
@@ -355,7 +355,7 @@ run_read_only_scenarios() {
     fail 'baseline config plan contained executable actions'
     return 1
   fi
-  if ! run_octostate "$check" config apply --config-dir "$config_dir" --check; then
+  if ! run_octostate "$check" config apply --config-dir "$config_dir" --check --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'config apply --check failed'
     return 1
   fi
@@ -363,7 +363,7 @@ run_read_only_scenarios() {
     fail 'baseline config apply --check was not a zero-action check'
     return 1
   fi
-  if ! run_octostate "$pull" audit pull --config-dir "$config_dir" --state-dir "$state_dir"; then
+  if ! run_octostate "$pull" audit pull --config-dir "$config_dir" --state-dir "$state_dir" --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'audit pull failed'
     return 1
   fi
@@ -516,7 +516,7 @@ prepare_mutation() {
   jq -cS --arg topic "$MUTATION_TOPIC" '.topics = [$topic]' "$baseline_projection" >"$EXPECTED_MUTATED_PROJECTION"
 
   ACTION_GUARD_RESULT='FAIL'
-  if ! run_octostate "$plan" config plan --config-dir "$mutated_dir"; then
+  if ! run_octostate "$plan" config plan --config-dir "$mutated_dir" --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'mutated config plan failed'
     return 1
   fi
@@ -525,7 +525,7 @@ prepare_mutation() {
     return 1
   fi
   ACTION_GUARD_RESULT='FAIL'
-  if ! run_octostate "$check" config apply --config-dir "$mutated_dir" --check; then
+  if ! run_octostate "$check" config apply --config-dir "$mutated_dir" --check --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'mutated config apply --check failed'
     return 1
   fi
@@ -543,7 +543,7 @@ apply_mutation_once() {
   PHASE='mutation'
   PHASE_MUTATION='FAIL'
   ACTION_GUARD_RESULT='FAIL'
-  if ! run_octostate "$apply" config apply --config-dir "$mutated_dir"; then
+  if ! run_octostate "$apply" config apply --config-dir "$mutated_dir" --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'mutating config apply failed'
     return 1
   fi
@@ -590,7 +590,7 @@ poll_for_topics() {
       fi
     fi
     if [ "$read_status" -eq 0 ] && projection_matches "$expected_projection" "$current"; then
-      if ! run_octostate "$plan" config plan --config-dir "$desired_config"; then
+      if ! run_octostate "$plan" config plan --config-dir "$desired_config" --expected-org "$EXPECTED_ORGANIZATION"; then
         if is_transient_failure_file "$plan.stderr" && [ "$attempt" -lt "$POLL_ATTEMPTS" ]; then
           sleep "$POLL_DELAY_SECONDS"
           continue
@@ -645,7 +645,7 @@ restore_baseline() {
     fail 'refusing restoration because fixture state is ambiguous or unrelated'
     return 1
   fi
-  if ! run_octostate "$apply" config apply --config-dir "$baseline_dir"; then
+  if ! run_octostate "$apply" config apply --config-dir "$baseline_dir" --expected-org "$EXPECTED_ORGANIZATION"; then
     fail 'baseline restoration apply failed'
     return 1
   fi

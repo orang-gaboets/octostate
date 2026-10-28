@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/internal/filereplace"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/internal/filereplace"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 // Mutation updates a loaded organization config before it is validated and

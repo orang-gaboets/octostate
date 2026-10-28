@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 const (

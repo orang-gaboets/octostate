@@ -11,12 +11,12 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/internal/testconfig"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/internal/testconfig"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
@@ -41,7 +41,7 @@ func TestExecuteSkipsNonExecutableDrift(t *testing.T) {
 	}
 	plan.Normalize()
 
-	result, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
 	if err != nil {
@@ -62,7 +62,7 @@ func TestExecuteRejectsInvalidDesiredConfig(t *testing.T) {
 	plan := &gitopsplan.Report{Organization: "orang-gaboets"}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{{
 			Owner:      "shared-platform",
@@ -144,7 +144,7 @@ func TestCheckAndExecuteResolveUnnormalizedRepositoryOwners(t *testing.T) {
 			return githubTeam(1, slug, "Platform", org), nil, nil
 		},
 	}
-	if _, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(checkRepoService), withTeamService(checkTeamService))); err != nil {
+	if _, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(checkRepoService), withTeamService(checkTeamService))); err != nil {
 		t.Fatalf("Check returned error: %v", err)
 	}
 	if !reflect.DeepEqual(checkOwners, []string{"org-a"}) {
@@ -171,7 +171,7 @@ func TestCheckAndExecuteResolveUnnormalizedRepositoryOwners(t *testing.T) {
 			return &gh.Response{}, nil
 		},
 	}
-	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(executeRepoService), withTeamService(executeTeamService))); err != nil {
+	if _, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(executeRepoService), withTeamService(executeTeamService))); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if !reflect.DeepEqual(executeRepoOwners, []string{"org-a"}) {
@@ -238,7 +238,7 @@ func TestExecuteOrganizationMemberCreateAndUpdate(t *testing.T) {
 		},
 	}
 
-	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc)))
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestExecuteOrganizationMemberUnsupportedOperationFails(t *testing.T) {
 	}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Members: []config.OrganizationMemberSpec{{
 			Username: "alice",
@@ -358,7 +358,7 @@ func TestExecuteRepositoryCreateAppliesExactSettingsAndTopics(t *testing.T) {
 		},
 	}
 
-	result, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{desiredRepo},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
@@ -436,7 +436,7 @@ invites: []
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -506,7 +506,7 @@ invites: []
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestExecuteRepositoryUpdateTopicsOnlySkipsEdit(t *testing.T) {
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{desiredRepo},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
@@ -636,7 +636,7 @@ func testExecuteRepositoryUpdateAllowForkingChange(t *testing.T, visibility stri
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{desiredRepo},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
@@ -693,7 +693,7 @@ invites: []
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -789,7 +789,7 @@ func TestExecuteRepositoryUpdateToTemplateRunsBeforeLaterSamePlanCreate(t *testi
 		},
 	}
 
-	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -836,7 +836,7 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{desiredRepo},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
@@ -876,7 +876,7 @@ func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{{
 			Owner:      "orang-gaboets",
@@ -909,7 +909,7 @@ func TestExecuteRepositoryCreateInternalUsesVisibility(t *testing.T) {
 		createReq = repository
 		return &gh.Repository{}, nil, nil
 	}}
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
@@ -938,7 +938,7 @@ func TestExecuteRepositoryUpdateInternalUsesVisibility(t *testing.T) {
 		editReq = repository
 		return &gh.Repository{}, nil, nil
 	}}
-	_, err := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets", Repositories: []config.RepositorySpec{desiredRepo},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err != nil {
@@ -1006,7 +1006,7 @@ func TestExecuteTeamCreatesResolveDependenciesAndInviteUsesCreatedTeamIDs(t *tes
 	}
 	plan.Normalize()
 
-	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc), withOrganizationService(orgSvc)))
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc), withOrganizationService(orgSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1060,7 +1060,7 @@ func TestExecuteInviteCreateByUsernameResolvesUserID(t *testing.T) {
 	}}}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1107,7 +1107,7 @@ func TestExecuteInviteCreateByUserIDAndEmail(t *testing.T) {
 			}}}
 			plan.Normalize()
 
-			_, err = Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+			_, err = executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 				Organization: "orang-gaboets",
 				Invites:      []config.InviteSpec{tt.invite},
 			}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
@@ -1173,7 +1173,7 @@ func TestExecuteInviteUsernamePreResolutionStartsAtFirstInviteBoundary(t *testin
 	}}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1247,7 +1247,7 @@ func TestExecuteInviteUsernamePreResolutionBoundsConcurrency(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, execErr := Execute(context.Background(), testApplyOptions(config.OrganizationConfig{
+		_, execErr := executeForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Invites:      desiredInvites,
 		}, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
@@ -1318,7 +1318,7 @@ func TestExecuteInviteUsernamePreResolutionReturnsFirstSeenLookupError(t *testin
 	}}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
 	if !errors.Is(err, firstErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, firstErr)
 	}
@@ -1368,7 +1368,7 @@ func TestExecuteInviteUsernamePreResolutionCancelsSiblingLookups(t *testing.T) {
 	}}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withUserService(userSvc)))
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
@@ -1406,7 +1406,7 @@ func TestExecuteTeamUpdateClearsParent(t *testing.T) {
 	}}}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 10, Slug: "platform"}}}, plan, withTeamService(teamSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 10, Slug: "platform"}}}, plan, withTeamService(teamSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1442,7 +1442,7 @@ func TestExecuteTeamUpdateFailsOnUnknownChangeField(t *testing.T) {
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{
 		Organization: "orang-gaboets",
 		Teams:        []state.Team{{ID: 10, Slug: "platform"}},
 	}, plan, withTeamService(teamSvc)))
@@ -1496,7 +1496,7 @@ func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
 	}}
 	plan.Normalize()
 
-	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1542,7 +1542,7 @@ func TestExecuteTeamMembershipRejectsUnsupportedOperation(t *testing.T) {
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1582,7 +1582,7 @@ func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1625,7 +1625,7 @@ func TestExecuteStopsOnFirstFailure(t *testing.T) {
 	}}
 	plan.Normalize()
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withTeamService(teamSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withOrganizationService(orgSvc), withTeamService(teamSvc)))
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
@@ -1672,7 +1672,7 @@ func TestExecuteFailsWhenExecutableTeamCreatesAreNotContiguous(t *testing.T) {
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1689,7 +1689,7 @@ func TestExecuteManagedTemplateCreatePrecedesConsumer(t *testing.T) {
 	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
 	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
-	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual})
+	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual}, desired.Organization)
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -1699,7 +1699,7 @@ func TestExecuteManagedTemplateCreatePrecedesConsumer(t *testing.T) {
 		creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
 		return &gh.Repository{}, nil, nil
 	}}
-	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
+	if _, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if want := []string{"external/base->source", "orang-gaboets/source->consumer"}; !reflect.DeepEqual(creates, want) {
@@ -1715,7 +1715,7 @@ func TestExecuteOrdinaryManagedTemplateCreatePrecedesConsumer(t *testing.T) {
 	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "source"}}
 	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
-	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual})
+	plan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: actual}, desired.Organization)
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -1731,7 +1731,7 @@ func TestExecuteOrdinaryManagedTemplateCreatePrecedesConsumer(t *testing.T) {
 			return &gh.Repository{}, nil, nil
 		},
 	}
-	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
+	if _, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc))); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if want := []string{"orang-gaboets/source", "orang-gaboets/source->consumer"}; !reflect.DeepEqual(creates, want) {
@@ -1767,7 +1767,7 @@ func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *
 		return nil, nil
 	}}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 1, Slug: "platform"}}}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 1, Slug: "platform"}}}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
 	if err == nil || !strings.Contains(err.Error(), "source write failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1808,7 +1808,7 @@ func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *
 		return nil, nil
 	}}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{
 		Organization: "orang-gaboets",
 		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: false}},
 		Teams:        []state.Team{{ID: 1, Slug: "platform"}},
@@ -1849,7 +1849,7 @@ func TestExecuteManagedTemplateCreateSettingsFailureStopsDependents(t *testing.T
 		},
 	}
 
-	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	_, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err == nil || !strings.Contains(err.Error(), "source template settings failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}

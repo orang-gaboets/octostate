@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/internal/orderedtasks"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/internal/orderedtasks"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // Options defines the desired and snapshot inputs required to build one

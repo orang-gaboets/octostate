@@ -7,15 +7,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/configproposal"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
-	"github.com/orang-gaboets/octostate/pkg/github/users"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/configproposal"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/safety"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/users"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 // InviteCmd creates a command to invite a user to an organization.

@@ -170,6 +170,7 @@ go run ./cmd/octostate config validate --config-dir "$OCTOSTATE_TEST_CONFIG_DIR"
 
 go run ./cmd/octostate config plan \
   --config-dir "$OCTOSTATE_TEST_CONFIG_DIR" \
+  --expected-org octostate-test \
   --app-id 4726852 \
   --installation-id 156749227 \
   --app-key-path "$OCTOSTATE_TEST_APP_KEY_PATH"
@@ -177,6 +178,7 @@ go run ./cmd/octostate config plan \
 go run ./cmd/octostate config apply \
   --config-dir "$OCTOSTATE_TEST_CONFIG_DIR" \
   --check \
+  --expected-org octostate-test \
   --app-id 4726852 \
   --installation-id 156749227 \
   --app-key-path "$OCTOSTATE_TEST_APP_KEY_PATH"

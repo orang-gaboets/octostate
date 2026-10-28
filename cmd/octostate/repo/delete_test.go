@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
-	reposcmd "github.com/orang-gaboets/octostate/cmd/octostate/repo"
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/safety"
+	reposcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/repo"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 type captureDeleteRepoService struct {

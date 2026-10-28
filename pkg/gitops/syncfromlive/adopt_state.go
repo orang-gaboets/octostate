@@ -1,6 +1,6 @@
 package syncfromlive
 
-import "github.com/orang-gaboets/octostate/pkg/gitops/config"
+import "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 
 func cloneDesiredConfig(cfg config.OrganizationConfig) config.OrganizationConfig {
 	return config.OrganizationConfig{

@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	memberscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/members"
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	memberscmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/team/members"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 type captureListTeamMembersBySlugService struct {

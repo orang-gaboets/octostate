@@ -3,7 +3,7 @@ package configproposal
 import (
 	"testing"
 
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 func TestFindTeamIndex(t *testing.T) {

@@ -14,13 +14,13 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopssnapshot "github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopssnapshot "github.com/orang-gaboets/octostate/v2/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 type userServiceStub struct {
@@ -126,7 +126,7 @@ func TestPullCmdSuccess(t *testing.T) {
 		}
 		return gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}, nil
 	}
-	collectAuditState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectAuditState = func(_ context.Context, opt collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if opt.OrgName != "orang-gaboets" {
 			t.Fatalf("unexpected org name: got %q want %q", opt.OrgName, "orang-gaboets")
 		}
@@ -160,6 +160,7 @@ func TestPullCmdSuccess(t *testing.T) {
 	cmd.SetArgs([]string{
 		"--token", "token-value",
 		"--config-dir", "/control/config",
+		"--expected-org", "orang-gaboets",
 		"--state-dir", "/tmp/state",
 	})
 
@@ -221,7 +222,7 @@ func TestPullCmdPersistsResolvedInviteUserIDsForPendingInvitations(t *testing.T)
 			Organization: "orang-gaboets",
 		}, nil
 	}
-	collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectAuditState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{
 			Organization: "orang-gaboets",
 			PendingInvitations: []state.PendingInvitation{
@@ -245,6 +246,7 @@ func TestPullCmdPersistsResolvedInviteUserIDsForPendingInvitations(t *testing.T)
 	cmd.SetArgs([]string{
 		"--token", "token-value",
 		"--config-dir", "/control/config",
+		"--expected-org", "orang-gaboets",
 		"--state-dir", "/tmp/state",
 	})
 
@@ -486,7 +488,7 @@ func TestPullCmdPropagatesAuthError(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--state-dir", "/tmp/state"})
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--expected-org", "orang-gaboets", "--state-dir", "/tmp/state"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, wantErr) {
@@ -514,7 +516,7 @@ func TestPullCmdPropagatesCollectorError(t *testing.T) {
 	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
 		return gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}, nil
 	}
-	collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectAuditState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return nil, wantErr
 	}
 	defer restore()
@@ -524,7 +526,7 @@ func TestPullCmdPropagatesCollectorError(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--state-dir", "/tmp/state"})
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--expected-org", "orang-gaboets", "--state-dir", "/tmp/state"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, wantErr) {
@@ -556,7 +558,7 @@ func TestPullCmdPropagatesLoadError(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--state-dir", "/tmp/state"})
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--expected-org", "orang-gaboets", "--state-dir", "/tmp/state"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, wantErr) {
@@ -586,7 +588,7 @@ func TestPullCmdRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--state-dir", "/tmp/state"})
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--expected-org", "orang-gaboets", "--state-dir", "/tmp/state"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, github.ErrMissingRequiredField) {
@@ -617,7 +619,7 @@ func TestPullCmdWrapsSnapshotWriteError(t *testing.T) {
 	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
 		return gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}, nil
 	}
-	collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectAuditState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 	}
 	writeActualSnapshot = func(string, gitopssnapshot.ActualSnapshot) (string, error) {
@@ -630,7 +632,7 @@ func TestPullCmdWrapsSnapshotWriteError(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--state-dir", "/tmp/state"})
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--expected-org", "orang-gaboets", "--state-dir", "/tmp/state"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, wantErr) {
@@ -698,7 +700,7 @@ func TestPullCmdRequiresStateDirFlag(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config"})
+	cmd.SetArgs([]string{"--token", "token-value", "--config-dir", "/control/config", "--expected-org", "orang-gaboets"})
 
 	err := cmd.Execute()
 	if err == nil {

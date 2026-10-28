@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
 )
 
 func TestRunReturnsZeroWhenExecuteSucceeds(t *testing.T) {

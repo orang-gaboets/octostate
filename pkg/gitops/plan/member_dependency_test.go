@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // memberDependencyConfig declares alice as a top-level member and as a member
@@ -46,7 +46,7 @@ func indexOf(actions []Action, resourceType ActionResourceType, id string) int {
 func TestBuildTeamMembershipExecutableWhenMemberCreatedInSamePlan(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: memberDependencyConfig(),
 		Actual: &state.OrganizationState{
 			Organization: "acme",
@@ -70,7 +70,7 @@ func TestBuildTeamMembershipExecutableWhenMemberCreatedInSamePlan(t *testing.T) 
 func TestBuildOrdersOrganizationMemberBeforeDependentTeamMembership(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: memberDependencyConfig(),
 		Actual: &state.OrganizationState{
 			Organization: "acme",
@@ -95,7 +95,7 @@ func TestBuildOrdersOrganizationMemberBeforeDependentTeamMembership(t *testing.T
 func TestBuildTeamMembershipExecutableWhenMemberAlreadyLive(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: memberDependencyConfig(),
 		Actual: &state.OrganizationState{
 			Organization: "acme",
@@ -147,7 +147,7 @@ func TestBuildTreatsInheritedOnlyParentMembershipAsAbsent(t *testing.T) {
 				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
 			}
 
-			report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
+			report, err := buildForDesiredOrganization(context.Background(), Options{Desired: desired, Actual: actual})
 			if err != nil {
 				t.Fatalf("Build returned error: %v", err)
 			}
@@ -175,7 +175,7 @@ func TestBuildTeamMembershipRoleUpdateUnchanged(t *testing.T) {
 	desired := memberDependencyConfig()
 	desired.Teams[0].Members[0].Role = "maintainer"
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual: &state.OrganizationState{
 			Organization: "acme",

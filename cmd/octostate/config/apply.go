@@ -8,15 +8,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/safety"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	gitopsapply "github.com/orang-gaboets/octostate/pkg/gitops/apply"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/safety"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	gitopsapply "github.com/orang-gaboets/octostate/v2/pkg/gitops/apply"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
 )
 
 var (
@@ -54,14 +54,14 @@ func ApplyConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "apply",
 		Short:         "Apply or preflight GitOps reconciliation changes",
-		Long:          "Load desired GitOps configuration, collect live GitHub state, build a reconciliation plan, preflight the supported create and update actions, and execute them when not running in check or dry-run mode.",
+		Long:          "Load desired GitOps configuration, verify the required caller-supplied expected organization, collect live GitHub state, build a reconciliation plan, preflight the supported create and update actions, and execute them when not running in check or dry-run mode.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
-			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --check
-			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --dry-run
-			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config
-			octostate config apply --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config`,
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --expected-org <expected-org> --check
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --expected-org <expected-org> --dry-run
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config apply --config-dir ./config --expected-org <expected-org>
+			octostate config apply --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config --expected-org <expected-org>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if check && dryRun {
 				err := exitcode.New(validateExitCodeInvalidConfig, errors.New("cannot use --check and --dry-run together"))
@@ -84,11 +84,6 @@ func ApplyConfigCmd() *cobra.Command {
 			case dryRun:
 				mode = applyRunModeDryRun
 			}
-			var expected *string
-			if cmd.Flags().Changed("expected-org") {
-				expected = &expectedOrg
-			}
-
 			result, preview, checkResult, err := applyConfig(
 				cmd.Context(),
 				token,
@@ -98,7 +93,7 @@ func ApplyConfigCmd() *cobra.Command {
 				configDir,
 				mode,
 				requireExec,
-				expected,
+				expectedOrg,
 			)
 			if err != nil {
 				printInvalidConfigError(cmd, err)
@@ -135,7 +130,7 @@ func ApplyConfigCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
 	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live operation")
-	github.MarkRequiredFlags(cmd, "config-dir")
+	github.MarkRequiredFlags(cmd, "config-dir", "expected-org")
 
 	return cmd
 }
@@ -147,7 +142,7 @@ func applyConfig(
 	appKeyPath, configDir string,
 	mode applyRunMode,
 	requireExecutable bool,
-	expectedOrg *string,
+	expectedOrg string,
 ) (*gitopsapply.Result, *planPreview, *gitopsapply.CheckResult, error) {
 	cfg, err := loadApplyConfig(strings.TrimSpace(configDir))
 	if err != nil {
@@ -163,10 +158,8 @@ func applyConfig(
 	if organization == "" {
 		return nil, nil, nil, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
 	}
-	if expectedOrg != nil {
-		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
-			return nil, nil, nil, invalidConfigPhaseError("verify expected organization", err)
-		}
+	if err := gitopsconfig.CheckExpectedOrganization(organization, expectedOrg); err != nil {
+		return nil, nil, nil, invalidConfigPhaseError("verify expected organization", err)
 	}
 
 	client, err := newApplyClient(ctx, token, appID, installationID, appKeyPath)
@@ -179,7 +172,7 @@ func applyConfig(
 		OrganizationService: client.Organizations(),
 		RepositoryService:   client.Repositories(),
 		TeamService:         client.Teams(),
-	})
+	}, expectedOrg)
 	if err != nil {
 		return nil, nil, nil, runtimePhaseError("collect live GitHub state", err)
 	}
@@ -189,12 +182,7 @@ func applyConfig(
 		Actual:      actual,
 		UserService: client.Users(),
 	}
-	var report *gitopsplan.Report
-	if expectedOrg != nil {
-		report, err = gitopsplan.BuildForOrganization(ctx, planOptions, *expectedOrg)
-	} else {
-		report, err = buildApplyPlan(ctx, planOptions)
-	}
+	report, err := buildApplyPlan(ctx, planOptions, expectedOrg)
 	if err != nil {
 		return nil, nil, nil, runtimePhaseError("build reconciliation plan", err)
 	}
@@ -217,12 +205,7 @@ func applyConfig(
 		UserService:                     client.Users(),
 	}
 	if mode == applyRunModeCheck {
-		var checkResult *gitopsapply.CheckResult
-		if expectedOrg != nil {
-			checkResult, err = gitopsapply.CheckForOrganization(ctx, applyOptions, *expectedOrg)
-		} else {
-			checkResult, err = checkApply(ctx, applyOptions)
-		}
+		checkResult, err := checkApply(ctx, applyOptions, expectedOrg)
 		if err != nil {
 			return nil, nil, nil, runtimePhaseError("run apply preflight check", err)
 		}
@@ -230,12 +213,7 @@ func applyConfig(
 		return nil, nil, checkResult, nil
 	}
 
-	var result *gitopsapply.Result
-	if expectedOrg != nil {
-		result, err = gitopsapply.ExecuteForOrganization(ctx, applyOptions, *expectedOrg)
-	} else {
-		result, err = executeApply(ctx, applyOptions)
-	}
+	result, err := executeApply(ctx, applyOptions, expectedOrg)
 	if err != nil {
 		return nil, nil, nil, runtimePhaseError("execute apply plan", err)
 	}

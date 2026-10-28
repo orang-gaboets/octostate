@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopssnapshot "github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopssnapshot "github.com/orang-gaboets/octostate/v2/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestAuditPullExpectedOrganizationRejectsBeforeLiveWork(t *testing.T) {
@@ -25,7 +25,7 @@ func TestAuditPullExpectedOrganizationRejectsBeforeLiveWork(t *testing.T) {
 				t.Fatal("target rejection must precede authentication")
 				return nil, nil
 			}
-			collectAuditState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectAuditState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 				t.Fatal("target rejection must precede collection")
 				return nil, nil
 			}
@@ -46,6 +46,25 @@ func TestAuditPullExpectedOrganizationRejectsBeforeLiveWork(t *testing.T) {
 	}
 }
 
+func TestAuditPullRequiresExpectedOrganizationBeforeAuthentication(t *testing.T) {
+	restore := replaceAuditHooks(t)
+	defer restore()
+	loadAuditConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{Organization: "org-b"}, nil
+	}
+	newAuditClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
+		t.Fatal("missing target must be rejected before authentication")
+		return nil, nil
+	}
+
+	cmd := PullCmd()
+	cmd.SetArgs([]string{"--config-dir", "./config", "--state-dir", "./state"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "expected-org") {
+		t.Fatalf("expected missing --expected-org rejection, got %v", err)
+	}
+}
+
 func TestAuditPullExpectedOrganizationMatches(t *testing.T) {
 	restore := replaceAuditHooks(t)
 	defer restore()
@@ -55,9 +74,12 @@ func TestAuditPullExpectedOrganizationMatches(t *testing.T) {
 	newAuditClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
 		return auth.MockClient{}, nil
 	}
-	collectAuditState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectAuditState = func(_ context.Context, opt collector.CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
 		if opt.OrgName != "org-b" {
 			t.Fatalf("unexpected collection target %q", opt.OrgName)
+		}
+		if expectedOrganization != " ORG-B " {
+			t.Fatalf("collector got expected organization %q", expectedOrganization)
 		}
 		return &state.OrganizationState{Organization: "org-b"}, nil
 	}

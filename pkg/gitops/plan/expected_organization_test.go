@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
-func TestBuildForOrganizationRequiresMatchingIndependentTarget(t *testing.T) {
+func TestBuildRequiresMatchingIndependentTarget(t *testing.T) {
 	t.Parallel()
 	opt := Options{
 		Desired: config.OrganizationConfig{Organization: "org-b"},
@@ -17,13 +17,13 @@ func TestBuildForOrganizationRequiresMatchingIndependentTarget(t *testing.T) {
 	}
 
 	for _, expected := range []string{"org-a", ""} {
-		report, err := BuildForOrganization(context.Background(), opt, expected)
+		report, err := Build(context.Background(), opt, expected)
 		if err == nil || report != nil {
 			t.Fatalf("expected target rejection for %q, got report %#v and error %v", expected, report, err)
 		}
 	}
 
-	report, err := BuildForOrganization(context.Background(), opt, " ORG-B ")
+	report, err := Build(context.Background(), opt, " ORG-B ")
 	if err != nil || report == nil || report.Organization != "org-b" {
 		t.Fatalf("expected matching target to plan, got report %#v and error %v", report, err)
 	}
@@ -32,11 +32,15 @@ func TestBuildForOrganizationRequiresMatchingIndependentTarget(t *testing.T) {
 		Name: "service", Visibility: "private",
 		Template: config.TemplateSpec{Owner: "external-org", Name: "template"},
 	}}
-	report, err = BuildForOrganization(context.Background(), opt, "org-b")
+	report, err = Build(context.Background(), opt, "org-b")
 	if err != nil || report == nil || len(report.Actions) == 0 {
 		t.Fatalf("expected external template reference to remain valid, got report %#v and error %v", report, err)
 	}
 	if strings.Contains(strings.ToLower(report.Actions[0].Message), "organization mismatch") {
 		t.Fatalf("external template reference was treated as a target mismatch: %#v", report.Actions[0])
 	}
+}
+
+func buildForDesiredOrganization(ctx context.Context, opt Options) (*Report, error) {
+	return Build(ctx, opt, opt.Desired.Organization)
 }

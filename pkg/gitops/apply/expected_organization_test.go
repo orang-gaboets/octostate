@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
-func TestBoundApplyEntryPointsRejectTargetBeforeGitHubCalls(t *testing.T) {
+func TestApplyEntryPointsRequireTargetBeforeGitHubCalls(t *testing.T) {
 	t.Parallel()
 	reads, writes := 0, 0
 	repository := &testRepoService{
@@ -37,11 +37,11 @@ func TestBoundApplyEntryPointsRejectTargetBeforeGitHubCalls(t *testing.T) {
 	opt := testApplyOptions(desired, &state.OrganizationState{Organization: "org-b"}, plan, withRepoService(repository))
 
 	for _, expected := range []string{"org-a", ""} {
-		check, err := CheckForOrganization(context.Background(), opt, expected)
+		check, err := Check(context.Background(), opt, expected)
 		if err == nil || check != nil {
 			t.Fatalf("expected preflight target rejection for %q, got result %#v and error %v", expected, check, err)
 		}
-		result, err := ExecuteForOrganization(context.Background(), opt, expected)
+		result, err := Execute(context.Background(), opt, expected)
 		if err == nil || result != nil {
 			t.Fatalf("expected apply target rejection for %q, got result %#v and error %v", expected, result, err)
 		}
@@ -52,15 +52,23 @@ func TestBoundApplyEntryPointsRejectTargetBeforeGitHubCalls(t *testing.T) {
 
 	// Matching values reach the existing apply path; an empty plan has no probes or writes.
 	opt.Plan = &gitopsplan.Report{Organization: "org-b"}
-	check, err := CheckForOrganization(context.Background(), opt, " ORG-B ")
+	check, err := Check(context.Background(), opt, " ORG-B ")
 	if err != nil || check == nil {
 		t.Fatalf("expected matching target to preflight, got %#v and %v", check, err)
 	}
-	result, err := ExecuteForOrganization(context.Background(), opt, "org-b")
+	result, err := Execute(context.Background(), opt, "org-b")
 	if err != nil || result == nil {
 		t.Fatalf("expected matching target to apply, got %#v and %v", result, err)
 	}
 	if strings.TrimSpace(result.Organization) != "org-b" || reads != 0 || writes != 0 {
 		t.Fatalf("unexpected matching target result %#v, reads=%d writes=%d", result, reads, writes)
 	}
+}
+
+func checkForDesiredOrganization(ctx context.Context, opt Options) (*CheckResult, error) {
+	return Check(ctx, opt, opt.Desired.Organization)
+}
+
+func executeForDesiredOrganization(ctx context.Context, opt Options) (*Result, error) {
+	return Execute(ctx, opt, opt.Desired.Organization)
 }

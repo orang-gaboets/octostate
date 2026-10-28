@@ -10,12 +10,12 @@ import (
 	"strconv"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	githubclient "github.com/orang-gaboets/octostate/pkg/github/client"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/github/repos"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
-	"github.com/orang-gaboets/octostate/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	githubclient "github.com/orang-gaboets/octostate/v2/pkg/github/client"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/users"
 )
 
 // Client defines the GitHub client contract used by commands.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/internal/toolchainremediation"
+	"github.com/orang-gaboets/octostate/v2/internal/toolchainremediation"
 )
 
 func TestRunClassifyWritesDeterministicJSONToStdout(t *testing.T) {

@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
 )
 
 // ListOrgMembersCmd creates a command to list all members of a GitHub organization.

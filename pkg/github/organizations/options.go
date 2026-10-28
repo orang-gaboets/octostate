@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 // GetOptions defines the options for retrieving organization details.

@@ -13,7 +13,7 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
-	"github.com/orang-gaboets/octostate/internal/contributors"
+	"github.com/orang-gaboets/octostate/v2/internal/contributors"
 )
 
 func main() {

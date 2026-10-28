@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	permissionscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/repo/permissions"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	permissionscmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/team/repo/permissions"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 type captureAddTeamRepoBySlugService struct {

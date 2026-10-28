@@ -20,8 +20,9 @@ The main GitOps flow looks like this:
 
 1. Load and normalize desired config from `config/organization.yaml`
 2. Validate that config semantically
-3. If a caller supplies `--expected-org` for a live command, verify it matches
-   the configured organization before authentication or live collection
+3. Require caller-supplied `--expected-org` for live plan, apply, and audit pull
+   commands, and verify it matches the configured organization before
+   authentication or live collection
 4. Build actual organization state:
    - from live GitHub for `config plan`, `config apply`, `config apply --check`, and `audit pull`
    - from `state/actual/snapshot.json` for `audit diff`

@@ -3,9 +3,9 @@ package organization
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/github/repos"
-	"github.com/orang-gaboets/octostate/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/users"
 )
 
 // NewOrganizationCmd creates a new "organization" command group for managing organizations on GitHub.

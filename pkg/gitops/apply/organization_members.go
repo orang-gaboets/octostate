@@ -3,9 +3,9 @@ package apply
 import (
 	"fmt"
 
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
 )
 
 func (e *executor) executeOrganizationMemberAction(action gitopsplan.Action) error {

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	usercmd "github.com/orang-gaboets/octostate/cmd/octostate/user"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	usercmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/user"
 )
 
 var errUserCommandDependency = errors.New("user command dependency failed")

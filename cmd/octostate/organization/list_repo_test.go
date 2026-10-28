@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	organizationcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/organization"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 func TestListOrgReposCmdNoRequiredFlags(t *testing.T) {

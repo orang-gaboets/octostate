@@ -47,8 +47,9 @@ supported GitOps state such as:
 For live commands, a control repo can independently supply the organization it
 authorizes as `--expected-org`. Keep that value in trusted workflow configuration,
 not in `organization.yaml` or a value read from that file. A mismatch fails
-before Octostate authenticates or contacts GitHub. This assertion is opt-in so
-existing integrations retain their previous behavior.
+before Octostate authenticates or contacts GitHub. Live plan, apply, and audit
+pull commands require this binding. Keep the value in trusted workflow
+configuration and migrate existing callers before upgrading to v2.
 
 ## Expected Outputs
 
@@ -162,7 +163,6 @@ jobs:
     with:
       config_dir: ./config
       octostate_version: <reviewed-40-character-cli-commit-with-expected-org>
-      bind_expected_org: true
       expected_org: ${{ vars.OCTOSTATE_EXPECTED_ORG }}
     secrets:
       octostate_token: ${{ secrets.OCTOSTATE_TOKEN }}
@@ -212,13 +212,12 @@ revisions requiring `--token` are incompatible with the updated workflow.
 
 - `config_dir` is optional and defaults to `./config`; it must contain the
   desired-state `organization.yaml` required by Octostate.
-- `bind_expected_org` defaults to `false` for existing callers. Set it to
-  `true` to forward `expected_org` to both live commands. The expected and
-  configured organizations must be valid GitHub logins; empty, invalid, or
-  mismatched values fail before GitHub authentication or collection. A nonempty
-  `expected_org` without the binding switch fails instead of silently running
-  unbound. The CLI revision selected by
-  `octostate_version` must support `--expected-org` when binding is enabled.
+- `expected_org` is required and is forwarded to both live commands. The
+  expected and configured organizations must be valid GitHub logins; empty,
+  invalid, or mismatched values fail before GitHub authentication or collection.
+  There is no unbound fallback switch. The CLI revision selected by
+  `octostate_version` must support required `--expected-org` for live GitOps
+  operations.
 - `octostate_token` remains the required caller secret. It is mapped to
   `OCTOSTATE_GITHUB_TOKEN` only in the live plan and preflight steps; it is
   absent during installation and offline validation and is never expanded into

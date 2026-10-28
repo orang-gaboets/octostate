@@ -25,14 +25,13 @@ When `--token` is supplied, including as `--token=`, it takes precedence over
 `OCTOSTATE_GITHUB_TOKEN`. Octostate intentionally ignores `GH_TOKEN` and
 `GITHUB_TOKEN`.
 
-`config plan` and every `config apply` mode support optional `--expected-org`.
-Supply this value independently from `organization.yaml`, such as from a trusted
+`config plan` and every `config apply` mode require `--expected-org`. Supply this
+value independently from `organization.yaml`, such as from a trusted
 control-repository setting. Octostate trims whitespace, requires both values to
-be valid GitHub logins, and compares them without regard to case. An empty,
-invalid, or mismatched value fails before authentication, collection, preflight,
-or GitHub writes; the command prints no success result and returns exit code
-`2`. Omitting the flag preserves the previous unbound behavior for compatibility.
-This is a runtime assertion, not a desired-state schema field.
+be valid GitHub logins, and compares them without regard to case. A missing,
+empty, invalid, or mismatched value fails before authentication, collection,
+preflight, or GitHub writes; the command prints no success result and returns
+exit code `2`. This is a runtime assertion, not a desired-state schema field.
 `sync-from-live` already selects its live target through caller-supplied `--org`;
 offline validation and snapshot comparison do not authenticate to a live
 organization.
@@ -285,12 +284,12 @@ octostate config sync-from-live --mode materialize --org orang-gaboets --config-
 Preview the live reconciliation plan.
 
 ```bash
-octostate config plan --config-dir ./config
+octostate config plan --config-dir ./config --expected-org orang-gaboets
 ```
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
-- `--expected-org`: Independently expected organization for this live plan
+- `--expected-org` (required): Independently expected organization for this live plan
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
@@ -299,7 +298,7 @@ Flags:
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
-- Verifies `--expected-org`, when supplied, before authentication or live collection
+- Verifies the required `--expected-org` before authentication or live collection
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds a deterministic, read-only reconciliation plan
 - Prints a Terraform-style split JSON preview to stdout
@@ -333,14 +332,14 @@ octostate config plan --config-dir ./config --expected-org orang-gaboets
 Apply supported reconciliation changes.
 
 ```bash
-octostate config apply --config-dir ./config --check
-octostate config apply --config-dir ./config --dry-run
-octostate config apply --config-dir ./config
+octostate config apply --config-dir ./config --expected-org orang-gaboets --check
+octostate config apply --config-dir ./config --expected-org orang-gaboets --dry-run
+octostate config apply --config-dir ./config --expected-org orang-gaboets
 ```
 
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
-- `--expected-org`: Independently expected organization for check, dry-run, or live apply
+- `--expected-org` (required): Independently expected organization for check, dry-run, or live apply
 - `--check`: Run apply preflight validation without mutating GitHub
 - `--require-executable`: Fail when a desired create or update cannot be executed. Cannot be combined with `--dry-run`, which never evaluates the requirement
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
@@ -352,7 +351,7 @@ Flags:
 Behavior:
 - Loads `<config-dir>/organization.yaml`
 - Runs semantic validation before contacting GitHub
-- Verifies `--expected-org`, when supplied, before authentication or live collection in all apply modes
+- Verifies the required `--expected-org` before authentication or live collection in all apply modes
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Builds the deterministic reconciliation plan used by `config apply`
 - `--check` runs apply preflight validation against the collected actual state without mutating GitHub

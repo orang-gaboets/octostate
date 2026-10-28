@@ -2,7 +2,7 @@
 
 Octostate is both a command-line tool and a reusable GitOps engine. This guide
 explains how Go developers should consume the module, which package surfaces are
-recommended, and how compatibility is handled for the stable `v1` module.
+recommended, and how compatibility is handled for the `v2` module.
 
 ## Choose the right consumption path
 
@@ -11,8 +11,8 @@ treated as interchangeable:
 
 | Goal | Use | Result |
 | --- | --- | --- |
-| Install the CLI from source | `go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>` | Builds and installs the `octostate` executable |
-| Embed Octostate in another Go program | `go get github.com/orang-gaboets/octostate@v<version>` | Adds or updates the Octostate module dependency |
+| Install the CLI from source | `go install github.com/orang-gaboets/octostate/v2/cmd/octostate@v2.0.0` | Builds and installs the `octostate` executable |
+| Embed Octostate in another Go program | `go get github.com/orang-gaboets/octostate/v2@v2.0.0` | Adds or updates the Octostate module dependency |
 | Develop Octostate itself | `git clone https://github.com/orang-gaboets/octostate.git` | Obtains the repository for contributor development |
 
 Starting with v1.3.0, source installation, embedding, and repository development
@@ -27,7 +27,7 @@ the [project README](../README.md). When a Go-native installation from source
 is appropriate, use the version-qualified command:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
+go install github.com/orang-gaboets/octostate/v2/cmd/octostate@v2.0.0
 ```
 
 This installs the CLI command. It does not add Octostate as a library
@@ -39,7 +39,7 @@ version rather than using `@latest`.
 Add the module as a dependency:
 
 ```bash
-go get github.com/orang-gaboets/octostate@v<version>
+go get github.com/orang-gaboets/octostate/v2@v2.0.0
 ```
 
 Then import only packages identified below as appropriate for external use.
@@ -77,7 +77,9 @@ describe intended use; they do not move or hide any existing package.
 | Current packages | Visibility | Support status and intended role |
 | --- | --- | --- |
 | `pkg/gitops/config`, `pkg/gitops/state`, `pkg/gitops/plan`, `pkg/gitops/diff`, `pkg/gitops/snapshot` | Externally importable | Supported reusable API: recommended building blocks for loading desired state, representing state, planning, and offline analysis |
-| `pkg/github` (including `client`, `logging`, and resource services); `pkg/gitops/collector`, `pkg/gitops/apply`, `pkg/gitops/syncfromlive` | Externally importable | Implementation-oriented and not the primary stable SDK surface; existing exported APIs remain compatibility-sensitive |
+| `pkg/gitops/collector`, `pkg/gitops/apply` | Externally importable | Supported live GitOps API; collection, planning, preflight, and execution entry points require an independently supplied expected organization |
+| `pkg/github` (including `client`, `logging`, and resource services) | Externally importable | Lower-level GitHub API clients and services; these are not complete GitOps operations and do not replace the target-bound GitOps entry points |
+| `pkg/gitops/syncfromlive` | Externally importable | Pure transformations from an already collected state snapshot into desired-state proposals; these functions do not read or mutate GitHub |
 | Non-`internal` packages under `cmd/**`, including `cmd/octostate/*` | Importable according to normal Go package rules, except executable `main` packages | CLI-only implementation surface; install `cmd/octostate` rather than importing command packages |
 | `internal/**`, `cmd/octostate/internal/**`, `pkg/gitops/internal/**` | Non-importable from external modules | Implementation details protected by Go's `internal` import rule |
 
@@ -90,49 +92,63 @@ transition rather than moving it as unrelated cleanup.
 
 ## Bind a live GitOps target
 
-For credentials that can access multiple organizations, obtain an expected
-GitHub organization login from trusted caller configuration, independently of
-the desired-state file. Before collecting live state using
-`collector.CollectOrganization`, call
-`config.CheckExpectedOrganization(desired.Organization, expectedOrg)`. The
-check requires both values to be valid GitHub logins and compares trimmed
-values without regard to case; an invalid or mismatched value must stop the
-invocation before live reads. On failure, it returns a
+For live GitOps operations, obtain an expected GitHub organization login from
+trusted caller configuration, independently of the desired-state file. The
+v2 APIs require that value at every entry point that collects state, builds a
+live plan, runs apply preflight, or executes mutations:
+
+```go
+actual, err := collector.CollectOrganization(ctx, collectOptions, expectedOrg)
+report, err := plan.Build(ctx, planOptions, expectedOrg)
+check, err := apply.Check(ctx, applyOptions, expectedOrg)
+result, err := apply.Execute(ctx, applyOptions, expectedOrg)
+```
+
+The specialized collector entry points for bootstrap, sync-from-live, and
+materialize also require `expectedOrg`. Each operation checks the configured or
+requested organization against the expected login before calling GitHub
+services. The check trims whitespace, compares without regard to case, and
+requires valid GitHub logins. On failure, it returns a
 `*config.ExpectedOrganizationError`; use `errors.As` and inspect its `Kind`
-field to distinguish missing expected/configured values, invalid logins, and
-mismatches.
+field to distinguish missing values, invalid logins, and mismatches.
 
-For subsequent operations, use `plan.BuildForOrganization(ctx, options,
-expectedOrg)`, `apply.CheckForOrganization(ctx, options, expectedOrg)`, and
-`apply.ExecuteForOrganization(ctx, options, expectedOrg)`. Each repeats the
-target check before using GitHub services. Existing `plan.Build`, `apply.Check`,
-and `apply.Execute` remain available with their previous signatures and are
-unbound; callers that need this boundary must migrate to the bound functions.
-No expected-organization field belongs in desired configuration. Cross-org
-repository templates remain supported as references, while managed repository
-owners remain subject to organization-local validation.
+For CLI consumers, `config plan`, all `config apply` modes, and `audit pull`
+require `--expected-org`. Reusable workflow callers must set the required
+`expected_org` input. Obtain it from trusted caller configuration, never from
+the desired-state document. No expected-organization field belongs in desired
+configuration.
 
-## Compatibility policy for the `v1` module
+`pkg/gitops/syncfromlive` accepts an already collected state value and only
+constructs or updates a local desired-state proposal; it does not call GitHub.
+Likewise, `pkg/gitops/diff.Build` operates on a stored snapshot. Lower-level
+`pkg/github` clients remain available for callers building their own operations,
+but they do not provide the target-binding guarantees of the GitOps API.
+Cross-organization repository templates remain supported as references, while
+managed repository owners remain subject to organization-local validation.
+
+## Compatibility policy for the `v2` module
 
 Octostate uses one Go module and one release version stream for both its CLI and
 its Go packages. Go API compatibility is therefore a release concern alongside
 CLI compatibility; there is no separate SDK version or package release stream.
 
-For the current `v1` module, the normal release boundaries are:
+For the current `v2` module, the normal release boundaries are:
 
 | Release | Go API expectation |
 | --- | --- |
-| Patch release, such as `v1.3.1` | Preserve source compatibility; limit changes to compatible fixes, documentation, and internal implementation updates. |
-| Minor release, such as `v1.4.0` | Preserve source compatibility; additive APIs and deprecations are allowed. |
-| Major release, such as `v2.0.0` | May introduce source-incompatible changes. The Go module path becomes `github.com/orang-gaboets/octostate/v2`, and migration notes must describe the break. |
+| Patch release, such as `v2.0.1` | Preserve source compatibility; limit changes to compatible fixes, documentation, and internal implementation updates. |
+| Minor release, such as `v2.1.0` | Preserve source compatibility; additive APIs and deprecations are allowed. |
+| Major release, such as `v3.0.0` | May introduce source-incompatible changes and must include migration notes. |
 
-An exceptional source-incompatible change within `v1` requires an explicit
+The `v1` to `v2` module and API break is documented in the
+[v2.0.0 compatibility notes](maintainers/v2.0.0-compatibility.md). An
+exceptional source-incompatible change within a major version requires an explicit
 maintainer decision, a tracked compatibility rationale, and release notes that
 explain the impact. It is not the normal alternative to a major release.
 
 ### Existing importable APIs
 
-For an existing `v1` package outside an `internal` directory, an exported
+For an existing package outside an `internal` directory, an exported
 identifier is compatibility-sensitive. Source-incompatible changes include
 removing an exported identifier, changing an exported function or method
 signature, or changing an exported type in a way that breaks consumers.
@@ -156,7 +172,7 @@ implementation-oriented package.
 
 For the supported reusable API:
 
-- preserve source compatibility within the documented `v1` contract;
+- preserve source compatibility within the documented `v2` contract;
 - prefer additive changes where practical;
 - deprecate obsolete APIs before removal where feasible;
 - document a supported replacement and migration steps; and

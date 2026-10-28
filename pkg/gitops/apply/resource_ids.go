@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 func splitTeamMemberResourceID(resourceID string) (string, string, error) {

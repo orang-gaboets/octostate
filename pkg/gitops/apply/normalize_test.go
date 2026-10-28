@@ -7,9 +7,9 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // paddedDesired carries surrounding whitespace on every scalar, as a
@@ -48,7 +48,7 @@ func TestCheckDoesNotMutateDesiredConfig(t *testing.T) {
 	want := paddedDesired()
 
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
-	if _, err := Check(context.Background(), testApplyOptions(desired, actual, emptyPlan())); err != nil {
+	if _, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, emptyPlan())); err != nil {
 		t.Fatalf("Check returned error: %v", err)
 	}
 	if !reflect.DeepEqual(desired, want) {
@@ -63,7 +63,7 @@ func TestExecuteDoesNotMutateDesiredConfig(t *testing.T) {
 	want := paddedDesired()
 
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
-	if _, err := Execute(context.Background(), testApplyOptions(desired, actual, emptyPlan())); err != nil {
+	if _, err := executeForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, emptyPlan())); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if !reflect.DeepEqual(desired, want) {
@@ -75,7 +75,7 @@ func TestExecuteReportsNormalizedOrganization(t *testing.T) {
 	t.Parallel()
 
 	actual := &state.OrganizationState{Organization: "orang-gaboets"}
-	result, err := Execute(context.Background(), testApplyOptions(paddedDesired(), actual, emptyPlan()))
+	result, err := executeForDesiredOrganization(context.Background(), testApplyOptions(paddedDesired(), actual, emptyPlan()))
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestExecuteSendsNormalizedValuesToGitHub(t *testing.T) {
 
 	opts := testApplyOptions(desired, actual, plan)
 	opts.TeamService = teamSvc
-	if _, err := Execute(context.Background(), opts); err != nil {
+	if _, err := executeForDesiredOrganization(context.Background(), opts); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 
@@ -187,7 +187,7 @@ func TestCheckResolvesDesiredStateByNormalizedResourceID(t *testing.T) {
 
 	opts := testApplyOptions(desired, actual, plan)
 	opts.TeamService = teamSvc
-	result, err := Check(context.Background(), opts)
+	result, err := checkForDesiredOrganization(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Check must resolve the padded team through normalized desired state: %v", err)
 	}

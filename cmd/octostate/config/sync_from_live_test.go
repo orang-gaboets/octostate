@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"testing"
 
-	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
-	"github.com/orang-gaboets/octostate/pkg/gitops/syncfromlive"
+	internalauth "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/syncfromlive"
 )
 
 func TestSyncFromLiveConfigCmdPrintsBootstrapYAML(t *testing.T) {
@@ -33,9 +33,12 @@ func TestSyncFromLiveConfigCmdPrintsBootstrapYAML(t *testing.T) {
 		}
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
 		if opt.OrgName != "orang-gaboets" {
 			t.Fatalf("unexpected organization %q", opt.OrgName)
+		}
+		if expectedOrganization != opt.OrgName {
+			t.Fatalf("expected direct --org target to bind collector, got %q", expectedOrganization)
 		}
 		return actual, nil
 	}
@@ -89,7 +92,7 @@ func TestSyncFromLiveConfigCmdIncludesOptedInPendingInvitations(t *testing.T) {
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if !opt.IncludePendingInvitations {
 			t.Fatal("expected pending invitations to be included in collector options")
 		}
@@ -168,7 +171,7 @@ func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return actual, nil
 	}
 	buildSyncFromLiveBootstrap = func(syncfromlive.BootstrapOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -289,13 +292,16 @@ func TestSyncFromLiveConfigCmdPrintsMaterializedYAML(t *testing.T) {
 		}
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
 		return nil, nil
 	}
-	collectSyncFromLiveMaterializeState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveMaterializeState = func(_ context.Context, opt collector.CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
 		if opt.OrgName != "orang-gaboets" {
 			t.Fatalf("unexpected organization %q", opt.OrgName)
+		}
+		if expectedOrganization != opt.OrgName {
+			t.Fatalf("expected direct --org target to bind collector, got %q", expectedOrganization)
 		}
 		return actual, nil
 	}
@@ -394,11 +400,11 @@ func TestSyncFromLiveConfigCmdMaterializeWriteSuccess(t *testing.T) {
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
 		return nil, nil
 	}
-	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveMaterializeState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 	}
 	buildSyncFromLiveMaterialize = func(syncfromlive.MaterializeOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -478,11 +484,11 @@ func TestSyncFromLiveConfigCmdWriteRejectsSymlinkTarget(t *testing.T) {
 				t.Fatal("newSyncFromLiveClient should not be called when write target is a symlink")
 				return nil, nil
 			}
-			collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 				t.Fatal("collectSyncFromLiveState should not be called when write target is a symlink")
 				return nil, nil
 			}
-			collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectSyncFromLiveMaterializeState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 				t.Fatal("collectSyncFromLiveMaterializeState should not be called when write target is a symlink")
 				return nil, nil
 			}
@@ -557,7 +563,7 @@ func TestSyncFromLiveConfigCmdPrintsAdoptedYAML(t *testing.T) {
 		}
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, opt collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if opt.OrgName != "orang-gaboets" {
 			t.Fatalf("unexpected organization %q", opt.OrgName)
 		}
@@ -655,7 +661,7 @@ func TestSyncFromLiveConfigCmdAdoptWriteSuccess(t *testing.T) {
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 	}
 	buildSyncFromLiveAdopt = func(syncfromlive.AdoptOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -735,7 +741,7 @@ func TestSyncFromLiveConfigCmdAdoptExistingConfigInvalidFailsBeforeAuth(t *testi
 		t.Fatal("newSyncFromLiveClient should not be called when existing adopt config is invalid")
 		return nil, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called when existing adopt config is invalid")
 		return nil, nil
 	}
@@ -789,7 +795,7 @@ func TestSyncFromLiveConfigCmdAdoptOrganizationMismatchFailsBeforeAuth(t *testin
 		t.Fatal("newSyncFromLiveClient should not be called when adopt config organization mismatches --org")
 		return nil, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called when adopt config organization mismatches --org")
 		return nil, nil
 	}
@@ -875,7 +881,7 @@ func TestSyncFromLiveConfigCmdAdoptGeneratedInvalidConfigFails(t *testing.T) {
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 	}
 	buildSyncFromLiveAdopt = func(syncfromlive.AdoptOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -955,7 +961,7 @@ func TestSyncFromLiveConfigCmdMaterializeExistingConfigInvalidFailsBeforeAuth(t 
 		t.Fatal("newSyncFromLiveClient should not be called when existing materialize config is invalid")
 		return nil, nil
 	}
-	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveMaterializeState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveMaterializeState should not be called when existing materialize config is invalid")
 		return nil, nil
 	}
@@ -1009,7 +1015,7 @@ func TestSyncFromLiveConfigCmdMaterializeOrganizationMismatchFailsBeforeAuth(t *
 		t.Fatal("newSyncFromLiveClient should not be called when materialize config organization mismatches --org")
 		return nil, nil
 	}
-	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveMaterializeState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveMaterializeState should not be called when materialize config organization mismatches --org")
 		return nil, nil
 	}
@@ -1095,11 +1101,11 @@ func TestSyncFromLiveConfigCmdMaterializeGeneratedInvalidConfigFails(t *testing.
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
 		return nil, nil
 	}
-	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveMaterializeState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 	}
 	buildSyncFromLiveMaterialize = func(syncfromlive.MaterializeOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -1160,7 +1166,7 @@ func TestSyncFromLiveConfigCmdGeneratedInvalidConfigFails(t *testing.T) {
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 	}
 	buildSyncFromLiveBootstrap = func(syncfromlive.BootstrapOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -1291,13 +1297,13 @@ func runGeneratedOwnershipFailure(t *testing.T, mode string) ([]byte, *syncFromL
 	newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if mode == syncFromLiveModeMaterialize {
 			t.Fatal("collectSyncFromLiveState should not be called for materialize mode")
 		}
 		return actual, nil
 	}
-	collectSyncFromLiveMaterializeState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveMaterializeState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if mode != syncFromLiveModeMaterialize {
 			t.Fatal("collectSyncFromLiveMaterializeState should only be called for materialize mode")
 		}
@@ -1388,7 +1394,7 @@ func TestSyncFromLiveConfigCmdWriteFailsWhenTargetExists(t *testing.T) {
 		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target already exists")
 		return nil, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called when bootstrap target already exists")
 		return nil, nil
 	}
@@ -1447,7 +1453,7 @@ func TestSyncFromLiveConfigCmdBootstrapDanglingSymlinkFailsBeforeAuth(t *testing
 		t.Fatal("newSyncFromLiveClient should not be called when bootstrap target is a dangling symlink")
 		return nil, nil
 	}
-	collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		t.Fatal("collectSyncFromLiveState should not be called when bootstrap target is a dangling symlink")
 		return nil, nil
 	}
@@ -1693,7 +1699,7 @@ func TestSyncFromLiveConfigCmdAuthCollectBuildEncodeFailuresPropagate(t *testing
 				newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 					return internalauth.MockClient{}, nil
 				}
-				collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					return nil, collectErr
 				}
 			},
@@ -1705,7 +1711,7 @@ func TestSyncFromLiveConfigCmdAuthCollectBuildEncodeFailuresPropagate(t *testing
 				newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 					return internalauth.MockClient{}, nil
 				}
-				collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 				}
 				buildSyncFromLiveBootstrap = func(syncfromlive.BootstrapOptions) (gitopsconfig.OrganizationConfig, error) {
@@ -1720,7 +1726,7 @@ func TestSyncFromLiveConfigCmdAuthCollectBuildEncodeFailuresPropagate(t *testing
 				newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 					return internalauth.MockClient{}, nil
 				}
-				collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectSyncFromLiveState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 				}
 				buildSyncFromLiveBootstrap = func(syncfromlive.BootstrapOptions) (gitopsconfig.OrganizationConfig, error) {

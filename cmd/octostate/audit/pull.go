@@ -8,15 +8,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/internal/orderedtasks"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopssnapshot "github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/internal/orderedtasks"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	ghusers "github.com/orang-gaboets/octostate/v2/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopssnapshot "github.com/orang-gaboets/octostate/v2/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 var (
@@ -46,17 +46,13 @@ func PullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "pull",
 		Short:         "Pull actual GitHub state into a snapshot",
-		Long:          "Collect the current actual GitHub state for the configured organization and persist it as a JSON snapshot under state/actual/.",
+		Long:          "Verify the required caller-supplied expected organization, collect its actual GitHub state, and persist it as a JSON snapshot under state/actual/.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: `
-			OCTOSTATE_GITHUB_TOKEN="<token>" octostate audit pull --config-dir ./config --state-dir ./state
-			octostate audit pull --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config --state-dir /path/to/control-repo/state`,
+			OCTOSTATE_GITHUB_TOKEN="<token>" octostate audit pull --config-dir ./config --state-dir ./state --expected-org <expected-org>
+			octostate audit pull --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config --state-dir /path/to/control-repo/state --expected-org <expected-org>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			var expected *string
-			if cmd.Flags().Changed("expected-org") {
-				expected = &expectedOrg
-			}
 			result, err := pullActualState(
 				cmd.Context(),
 				token,
@@ -65,7 +61,7 @@ func PullCmd() *cobra.Command {
 				appKeyPath,
 				configDir,
 				stateDir,
-				expected,
+				expectedOrg,
 			)
 			if err != nil {
 				return err
@@ -80,7 +76,7 @@ func PullCmd() *cobra.Command {
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "Path to the state directory where actual/snapshot.json will be written")
 	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live snapshot")
 
-	github.MarkRequiredFlags(cmd, "config-dir", "state-dir")
+	github.MarkRequiredFlags(cmd, "config-dir", "state-dir", "expected-org")
 
 	return cmd
 }
@@ -96,7 +92,7 @@ func pullActualState(
 	token string,
 	appID, installationID int64,
 	appKeyPath, configDir, stateDir string,
-	expectedOrg *string,
+	expectedOrg string,
 ) (auditPullResult, error) {
 	cfg, err := loadAuditConfig(strings.TrimSpace(configDir))
 	if err != nil {
@@ -106,10 +102,8 @@ func pullActualState(
 	if organization == "" {
 		return auditPullResult{}, fmt.Errorf("organization is required: %w", github.ErrMissingRequiredField)
 	}
-	if expectedOrg != nil {
-		if err := gitopsconfig.CheckExpectedOrganization(organization, *expectedOrg); err != nil {
-			return auditPullResult{}, err
-		}
+	if err := gitopsconfig.CheckExpectedOrganization(organization, expectedOrg); err != nil {
+		return auditPullResult{}, err
 	}
 
 	client, err := newAuditClient(ctx, token, appID, installationID, appKeyPath)
@@ -117,7 +111,7 @@ func pullActualState(
 		return auditPullResult{}, err
 	}
 
-	actual, err := collectActualState(ctx, client, organization)
+	actual, err := collectActualState(ctx, client, organization, expectedOrg)
 	if err != nil {
 		return auditPullResult{}, err
 	}
@@ -138,13 +132,13 @@ func pullActualState(
 	}, nil
 }
 
-func collectActualState(ctx context.Context, client auth.Client, organization string) (*state.OrganizationState, error) {
+func collectActualState(ctx context.Context, client auth.Client, organization, expectedOrganization string) (*state.OrganizationState, error) {
 	return collectAuditState(ctx, collector.CollectOrganizationOptions{
 		OrgName:             organization,
 		OrganizationService: client.Organizations(),
 		RepositoryService:   client.Repositories(),
 		TeamService:         client.Teams(),
-	})
+	}, expectedOrganization)
 }
 
 func buildActualSnapshot(

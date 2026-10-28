@@ -7,9 +7,9 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func planWith(actions ...gitopsplan.Action) *gitopsplan.Report {
@@ -87,7 +87,7 @@ func requireExecutableOptions(t *testing.T, plan *gitopsplan.Report) Options {
 func TestCheckFailsOnUnfulfilledDesiredActionWhenRequired(t *testing.T) {
 	t.Parallel()
 
-	_, err := Check(context.Background(), requireExecutableOptions(t, planWith(blockedRepositoryCreate())))
+	_, err := checkForDesiredOrganization(context.Background(), requireExecutableOptions(t, planWith(blockedRepositoryCreate())))
 	if err == nil {
 		t.Fatal("check must fail when a desired create cannot execute and executability is required")
 	}
@@ -99,7 +99,7 @@ func TestCheckFailsOnUnfulfilledDesiredActionWhenRequired(t *testing.T) {
 func TestCheckSucceedsOnUnsupportedDriftWhenRequired(t *testing.T) {
 	t.Parallel()
 
-	if _, err := Check(context.Background(), requireExecutableOptions(t, planWith(unsupportedRepositoryDelete()))); err != nil {
+	if _, err := checkForDesiredOrganization(context.Background(), requireExecutableOptions(t, planWith(unsupportedRepositoryDelete()))); err != nil {
 		t.Fatalf("unsupported drift must not fail the requirement: %v", err)
 	}
 }
@@ -110,7 +110,7 @@ func TestCheckIgnoresUnfulfilledDesiredActionByDefault(t *testing.T) {
 	opts := requireExecutableOptions(t, planWith(blockedRepositoryCreate()))
 	opts.RequireExecutableDesiredActions = false
 
-	result, err := Check(context.Background(), opts)
+	result, err := checkForDesiredOrganization(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("default behavior must be unchanged: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestExecuteFailsBeforeMutatingWhenDesiredActionUnfulfilled(t *testing.T) {
 		},
 	}
 
-	if _, err := Execute(context.Background(), opts); !errors.Is(err, ErrUnfulfilledDesiredAction) {
+	if _, err := executeForDesiredOrganization(context.Background(), opts); !errors.Is(err, ErrUnfulfilledDesiredAction) {
 		t.Fatalf("expected ErrUnfulfilledDesiredAction, got %v", err)
 	}
 }
@@ -170,7 +170,7 @@ func TestCheckAcceptsTeamMembershipWithSamePlanMemberPrerequisite(t *testing.T) 
 		Teams:        []state.Team{{ID: 1, Slug: "platform", Name: "Platform", Privacy: "closed"}},
 	}
 
-	result, err := Check(context.Background(), opts)
+	result, err := checkForDesiredOrganization(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("check must accept a membership whose prerequisite is in the same plan: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestExecuteStopsDependentMembershipAfterMemberWriteFails(t *testing.T) {
 	// Assert on the injected error itself: any-error would also pass if the
 	// apply failed for an unrelated reason, which would hide whether the
 	// prerequisite write is what actually stopped it.
-	if _, err := Execute(context.Background(), opts); !errors.Is(err, wantErr) {
+	if _, err := executeForDesiredOrganization(context.Background(), opts); !errors.Is(err, wantErr) {
 		t.Fatalf("expected the failed prerequisite write to fail the apply, got %v", err)
 	}
 }

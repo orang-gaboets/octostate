@@ -117,14 +117,14 @@ Current collector concurrency limits:
 ### `octostate config plan`
 1. Load and normalize `config/organization.yaml`
 2. Validate desired state semantically
-3. Verify optional caller-supplied `--expected-org` before authentication
+3. Verify required caller-supplied `--expected-org` before authentication
 4. Collect live GitHub state through `collector`
 5. Build the reconciliation report through `plan`
 6. Normalize the final report and print JSON
 
 ### `octostate config apply`
 1. Load and validate desired state
-2. Verify optional caller-supplied `--expected-org` before authentication
+2. Verify required caller-supplied `--expected-org` before authentication
 3. Collect live GitHub state
 4. Build the reconciliation report
 5. Execute supported `create` / `update` actions through `apply`
@@ -132,7 +132,7 @@ Current collector concurrency limits:
 
 ### `octostate config apply --check`
 1. Load and validate desired state
-2. Verify optional caller-supplied `--expected-org` before authentication
+2. Verify required caller-supplied `--expected-org` before authentication
 3. Collect live GitHub state
 4. Build the reconciliation report
 5. Run apply preflight validation without mutating GitHub

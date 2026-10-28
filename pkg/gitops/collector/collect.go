@@ -4,12 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/internal/orderedtasks"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/github/repos"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/internal/orderedtasks"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // CollectOrganizationOptions defines the services required to collect one
@@ -79,8 +80,12 @@ func (opt *CollectOrganizationOptions) validateForBehavior(behavior collectOrgan
 }
 
 // CollectOrganization loads the current GitHub state for one organization into
-// a normalized OrganizationState value.
-func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+// a normalized OrganizationState value. It verifies the target against an
+// independently supplied expected organization before calling any service.
+func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
+	if err := config.CheckExpectedOrganization(opt.OrgName, expectedOrganization); err != nil {
+		return nil, err
+	}
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
 		includeMembers:            true,
 		includePendingInvitations: true,
@@ -90,14 +95,20 @@ func CollectOrganization(ctx context.Context, opt CollectOrganizationOptions) (*
 }
 
 // CollectOrganizationForBootstrap loads only the live organization state
-// required for sync-from-live bootstrap generation.
-func CollectOrganizationForBootstrap(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
-	return CollectOrganizationForSyncFromLive(ctx, opt)
+// required for sync-from-live bootstrap generation. The target is checked
+// against the independently supplied expected organization before any service
+// call.
+func CollectOrganizationForBootstrap(ctx context.Context, opt CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
+	return CollectOrganizationForSyncFromLive(ctx, opt, expectedOrganization)
 }
 
 // CollectOrganizationForSyncFromLive loads the live organization state needed
-// for sync-from-live proposal generation.
-func CollectOrganizationForSyncFromLive(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+// for sync-from-live proposal generation. The target is checked against the
+// independently supplied expected organization before any service call.
+func CollectOrganizationForSyncFromLive(ctx context.Context, opt CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
+	if err := config.CheckExpectedOrganization(opt.OrgName, expectedOrganization); err != nil {
+		return nil, err
+	}
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
 		includeMembers:            true,
 		includePendingInvitations: opt.IncludePendingInvitations,
@@ -107,8 +118,13 @@ func CollectOrganizationForSyncFromLive(ctx context.Context, opt CollectOrganiza
 }
 
 // CollectOrganizationForMaterialize loads only the live organization state
-// required for sync-from-live materialize generation.
-func CollectOrganizationForMaterialize(ctx context.Context, opt CollectOrganizationOptions) (*state.OrganizationState, error) {
+// required for sync-from-live materialize generation. The target is checked
+// against the independently supplied expected organization before any service
+// call.
+func CollectOrganizationForMaterialize(ctx context.Context, opt CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
+	if err := config.CheckExpectedOrganization(opt.OrgName, expectedOrganization); err != nil {
+		return nil, err
+	}
 	return collectOrganization(ctx, opt, collectOrganizationBehavior{
 		includeRepositories: true,
 	})

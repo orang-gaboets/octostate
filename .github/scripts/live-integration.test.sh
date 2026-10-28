@@ -353,6 +353,23 @@ plan_payload() {
 }
 
 case "${1:-} ${2:-}" in
+  "config plan"|"config apply"|"audit pull")
+    expected_org=''
+    for ((index = 1; index < $#; index++)); do
+      if [ "${!index}" = "--expected-org" ]; then
+        next=$((index + 1))
+        expected_org=${!next}
+        break
+      fi
+    done
+    if [ "$expected_org" != "octostate-test" ]; then
+      echo "live GitOps operation requires --expected-org octostate-test" >&2
+      exit 98
+    fi
+    ;;
+esac
+
+case "${1:-} ${2:-}" in
   "config validate")
     if [ "${LIVE_STUB_HANG_VALIDATE:-0}" = "1" ]; then
       /bin/sleep 3

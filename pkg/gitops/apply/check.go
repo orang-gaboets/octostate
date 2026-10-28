@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/github/repos"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
 )
 
 // CheckResult captures the actions that passed apply preflight validation and
@@ -49,9 +49,12 @@ func (r *CheckResult) Normalize() {
 }
 
 // Check validates the executable portion of a planner report without mutating
-// GitHub state. It does not bind the target to a caller-authorized organization;
-// use CheckForOrganization when that boundary is required.
-func Check(ctx context.Context, opt Options) (*CheckResult, error) {
+// GitHub state, after binding the desired organization to an independently
+// supplied expected organization.
+func Check(ctx context.Context, opt Options, expectedOrganization string) (*CheckResult, error) {
+	if err := config.CheckExpectedOrganization(opt.Desired.Organization, expectedOrganization); err != nil {
+		return nil, err
+	}
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
@@ -106,15 +109,6 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	}
 	result.Normalize()
 	return result, nil
-}
-
-// CheckForOrganization runs apply preflight only when the desired organization
-// matches the independently supplied expected organization.
-func CheckForOrganization(ctx context.Context, opt Options, expectedOrganization string) (*CheckResult, error) {
-	if err := config.CheckExpectedOrganization(opt.Desired.Organization, expectedOrganization); err != nil {
-		return nil, err
-	}
-	return Check(ctx, opt)
 }
 
 func (e *executor) preflightTeamCreateGroup(actions []gitopsplan.Action, failures *preflightFailures) []gitopsplan.Action {

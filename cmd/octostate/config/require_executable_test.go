@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	gitopsapply "github.com/orang-gaboets/octostate/pkg/gitops/apply"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	internalauth "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	gitopsapply "github.com/orang-gaboets/octostate/v2/pkg/gitops/apply"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // stubApplyPipeline replaces the collect/plan seams so the command can be
@@ -40,13 +40,15 @@ func stubApplyPipeline(t *testing.T, report *gitopsplan.Report) *gitopsapply.Opt
 	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return actual, nil
 	}
-	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return report, nil }
+	buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
+		return report, nil
+	}
 
 	var seen gitopsapply.Options
-	checkApply = func(_ context.Context, opt gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+	checkApply = func(_ context.Context, opt gitopsapply.Options, _ string) (*gitopsapply.CheckResult, error) {
 		seen = opt
 		if err := failIfRequired(opt); err != nil {
 			return nil, err
@@ -55,7 +57,7 @@ func stubApplyPipeline(t *testing.T, report *gitopsplan.Report) *gitopsapply.Opt
 		result.Normalize()
 		return result, nil
 	}
-	executeApply = func(_ context.Context, opt gitopsapply.Options) (*gitopsapply.Result, error) {
+	executeApply = func(_ context.Context, opt gitopsapply.Options, _ string) (*gitopsapply.Result, error) {
 		seen = opt
 		if err := failIfRequired(opt); err != nil {
 			return nil, err
@@ -104,7 +106,7 @@ func runApplyCmd(t *testing.T, args ...string) (string, string, error) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
 	cmd.SilenceUsage = true
-	cmd.SetArgs(append([]string{"--config-dir", "./config", "--token", "secret-token"}, args...))
+	cmd.SetArgs(append([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token"}, args...))
 	err := cmd.Execute()
 	return out.String(), errBuf.String(), err
 }

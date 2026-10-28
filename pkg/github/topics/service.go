@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/orang-gaboets/octostate/pkg/github"
-	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/v2/pkg/github/logging"
 )
 
 // ListAllTopics lists all topics for a given repository.

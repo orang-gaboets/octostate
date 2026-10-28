@@ -60,7 +60,7 @@ if ($actual -ne $expected) { throw "checksum mismatch for $archive" }
 If you prefer to build from source, install a pinned release with Go:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
+go install github.com/orang-gaboets/octostate/v2/cmd/octostate@v2.0.0
 ```
 
 Ensure Go's install directory is on `PATH`: use `$(go env GOBIN)` when it is
@@ -144,7 +144,7 @@ It checks the YAML structure and semantic rules before any live operation.
 
 Stop before running a live command. The plan, apply, and `audit pull` commands
 below derive the target organization from `config/organization.yaml`; they do
-not accept a separate `--org` flag. Their optional `--expected-org` assertion
+not accept a separate `--org` flag. Their required `--expected-org` assertion
 binds that target to a caller-authorized organization. The separate
 `sync-from-live` workflows use `--org` and are documented in the
 [config reference](cli/config.md).

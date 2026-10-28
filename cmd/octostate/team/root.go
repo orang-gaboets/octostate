@@ -3,9 +3,9 @@ package team
 import (
 	"github.com/spf13/cobra"
 
-	teammembers "github.com/orang-gaboets/octostate/cmd/octostate/team/members"
-	teamrepo "github.com/orang-gaboets/octostate/cmd/octostate/team/repo"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	teammembers "github.com/orang-gaboets/octostate/v2/cmd/octostate/team/members"
+	teamrepo "github.com/orang-gaboets/octostate/v2/cmd/octostate/team/repo"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
 )
 
 // NewTeamCmd creates a new "team" command group for managing teams on GitHub

@@ -9,8 +9,9 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestCollectOrganizationOptionsValidate(t *testing.T) {
@@ -80,6 +81,42 @@ func TestCollectOrganizationOptionsValidate(t *testing.T) {
 			err := tt.options.Validate()
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("unexpected error: got %v want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestExportedCollectionEntryPointsRequireMatchingExpectedOrganization(t *testing.T) {
+	t.Parallel()
+
+	collectors := []struct {
+		name    string
+		collect func(context.Context, CollectOrganizationOptions, string) (*state.OrganizationState, error)
+	}{
+		{name: "organization", collect: CollectOrganization},
+		{name: "bootstrap", collect: CollectOrganizationForBootstrap},
+		{name: "sync-from-live", collect: CollectOrganizationForSyncFromLive},
+		{name: "materialize", collect: CollectOrganizationForMaterialize},
+	}
+	for _, collector := range collectors {
+		collector := collector
+		t.Run(collector.name, func(t *testing.T) {
+			t.Parallel()
+			for _, tc := range []struct {
+				name     string
+				expected string
+				wantKind gitopsconfig.ExpectedOrganizationErrorKind
+			}{
+				{name: "mismatch", expected: "org-a", wantKind: gitopsconfig.ExpectedOrganizationErrorMismatch},
+				{name: "missing", expected: "", wantKind: gitopsconfig.ExpectedOrganizationErrorMissingExpected},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					actual, err := collector.collect(context.Background(), CollectOrganizationOptions{OrgName: "org-b"}, tc.expected)
+					var targetErr *gitopsconfig.ExpectedOrganizationError
+					if actual != nil || !errors.As(err, &targetErr) || targetErr.Kind != tc.wantKind {
+						t.Fatalf("expected target error %q before service validation, got state %#v and error %v", tc.wantKind, actual, err)
+					}
+				})
 			}
 		})
 	}
@@ -311,7 +348,7 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 		OrganizationService: orgSvc,
 		RepositoryService:   repoSvc,
 		TeamService:         teamSvc,
-	})
+	}, orgName)
 	if err != nil {
 		t.Fatalf("CollectOrganization returned error: %v", err)
 	}
@@ -413,7 +450,7 @@ func TestCollectOrganizationReturnsInvitationTeamError(t *testing.T) {
 		OrganizationService: orgSvc,
 		RepositoryService:   repoSvc,
 		TeamService:         teamSvc,
-	})
+	}, orgName)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
@@ -477,7 +514,7 @@ func TestCollectOrganizationReturnsTeamMemberError(t *testing.T) {
 		OrganizationService: orgSvc,
 		RepositoryService:   repoSvc,
 		TeamService:         teamSvc,
-	})
+	}, orgName)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, wantErr)
 	}
@@ -602,7 +639,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 		OrganizationService: orgSvc,
 		RepositoryService:   repoSvc,
 		TeamService:         teamSvc,
-	})
+	}, orgName)
 	if err != nil {
 		t.Fatalf("CollectOrganizationForBootstrap returned error: %v", err)
 	}
@@ -700,7 +737,7 @@ func TestCollectOrganizationForMaterializeReadsRepositoriesOnly(t *testing.T) {
 		OrganizationService: orgSvc,
 		RepositoryService:   repoSvc,
 		TeamService:         teamSvc,
-	})
+	}, orgName)
 	if err != nil {
 		t.Fatalf("CollectOrganizationForMaterialize returned error: %v", err)
 	}
@@ -764,7 +801,7 @@ func TestCollectOrganizationForSyncFromLiveOptInIncludesPendingInvitations(t *te
 		RepositoryService:         repoSvc,
 		TeamService:               teamSvc,
 		IncludePendingInvitations: true,
-	})
+	}, "org-a")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -796,7 +833,7 @@ func TestCollectOrganizationForMaterializeAllowsUnusedServicesToBeNil(t *testing
 	actual, err := CollectOrganizationForMaterialize(context.Background(), CollectOrganizationOptions{
 		OrgName:           orgName,
 		RepositoryService: repoSvc,
-	})
+	}, orgName)
 	if err != nil {
 		t.Fatalf("CollectOrganizationForMaterialize returned error: %v", err)
 	}

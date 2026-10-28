@@ -3,7 +3,7 @@ package user
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/users"
 )
 
 // NewUserCmd creates a new "user" command group for managing GitHub users.

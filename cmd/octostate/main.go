@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
 )
 
 var (

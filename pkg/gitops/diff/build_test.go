@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/internal/testconfig"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/internal/testconfig"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestOptionsValidate(t *testing.T) {
@@ -692,7 +692,7 @@ func TestBuildTeamRepositoryPermissionDiffDoesNotModelPlanOnlyDependencies(t *te
 	if err != nil {
 		t.Fatalf("diff Build returned error: %v", err)
 	}
-	planReport, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: &actual})
+	planReport, err := gitopsplan.Build(context.Background(), gitopsplan.Options{Desired: desired, Actual: &actual}, desired.Organization)
 	if err != nil {
 		t.Fatalf("plan Build returned error: %v", err)
 	}

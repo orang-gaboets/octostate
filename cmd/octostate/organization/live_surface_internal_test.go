@@ -9,10 +9,10 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
-	"github.com/orang-gaboets/octostate/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/users"
 )
 
 // captureInvite records exactly what the CLI hands the invitation service.

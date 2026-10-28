@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/repos"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
-	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	ghusers "github.com/orang-gaboets/octostate/v2/pkg/github/users"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
 )
 
 type preflightFailures struct {

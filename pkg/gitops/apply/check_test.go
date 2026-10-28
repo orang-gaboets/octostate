@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestCheckSkipsNonExecutableDriftWithoutMutations(t *testing.T) {
@@ -71,7 +71,7 @@ func TestCheckSkipsNonExecutableDriftWithoutMutations(t *testing.T) {
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestCheckPreflightsOrdinaryRepositoryCreateWithoutMutation(t *testing.T) {
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestCheckPreflightsPrivateRepositoryAllowForkingUpdateWithoutMutation(t *te
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestCheckRejectsInvalidDesiredConfig(t *testing.T) {
 	plan := &gitopsplan.Report{Organization: "orang-gaboets"}
 	plan.Normalize()
 
-	_, err := Check(context.Background(), testApplyOptions(config.OrganizationConfig{
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(config.OrganizationConfig{
 		Organization: "orang-gaboets",
 		Repositories: []config.RepositorySpec{{
 			Owner:      "shared-platform",
@@ -245,7 +245,7 @@ func TestCheckAggregatesManagedSourceAndConsumerFailuresInPlanOrder(t *testing.T
 		}
 	}}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
 	if err == nil {
 		t.Fatal("expected aggregate preflight failure")
 	}
@@ -314,7 +314,7 @@ func TestCheckPreflightsTeamCreatesAndInviteDependenciesWithoutMutations(t *test
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc), withOrganizationService(orgSvc), withUserService(userSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc), withOrganizationService(orgSvc), withUserService(userSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestCheckRepositoryCreateFailsWhenTemplateIsNotTemplate(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err == nil {
 		t.Fatal("expected create failure")
 	}
@@ -442,7 +442,7 @@ func TestCheckAllowsSamePlanRepositoryTemplateChains(t *testing.T) {
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestCheckAllowsRepositoryUpdateToTemplateBeforeLaterSamePlanCreate(t *testi
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -621,7 +621,7 @@ func TestCheckPreservesLiveTemplateStateForRepositoryUpdatesWithoutTemplateChang
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -696,7 +696,7 @@ func TestCheckRejectsFutureSamePlanRepositoryTemplateChains(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err == nil {
 		t.Fatal("expected future same-plan template chain failure")
 	}
@@ -781,7 +781,7 @@ func TestCheckAllowsSamePlanRepositoryTemplateChainsWithCaseMismatch(t *testing.
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -837,7 +837,7 @@ func TestCheckRepositoryUpdateFailsWhenTargetMissing(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc)))
 	if err == nil {
 		t.Fatal("expected update failure")
 	}
@@ -882,7 +882,7 @@ func TestCheckTeamUpdateFailsWhenTargetMissing(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc)))
 	if err == nil {
 		t.Fatal("expected update failure")
 	}
@@ -927,7 +927,7 @@ func TestCheckInvitePreflightResolvesUsername(t *testing.T) {
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withUserService(userSvc), withOrganizationService(orgSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withUserService(userSvc), withOrganizationService(orgSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -967,7 +967,7 @@ func TestCheckInvitePreflightFailsWhenUsernameLookupFails(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withUserService(userSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withUserService(userSvc)))
 	if err == nil {
 		t.Fatal("expected invite failure")
 	}
@@ -1046,7 +1046,7 @@ func TestCheckTeamRepoPermissionAllowsSamePlanTeamAndRepositoryCreates(t *testin
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1111,7 +1111,7 @@ func TestCheckTeamRepoPermissionFailsWhenLiveRepositoryMissing(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc), withRepoService(repoSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withTeamService(teamSvc), withRepoService(repoSvc)))
 	if err == nil {
 		t.Fatal("expected permission failure")
 	}
@@ -1198,7 +1198,7 @@ func TestCheckReusesVerifiedLiveTeamsAndRepositories(t *testing.T) {
 		},
 	}
 
-	result, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	result, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1230,7 +1230,7 @@ func TestCheckFailsWhenCheckTeamDependenciesCannotBeResolved(t *testing.T) {
 	}
 	plan.Normalize()
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan))
 	if err == nil {
 		t.Fatal("expected dependency error")
 	}
@@ -1320,7 +1320,7 @@ func TestCheckAggregatesMultipleIndependentFailures(t *testing.T) {
 		},
 	}
 
-	_, err := Check(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
+	_, err := checkForDesiredOrganization(context.Background(), testApplyOptions(desired, actual, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
 	if err == nil {
 		t.Fatal("expected aggregated failure")
 	}

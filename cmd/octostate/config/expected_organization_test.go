@@ -8,11 +8,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
+	gitopsapply "github.com/orang-gaboets/octostate/v2/pkg/gitops/apply"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestPlanExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
@@ -26,7 +28,7 @@ func TestPlanExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
 				t.Fatal("target rejection must precede authentication")
 				return nil, nil
 			}
-			collectPlanState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectPlanState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 				t.Fatal("target rejection must precede live collection")
 				return nil, nil
 			}
@@ -34,6 +36,24 @@ func TestPlanExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
 			cmd := PlanConfigCmd()
 			assertTargetCommandFailure(t, cmd, []string{"--config-dir", "./config", "--expected-org", expected})
 		})
+	}
+}
+
+func TestPlanRequiresExpectedOrganizationBeforeAuthentication(t *testing.T) {
+	restorePlanHooks(t)
+	loadPlanConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+		return gitopsconfig.OrganizationConfig{Organization: "org-b"}, nil
+	}
+	newPlanClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
+		t.Fatal("missing target must be rejected before authentication")
+		return nil, nil
+	}
+
+	cmd := PlanConfigCmd()
+	cmd.SetArgs([]string{"--config-dir", "./config"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "expected-org") {
+		t.Fatalf("expected missing --expected-org rejection, got %v", err)
 	}
 }
 
@@ -60,8 +80,17 @@ func TestPlanExpectedOrganizationMatchesWithPATAndApp(t *testing.T) {
 				}
 				return auth.MockClient{}, nil
 			}
-			collectPlanState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectPlanState = func(_ context.Context, _ collector.CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
+				if expectedOrganization != " ORG-B " {
+					t.Fatalf("collector got expected organization %q", expectedOrganization)
+				}
 				return &state.OrganizationState{Organization: "org-b"}, nil
+			}
+			buildPlanReport = func(_ context.Context, opt gitopsplan.Options, expectedOrganization string) (*gitopsplan.Report, error) {
+				if expectedOrganization != " ORG-B " {
+					t.Fatalf("planner got expected organization %q", expectedOrganization)
+				}
+				return &gitopsplan.Report{Organization: opt.Desired.Organization}, nil
 			}
 
 			cmd := PlanConfigCmd()
@@ -92,7 +121,7 @@ func TestApplyExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
 					t.Fatal("target rejection must precede authentication")
 					return nil, nil
 				}
-				collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					t.Fatal("target rejection must precede live collection")
 					return nil, nil
 				}
@@ -104,6 +133,36 @@ func TestApplyExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
 				assertTargetCommandFailure(t, ApplyConfigCmd(), args)
 			})
 		}
+	}
+}
+
+func TestApplyRequiresExpectedOrganizationInEveryLiveMode(t *testing.T) {
+	for _, mode := range []struct {
+		name string
+		flag string
+	}{
+		{name: "live"}, {name: "check", flag: "--check"}, {name: "dry-run", flag: "--dry-run"},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			restoreApplyHooks(t)
+			loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
+				return gitopsconfig.OrganizationConfig{Organization: "org-b"}, nil
+			}
+			newApplyClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
+				t.Fatal("missing target must be rejected before authentication")
+				return nil, nil
+			}
+			args := []string{"--config-dir", "./config"}
+			if mode.flag != "" {
+				args = append(args, mode.flag)
+			}
+			cmd := ApplyConfigCmd()
+			cmd.SetArgs(args)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "expected-org") {
+				t.Fatalf("expected missing --expected-org rejection, got %v", err)
+			}
+		})
 	}
 }
 
@@ -127,8 +186,29 @@ func TestApplyExpectedOrganizationMatchesAcrossModes(t *testing.T) {
 					UsersService:         auth.MockUserService{},
 				}, nil
 			}
-			collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, expectedOrganization string) (*state.OrganizationState, error) {
+				if expectedOrganization != " ORG-B " {
+					t.Fatalf("collector got expected organization %q", expectedOrganization)
+				}
 				return &state.OrganizationState{Organization: "org-b"}, nil
+			}
+			buildApplyPlan = func(_ context.Context, opt gitopsplan.Options, expectedOrganization string) (*gitopsplan.Report, error) {
+				if expectedOrganization != " ORG-B " {
+					t.Fatalf("planner got expected organization %q", expectedOrganization)
+				}
+				return &gitopsplan.Report{Organization: opt.Desired.Organization}, nil
+			}
+			checkApply = func(_ context.Context, opt gitopsapply.Options, expectedOrganization string) (*gitopsapply.CheckResult, error) {
+				if expectedOrganization != " ORG-B " {
+					t.Fatalf("preflight got expected organization %q", expectedOrganization)
+				}
+				return &gitopsapply.CheckResult{Organization: opt.Desired.Organization}, nil
+			}
+			executeApply = func(_ context.Context, opt gitopsapply.Options, expectedOrganization string) (*gitopsapply.Result, error) {
+				if expectedOrganization != " ORG-B " {
+					t.Fatalf("apply got expected organization %q", expectedOrganization)
+				}
+				return &gitopsapply.Result{Organization: opt.Desired.Organization}, nil
 			}
 
 			args := []string{"--config-dir", "./config", "--expected-org", " ORG-B "}

@@ -9,8 +9,8 @@ import (
 
 	gh "github.com/google/go-github/v88/github"
 
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	githubteams "github.com/orang-gaboets/octostate/pkg/github/teams"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	githubteams "github.com/orang-gaboets/octostate/v2/pkg/github/teams"
 )
 
 // teamCallCounter records how many GitHub reads team-state collection issues,

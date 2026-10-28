@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	ghusers "github.com/orang-gaboets/octostate/v2/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 type inviteIdentityKind string

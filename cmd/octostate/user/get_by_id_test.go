@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	usercmd "github.com/orang-gaboets/octostate/cmd/octostate/user"
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	usercmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/user"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 func TestGetUserByIDCmdNoRequiredFlags(t *testing.T) {

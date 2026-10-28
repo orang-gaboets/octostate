@@ -45,7 +45,7 @@ octostate audit pull --config-dir ./config --state-dir ./state --expected-org or
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--state-dir` (required): Path to the state directory where the actual-state snapshot will be written
-- `--expected-org`: Optional caller-authorized organization, supplied independently of `organization.yaml`
+- `--expected-org` (required): Caller-authorized organization, supplied independently of `organization.yaml`
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
 - `--installation-id`: GitHub App installation ID (required if using GitHub App authentication)
@@ -53,7 +53,7 @@ Flags:
 
 Behavior:
 - Loads `<config-dir>/organization.yaml` to determine the target organization
-- When `--expected-org` is supplied, requires a valid GitHub organization login and compares trimmed values without regard to case; an empty, invalid, or mismatched value is rejected before authentication, live reads, or snapshot writing. Omission retains legacy behavior
+- Requires a valid GitHub organization login and compares trimmed values without regard to case; a missing, empty, invalid, or mismatched value is rejected before authentication, live reads, or snapshot writing
 - Collects current GitHub actual state using the bounded-concurrency GitOps collector layer
 - Writes a stable JSON snapshot to `<state-dir>/actual/snapshot.json`
 - Prints a structured success result to stdout

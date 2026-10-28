@@ -3,7 +3,7 @@ package topic
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/pkg/github/topics"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/topics"
 )
 
 // NewTopicCmd creates a new "topic" command group for managing topic on GitHub

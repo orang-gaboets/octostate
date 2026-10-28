@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	githubteams "github.com/orang-gaboets/octostate/pkg/github/teams"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	githubteams "github.com/orang-gaboets/octostate/v2/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 type inheritedTeamServiceStub struct {

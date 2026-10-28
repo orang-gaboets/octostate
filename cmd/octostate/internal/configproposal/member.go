@@ -3,7 +3,7 @@ package configproposal
 import (
 	"strings"
 
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 // FindOrganizationMemberIndex returns the index of a top-level organization

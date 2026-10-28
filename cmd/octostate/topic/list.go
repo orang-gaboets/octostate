@@ -3,10 +3,10 @@ package topic
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/topics"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/topics"
 )
 
 // ListAllTopicsCmd creates a command to list all topics of an existing GitHub repository.

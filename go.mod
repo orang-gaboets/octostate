@@ -1,4 +1,4 @@
-module github.com/orang-gaboets/octostate
+module github.com/orang-gaboets/octostate/v2
 
 go 1.26.10
 

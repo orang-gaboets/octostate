@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/internal/filereplace"
+	"github.com/orang-gaboets/octostate/v2/internal/filereplace"
 )
 
 func TestWriteFileCreatesAMissingDestination(t *testing.T) {

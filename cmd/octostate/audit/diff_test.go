@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsdiff "github.com/orang-gaboets/octostate/pkg/gitops/diff"
-	gitopssnapshot "github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsdiff "github.com/orang-gaboets/octostate/v2/pkg/gitops/diff"
+	gitopssnapshot "github.com/orang-gaboets/octostate/v2/pkg/gitops/snapshot"
 )
 
 func TestDiffCmdSuccessNoDrift(t *testing.T) {

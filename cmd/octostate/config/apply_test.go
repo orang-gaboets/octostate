@@ -10,15 +10,15 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
-	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
-	"github.com/orang-gaboets/octostate/pkg/github"
-	gitopsapply "github.com/orang-gaboets/octostate/pkg/gitops/apply"
-	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	internalauth "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/exitcode"
+	cmdoutput "github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/output"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
+	gitopsapply "github.com/orang-gaboets/octostate/v2/pkg/gitops/apply"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/collector"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 type applyTemplateRepoService struct {
@@ -80,13 +80,13 @@ func TestApplyConfigCmdSuccess(t *testing.T) {
 		}
 		return internalauth.MockClient{}, nil
 	}
-	collectApplyState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectApplyState = func(_ context.Context, opt collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if opt.OrgName != cfg.Organization {
 			t.Fatalf("unexpected organization %q", opt.OrgName)
 		}
 		return actual, nil
 	}
-	buildApplyPlan = func(_ context.Context, opt gitopsplan.Options) (*gitopsplan.Report, error) {
+	buildApplyPlan = func(_ context.Context, opt gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
 		if !reflect.DeepEqual(opt.Desired, cfg) {
 			t.Fatalf("unexpected desired config: got %#v want %#v", opt.Desired, cfg)
 		}
@@ -95,7 +95,7 @@ func TestApplyConfigCmdSuccess(t *testing.T) {
 		}
 		return report, nil
 	}
-	executeApply = func(_ context.Context, opt gitopsapply.Options) (*gitopsapply.Result, error) {
+	executeApply = func(_ context.Context, opt gitopsapply.Options, _ string) (*gitopsapply.Result, error) {
 		if !reflect.DeepEqual(opt.Desired, cfg) {
 			t.Fatalf("unexpected desired config: got %#v want %#v", opt.Desired, cfg)
 		}
@@ -113,7 +113,7 @@ func TestApplyConfigCmdSuccess(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -155,11 +155,13 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return actual, nil
 	}
-	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return report, nil }
-	executeApply = func(context.Context, gitopsapply.Options) (*gitopsapply.Result, error) {
+	buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
+		return report, nil
+	}
+	executeApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.Result, error) {
 		t.Fatal("executeApply should not be called during dry-run")
 		return nil, nil
 	}
@@ -169,7 +171,7 @@ func TestApplyConfigCmdDryRunSkipsExecution(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--dry-run"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token", "--dry-run"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -220,14 +222,16 @@ func TestApplyConfigCmdCheckSkipsExecution(t *testing.T) {
 	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return actual, nil
 	}
-	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return report, nil }
-	checkApply = func(context.Context, gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+	buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
+		return report, nil
+	}
+	checkApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.CheckResult, error) {
 		return check, nil
 	}
-	executeApply = func(context.Context, gitopsapply.Options) (*gitopsapply.Result, error) {
+	executeApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.Result, error) {
 		t.Fatal("executeApply should not be called during check")
 		return nil, nil
 	}
@@ -237,7 +241,7 @@ func TestApplyConfigCmdCheckSkipsExecution(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token", "--check"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -282,11 +286,13 @@ func TestApplyConfigCmdCheckFailurePropagatesWithoutSuccessOutput(t *testing.T) 
 	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 		return internalauth.MockClient{}, nil
 	}
-	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		return actual, nil
 	}
-	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return report, nil }
-	checkApply = func(context.Context, gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+	buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
+		return report, nil
+	}
+	checkApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.CheckResult, error) {
 		return nil, checkErr
 	}
 
@@ -295,7 +301,7 @@ func TestApplyConfigCmdCheckFailurePropagatesWithoutSuccessOutput(t *testing.T) 
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token", "--check"})
 
 	err := cmd.Execute()
 	if !errors.Is(err, checkErr) {
@@ -314,7 +320,7 @@ func TestApplyConfigCmdRejectsCheckAndDryRunTogether(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check", "--dry-run"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token", "--check", "--dry-run"})
 
 	err := cmd.Execute()
 	if err == nil {
@@ -348,7 +354,7 @@ func TestApplyConfigCmdLoadFailurePropagatesWithoutAuth(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token"})
 
 	err := cmd.Execute()
 	if code, ok := exitcode.Code(err); !ok || code != validateExitCodeInvalidConfig {
@@ -384,7 +390,7 @@ func TestApplyConfigCmdInvalidConfigPrintsStderrAndReturnsTypedExit(t *testing.T
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token"})
 
 	err := cmd.Execute()
 	if err == nil {
@@ -406,8 +412,8 @@ func TestApplyConfigCmdRejectsMismatchedRepositoryOwnerBeforeGitHub(t *testing.T
 		name string
 		args []string
 	}{
-		{name: "apply", args: []string{"--config-dir", "./config", "--token", "secret-token"}},
-		{name: "check", args: []string{"--config-dir", "./config", "--token", "secret-token", "--check"}},
+		{name: "apply", args: []string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token"}},
+		{name: "check", args: []string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token", "--check"}},
 	}
 
 	for _, tt := range tests {
@@ -430,19 +436,19 @@ func TestApplyConfigCmdRejectsMismatchedRepositoryOwnerBeforeGitHub(t *testing.T
 				t.Fatal("newApplyClient should not be called for invalid repository owner")
 				return nil, nil
 			}
-			collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 				t.Fatal("collectApplyState should not be called for invalid repository owner")
 				return nil, nil
 			}
-			buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) {
+			buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
 				t.Fatal("buildApplyPlan should not be called for invalid repository owner")
 				return nil, nil
 			}
-			checkApply = func(context.Context, gitopsapply.Options) (*gitopsapply.CheckResult, error) {
+			checkApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.CheckResult, error) {
 				t.Fatal("checkApply should not be called for invalid repository owner")
 				return nil, nil
 			}
-			executeApply = func(context.Context, gitopsapply.Options) (*gitopsapply.Result, error) {
+			executeApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.Result, error) {
 				t.Fatal("executeApply should not be called for invalid repository owner")
 				return nil, nil
 			}
@@ -452,7 +458,7 @@ func TestApplyConfigCmdRejectsMismatchedRepositoryOwnerBeforeGitHub(t *testing.T
 			var errBuf bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&errBuf)
-			cmd.SetArgs(tt.args)
+			cmd.SetArgs(append(tt.args, "--expected-org", "orang-gaboets"))
 
 			err := cmd.Execute()
 			if err == nil {
@@ -508,10 +514,10 @@ func TestApplyConfigCmdAuthCollectorBuildAndExecuteFailuresPropagate(t *testing.
 				newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 					return internalauth.MockClient{}, nil
 				}
-				collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					return nil, collectErr
 				}
-				buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) {
+				buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
 					t.Fatal("buildApplyPlan should not be called after collector failure")
 					return nil, nil
 				}
@@ -530,10 +536,12 @@ func TestApplyConfigCmdAuthCollectorBuildAndExecuteFailuresPropagate(t *testing.
 				newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 					return internalauth.MockClient{}, nil
 				}
-				collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 				}
-				buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return nil, buildErr }
+				buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
+					return nil, buildErr
+				}
 			},
 		},
 		{
@@ -549,13 +557,15 @@ func TestApplyConfigCmdAuthCollectorBuildAndExecuteFailuresPropagate(t *testing.
 				newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
 					return internalauth.MockClient{}, nil
 				}
-				collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				collectApplyState = func(_ context.Context, _ collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 					return &state.OrganizationState{Organization: "orang-gaboets"}, nil
 				}
-				buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) {
+				buildApplyPlan = func(_ context.Context, _ gitopsplan.Options, _ string) (*gitopsplan.Report, error) {
 					return &gitopsplan.Report{Organization: "orang-gaboets"}, nil
 				}
-				executeApply = func(context.Context, gitopsapply.Options) (*gitopsapply.Result, error) { return nil, execErr }
+				executeApply = func(_ context.Context, _ gitopsapply.Options, _ string) (*gitopsapply.Result, error) {
+					return nil, execErr
+				}
 			},
 		},
 	}
@@ -570,7 +580,7 @@ func TestApplyConfigCmdAuthCollectorBuildAndExecuteFailuresPropagate(t *testing.
 			var errBuf bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&errBuf)
-			cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+			cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token"})
 
 			err := cmd.Execute()
 			if !errors.Is(err, tt.wantErr) {
@@ -633,7 +643,7 @@ func TestApplyConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 		return nil, nil
 	}
 
-	_, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply, false, nil)
+	_, _, _, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeApply, false, "org-b")
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -703,7 +713,7 @@ func setupApplyTemplateOrderingFixture(t *testing.T) applyTemplateOrderingFixtur
 			UsersService:         internalauth.MockUserService{},
 		}, nil
 	}
-	collectApplyState = func(_ context.Context, opt collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+	collectApplyState = func(_ context.Context, opt collector.CollectOrganizationOptions, _ string) (*state.OrganizationState, error) {
 		if opt.OrgName != desired.Organization {
 			t.Fatalf("unexpected organization %q", opt.OrgName)
 		}
@@ -788,7 +798,7 @@ func TestApplyConfigCheckUsesRealPlannerAndPreflight(t *testing.T) {
 
 	fixture := setupApplyTemplateOrderingFixture(t)
 
-	result, preview, checkResult, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck, false, nil)
+	result, preview, checkResult, err := applyConfig(context.Background(), "secret-token", 0, 0, "", "./config", applyRunModeCheck, false, "orang-gaboets")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -827,7 +837,7 @@ func TestApplyConfigCmdCheckUsesRealPlannerAndPreflight(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--check"})
+	cmd.SetArgs([]string{"--config-dir", "./config", "--expected-org", "orang-gaboets", "--token", "secret-token", "--check"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)

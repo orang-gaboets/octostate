@@ -3,8 +3,8 @@ package repo
 import (
 	"github.com/spf13/cobra"
 
-	repopermissions "github.com/orang-gaboets/octostate/cmd/octostate/team/repo/permissions"
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	repopermissions "github.com/orang-gaboets/octostate/v2/cmd/octostate/team/repo/permissions"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
 )
 
 // NewCmd creates a "team repo" command group for team repository operations.

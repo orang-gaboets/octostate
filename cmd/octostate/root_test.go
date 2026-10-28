@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
 )
 
 func TestRootVerboseWritesLogsToStderrAndKeepsJSONOnStdout(t *testing.T) {

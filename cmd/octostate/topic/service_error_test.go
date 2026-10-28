@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	topicscmd "github.com/orang-gaboets/octostate/cmd/octostate/topic"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	topicscmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/topic"
 )
 
 var errTopicCommandDependency = errors.New("topic command dependency failed")

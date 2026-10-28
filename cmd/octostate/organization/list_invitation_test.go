@@ -9,9 +9,9 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
-	pkggithub "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	organizationcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/organization"
+	pkggithub "github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 type stubListInvitationService struct {

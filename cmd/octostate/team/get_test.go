@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	teamcmd "github.com/orang-gaboets/octostate/cmd/octostate/team"
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	teamcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/team"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 func TestGetTeamBySlugNoRequiredFlags(t *testing.T) {

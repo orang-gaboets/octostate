@@ -3,7 +3,7 @@ package users
 import (
 	"fmt"
 
-	"github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github"
 )
 
 // GetUserByIDOptions defines the options for retrieving a GitHub user by ID.

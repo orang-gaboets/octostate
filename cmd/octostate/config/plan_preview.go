@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
 )
 
 // planPreview is the command-layer Terraform-style split view used by

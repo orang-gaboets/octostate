@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // paddedDesired declares the same organization as liveState below, but every
@@ -68,7 +68,7 @@ func liveState() *state.OrganizationState {
 func TestBuildTreatsWhitespacePaddedDesiredStateAsNoDrift(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{Desired: paddedDesired(), Actual: liveState()})
+	report, err := buildForDesiredOrganization(context.Background(), Options{Desired: paddedDesired(), Actual: liveState()})
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestBuildDoesNotMutateDesiredConfig(t *testing.T) {
 	desired := paddedDesired()
 	snapshot := paddedDesired()
 
-	if _, err := Build(context.Background(), Options{Desired: desired, Actual: liveState()}); err != nil {
+	if _, err := buildForDesiredOrganization(context.Background(), Options{Desired: desired, Actual: liveState()}); err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
 	if !reflect.DeepEqual(desired, snapshot) {
@@ -129,11 +129,11 @@ teams:
 		t.Fatalf("LoadFile returned error: %v", err)
 	}
 
-	fromFile, err := Build(context.Background(), Options{Desired: loaded, Actual: liveState()})
+	fromFile, err := buildForDesiredOrganization(context.Background(), Options{Desired: loaded, Actual: liveState()})
 	if err != nil {
 		t.Fatalf("Build from loaded config returned error: %v", err)
 	}
-	fromStruct, err := Build(context.Background(), Options{Desired: paddedDesired(), Actual: liveState()})
+	fromStruct, err := buildForDesiredOrganization(context.Background(), Options{Desired: paddedDesired(), Actual: liveState()})
 	if err != nil {
 		t.Fatalf("Build from constructed config returned error: %v", err)
 	}

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 func TestNewActualSnapshotNormalizesAndClones(t *testing.T) {

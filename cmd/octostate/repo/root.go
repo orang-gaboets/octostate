@@ -3,7 +3,7 @@ package repo
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/pkg/github/repos"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/repos"
 )
 
 // NewRepoCmd creates a new "repo" command group for managing repositories on GitHub.

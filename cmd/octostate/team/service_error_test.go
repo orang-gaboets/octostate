@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	teamcmd "github.com/orang-gaboets/octostate/cmd/octostate/team"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	teamcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/team"
 )
 
 var errTeamCommandDependency = errors.New("team command dependency failed")

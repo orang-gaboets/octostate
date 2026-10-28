@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/orang-gaboets/octostate/internal/orderedtasks"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/github/organizations"
-	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/v2/internal/orderedtasks"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/organizations"
+	ghusers "github.com/orang-gaboets/octostate/v2/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/v2/pkg/gitops/plan"
 )
 
 const inviteUsernameResolutionConcurrency = 8

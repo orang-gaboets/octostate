@@ -22,7 +22,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
     [@caller, @runner, @stubs, @source].each { |p| FileUtils.mkdir_p(p) }
     @git = Open3.capture2("which", "git").first.strip
     git("init", "-q", @source)
-    File.write(File.join(@source, "go.mod"), "module github.com/orang-gaboets/octostate\n\ngo 1.25.0\n")
+    File.write(File.join(@source, "go.mod"), "module github.com/orang-gaboets/octostate/v2\n\ngo 1.25.0\n")
     File.write(File.join(@source, "source.txt"), "old\n")
     git("-C", @source, "add", ".")
     git("-C", @source, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "old")
@@ -32,7 +32,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
     git("-C", @source, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qam", "new")
     @sha = git("-C", @source, "rev-parse", "HEAD").strip
     File.write(File.join(@caller, "go.work"), "invalid caller workspace\n")
-    @inputs = {"octostate_version" => @sha, "config_dir" => "config directory", "expected_org" => "", "bind_expected_org" => false}
+    @inputs = {"octostate_version" => @sha, "config_dir" => "config directory", "expected_org" => "acme"}
     @secret = SECRET
     @env = {
       "PATH" => "#{@stubs}:/usr/bin:/bin", "RUNNER_TEMP" => @runner,
@@ -92,7 +92,7 @@ class ConfigReviewWorkflowTest < Minitest::Test
       when "version"
         state = JSON.parse(File.read(ENV.fetch("BUILD_STATE")))
         puts "octostate: go1.25.13"
-        puts "\tpath\tgithub.com/orang-gaboets/octostate/cmd/octostate"
+        puts "\tpath\tgithub.com/orang-gaboets/octostate/v2/cmd/octostate"
         puts "\tbuild\tvcs=git"
         puts "\tbuild\tvcs.revision=#{ENV.fetch("METADATA_REVISION", state.fetch("revision"))}" unless ENV["MISSING_REVISION"]
         puts "\tbuild\tvcs.modified=#{ENV.fetch("DIRTY", "false")}"
@@ -271,8 +271,8 @@ class ConfigReviewWorkflowTest < Minitest::Test
   def test_live_commands_authenticate_without_token_arguments_or_persistence
     assert run_review("ASSERT_ENV_AUTH" => "1").success?, diagnostic
     calls = events("octostate")
-    assert_equal ["config", "plan", "--config-dir", "config directory"], calls[1].fetch("args")
-    assert_equal ["config", "apply", "--config-dir", "config directory", "--check"], calls[2].fetch("args")
+    assert_equal ["config", "plan", "--config-dir", "config directory", "--expected-org", "acme"], calls[1].fetch("args")
+    assert_equal ["config", "apply", "--config-dir", "config directory", "--check", "--expected-org", "acme"], calls[2].fetch("args")
     calls.drop(1).each { |call| assert call.fetch("correct_token") }
     refute_includes diagnostic, SECRET
     refute_includes File.read(@env.fetch("EVENTS")), SECRET
@@ -293,18 +293,23 @@ class ConfigReviewWorkflowTest < Minitest::Test
 
   def test_expected_organization_is_forwarded_to_both_live_commands
     @inputs["expected_org"] = "acme"
-    @inputs["bind_expected_org"] = true
     assert run_review("ASSERT_ENV_AUTH" => "1").success?, diagnostic
     assert_equal ["config", "plan", "--config-dir", "config directory", "--expected-org", "acme"], events("octostate")[1].fetch("args")
     assert_equal ["config", "apply", "--config-dir", "config directory", "--check", "--expected-org", "acme"], events("octostate")[2].fetch("args")
   end
 
-  def test_expected_organization_without_binding_stops_before_plan
-    @inputs["expected_org"] = "acme"
+  def test_empty_expected_organization_stops_before_plan
+    @inputs["expected_org"] = ""
     refute run_review.success?
     assert_equal ["validate"], events("octostate").map { |call| call["args"][1] }
-    assert_includes diagnostic, "expected_org requires bind_expected_org"
+    assert_includes diagnostic, "expected_org is required"
     refute_includes diagnostic, SECRET
+  end
+
+  def test_expected_org_is_required_without_a_binding_toggle
+    inputs = WORKFLOW.fetch(true).fetch("workflow_call").fetch("inputs")
+    assert_equal true, inputs.fetch("expected_org").fetch("required")
+    refute inputs.key?("bind_expected_org")
   end
 
   def test_command_failures_preserve_output_and_stop_later_steps

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/orang-gaboets/octostate/internal/filereplace"
+	"github.com/orang-gaboets/octostate/v2/internal/filereplace"
 )
 
 // Permission bits are only meaningful on Unix; Windows synthesizes them from

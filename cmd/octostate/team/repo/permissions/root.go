@@ -3,7 +3,7 @@ package permissions
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/orang-gaboets/octostate/pkg/github/teams"
+	"github.com/orang-gaboets/octostate/v2/pkg/github/teams"
 )
 
 // NewCmd creates a "team repo permissions" command group.

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	reposcmd "github.com/orang-gaboets/octostate/cmd/octostate/repo"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	reposcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/repo"
 )
 
 var errRepoCommandDependency = errors.New("repo command dependency failed")

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	organizationcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/organization"
 )
 
 var errOrganizationCommandDependency = errors.New("organization command dependency failed")

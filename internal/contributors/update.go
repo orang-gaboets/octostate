@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/orang-gaboets/octostate/internal/filereplace"
+	"github.com/orang-gaboets/octostate/v2/internal/filereplace"
 )
 
 // LoadConfig reads the maintainer override file. A missing file is normal and

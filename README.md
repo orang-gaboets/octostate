@@ -82,7 +82,7 @@ fi
 For a Go-native installation from source:
 
 ```bash
-go install github.com/orang-gaboets/octostate/cmd/octostate@v<version>
+go install github.com/orang-gaboets/octostate/v2/cmd/octostate@v2.0.0
 ```
 
 Automation and control repositories should pin an explicit version. Prefer a
@@ -137,9 +137,11 @@ Use a short-lived, least-privilege credential and avoid shared systems. The
 legacy `--token` flag remains supported, but may expose the token through
 process inspection.
 `--expected-org` compares this separately supplied organization with the one in
-`organization.yaml` before authentication or live work. It is opt-in for
-existing callers; automation with access to multiple organizations should
-source it from trusted control-repository settings, not the desired file.
+`organization.yaml` before authentication or live work. Live `config plan`, all
+`config apply` modes, and `audit pull` require it. Source the value from trusted
+caller configuration, not the desired-state file.
+See the [v2.0.0 compatibility notes](docs/maintainers/v2.0.0-compatibility.md)
+for CLI, workflow, and Go API migration steps.
 
 Review the plan and preflight result before intentionally applying supported
 create/update actions:

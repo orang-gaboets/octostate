@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/internal/testconfig"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/internal/testconfig"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 type userServiceStub struct {
@@ -85,7 +85,7 @@ func TestOptionsValidate(t *testing.T) {
 func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Members: []config.OrganizationMemberSpec{
@@ -222,7 +222,7 @@ func TestBuildPendingInvitationMetadataIsCreateTimeIntent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			report, err := Build(context.Background(), Options{
+			report, err := buildForDesiredOrganization(context.Background(), Options{
 				Desired: config.OrganizationConfig{
 					Organization: "orang-gaboets",
 					Invites: []config.InviteSpec{{
@@ -275,7 +275,7 @@ func TestBuildResolvesUnnormalizedRepositoryOwners(t *testing.T) {
 		}},
 	}
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual: &state.OrganizationState{
 			Organization: "org-a",
@@ -305,7 +305,7 @@ func TestBuildResolvesWhitespaceNormalizedTemplateIdentity(t *testing.T) {
 	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: " ORANG-GABOETS ", Name: " z-template "}}
 	desired := config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}}
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual:  &state.OrganizationState{Organization: "orang-gaboets"},
 	})
@@ -328,7 +328,7 @@ func TestBuildResolvesWhitespaceNormalizedTemplateIdentity(t *testing.T) {
 func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
 	t.Parallel()
 
-	_, err := Build(context.Background(), Options{
+	_, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{{
@@ -359,7 +359,7 @@ func TestBuildRejectsInvalidDesiredConfig(t *testing.T) {
 func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Members: []config.OrganizationMemberSpec{
@@ -512,7 +512,7 @@ func TestBuildRejectsInviteThatDuplicatesDesiredMemberByUserID(t *testing.T) {
 		},
 	}
 
-	_, err := Build(context.Background(), Options{
+	_, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Members: []config.OrganizationMemberSpec{
@@ -548,7 +548,7 @@ func TestBuildRejectsInviteThatDuplicatesUnnormalizedDesiredMemberByUserID(t *te
 		},
 	}
 
-	_, err := Build(context.Background(), Options{
+	_, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Members: []config.OrganizationMemberSpec{
@@ -582,7 +582,7 @@ func TestBuildInviteUserIDWithoutDesiredMembersDoesNotLookupUser(t *testing.T) {
 		},
 	}
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Invites: []config.InviteSpec{
@@ -613,7 +613,7 @@ func TestBuildRejectsInviteThatDuplicatesDesiredMemberByActualMemberIDWithoutLoo
 		},
 	}
 
-	_, err := Build(context.Background(), Options{
+	_, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Members: []config.OrganizationMemberSpec{
@@ -654,7 +654,7 @@ func TestBuildInviteUserIDSatisfiedByPendingInviteUsesLookupCache(t *testing.T) 
 		},
 	}
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Invites: []config.InviteSpec{
@@ -684,7 +684,7 @@ func TestBuildInviteLookupFailurePropagates(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("lookup failed")
-	_, err := Build(context.Background(), Options{
+	_, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Invites: []config.InviteSpec{
@@ -729,7 +729,7 @@ teams: []
 invites: []
 `, visibility))
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual: &state.OrganizationState{
 			Organization: "orang-gaboets",
@@ -763,7 +763,7 @@ teams: []
 invites: []
 `)
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual: &state.OrganizationState{
 			Organization: "orang-gaboets",
@@ -806,7 +806,7 @@ teams: []
 invites: []
 `)
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual: &state.OrganizationState{
 			Organization: "orang-gaboets",
@@ -855,7 +855,7 @@ func TestBuildOrdersRepositoryUpdateBeforeCreateWhenTemplateStateChangesInSamePl
 	}
 	templateRepo.SetManagedIsTemplate(true)
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{
@@ -913,7 +913,7 @@ func TestBuildOrdersRepositoryUpdateBeforeCreateWhenTemplateStateChangesInSamePl
 func TestBuildInternalRepositoryCreateWithoutTemplateIsExecutable(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{{
@@ -952,7 +952,7 @@ func TestBuildInternalRepositoryCreateWithoutTemplateIsExecutable(t *testing.T) 
 func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenRepositoryIsCreatedInSamePlan(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{{
@@ -1017,7 +1017,7 @@ func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenRepositoryIsCreatedI
 func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenOrdinaryRepositoryIsCreated(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{{
@@ -1078,7 +1078,7 @@ func TestBuildTeamRepositoryPermissionCreateIsExecutableWhenOrdinaryRepositoryIs
 func TestBuildTeamRepositoryPermissionUpdateIsExecutableWhenRepositoryExistsLive(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{{
@@ -1142,7 +1142,7 @@ func TestBuildTeamRepositoryPermissionUpdateIsExecutableWhenRepositoryExistsLive
 func TestBuildRepositoryTopicsTreatDuplicatesAsSetEquivalent(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{
@@ -1276,7 +1276,7 @@ func TestBuildInviteSatisfiedByExistingMember(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			report, err := Build(context.Background(), Options{
+			report, err := buildForDesiredOrganization(context.Background(), Options{
 				Desired: config.OrganizationConfig{
 					Organization: "orang-gaboets",
 					Invites:      []config.InviteSpec{tt.invite},
@@ -1307,7 +1307,7 @@ func TestBuildInviteSatisfiedByExistingMember(t *testing.T) {
 func TestBuildIgnoresTemplateConfigurationForExistingRepository(t *testing.T) {
 	t.Parallel()
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{
 			Organization: "orang-gaboets",
 			Repositories: []config.RepositorySpec{
@@ -1358,7 +1358,7 @@ func TestBuildDoesNotOrderExistingConsumerAfterReferencedTemplate(t *testing.T) 
 	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Description: "new", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}}
 	consumer.SetManagedDescription("new")
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, template}},
 		Actual: &state.OrganizationState{Organization: "orang-gaboets", Repositories: []state.Repository{{
 			Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Description: "old",
@@ -1388,7 +1388,7 @@ func TestBuildReadyRepositoryActionsIgnoreNoOpTemplateSources(t *testing.T) {
 	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}}
 	independent := config.RepositorySpec{Owner: "orang-gaboets", Name: "b-independent", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, independent, source}},
 		Actual: &state.OrganizationState{Organization: "orang-gaboets", Repositories: []state.Repository{{
 			Owner: "orang-gaboets", Name: "z-template", Visibility: "private", IsTemplate: true,
@@ -1422,7 +1422,7 @@ func TestBuildReadyRepositoryActionsIgnoreUnrelatedTemplateSourceUpdates(t *test
 	consumer := config.RepositorySpec{Owner: "orang-gaboets", Name: "a-consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "z-template"}}
 	independent := config.RepositorySpec{Owner: "orang-gaboets", Name: "b-independent", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
 
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, independent, source}},
 		Actual: &state.OrganizationState{Organization: "orang-gaboets", Repositories: []state.Repository{
 			{Owner: "orang-gaboets", Name: "z-template", Visibility: "private", Description: "old description", IsTemplate: true},
@@ -1446,7 +1446,7 @@ func TestBuildOrdersManagedTemplateBeforeItsConsumer(t *testing.T) {
 
 	template := config.RepositorySpec{Owner: "orang-gaboets", Name: "template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
 	template.SetManagedIsTemplate(true)
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{
 			{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "orang-gaboets", Name: "template"}},
 			template,
@@ -1470,7 +1470,7 @@ func TestBuildDoesNotTreatExternalTemplateAsManagedDependency(t *testing.T) {
 
 	template := config.RepositorySpec{Owner: "orang-gaboets", Name: "template", Visibility: "private", Template: config.TemplateSpec{Owner: "external", Name: "base"}}
 	template.SetManagedIsTemplate(true)
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{
 			{Owner: "orang-gaboets", Name: "consumer", Visibility: "private", Template: config.TemplateSpec{Owner: "aaa-external", Name: "template"}},
 			template,
@@ -1522,7 +1522,7 @@ func TestBuildUsesFinalManagedTemplateState(t *testing.T) {
 			if tt.live != nil {
 				actual.Repositories = []state.Repository{{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: *tt.live}}
 			}
-			report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
+			report, err := buildForDesiredOrganization(context.Background(), Options{Desired: desired, Actual: actual})
 			if err != nil {
 				t.Fatalf("Build returned error: %v", err)
 			}
@@ -1704,7 +1704,7 @@ func TestBuildManagedRepositoryDependencyGraph(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			report, err := Build(context.Background(), Options{
+			report, err := buildForDesiredOrganization(context.Background(), Options{
 				Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: tt.repositories, Teams: tt.teams},
 				Actual:  &state.OrganizationState{Organization: "orang-gaboets", Teams: tt.actualTeams},
 			})
@@ -1771,7 +1771,7 @@ func TestBuildOrdinaryRepositoryTemplateAvailability(t *testing.T) {
 				Visibility: "private",
 				Template:   config.TemplateSpec{Owner: "orang-gaboets", Name: "source"},
 			}
-			report, err := Build(context.Background(), Options{
+			report, err := buildForDesiredOrganization(context.Background(), Options{
 				Desired: config.OrganizationConfig{Organization: "orang-gaboets", Repositories: []config.RepositorySpec{consumer, source}},
 				Actual:  &state.OrganizationState{Organization: "orang-gaboets"},
 			})
@@ -1822,7 +1822,7 @@ teams:
         permission: push
 invites: []
 `)
-	report, err := Build(context.Background(), Options{
+	report, err := buildForDesiredOrganization(context.Background(), Options{
 		Desired: desired,
 		Actual:  &state.OrganizationState{Organization: "acme", Teams: []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}}},
 	})
@@ -1863,7 +1863,7 @@ func TestBuildLeavesLiveOnlyTemplateReferencesToApplyPreflight(t *testing.T) {
 		Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
 	}
 
-	report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
+	report, err := buildForDesiredOrganization(context.Background(), Options{Desired: desired, Actual: actual})
 	if err != nil {
 		t.Fatalf("Build returned error: %v", err)
 	}
@@ -1899,7 +1899,7 @@ func TestBuildTeamRepositoryPermissionUsesRepositoryAvailability(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			report, err := Build(context.Background(), Options{
+			report, err := buildForDesiredOrganization(context.Background(), Options{
 				Desired: config.OrganizationConfig{
 					Organization: "orang-gaboets",
 					Repositories: tt.desiredRepos,

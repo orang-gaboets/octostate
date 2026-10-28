@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
-	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
-	"github.com/orang-gaboets/octostate/pkg/gitops/config"
-	"github.com/orang-gaboets/octostate/pkg/gitops/state"
+	githubpkg "github.com/orang-gaboets/octostate/v2/pkg/github"
+	ghusers "github.com/orang-gaboets/octostate/v2/pkg/github/users"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
+	"github.com/orang-gaboets/octostate/v2/pkg/gitops/state"
 )
 
 // Options defines the desired and actual state inputs required to build one
@@ -44,11 +44,12 @@ func (opt *Options) Validate() error {
 	return nil
 }
 
-// Build computes a deterministic, read-only reconciliation plan from desired
-// GitOps configuration and collected live GitHub state. It does not bind the
-// target to a caller-authorized organization; use BuildForOrganization when
-// that boundary is required.
-func Build(ctx context.Context, opt Options) (*Report, error) {
+// Build computes a deterministic, read-only reconciliation plan only when the
+// desired organization matches an independently supplied expected organization.
+func Build(ctx context.Context, opt Options, expectedOrganization string) (*Report, error) {
+	if err := config.CheckExpectedOrganization(opt.Desired.Organization, expectedOrganization); err != nil {
+		return nil, err
+	}
 	if err := opt.Validate(); err != nil {
 		return nil, err
 	}
@@ -73,15 +74,6 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 	report.Actions = append(report.Actions, actions...)
 	report.Normalize()
 	return report, nil
-}
-
-// BuildForOrganization builds a plan only when the desired organization
-// matches the independently supplied expected organization.
-func BuildForOrganization(ctx context.Context, opt Options, expectedOrganization string) (*Report, error) {
-	if err := config.CheckExpectedOrganization(opt.Desired.Organization, expectedOrganization); err != nil {
-		return nil, err
-	}
-	return Build(ctx, opt)
 }
 
 type planner struct {

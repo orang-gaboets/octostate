@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	organizationcmd "github.com/orang-gaboets/octostate/cmd/octostate/organization"
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	organizationcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/organization"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 type surfaceData struct {

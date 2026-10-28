@@ -1,14 +1,14 @@
 package main
 
 import (
-	auditcmd "github.com/orang-gaboets/octostate/cmd/octostate/audit"
-	configcmd "github.com/orang-gaboets/octostate/cmd/octostate/config"
-	"github.com/orang-gaboets/octostate/cmd/octostate/organization"
-	"github.com/orang-gaboets/octostate/cmd/octostate/repo"
-	"github.com/orang-gaboets/octostate/cmd/octostate/team"
-	"github.com/orang-gaboets/octostate/cmd/octostate/topic"
-	"github.com/orang-gaboets/octostate/cmd/octostate/user"
-	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
+	auditcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/audit"
+	configcmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/config"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/organization"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/repo"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/team"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/topic"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/user"
+	ghlogging "github.com/orang-gaboets/octostate/v2/pkg/github/logging"
 	"github.com/spf13/cobra"
 )
 

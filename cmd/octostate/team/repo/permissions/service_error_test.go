@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
-	"github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
-	permissionscmd "github.com/orang-gaboets/octostate/cmd/octostate/team/repo/permissions"
+	"github.com/orang-gaboets/octostate/v2/cmd/octostate/internal/auth"
+	permissionscmd "github.com/orang-gaboets/octostate/v2/cmd/octostate/team/repo/permissions"
 )
 
 var errTeamRepoPermissionsCommandDependency = errors.New("team repo permissions command dependency failed")

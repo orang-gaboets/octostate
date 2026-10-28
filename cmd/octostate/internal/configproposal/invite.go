@@ -3,7 +3,7 @@ package configproposal
 import (
 	"strings"
 
-	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
+	gitopsconfig "github.com/orang-gaboets/octostate/v2/pkg/gitops/config"
 )
 
 // FindInviteIndexByUsername returns the index of a declared invite whose
