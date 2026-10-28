@@ -41,6 +41,20 @@ func TestEncodeYAMLMinimal(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLRejectsOutputAboveSupportedLimit(t *testing.T) {
+	t.Parallel()
+
+	_, err := EncodeYAML(OrganizationConfig{
+		Organization: strings.Repeat("x", (16<<20)+1),
+	})
+	if err == nil {
+		t.Fatal("EncodeYAML accepted output larger than 16 MiB")
+	}
+	if !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("EncodeYAML error does not identify the supported size limit: %v", err)
+	}
+}
+
 func TestEncodeYAMLValidRoundTrip(t *testing.T) {
 	t.Parallel()
 

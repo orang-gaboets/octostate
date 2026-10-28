@@ -214,6 +214,73 @@ func TestLoadFile(t *testing.T) {
 	}
 }
 
+func TestLoadFileRejectsOversizedInputBeforeDecoding(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create config file: %v", err)
+	}
+	if err := file.Truncate((16 << 20) + 1); err != nil {
+		_ = file.Close()
+		t.Fatalf("make config file oversized: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close config file: %v", err)
+	}
+
+	got, err := LoadFile(path)
+	if err == nil {
+		t.Fatal("LoadFile accepted a config file larger than 16 MiB")
+	}
+	if got.Organization != "" {
+		t.Fatalf("LoadFile returned a partially decoded config: %#v", got)
+	}
+	var loadErr *LoadError
+	if !errors.As(err, &loadErr) || loadErr.Kind != LoadErrorReadFile {
+		t.Fatalf("LoadFile error = %v, want a read-file LoadError", err)
+	}
+	if !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("LoadFile error does not identify the supported size limit: %v", err)
+	}
+}
+
+func TestLoadFileAcceptsConfigJustBelowSupportedLimit(t *testing.T) {
+	t.Parallel()
+
+	const maxDesiredStateBytes = 16 << 20
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	prefix := "organization: octostate\n"
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create config file: %v", err)
+	}
+	if _, err := file.WriteString(prefix); err != nil {
+		_ = file.Close()
+		t.Fatalf("write config prefix: %v", err)
+	}
+	writeConfigSpaces(t, file, int64(maxDesiredStateBytes-1-len(prefix)))
+	if err := file.Close(); err != nil {
+		t.Fatalf("close config file: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat config file: %v", err)
+	}
+	if wantSize := int64(maxDesiredStateBytes - 1); info.Size() != wantSize {
+		t.Fatalf("config file size = %d, want %d", info.Size(), wantSize)
+	}
+
+	got, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile rejected a config just below 16 MiB: %v", err)
+	}
+	if got.Organization != "octostate" {
+		t.Fatalf("loaded organization = %q, want octostate", got.Organization)
+	}
+}
+
 func TestLoadDirRejectsEmptyConfigDir(t *testing.T) {
 	t.Parallel()
 
@@ -568,5 +635,25 @@ func writeTestOrganizationYAML(t *testing.T, configDir, contents string) {
 	path := filepath.Join(configDir, organizationFileName)
 	if err := os.WriteFile(path, []byte(strings.TrimSpace(contents)+"\n"), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func writeConfigSpaces(t *testing.T, file *os.File, count int64) {
+	t.Helper()
+
+	chunk := strings.Repeat(" ", 64<<10)
+	for count > 0 {
+		n := int64(len(chunk))
+		if count < n {
+			n = count
+		}
+		written, err := file.WriteString(chunk[:n])
+		if err != nil {
+			t.Fatalf("write config padding: %v", err)
+		}
+		if int64(written) != n {
+			t.Fatalf("wrote %d padding bytes, want %d", written, n)
+		}
+		count -= n
 	}
 }

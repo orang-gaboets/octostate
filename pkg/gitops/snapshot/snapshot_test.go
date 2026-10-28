@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -311,6 +312,49 @@ func TestReadActualSuccess(t *testing.T) {
 	}
 }
 
+func TestReadActualAcceptsSnapshotJustBelowSupportedLimit(t *testing.T) {
+	t.Parallel()
+
+	const maxSnapshotBytes = 128 << 20
+	stateDir := physicalTempDir(t)
+	path := ActualPath(stateDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	encoded, err := json.MarshalIndent(sampleSnapshot(), "", "  ")
+	if err != nil {
+		t.Fatalf("encode valid snapshot fixture: %v", err)
+	}
+	encoded = append(encoded, '\n')
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create snapshot file: %v", err)
+	}
+	if _, err := file.Write(encoded); err != nil {
+		_ = file.Close()
+		t.Fatalf("write snapshot fixture: %v", err)
+	}
+	writeSnapshotSpaces(t, file, int64(maxSnapshotBytes-1-len(encoded)))
+	if err := file.Close(); err != nil {
+		t.Fatalf("close snapshot file: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat snapshot file: %v", err)
+	}
+	if wantSize := int64(maxSnapshotBytes - 1); info.Size() != wantSize {
+		t.Fatalf("snapshot file size = %d, want %d", info.Size(), wantSize)
+	}
+
+	got, err := ReadActual(stateDir)
+	if err != nil {
+		t.Fatalf("ReadActual rejected a snapshot just below 128 MiB: %v", err)
+	}
+	if got.Organization != "acme" {
+		t.Fatalf("loaded organization = %q, want acme", got.Organization)
+	}
+}
+
 func TestReadActualLegacyTeamMembersRemainDirect(t *testing.T) {
 	t.Parallel()
 
@@ -375,6 +419,87 @@ func TestReadActualMalformedJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "decode actual-state snapshot") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualRejectsOversizedInputBeforeDecoding(t *testing.T) {
+	t.Parallel()
+
+	stateDir := physicalTempDir(t)
+	path := ActualPath(stateDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create snapshot file: %v", err)
+	}
+	if err := file.Truncate((128 << 20) + 1); err != nil {
+		_ = file.Close()
+		t.Fatalf("make snapshot oversized: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close snapshot file: %v", err)
+	}
+
+	got, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("ReadActual accepted a snapshot larger than 128 MiB")
+	}
+	if got != nil {
+		t.Fatalf("ReadActual returned a partial snapshot: %#v", got)
+	}
+	if !strings.Contains(err.Error(), "128 MiB") {
+		t.Fatalf("ReadActual error does not identify the supported size limit: %v", err)
+	}
+}
+
+func writeSnapshotSpaces(t *testing.T, file *os.File, count int64) {
+	t.Helper()
+
+	chunk := strings.Repeat(" ", 64<<10)
+	for count > 0 {
+		n := int64(len(chunk))
+		if count < n {
+			n = count
+		}
+		written, err := file.WriteString(chunk[:n])
+		if err != nil {
+			t.Fatalf("write snapshot padding: %v", err)
+		}
+		if int64(written) != n {
+			t.Fatalf("wrote %d padding bytes, want %d", written, n)
+		}
+		count -= n
+	}
+}
+
+func TestWriteActualRejectsOversizedOutputWithoutReplacingSnapshot(t *testing.T) {
+	stateDir := physicalTempDir(t)
+	path := ActualPath(stateDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	original := []byte("existing snapshot")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatalf("create existing snapshot: %v", err)
+	}
+
+	_, err := WriteActual(stateDir, ActualSnapshot{
+		Organization: strings.Repeat("x", (128<<20)+1),
+	})
+	if err == nil {
+		t.Fatal("WriteActual persisted output larger than 128 MiB")
+	}
+	if !strings.Contains(err.Error(), "128 MiB") {
+		t.Fatalf("WriteActual error does not identify the supported size limit: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read existing snapshot after rejected write: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("oversized write replaced the existing snapshot: got %q, want %q", got, original)
 	}
 }
 

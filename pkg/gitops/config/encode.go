@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/sizeguard"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,7 +32,11 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 		return nil, fmt.Errorf("close organization config YAML encoder: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	encoded := buf.Bytes()
+	if err := sizeguard.CheckSize(encoded, maxDesiredStateYAMLSize); err != nil {
+		return nil, desiredStateSizeLimitError(err)
+	}
+	return encoded, nil
 }
 
 func encodeOrganizationConfig(cfg OrganizationConfig) *yaml.Node {

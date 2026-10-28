@@ -8,10 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/sizeguard"
 	"gopkg.in/yaml.v3"
 )
 
-const organizationFileName = "organization.yaml"
+const (
+	organizationFileName              = "organization.yaml"
+	maxDesiredStateYAMLSize     int64 = 16 << 20
+	desiredStateYAMLSizeDisplay       = "16 MiB"
+)
 
 // LoadDir loads the canonical organization configuration file from configDir,
 // decodes it strictly, and applies basic normalization.
@@ -72,19 +77,31 @@ func decodeYAMLFile(path string, out any) error {
 		}
 	}
 
-	decodeErr := decodeYAML(file, out)
+	info, statErr := file.Stat()
+	var decodeErr error
+	switch {
+	case statErr != nil:
+		decodeErr = &sizeguard.ReadError{Err: fmt.Errorf("inspect config file: %w", statErr)}
+	case info.Size() > maxDesiredStateYAMLSize:
+		decodeErr = desiredStateSizeLimitError(&sizeguard.LimitExceededError{Limit: maxDesiredStateYAMLSize})
+	default:
+		decodeErr = sizeguard.Process(file, maxDesiredStateYAMLSize, func(r io.Reader) error {
+			return decodeYAML(r, out)
+		})
+		decodeErr = desiredStateSizeLimitError(decodeErr)
+	}
 
 	closeErr := file.Close()
 	switch {
 	case decodeErr != nil && closeErr != nil:
 		return &LoadError{
-			Kind: LoadErrorDecodeFile,
+			Kind: loadFileErrorKind(decodeErr),
 			Path: path,
 			Err:  errors.Join(decodeErr, fmt.Errorf("close config file: %w", closeErr)),
 		}
 	case decodeErr != nil:
 		return &LoadError{
-			Kind: LoadErrorDecodeFile,
+			Kind: loadFileErrorKind(decodeErr),
 			Path: path,
 			Err:  decodeErr,
 		}
@@ -97,6 +114,21 @@ func decodeYAMLFile(path string, out any) error {
 	}
 
 	return nil
+}
+
+func desiredStateSizeLimitError(err error) error {
+	if errors.Is(err, sizeguard.ErrLimitExceeded) {
+		return fmt.Errorf("desired-state YAML exceeds the supported size limit of %s: %w", desiredStateYAMLSizeDisplay, err)
+	}
+	return err
+}
+
+func loadFileErrorKind(err error) LoadErrorKind {
+	var readErr *sizeguard.ReadError
+	if errors.Is(err, sizeguard.ErrLimitExceeded) || errors.As(err, &readErr) {
+		return LoadErrorReadFile
+	}
+	return LoadErrorDecodeFile
 }
 
 func decodeYAML(r io.Reader, out any) error {

@@ -88,6 +88,19 @@ supported packages when possible. If a package should eventually move behind
 an `internal` boundary, track that migration separately and choose a compatible
 transition rather than moving it as unrelated cleanup.
 
+## Structured file size limits
+
+The supported config API accepts desired-state YAML files up to 16 MiB
+(16 × 1024 × 1024 bytes), inclusive. `config.LoadDir` and `config.LoadFile`
+reject larger inputs before decoding them, and `config.EncodeYAML` applies the
+same cap to generated YAML.
+
+The snapshot API accepts JSON snapshots up to 128 MiB (128 × 1024 × 1024
+bytes), inclusive. `snapshot.ReadActual` rejects larger files before decoding,
+and `snapshot.WriteActual` rejects generated JSON above that limit before it
+replaces or creates the destination file. These limits are fixed API contracts;
+they have no command-line or environment-variable override.
+
 ## Bind a live GitOps target
 
 For credentials that can access multiple organizations, obtain an expected

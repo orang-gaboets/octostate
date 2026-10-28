@@ -12,10 +12,15 @@ import (
 
 	"github.com/orang-gaboets/octostate/internal/filereplace"
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/sizeguard"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
-const actualSnapshotRelativePath = "actual/snapshot.json"
+const (
+	actualSnapshotRelativePath       = "actual/snapshot.json"
+	maxActualSnapshotJSONSize  int64 = 128 << 20
+	actualSnapshotSizeDisplay        = "128 MiB"
+)
 
 // ActualSnapshot is the persisted actual-state snapshot written by audit pull.
 type ActualSnapshot struct {
@@ -123,21 +128,37 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 	if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) {
 		return nil, fmt.Errorf("read actual-state snapshot %s: unsafe snapshot path component %q: changed while opening", path, path)
 	}
-
-	decoder := json.NewDecoder(file)
-	decoder.DisallowUnknownFields()
+	if openedInfo.Size() > maxActualSnapshotJSONSize {
+		return nil, actualSnapshotSizeLimitError(&sizeguard.LimitExceededError{Limit: maxActualSnapshotJSONSize})
+	}
 
 	var snapshot ActualSnapshot
-	if err := decoder.Decode(&snapshot); err != nil {
-		return nil, fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
-	}
+	processErr := sizeguard.Process(file, maxActualSnapshotJSONSize, func(r io.Reader) error {
+		decoder := json.NewDecoder(r)
+		decoder.DisallowUnknownFields()
 
-	var extra json.RawMessage
-	if err := decoder.Decode(&extra); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
-	}
-	if len(extra) > 0 {
-		return nil, fmt.Errorf("decode actual-state snapshot %s: multiple JSON values are not allowed", path)
+		if err := decoder.Decode(&snapshot); err != nil {
+			return fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
+		}
+
+		var extra json.RawMessage
+		if err := decoder.Decode(&extra); err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
+		}
+		if len(extra) > 0 {
+			return fmt.Errorf("decode actual-state snapshot %s: multiple JSON values are not allowed", path)
+		}
+		return nil
+	})
+	if processErr != nil {
+		if errors.Is(processErr, sizeguard.ErrLimitExceeded) {
+			return nil, actualSnapshotSizeLimitError(processErr)
+		}
+		var readErr *sizeguard.ReadError
+		if errors.As(processErr, &readErr) {
+			return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, processErr)
+		}
+		return nil, processErr
 	}
 
 	if err := normalizeActualSnapshot(&snapshot); err != nil {
@@ -193,6 +214,9 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 	// json.Encoder.Encode terminated the document with a newline; MarshalIndent
 	// does not, so add it back to keep the file byte-identical.
 	encoded = append(encoded, '\n')
+	if err := sizeguard.CheckSize(encoded, maxActualSnapshotJSONSize); err != nil {
+		return actualSnapshotSizeLimitError(err)
+	}
 
 	// 0600 matches what the previous os.CreateTemp path produced on first
 	// write. The snapshot carries organization member and invitation data,
@@ -202,6 +226,10 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 	}
 
 	return nil
+}
+
+func actualSnapshotSizeLimitError(err error) error {
+	return fmt.Errorf("actual-state snapshot exceeds the supported size limit of %s: %w", actualSnapshotSizeDisplay, err)
 }
 
 func clonePendingInvitations(invitations []state.PendingInvitation) []state.PendingInvitation {
