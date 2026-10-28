@@ -181,6 +181,59 @@ func TestDesiredStateIdentityTracksManagedRepositoryBooleanChanges(t *testing.T)
 	}
 }
 
+func TestDesiredStateIdentityTracksManagedRepositoryStringChanges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		setManaged func(*RepositorySpec)
+		change     func(*RepositorySpec)
+	}{
+		{
+			name:       "description",
+			setManaged: func(repo *RepositorySpec) { repo.SetManagedDescription("reviewed description") },
+			change:     func(repo *RepositorySpec) { repo.Description = "changed description" },
+		},
+		{
+			name:       "homepage",
+			setManaged: func(repo *RepositorySpec) { repo.SetManagedHomepage("https://reviewed.example") },
+			change:     func(repo *RepositorySpec) { repo.Homepage = "https://changed.example" },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := OrganizationConfig{
+				Organization: "orang-gaboets",
+				Repositories: []RepositorySpec{{Name: "service", Visibility: "private"}},
+			}
+			tt.setManaged(&cfg.Repositories[0])
+
+			reviewedIdentity, err := DesiredStateIdentity(cfg)
+			if err != nil {
+				t.Fatalf("identify reviewed config: %v", err)
+			}
+			tt.change(&cfg.Repositories[0])
+
+			updatedIdentity, err := DesiredStateIdentity(cfg)
+			if err != nil {
+				t.Fatalf("identify changed config: %v", err)
+			}
+			if updatedIdentity == reviewedIdentity {
+				t.Fatalf("changing managed %s did not change identity %q", tt.name, reviewedIdentity)
+			}
+
+			err = CheckExpectedDesiredStateIdentity(cfg, reviewedIdentity)
+			var identityErr *ExpectedDesiredStateIdentityError
+			if !errors.As(err, &identityErr) || identityErr.Kind != ExpectedDesiredStateIdentityErrorMismatch {
+				t.Fatalf("expected old identity to be rejected after changing %s, got %v", tt.name, err)
+			}
+		})
+	}
+}
+
 func TestDesiredStateIdentityRejectsInvalidConfig(t *testing.T) {
 	t.Parallel()
 

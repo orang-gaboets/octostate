@@ -288,6 +288,66 @@ func TestExecuteReviewedRejectsChangedManagedRepositoryBooleanBeforeWrites(t *te
 	}
 }
 
+func TestExecuteReviewedRejectsChangedManagedRepositoryStringBeforeWrites(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		setManaged func(*config.RepositorySpec)
+		change     func(*config.RepositorySpec)
+	}{
+		{
+			name:       "description",
+			setManaged: func(repo *config.RepositorySpec) { repo.SetManagedDescription("reviewed description") },
+			change:     func(repo *config.RepositorySpec) { repo.Description = "changed description" },
+		},
+		{
+			name:       "homepage",
+			setManaged: func(repo *config.RepositorySpec) { repo.SetManagedHomepage("https://reviewed.example") },
+			change:     func(repo *config.RepositorySpec) { repo.Homepage = "https://changed.example" },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			desired := config.OrganizationConfig{
+				Organization: "orang-gaboets",
+				Repositories: []config.RepositorySpec{{Name: "service", Visibility: "private"}},
+			}
+			tt.setManaged(&desired.Repositories[0])
+			reviewedIdentity, err := config.DesiredStateIdentity(desired)
+			if err != nil {
+				t.Fatalf("identify reviewed config: %v", err)
+			}
+			tt.change(&desired.Repositories[0])
+
+			writes := 0
+			options := reviewedTestOptions(
+				desired,
+				&state.OrganizationState{Organization: "orang-gaboets"},
+				reviewedIdentity,
+			)
+			options.RepositoryService = &testRepoService{
+				createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+					writes++
+					return &gh.Repository{}, nil, nil
+				},
+			}
+
+			_, err = ExecuteReviewed(context.Background(), options)
+			var identityErr *config.ExpectedDesiredStateIdentityError
+			if !errors.As(err, &identityErr) || identityErr.Kind != config.ExpectedDesiredStateIdentityErrorMismatch {
+				t.Fatalf("expected changed %s to reject reviewed identity before writes, got %v (writes=%d)", tt.name, err, writes)
+			}
+			if writes != 0 {
+				t.Fatalf("expected no repository writes after changing %s, got %d", tt.name, writes)
+			}
+		})
+	}
+}
+
 func reviewedTestOptions(desired config.OrganizationConfig, actual *state.OrganizationState, identity string) ReviewedOptions {
 	return ReviewedOptions{
 		Desired:                desired,
