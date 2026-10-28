@@ -78,6 +78,21 @@ func TestProcessReportsReadErrorsWhileDraining(t *testing.T) {
 	}
 }
 
+func TestProcessReportsReadErrorsWhileProbingAtLimit(t *testing.T) {
+	t.Parallel()
+
+	readErr := errors.New("disk read failed")
+	r := &failingReader{data: "abcd", err: readErr}
+	err := Process(r, 4, func(input io.Reader) error {
+		_, err := io.Copy(io.Discard, input)
+		return err
+	})
+	var got *ReadError
+	if !errors.As(err, &got) || !errors.Is(err, readErr) {
+		t.Fatalf("Process error = %v, want ReadError wrapping %v", err, readErr)
+	}
+}
+
 func TestCheckSizeAllowsExactLimitAndRejectsOverflow(t *testing.T) {
 	t.Parallel()
 
