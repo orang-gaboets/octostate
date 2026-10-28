@@ -153,9 +153,10 @@ availability gate.
 
 ### `octostate audit pull`
 1. Load desired state to determine the target organization
-2. Collect live GitHub state
-3. Normalize and persist `state/actual/snapshot.json`
-4. Print the snapshot write result
+2. Verify required caller-supplied `--expected-org` before authentication
+3. Collect live GitHub state
+4. Normalize and persist `state/actual/snapshot.json`
+5. Print the snapshot write result
 
 ### `octostate audit diff`
 1. Load desired state
