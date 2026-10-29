@@ -85,6 +85,35 @@ func TestRunWithCobraRequiredFlagErrorPrintsSingleLine(t *testing.T) {
 	}
 }
 
+func TestRunReturnsExitCodeTwoWhenExpectedOrganizationIsOmitted(t *testing.T) {
+	for _, args := range [][]string{
+		{"config", "plan", "--config-dir", "./config"},
+		{"config", "apply", "--config-dir", "./config"},
+	} {
+		t.Run(strings.Join(args[:2], " "), func(t *testing.T) {
+			var stderr bytes.Buffer
+			restore := setMainTestHooks(
+				func() error {
+					cmd := newRootCmd()
+					cmd.SetErr(&stderr)
+					cmd.SetArgs(args)
+					return cmd.Execute()
+				},
+				func() io.Writer { return &stderr },
+				func(int) { t.Fatal("exitFn should not be called by run") },
+			)
+			defer restore()
+
+			if code := run(); code != 2 {
+				t.Fatalf("expected exit code 2, got %d; stderr=%q", code, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "expected organization is required") {
+				t.Fatalf("expected missing-organization error on stderr, got %q", stderr.String())
+			}
+		})
+	}
+}
+
 func setMainTestHooks(
 	execute func() error,
 	stderr func() io.Writer,

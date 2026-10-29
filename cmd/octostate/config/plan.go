@@ -46,6 +46,9 @@ func PlanConfigCmd() *cobra.Command {
 			OCTOSTATE_GITHUB_TOKEN="<token>" octostate config plan --config-dir ./config --expected-org <expected-org>
 			octostate config plan --app-id <app-id> --installation-id <installation-id> --app-key-path <path-to-app-key> --config-dir /path/to/control-repo/config --expected-org <expected-org>`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireExpectedOrganizationFlag(cmd, expectedOrg); err != nil {
+				return err
+			}
 			report, err := planConfig(
 				cmd.Context(),
 				token,
@@ -69,8 +72,8 @@ func PlanConfigCmd() *cobra.Command {
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
-	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live operation")
-	github.MarkRequiredFlags(cmd, "config-dir", "expected-org")
+	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Required independently expected GitHub organization for this live operation")
+	github.MarkRequiredFlags(cmd, "config-dir")
 
 	return cmd
 }

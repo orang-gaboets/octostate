@@ -42,19 +42,15 @@ func TestPlanExpectedOrganizationRejectsBeforeAuthentication(t *testing.T) {
 func TestPlanRequiresExpectedOrganizationBeforeAuthentication(t *testing.T) {
 	restorePlanHooks(t)
 	loadPlanConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
-		return gitopsconfig.OrganizationConfig{Organization: "org-b"}, nil
+		t.Fatal("missing target must be rejected before loading config")
+		return gitopsconfig.OrganizationConfig{}, nil
 	}
 	newPlanClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
 		t.Fatal("missing target must be rejected before authentication")
 		return nil, nil
 	}
 
-	cmd := PlanConfigCmd()
-	cmd.SetArgs([]string{"--config-dir", "./config"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "expected-org") {
-		t.Fatalf("expected missing --expected-org rejection, got %v", err)
-	}
+	assertTargetCommandFailure(t, PlanConfigCmd(), []string{"--config-dir", "./config"})
 }
 
 func TestPlanExpectedOrganizationMatchesWithPATAndApp(t *testing.T) {
@@ -146,7 +142,8 @@ func TestApplyRequiresExpectedOrganizationInEveryLiveMode(t *testing.T) {
 		t.Run(mode.name, func(t *testing.T) {
 			restoreApplyHooks(t)
 			loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) {
-				return gitopsconfig.OrganizationConfig{Organization: "org-b"}, nil
+				t.Fatal("missing target must be rejected before loading config")
+				return gitopsconfig.OrganizationConfig{}, nil
 			}
 			newApplyClient = func(context.Context, string, int64, int64, string) (auth.Client, error) {
 				t.Fatal("missing target must be rejected before authentication")
@@ -156,12 +153,7 @@ func TestApplyRequiresExpectedOrganizationInEveryLiveMode(t *testing.T) {
 			if mode.flag != "" {
 				args = append(args, mode.flag)
 			}
-			cmd := ApplyConfigCmd()
-			cmd.SetArgs(args)
-			err := cmd.Execute()
-			if err == nil || !strings.Contains(err.Error(), "expected-org") {
-				t.Fatalf("expected missing --expected-org rejection, got %v", err)
-			}
+			assertTargetCommandFailure(t, ApplyConfigCmd(), args)
 		})
 	}
 }

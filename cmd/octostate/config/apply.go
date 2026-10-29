@@ -76,6 +76,9 @@ func ApplyConfigCmd() *cobra.Command {
 				printInvalidConfigError(cmd, err)
 				return err
 			}
+			if err := requireExpectedOrganizationFlag(cmd, expectedOrg); err != nil {
+				return err
+			}
 
 			mode := applyRunModeApply
 			switch {
@@ -129,8 +132,8 @@ func ApplyConfigCmd() *cobra.Command {
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")
-	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Independently expected GitHub organization for this live operation")
-	github.MarkRequiredFlags(cmd, "config-dir", "expected-org")
+	cmd.Flags().StringVar(&expectedOrg, "expected-org", "", "Required independently expected GitHub organization for this live operation")
+	github.MarkRequiredFlags(cmd, "config-dir")
 
 	return cmd
 }
