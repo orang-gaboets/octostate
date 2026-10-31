@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -211,6 +212,124 @@ func TestLoadFile(t *testing.T) {
 				t.Fatalf("unexpected organization: %q", got.Organization)
 			}
 		})
+	}
+}
+
+func TestLoadFileRejectsOversizedInputBeforeDecoding(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create config file: %v", err)
+	}
+	if err := file.Truncate((16 << 20) + 1); err != nil {
+		_ = file.Close()
+		t.Fatalf("make config file oversized: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close config file: %v", err)
+	}
+
+	got, err := LoadFile(path)
+	if err == nil {
+		t.Fatal("LoadFile accepted a config file larger than 16 MiB")
+	}
+	if got.Organization != "" {
+		t.Fatalf("LoadFile returned a partially decoded config: %#v", got)
+	}
+	var loadErr *LoadError
+	if !errors.As(err, &loadErr) || loadErr.Kind != LoadErrorReadFile {
+		t.Fatalf("LoadFile error = %v, want a read-file LoadError", err)
+	}
+	if !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("LoadFile error does not identify the supported size limit: %v", err)
+	}
+}
+
+func TestLoadFileAcceptsConfigAtAndJustBelowSupportedLimit(t *testing.T) {
+	t.Parallel()
+
+	const maxDesiredStateBytes = 16 << 20
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	prefix := "organization: octostate\n"
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create config file: %v", err)
+	}
+	if _, err := file.WriteString(prefix); err != nil {
+		_ = file.Close()
+		t.Fatalf("write config prefix: %v", err)
+	}
+	writeConfigSpaces(t, file, int64(maxDesiredStateBytes-len(prefix)))
+	if err := file.Close(); err != nil {
+		t.Fatalf("close config file: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{
+		{name: "exact limit", size: maxDesiredStateBytes},
+		{name: "just below", size: maxDesiredStateBytes - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.Truncate(path, tc.size); err != nil {
+				t.Fatalf("set config file size to %d: %v", tc.size, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("stat config file: %v", err)
+			}
+			if info.Size() != tc.size {
+				t.Fatalf("config file size = %d, want %d", info.Size(), tc.size)
+			}
+
+			got, err := LoadFile(path)
+			if err != nil {
+				t.Fatalf("LoadFile rejected a config with %s size (%d bytes): %v", tc.name, tc.size, err)
+			}
+			if got.Organization != "octostate" {
+				t.Fatalf("loaded organization = %q, want octostate", got.Organization)
+			}
+		})
+	}
+}
+
+func TestLoadFileRejectsOverComplexityBudgetBeforeDecoding(t *testing.T) {
+	const topicCount = 500_001
+	header := "organization: acme\nrepositories:\n  - name: octostate\n    topics:\n"
+	const topicLine = "      - x\n"
+
+	var configYAML strings.Builder
+	configYAML.Grow(len(header) + topicCount*len(topicLine))
+	configYAML.WriteString(header)
+	for range topicCount {
+		configYAML.WriteString(topicLine)
+	}
+	contents := configYAML.String()
+	if len(contents) >= 16<<20 {
+		t.Fatalf("complexity fixture is %d bytes, want less than the 16 MiB byte limit", len(contents))
+	}
+
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write complexity fixture: %v", err)
+	}
+
+	got, err := LoadFile(path)
+	if err == nil {
+		t.Fatal("LoadFile accepted a config exceeding 500,000 YAML nodes")
+	}
+	if got.Organization != "" {
+		t.Fatalf("LoadFile returned a partial config: %#v", got)
+	}
+	if !strings.Contains(err.Error(), "500,000 YAML nodes") {
+		t.Fatalf("LoadFile error = %v, want YAML node limit", err)
+	}
+	var loadErr *LoadError
+	if !errors.As(err, &loadErr) || loadErr.Kind != LoadErrorDecodeFile {
+		t.Fatalf("LoadFile error = %v, want a decode-file LoadError", err)
 	}
 }
 
@@ -562,11 +681,140 @@ organization: other-org
 	}
 }
 
+func TestValidateDesiredYAMLComplexityBoundaries(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("organization: acme\n")
+	if err := validateDesiredYAMLComplexity(data, 4); err != nil {
+		t.Fatalf("validateDesiredYAMLComplexity rejected a four-node document at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLComplexity(data, 3); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want YAML node limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityCountsAliasExpansion(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("root: &value [one]\ncopy: *value\n")
+	if err := validateDesiredYAMLComplexity(data, 9); err != nil {
+		t.Fatalf("validateDesiredYAMLComplexity rejected the nine-node expanded document: %v", err)
+	}
+	if err := validateDesiredYAMLComplexity(data, 8); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want alias-expanded YAML node limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityRejectsMultipleDocuments(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("organization: acme\n---\norganization: other-org\n")
+	if err := validateDesiredYAMLComplexity(data, 100); err == nil || !strings.Contains(err.Error(), "multiple YAML documents are not allowed") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want multiple-document error", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityRejectsAliasCycle(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("root: &root [*root]\n")
+	if err := validateDesiredYAMLComplexity(data, 100); err == nil || !strings.Contains(err.Error(), "YAML alias cycle") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want YAML alias cycle error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityBoundariesAndIgnoresScalarText(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("description: \"many, punctuation: [inside]\"\n# ignored: [] ,,,\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 5); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected five source units at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(data, 4); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityCountsAfterBlockScalar(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("description: | # block comment\n  quote: \"[, ]\"\nrepositories:\n  - name: repo\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 14); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected 14 source units at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(data, 13); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityDoesNotSkipAfterInvalidBlockHeader(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("description: |++\nrepositories:\n  - name: repo\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 13); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityRejectsLargeFlowCollection(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("[" + strings.Repeat("x,", 600_001) + "x]")
+	if err := validateDesiredYAMLSourceComplexity(data, maxDesiredStateYAMLSourceUnits); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestLoadFileAcceptsOneHundredThousandSimpleEntries(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create config file: %v", err)
+	}
+	if _, err := io.WriteString(file, "organization: acme\nrepositories:\n"+strings.Repeat("  - name: repo\n", 100_000)); err != nil {
+		_ = file.Close()
+		t.Fatalf("write config entries: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close config file: %v", err)
+	}
+
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile rejected 100,000 simple repository entries: %v", err)
+	}
+	if got := len(cfg.Repositories); got != 100_000 {
+		t.Fatalf("repository entry count = %d, want 100,000", got)
+	}
+}
+
 func writeTestOrganizationYAML(t *testing.T, configDir, contents string) {
 	t.Helper()
 
 	path := filepath.Join(configDir, organizationFileName)
 	if err := os.WriteFile(path, []byte(strings.TrimSpace(contents)+"\n"), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func writeConfigSpaces(t *testing.T, file *os.File, count int64) {
+	t.Helper()
+
+	chunk := strings.Repeat(" ", 64<<10)
+	for count > 0 {
+		n := int64(len(chunk))
+		if count < n {
+			n = count
+		}
+		written, err := file.WriteString(chunk[:n])
+		if err != nil {
+			t.Fatalf("write config padding: %v", err)
+		}
+		if int64(written) != n {
+			t.Fatalf("wrote %d padding bytes, want %d", written, n)
+		}
+		count -= n
 	}
 }

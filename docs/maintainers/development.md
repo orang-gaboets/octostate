@@ -158,7 +158,7 @@ For config replacement changes, run the targeted Windows-oriented coverage
 used by CI:
 
 ```bash
-go test ./internal/filereplace ./internal/contributors ./pkg/gitops/snapshot ./cmd/octostate/internal/configproposal ./cmd/octostate/config
+go test ./internal/filereplace ./internal/contributors ./pkg/gitops/config ./pkg/gitops/snapshot ./cmd/octostate/internal/configproposal ./cmd/octostate/config
 ```
 
 GitHub Actions runs that check on `windows-latest`.
