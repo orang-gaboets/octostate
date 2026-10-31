@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -311,6 +312,63 @@ func TestReadActualSuccess(t *testing.T) {
 	}
 }
 
+func TestReadActualAcceptsSnapshotAtAndJustBelowSupportedLimit(t *testing.T) {
+	t.Parallel()
+
+	const maxSnapshotBytes = 128 << 20
+	stateDir := physicalTempDir(t)
+	path := ActualPath(stateDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	encoded, err := json.MarshalIndent(sampleSnapshot(), "", "  ")
+	if err != nil {
+		t.Fatalf("encode valid snapshot fixture: %v", err)
+	}
+	encoded = append(encoded, '\n')
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create snapshot file: %v", err)
+	}
+	if _, err := file.Write(encoded); err != nil {
+		_ = file.Close()
+		t.Fatalf("write snapshot fixture: %v", err)
+	}
+	writeSnapshotSpaces(t, file, int64(maxSnapshotBytes-len(encoded)))
+	if err := file.Close(); err != nil {
+		t.Fatalf("close snapshot file: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		size int64
+	}{
+		{name: "exact limit", size: maxSnapshotBytes},
+		{name: "just below", size: maxSnapshotBytes - 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.Truncate(path, tc.size); err != nil {
+				t.Fatalf("set snapshot file size to %d: %v", tc.size, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("stat snapshot file: %v", err)
+			}
+			if info.Size() != tc.size {
+				t.Fatalf("snapshot file size = %d, want %d", info.Size(), tc.size)
+			}
+
+			got, err := ReadActual(stateDir)
+			if err != nil {
+				t.Fatalf("ReadActual rejected a snapshot with %s size (%d bytes): %v", tc.name, tc.size, err)
+			}
+			if got.Organization != "acme" {
+				t.Fatalf("loaded organization = %q, want acme", got.Organization)
+			}
+		})
+	}
+}
+
 func TestReadActualLegacyTeamMembersRemainDirect(t *testing.T) {
 	t.Parallel()
 
@@ -357,6 +415,114 @@ func TestReadActualMissingSnapshot(t *testing.T) {
 	}
 }
 
+func TestDecodeSnapshotJSONComplexityBoundaries(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"members":[]}`)
+	if _, err := decodeSnapshotJSON(data, snapshotJSONLimits{tokens: 5, arrayElements: 0, objectEntriesPerObject: 1}); err != nil {
+		t.Fatalf("decodeSnapshotJSON rejected a five-token snapshot at the limit: %v", err)
+	}
+	if _, err := decodeSnapshotJSON(data, snapshotJSONLimits{tokens: 4, arrayElements: 0, objectEntriesPerObject: 1}); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want JSON token limit error", err)
+	}
+}
+
+func TestDecodeSnapshotJSONComplexityCountsRepeatedValues(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"repositories":[{"topics":["a","b","c"]}]}`)
+	if _, err := decodeSnapshotJSON(data, snapshotJSONLimits{tokens: 12, arrayElements: 100, objectEntriesPerObject: 100}); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want JSON token limit error counting all topic values", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsArrayElementBudgetBeforeTypedDecode(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"repositories":[null,null]}`)
+	limits := snapshotJSONLimits{tokens: 7, arrayElements: 1, objectEntriesPerObject: 1}
+	if _, err := decodeSnapshotJSON(data, limits); err == nil || !strings.Contains(err.Error(), "JSON array element limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want array-element limit error", err)
+	}
+
+	limits.arrayElements = 2
+	if _, err := decodeSnapshotJSON(data, limits); err != nil {
+		t.Fatalf("decodeSnapshotJSON rejected two null repository elements at the limit: %v", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsOversizedObject(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"resolved_invite_user_ids_by_username":{"first":1,"second":2}}`)
+	limits := snapshotJSONLimits{tokens: 9, arrayElements: 0, objectEntriesPerObject: 1}
+	if _, err := decodeSnapshotJSON(data, limits); err == nil || !strings.Contains(err.Error(), "JSON object entry limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want object-entry limit error", err)
+	}
+
+	limits.objectEntriesPerObject = 2
+	if _, err := decodeSnapshotJSON(data, limits); err != nil {
+		t.Fatalf("decodeSnapshotJSON rejected two invite-ID entries at the limit: %v", err)
+	}
+}
+
+func TestValidateSnapshotJSONComplexityAcceptsOneMillionArrayElements(t *testing.T) {
+	const elements = 1_000_000
+	const prefix = `{"team_members":[`
+	const suffix = `]}`
+	const row = `{"team_slug":"t","username":"u","role":"member"}`
+	var data bytes.Buffer
+	data.Grow(len(prefix) + elements*(len(row)+1) + len(suffix))
+	data.WriteString(prefix)
+	for range elements {
+		if data.Len() > len(prefix) {
+			data.WriteByte(',')
+		}
+		data.WriteString(row)
+	}
+	data.WriteString(suffix)
+	limits := snapshotJSONLimits{
+		tokens:                 maxActualSnapshotJSONTokens,
+		arrayElements:          elements,
+		objectEntriesPerObject: maxActualSnapshotJSONObjectEntries,
+	}
+	if err := validateSnapshotJSONComplexity(data.Bytes(), limits); err != nil {
+		t.Fatalf("validateSnapshotJSONComplexity rejected one million array elements at the limit: %v", err)
+	}
+}
+
+func TestEncodeActualSnapshotRejectsStructuralBudgetExceeded(t *testing.T) {
+	t.Parallel()
+
+	limits := snapshotJSONLimits{tokens: 100, arrayElements: 0, objectEntriesPerObject: 10}
+	_, err := encodeActualSnapshot(ActualSnapshot{Repositories: []state.Repository{{Name: "repo"}}}, limits)
+	if err == nil || !strings.Contains(err.Error(), "JSON array element limit") {
+		t.Fatalf("encodeActualSnapshot error = %v, want JSON array-element limit", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsMalformedAndMultipleValues(t *testing.T) {
+	t.Parallel()
+
+	limits := snapshotJSONLimits{tokens: 100, arrayElements: 100, objectEntriesPerObject: 100}
+	if _, err := decodeSnapshotJSON([]byte(`{"members":`), limits); err == nil || strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON malformed error = %v, want JSON decode error", err)
+	}
+	if _, err := decodeSnapshotJSON([]byte(`{"members":[]} {"members":[]}`), limits); err == nil || !strings.Contains(err.Error(), "multiple JSON values are not allowed") {
+		t.Fatalf("decodeSnapshotJSON multiple-value error = %v, want multiple-value error", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsOverBudgetBeforeTypedDecode(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"members":[{"id":"not-an-int"}]}`)
+	limits := snapshotJSONLimits{tokens: 8, arrayElements: 100, objectEntriesPerObject: 100}
+	if _, err := decodeSnapshotJSON(data, limits); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want token-limit error before typed decoding", err)
+	}
+}
+
 func TestReadActualMalformedJSON(t *testing.T) {
 	t.Parallel()
 
@@ -375,6 +541,93 @@ func TestReadActualMalformedJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "decode actual-state snapshot") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadActualRejectsOversizedInputBeforeDecoding(t *testing.T) {
+	t.Parallel()
+
+	stateDir := physicalTempDir(t)
+	path := ActualPath(stateDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create snapshot file: %v", err)
+	}
+	if err := file.Truncate((128 << 20) + 1); err != nil {
+		_ = file.Close()
+		t.Fatalf("make snapshot oversized: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close snapshot file: %v", err)
+	}
+
+	got, err := ReadActual(stateDir)
+	if err == nil {
+		t.Fatal("ReadActual accepted a snapshot larger than 128 MiB")
+	}
+	if got != nil {
+		t.Fatalf("ReadActual returned a partial snapshot: %#v", got)
+	}
+	if !strings.Contains(err.Error(), "128 MiB") {
+		t.Fatalf("ReadActual error does not identify the supported size limit: %v", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("ReadActual error does not identify the snapshot path %q: %v", path, err)
+	}
+}
+
+func writeSnapshotSpaces(t *testing.T, file *os.File, count int64) {
+	t.Helper()
+
+	chunk := strings.Repeat(" ", 64<<10)
+	for count > 0 {
+		n := int64(len(chunk))
+		if count < n {
+			n = count
+		}
+		written, err := file.WriteString(chunk[:n])
+		if err != nil {
+			t.Fatalf("write snapshot padding: %v", err)
+		}
+		if int64(written) != n {
+			t.Fatalf("wrote %d padding bytes, want %d", written, n)
+		}
+		count -= n
+	}
+}
+
+func TestWriteActualRejectsOversizedOutputWithoutReplacingSnapshot(t *testing.T) {
+	stateDir := physicalTempDir(t)
+	path := ActualPath(stateDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create actual-state directory: %v", err)
+	}
+	original := []byte("existing snapshot")
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatalf("create existing snapshot: %v", err)
+	}
+
+	_, err := WriteActual(stateDir, ActualSnapshot{
+		Organization: strings.Repeat("x", (128<<20)+1),
+	})
+	if err == nil {
+		t.Fatal("WriteActual persisted output larger than 128 MiB")
+	}
+	if !strings.Contains(err.Error(), "128 MiB") {
+		t.Fatalf("WriteActual error does not identify the supported size limit: %v", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("WriteActual error does not identify the snapshot path %q: %v", path, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read existing snapshot after rejected write: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("oversized write replaced the existing snapshot: got %q, want %q", got, original)
 	}
 }
 
