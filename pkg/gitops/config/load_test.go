@@ -756,6 +756,15 @@ func TestValidateDesiredYAMLSourceComplexityDoesNotSkipAfterInvalidBlockHeader(t
 	}
 }
 
+func TestValidateDesiredYAMLSourceComplexityTreatsQuotesInsidePlainScalarsAsLiteral(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("organization: acme\ndescription: text \"unclosed\nrepositories: [a,a,a,a,a,a]\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 14); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error after the literal quote", err)
+	}
+}
+
 func TestValidateDesiredYAMLSourceComplexityRejectsLargeFlowCollection(t *testing.T) {
 	t.Parallel()
 

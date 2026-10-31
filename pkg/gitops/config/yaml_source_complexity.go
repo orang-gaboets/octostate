@@ -44,7 +44,6 @@ func (s *desiredYAMLSourceScanner) scan() error {
 
 		character := s.data[index]
 		if isYAMLSourceWhitespace(character) {
-			s.plainTokenActive = false
 			continue
 		}
 		if s.startQuotedScalar(character) {
@@ -117,7 +116,6 @@ func (s *desiredYAMLSourceScanner) skipComment(index *int) bool {
 	for *index < len(s.data) && s.data[*index] != '\n' {
 		*index = *index + 1
 	}
-	s.plainTokenActive = false
 	return true
 }
 
