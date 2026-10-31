@@ -34,11 +34,13 @@ operation to another directory. Snapshot access fails closed on platforms where
 Go cannot provide stable rooted filesystem operations.
 
 Snapshot JSON read by `audit diff` is limited to 128 MiB (128 × 1024 × 1024
-bytes) and 12,000,000 JSON decoder tokens, inclusive. Token count includes
-object keys, scalar values, and delimiters; snapshots above either limit are
-rejected before decoding. `audit pull` does not persist a generated snapshot
-larger than 128 MiB. The desired-state YAML loaded by `audit pull` is subject to
-the 16 MiB limit in the [configuration schema](../gitops/config-schema.md).
+bytes), 12,000,000 JSON decoder tokens, 1,000,000 total array elements, and
+250,000 members per object, inclusive. Token count includes object keys,
+scalar values, and delimiters; snapshots above any limit are rejected before
+decoding. `audit pull` does not persist a generated snapshot above any of these
+limits. The desired-state YAML loaded by `audit pull` is subject to the size,
+source-complexity, and node limits in the
+[configuration schema](../gitops/config-schema.md).
 
 ## `octostate audit pull`
 

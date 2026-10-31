@@ -91,19 +91,24 @@ transition rather than moving it as unrelated cleanup.
 ## Structured file size limits
 
 The supported config API accepts desired-state YAML files up to 16 MiB
-(16 × 1024 × 1024 bytes) and 500,000 effective YAML nodes, inclusive. Node
-count includes the document, its content, and each alias target expansion.
-`config.LoadDir` and `config.LoadFile` reject inputs above either limit before
-decoding them into the config model. `config.EncodeYAML` applies the same 16
-MiB byte cap to generated YAML.
+(16 × 1024 × 1024 bytes), 1,100,000 YAML source-complexity units, and 500,000
+effective YAML nodes, inclusive. The source preflight bounds parser work
+before construction of the YAML node tree; source-complexity units are a
+conservative weighted count of unquoted YAML punctuation. Effective node count
+includes the document, its content, and each alias target expansion.
+`config.LoadDir` and `config.LoadFile` reject inputs above any limit before
+decoding them into the config model. `config.EncodeYAML` applies the same byte,
+source-complexity, and node caps to generated YAML.
 
 The snapshot API accepts JSON snapshots up to 128 MiB (128 × 1024 × 1024
-bytes), inclusive. `snapshot.ReadActual` also accepts at most 12,000,000 JSON
-decoder tokens, counting object keys, scalar values, and delimiters, and rejects
-inputs above either limit before decoding into the snapshot model.
-`snapshot.WriteActual` rejects generated JSON above the byte limit before it
-replaces or creates the destination file. These limits are fixed API contracts;
-they have no command-line or environment-variable override.
+bytes), 12,000,000 JSON decoder tokens, 1,000,000 total array elements, and
+250,000 members per object, inclusive. Tokens count object keys, scalar values,
+and delimiters. `snapshot.ReadActual` rejects inputs above any limit before
+decoding into the snapshot model; array and object budgets bound slice and map
+allocations during decoding and normalization. `snapshot.WriteActual` enforces
+the same limits on generated JSON before replacing or creating the destination
+file. These limits are fixed API contracts; they have no command-line or
+environment-variable override.
 
 ## Bind a live GitOps target
 

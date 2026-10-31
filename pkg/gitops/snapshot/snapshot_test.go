@@ -419,10 +419,10 @@ func TestDecodeSnapshotJSONComplexityBoundaries(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{"members":[]}`)
-	if _, err := decodeSnapshotJSON(data, 5); err != nil {
+	if _, err := decodeSnapshotJSON(data, snapshotJSONLimits{tokens: 5, arrayElements: 0, objectEntriesPerObject: 1}); err != nil {
 		t.Fatalf("decodeSnapshotJSON rejected a five-token snapshot at the limit: %v", err)
 	}
-	if _, err := decodeSnapshotJSON(data, 4); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+	if _, err := decodeSnapshotJSON(data, snapshotJSONLimits{tokens: 4, arrayElements: 0, objectEntriesPerObject: 1}); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
 		t.Fatalf("decodeSnapshotJSON error = %v, want JSON token limit error", err)
 	}
 }
@@ -431,18 +431,84 @@ func TestDecodeSnapshotJSONComplexityCountsRepeatedValues(t *testing.T) {
 	t.Parallel()
 
 	data := []byte(`{"repositories":[{"topics":["a","b","c"]}]}`)
-	if _, err := decodeSnapshotJSON(data, 12); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+	if _, err := decodeSnapshotJSON(data, snapshotJSONLimits{tokens: 12, arrayElements: 100, objectEntriesPerObject: 100}); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
 		t.Fatalf("decodeSnapshotJSON error = %v, want JSON token limit error counting all topic values", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsArrayElementBudgetBeforeTypedDecode(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"repositories":[null,null]}`)
+	limits := snapshotJSONLimits{tokens: 7, arrayElements: 1, objectEntriesPerObject: 1}
+	if _, err := decodeSnapshotJSON(data, limits); err == nil || !strings.Contains(err.Error(), "JSON array element limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want array-element limit error", err)
+	}
+
+	limits.arrayElements = 2
+	if _, err := decodeSnapshotJSON(data, limits); err != nil {
+		t.Fatalf("decodeSnapshotJSON rejected two null repository elements at the limit: %v", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsOversizedObject(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"resolved_invite_user_ids_by_username":{"first":1,"second":2}}`)
+	limits := snapshotJSONLimits{tokens: 9, arrayElements: 0, objectEntriesPerObject: 1}
+	if _, err := decodeSnapshotJSON(data, limits); err == nil || !strings.Contains(err.Error(), "JSON object entry limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want object-entry limit error", err)
+	}
+
+	limits.objectEntriesPerObject = 2
+	if _, err := decodeSnapshotJSON(data, limits); err != nil {
+		t.Fatalf("decodeSnapshotJSON rejected two invite-ID entries at the limit: %v", err)
+	}
+}
+
+func TestValidateSnapshotJSONComplexityAcceptsOneMillionArrayElements(t *testing.T) {
+	const elements = 1_000_000
+	const prefix = `{"team_members":[`
+	const suffix = `]}`
+	const row = `{"team_slug":"t","username":"u","role":"member"}`
+	var data bytes.Buffer
+	data.Grow(len(prefix) + elements*(len(row)+1) + len(suffix))
+	data.WriteString(prefix)
+	for range elements {
+		if data.Len() > len(prefix) {
+			data.WriteByte(',')
+		}
+		data.WriteString(row)
+	}
+	data.WriteString(suffix)
+	limits := snapshotJSONLimits{
+		tokens:                 maxActualSnapshotJSONTokens,
+		arrayElements:          elements,
+		objectEntriesPerObject: maxActualSnapshotJSONObjectEntries,
+	}
+	if err := validateSnapshotJSONComplexity(data.Bytes(), limits); err != nil {
+		t.Fatalf("validateSnapshotJSONComplexity rejected one million array elements at the limit: %v", err)
+	}
+}
+
+func TestEncodeActualSnapshotRejectsStructuralBudgetExceeded(t *testing.T) {
+	t.Parallel()
+
+	limits := snapshotJSONLimits{tokens: 100, arrayElements: 0, objectEntriesPerObject: 10}
+	_, err := encodeActualSnapshot(ActualSnapshot{Repositories: []state.Repository{{Name: "repo"}}}, limits)
+	if err == nil || !strings.Contains(err.Error(), "JSON array element limit") {
+		t.Fatalf("encodeActualSnapshot error = %v, want JSON array-element limit", err)
 	}
 }
 
 func TestDecodeSnapshotJSONRejectsMalformedAndMultipleValues(t *testing.T) {
 	t.Parallel()
 
-	if _, err := decodeSnapshotJSON([]byte(`{"members":`), 100); err == nil || strings.Contains(err.Error(), "JSON token limit") {
+	limits := snapshotJSONLimits{tokens: 100, arrayElements: 100, objectEntriesPerObject: 100}
+	if _, err := decodeSnapshotJSON([]byte(`{"members":`), limits); err == nil || strings.Contains(err.Error(), "JSON token limit") {
 		t.Fatalf("decodeSnapshotJSON malformed error = %v, want JSON decode error", err)
 	}
-	if _, err := decodeSnapshotJSON([]byte(`{"members":[]} {"members":[]}`), 100); err == nil || !strings.Contains(err.Error(), "multiple JSON values are not allowed") {
+	if _, err := decodeSnapshotJSON([]byte(`{"members":[]} {"members":[]}`), limits); err == nil || !strings.Contains(err.Error(), "multiple JSON values are not allowed") {
 		t.Fatalf("decodeSnapshotJSON multiple-value error = %v, want multiple-value error", err)
 	}
 }
@@ -450,8 +516,9 @@ func TestDecodeSnapshotJSONRejectsMalformedAndMultipleValues(t *testing.T) {
 func TestDecodeSnapshotJSONRejectsOverBudgetBeforeTypedDecode(t *testing.T) {
 	t.Parallel()
 
-	data := []byte(`{"members":[{}]}`)
-	if _, err := decodeSnapshotJSON(data, 6); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+	data := []byte(`{"members":[{"id":"not-an-int"}]}`)
+	limits := snapshotJSONLimits{tokens: 8, arrayElements: 100, objectEntriesPerObject: 100}
+	if _, err := decodeSnapshotJSON(data, limits); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
 		t.Fatalf("decodeSnapshotJSON error = %v, want token-limit error before typed decoding", err)
 	}
 }

@@ -23,7 +23,26 @@ const (
 	actualSnapshotSizeDisplay         = "128 MiB"
 	maxActualSnapshotJSONTokens int64 = 12_000_000
 	actualSnapshotTokensDisplay       = "12 million JSON tokens"
+	// This aggregate ceiling bounds the fixed-width slices and their copies
+	// made by normalizeActualSnapshot.
+	maxActualSnapshotJSONArrayElements int64 = 1_000_000
+	actualSnapshotArrayElementsDisplay       = "1 million JSON array elements"
+	// The per-object ceiling bounds dynamic maps such as resolved invite IDs.
+	maxActualSnapshotJSONObjectEntries int64 = 250_000
+	actualSnapshotObjectEntriesDisplay       = "250,000 entries per JSON object"
 )
+
+type snapshotJSONLimits struct {
+	tokens                 int64
+	arrayElements          int64
+	objectEntriesPerObject int64
+}
+
+type snapshotJSONContainer struct {
+	delimiter          json.Delim
+	entries            int64
+	expectingObjectKey bool
+}
 
 // ActualSnapshot is the persisted actual-state snapshot written by audit pull.
 type ActualSnapshot struct {
@@ -155,7 +174,7 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 		return nil, processErr
 	}
 
-	snapshot, err := decodeSnapshotJSON(data, maxActualSnapshotJSONTokens)
+	snapshot, err := decodeSnapshotJSON(data, actualSnapshotJSONLimits())
 	if err != nil {
 		return nil, fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
 	}
@@ -165,8 +184,8 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 	return snapshot, nil
 }
 
-func decodeSnapshotJSON(data []byte, maxTokens int64) (*ActualSnapshot, error) {
-	if err := validateSnapshotJSONComplexity(data, maxTokens); err != nil {
+func decodeSnapshotJSON(data []byte, limits snapshotJSONLimits) (*ActualSnapshot, error) {
+	if err := validateSnapshotJSONComplexity(data, limits); err != nil {
 		return nil, err
 	}
 
@@ -187,14 +206,23 @@ func decodeSnapshotJSON(data []byte, maxTokens int64) (*ActualSnapshot, error) {
 	return &snapshot, nil
 }
 
-func validateSnapshotJSONComplexity(data []byte, maxTokens int64) error {
-	if maxTokens < 0 {
-		return fmt.Errorf("JSON token limit must not be negative")
+func actualSnapshotJSONLimits() snapshotJSONLimits {
+	return snapshotJSONLimits{
+		tokens:                 maxActualSnapshotJSONTokens,
+		arrayElements:          maxActualSnapshotJSONArrayElements,
+		objectEntriesPerObject: maxActualSnapshotJSONObjectEntries,
+	}
+}
+
+func validateSnapshotJSONComplexity(data []byte, limits snapshotJSONLimits) error {
+	if limits.tokens < 0 || limits.arrayElements < 0 || limits.objectEntriesPerObject < 0 {
+		return fmt.Errorf("JSON complexity limits must not be negative")
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	containers := make([]json.Delim, 0, 16)
+	containers := make([]snapshotJSONContainer, 0, 16)
 	var tokenCount int64
+	var arrayElementCount int64
 	rootStarted := false
 	rootComplete := false
 
@@ -215,10 +243,18 @@ func validateSnapshotJSONComplexity(data []byte, maxTokens int64) error {
 		if rootComplete {
 			return fmt.Errorf("multiple JSON values are not allowed")
 		}
-		if tokenCount == maxTokens {
-			return fmt.Errorf("actual-state snapshot exceeds the supported JSON token limit of %s", snapshotJSONTokenLimitDisplay(maxTokens))
+		if tokenCount == limits.tokens {
+			return fmt.Errorf("actual-state snapshot exceeds the supported JSON token limit of %s", snapshotJSONTokenLimitDisplay(limits.tokens))
 		}
 		tokenCount++
+
+		isObjectKey, err := accountSnapshotJSONParentValue(token, containers, limits, &arrayElementCount)
+		if err != nil {
+			return err
+		}
+		if isObjectKey {
+			continue
+		}
 
 		if delimiter, ok := token.(json.Delim); ok {
 			switch delimiter {
@@ -226,9 +262,12 @@ func validateSnapshotJSONComplexity(data []byte, maxTokens int64) error {
 				if !rootStarted {
 					rootStarted = true
 				}
-				containers = append(containers, delimiter)
+				containers = append(containers, snapshotJSONContainer{
+					delimiter:          delimiter,
+					expectingObjectKey: delimiter == '{',
+				})
 			case '}', ']':
-				if len(containers) == 0 || (delimiter == '}' && containers[len(containers)-1] != '{') || (delimiter == ']' && containers[len(containers)-1] != '[') {
+				if len(containers) == 0 || !snapshotJSONDelimitersMatch(delimiter, containers[len(containers)-1].delimiter) {
 					return fmt.Errorf("unexpected JSON delimiter %q", delimiter)
 				}
 				containers = containers[:len(containers)-1]
@@ -247,11 +286,60 @@ func validateSnapshotJSONComplexity(data []byte, maxTokens int64) error {
 	}
 }
 
+func accountSnapshotJSONParentValue(token any, containers []snapshotJSONContainer, limits snapshotJSONLimits, arrayElementCount *int64) (bool, error) {
+	if len(containers) == 0 {
+		return false, nil
+	}
+	if delimiter, ok := token.(json.Delim); ok && (delimiter == '}' || delimiter == ']') {
+		return false, nil
+	}
+
+	parent := &containers[len(containers)-1]
+	if parent.delimiter == '{' && parent.expectingObjectKey {
+		if _, ok := token.(string); !ok {
+			return false, fmt.Errorf("unexpected JSON object entry")
+		}
+		parent.entries++
+		if parent.entries > limits.objectEntriesPerObject {
+			return false, fmt.Errorf("actual-state snapshot exceeds the supported JSON object entry limit of %s", snapshotJSONObjectEntryLimitDisplay(limits.objectEntriesPerObject))
+		}
+		parent.expectingObjectKey = false
+		return true, nil
+	}
+	if parent.delimiter == '[' {
+		*arrayElementCount++
+		if *arrayElementCount > limits.arrayElements {
+			return false, fmt.Errorf("actual-state snapshot exceeds the supported JSON array element limit of %s", snapshotJSONArrayElementLimitDisplay(limits.arrayElements))
+		}
+	} else {
+		parent.expectingObjectKey = true
+	}
+	return false, nil
+}
+
+func snapshotJSONDelimitersMatch(closing, opening json.Delim) bool {
+	return (closing == '}' && opening == '{') || (closing == ']' && opening == '[')
+}
+
 func snapshotJSONTokenLimitDisplay(limit int64) string {
 	if limit == maxActualSnapshotJSONTokens {
 		return actualSnapshotTokensDisplay
 	}
 	return fmt.Sprintf("%d JSON tokens", limit)
+}
+
+func snapshotJSONArrayElementLimitDisplay(limit int64) string {
+	if limit == maxActualSnapshotJSONArrayElements {
+		return actualSnapshotArrayElementsDisplay
+	}
+	return fmt.Sprintf("%d JSON array elements", limit)
+}
+
+func snapshotJSONObjectEntryLimitDisplay(limit int64) string {
+	if limit == maxActualSnapshotJSONObjectEntries {
+		return actualSnapshotObjectEntriesDisplay
+	}
+	return fmt.Sprintf("%d entries per JSON object", limit)
 }
 
 // WriteActual writes the actual-state snapshot to
@@ -294,15 +382,9 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 		return fmt.Errorf("write snapshot %s: inspect destination: %w", path, err)
 	}
 
-	encoded, err := json.MarshalIndent(snapshot, "", "  ")
+	encoded, err := encodeActualSnapshot(snapshot, actualSnapshotJSONLimits())
 	if err != nil {
-		return fmt.Errorf("encode snapshot: %w", err)
-	}
-	// json.Encoder.Encode terminated the document with a newline; MarshalIndent
-	// does not, so add it back to keep the file byte-identical.
-	encoded = append(encoded, '\n')
-	if err := sizeguard.CheckSize(encoded, maxActualSnapshotJSONSize); err != nil {
-		return fmt.Errorf("write snapshot %s: %w", path, actualSnapshotSizeLimitError(err))
+		return fmt.Errorf("write snapshot %s: encode snapshot: %w", path, err)
 	}
 
 	// 0600 matches what the previous os.CreateTemp path produced on first
@@ -313,6 +395,23 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 	}
 
 	return nil
+}
+
+func encodeActualSnapshot(snapshot ActualSnapshot, limits snapshotJSONLimits) ([]byte, error) {
+	encoded, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	// json.Encoder.Encode terminated the document with a newline; MarshalIndent
+	// does not, so add it back to keep the file byte-identical.
+	encoded = append(encoded, '\n')
+	if err := sizeguard.CheckSize(encoded, maxActualSnapshotJSONSize); err != nil {
+		return nil, actualSnapshotSizeLimitError(err)
+	}
+	if err := validateSnapshotJSONComplexity(encoded, limits); err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 func actualSnapshotSizeLimitError(err error) error {
