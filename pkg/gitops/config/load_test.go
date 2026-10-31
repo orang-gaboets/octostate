@@ -295,6 +295,43 @@ func TestLoadFileAcceptsConfigAtAndJustBelowSupportedLimit(t *testing.T) {
 	}
 }
 
+func TestLoadFileRejectsOverComplexityBudgetBeforeDecoding(t *testing.T) {
+	const topicCount = 500_001
+	header := "organization: acme\nrepositories:\n  - name: octostate\n    topics:\n"
+	const topicLine = "      - x\n"
+
+	var configYAML strings.Builder
+	configYAML.Grow(len(header) + topicCount*len(topicLine))
+	configYAML.WriteString(header)
+	for range topicCount {
+		configYAML.WriteString(topicLine)
+	}
+	contents := configYAML.String()
+	if len(contents) >= 16<<20 {
+		t.Fatalf("complexity fixture is %d bytes, want less than the 16 MiB byte limit", len(contents))
+	}
+
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write complexity fixture: %v", err)
+	}
+
+	got, err := LoadFile(path)
+	if err == nil {
+		t.Fatal("LoadFile accepted a config exceeding 500,000 YAML nodes")
+	}
+	if got.Organization != "" {
+		t.Fatalf("LoadFile returned a partial config: %#v", got)
+	}
+	if !strings.Contains(err.Error(), "500,000 YAML nodes") {
+		t.Fatalf("LoadFile error = %v, want YAML node limit", err)
+	}
+	var loadErr *LoadError
+	if !errors.As(err, &loadErr) || loadErr.Kind != LoadErrorDecodeFile {
+		t.Fatalf("LoadFile error = %v, want a decode-file LoadError", err)
+	}
+}
+
 func TestLoadDirRejectsEmptyConfigDir(t *testing.T) {
 	t.Parallel()
 
@@ -640,6 +677,48 @@ organization: other-org
 	}
 	if !strings.Contains(err.Error(), "multiple YAML documents are not allowed") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityBoundaries(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("organization: acme\n")
+	if err := validateDesiredYAMLComplexity(data, 4); err != nil {
+		t.Fatalf("validateDesiredYAMLComplexity rejected a four-node document at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLComplexity(data, 3); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want YAML node limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityCountsAliasExpansion(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("root: &value [one]\ncopy: *value\n")
+	if err := validateDesiredYAMLComplexity(data, 9); err != nil {
+		t.Fatalf("validateDesiredYAMLComplexity rejected the nine-node expanded document: %v", err)
+	}
+	if err := validateDesiredYAMLComplexity(data, 8); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want alias-expanded YAML node limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityRejectsMultipleDocuments(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("organization: acme\n---\norganization: other-org\n")
+	if err := validateDesiredYAMLComplexity(data, 100); err == nil || !strings.Contains(err.Error(), "multiple YAML documents are not allowed") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want multiple-document error", err)
+	}
+}
+
+func TestValidateDesiredYAMLComplexityRejectsAliasCycle(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("root: &root [*root]\n")
+	if err := validateDesiredYAMLComplexity(data, 100); err == nil || !strings.Contains(err.Error(), "YAML alias cycle") {
+		t.Fatalf("validateDesiredYAMLComplexity error = %v, want YAML alias cycle error", err)
 	}
 }
 

@@ -91,9 +91,11 @@ transition rather than moving it as unrelated cleanup.
 ## Structured file size limits
 
 The supported config API accepts desired-state YAML files up to 16 MiB
-(16 × 1024 × 1024 bytes), inclusive. `config.LoadDir` and `config.LoadFile`
-reject larger inputs before decoding them, and `config.EncodeYAML` applies the
-same cap to generated YAML.
+(16 × 1024 × 1024 bytes) and 500,000 effective YAML nodes, inclusive. Node
+count includes the document, its content, and each alias target expansion.
+`config.LoadDir` and `config.LoadFile` reject inputs above either limit before
+decoding them into the config model. `config.EncodeYAML` applies the same 16
+MiB byte cap to generated YAML.
 
 The snapshot API accepts JSON snapshots up to 128 MiB (128 × 1024 × 1024
 bytes), inclusive. `snapshot.ReadActual` also accepts at most 12,000,000 JSON
