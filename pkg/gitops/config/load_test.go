@@ -765,6 +765,55 @@ func TestValidateDesiredYAMLSourceComplexityTreatsQuotesInsidePlainScalarsAsLite
 	}
 }
 
+func TestValidateDesiredYAMLSourceComplexityTreatsPunctuationBeforeQuotesAsLiteral(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		data     string
+		maxUnits int64
+	}{
+		{name: "comma", data: "organization: acme, \"unclosed\nmembers: []\n", maxUnits: 7},
+		{name: "bracket", data: "organization: acme [ \"unclosed\nmembers: []\n", maxUnits: 6},
+		{name: "dash", data: "organization: acme - \"unclosed\nmembers: []\n", maxUnits: 7},
+		{name: "colon inside plain scalar", data: "organization: acme:\"unclosed\nmembers: []\n", maxUnits: 8},
+		{name: "indented dash continuation", data: "organization: acme\n  - \"unclosed\nmembers: []\n", maxUnits: 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if err := validateDesiredYAMLSourceComplexity([]byte(tc.data), tc.maxUnits); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+				t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error after the literal quote", err)
+			}
+		})
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityRecognizesQuotedFlowItemsAfterSeparators(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("organization: [plain, \"many, punctuation: [inside]\"]\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 9); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected nine source units: %v", err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(data, 8); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestLoadFileRejectsComplexityAfterPunctuationBeforeLiteralQuote(t *testing.T) {
+	t.Parallel()
+
+	contents := "organization: acme, \"unclosed" + strings.Repeat(",", 550_000) + "\nmembers:\n  - username: user\n"
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write config fixture: %v", err)
+	}
+	if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("LoadFile error = %v, want source-complexity limit error", err)
+	}
+}
+
 func TestValidateDesiredYAMLSourceComplexityRejectsLargeFlowCollection(t *testing.T) {
 	t.Parallel()
 

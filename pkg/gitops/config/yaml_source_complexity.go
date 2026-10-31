@@ -8,6 +8,9 @@ type desiredYAMLSourceScanner struct {
 	units                   int64
 	quote                   byte
 	plainTokenActive        bool
+	plainTokenIndent        int
+	currentLineIndent       int
+	flowDepth               int
 	blockScalarParentIndent int
 }
 
@@ -34,6 +37,7 @@ func validateDesiredYAMLSourceComplexity(data []byte, maxUnits int64) error {
 
 func (s *desiredYAMLSourceScanner) scan() error {
 	for index := 0; index < len(s.data); index++ {
+		s.updateLineState(index)
 		if next, skipped := s.skipBlockScalarLine(index); skipped {
 			index = next
 			continue
@@ -62,12 +66,74 @@ func (s *desiredYAMLSourceScanner) scan() error {
 			if err := s.addUnits(weight); err != nil {
 				return err
 			}
-			s.plainTokenActive = false
+			if s.isYAMLPlainTokenBoundary(index, character) {
+				s.updateFlowDepth(character)
+				s.plainTokenActive = false
+			}
 		} else {
-			s.plainTokenActive = true
+			if !s.plainTokenActive {
+				s.plainTokenIndent = s.currentLineIndent
+				s.plainTokenActive = true
+			}
 		}
 	}
 	return nil
+}
+
+func (s *desiredYAMLSourceScanner) updateLineState(index int) {
+	if index > 0 && s.data[index-1] != '\n' {
+		return
+	}
+
+	s.currentLineIndent = 0
+	for index+s.currentLineIndent < len(s.data) && s.data[index+s.currentLineIndent] == ' ' {
+		s.currentLineIndent++
+	}
+	lineEnd := s.lineEnd(index)
+	first := index + s.currentLineIndent
+	for first < lineEnd && (s.data[first] == '\t' || s.data[first] == '\r') {
+		first++
+	}
+	blankOrComment := first == lineEnd || s.data[first] == '#'
+	if s.plainTokenActive && s.flowDepth == 0 && !blankOrComment && s.currentLineIndent <= s.plainTokenIndent {
+		s.plainTokenActive = false
+	}
+}
+
+func (s *desiredYAMLSourceScanner) isYAMLPlainTokenBoundary(index int, character byte) bool {
+	if !s.plainTokenActive {
+		return true
+	}
+	switch character {
+	case ':':
+		if index+1 == len(s.data) || isYAMLSourceWhitespace(s.data[index+1]) {
+			return true
+		}
+		if s.flowDepth > 0 {
+			switch s.data[index+1] {
+			case ',', '[', ']', '{', '}', '\'', '"':
+				return true
+			}
+		}
+	case ',':
+		return s.flowDepth > 0
+	case '[', '{':
+		return s.flowDepth > 0
+	case ']', '}':
+		return s.flowDepth > 0
+	}
+	return false
+}
+
+func (s *desiredYAMLSourceScanner) updateFlowDepth(character byte) {
+	switch character {
+	case '[', '{':
+		s.flowDepth++
+	case ']', '}':
+		if s.flowDepth > 0 {
+			s.flowDepth--
+		}
+	}
 }
 
 func (s *desiredYAMLSourceScanner) skipBlockScalarLine(index int) (int, bool) {
@@ -105,6 +171,7 @@ func (s *desiredYAMLSourceScanner) consumeQuotedByte(index *int) bool {
 	if character == s.quote {
 		s.quote = 0
 		s.plainTokenActive = true
+		s.plainTokenIndent = s.currentLineIndent
 	}
 	return true
 }
