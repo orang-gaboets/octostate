@@ -51,15 +51,18 @@ func appendManagedRepositoryStringField(node *yaml.Node, key string, value Optio
 	appendMapField(node, key, stringNode(fallback))
 }
 
-func appendManagedRepositoryBoolField(node *yaml.Node, key string, value OptionalBool, fallback bool) {
+func appendManagedRepositoryBoolField(node *yaml.Node, key string, value OptionalBool, effective bool) {
 	if value.Present {
+		if !value.Null {
+			value.Value = effective
+		}
 		appendOptionalBoolField(node, key, value)
 		return
 	}
-	if !fallback {
+	if !effective {
 		return
 	}
-	appendMapField(node, key, boolNode(fallback))
+	appendMapField(node, key, boolNode(effective))
 }
 
 func appendMapField(node *yaml.Node, key string, value *yaml.Node) {

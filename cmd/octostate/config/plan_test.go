@@ -86,9 +86,25 @@ func TestPlanConfigCmdSuccess(t *testing.T) {
 	got := decodePlanPreview(t, out.Bytes())
 	got.Normalize()
 	wantPreview := previewFromPlan(want)
+	wantIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute expected desired config identity: %v", err)
+	}
+	wantPreview.DesiredConfigIdentity = wantIdentity
 	wantPreview.Normalize()
 	if !reflect.DeepEqual(got, *wantPreview) {
 		t.Fatalf("unexpected plan preview:\n got %#v\nwant %#v", got, *wantPreview)
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("decode raw plan payload: %v", err)
+	}
+	var gotIdentity string
+	if err := json.Unmarshal(payload["desired_config_identity"], &gotIdentity); err != nil {
+		t.Fatalf("decode desired config identity: %v; payload=%s", err, out.String())
+	}
+	if gotIdentity != wantIdentity {
+		t.Fatalf("unexpected desired config identity: got %q want %q", gotIdentity, wantIdentity)
 	}
 }
 
@@ -135,6 +151,11 @@ func TestPlanConfigCmdSuccessNoOpReport(t *testing.T) {
 	got := decodePlanPreview(t, out.Bytes())
 	got.Normalize()
 	wantPreview := previewFromPlan(want)
+	wantIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute expected desired config identity: %v", err)
+	}
+	wantPreview.DesiredConfigIdentity = wantIdentity
 	wantPreview.Normalize()
 	if !reflect.DeepEqual(got, *wantPreview) {
 		t.Fatalf("unexpected no-op plan preview:\n got %#v\nwant %#v", got, *wantPreview)
@@ -220,6 +241,11 @@ func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
 	got := decodePlanPreview(t, out.Bytes())
 	normalizePlanPreviewForCompare(&got)
 	want := previewFromPlan(report)
+	wantIdentity, err := gitopsconfig.DesiredStateIdentity(cfg)
+	if err != nil {
+		t.Fatalf("compute expected desired config identity: %v", err)
+	}
+	want.DesiredConfigIdentity = wantIdentity
 	normalizePlanPreviewForCompare(want)
 	if !reflect.DeepEqual(got, *want) {
 		t.Fatalf("unexpected split plan preview:\n got %#v\nwant %#v", got, *want)
@@ -568,7 +594,7 @@ func TestPlanConfigRejectsBlankOrganizationBeforeAuth(t *testing.T) {
 		return nil, nil
 	}
 
-	_, err := planConfig(context.Background(), "secret-token", 0, 0, "", "./config", nil)
+	_, _, err := planConfig(context.Background(), "secret-token", 0, 0, "", "./config", nil)
 	if !errors.Is(err, github.ErrMissingRequiredField) {
 		t.Fatalf("unexpected error: %v", err)
 	}

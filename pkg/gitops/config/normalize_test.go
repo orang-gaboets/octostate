@@ -84,6 +84,57 @@ func TestNormalizeDesiredStateTrimsEveryLoadNormalizedField(t *testing.T) {
 	}
 }
 
+func TestNormalizeDesiredStateTracksChangedManagedRepositoryStrings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		setManaged func(*RepositorySpec)
+		change     func(*RepositorySpec)
+		want       string
+		option     func(RepositorySpec) OptionalString
+		value      func(RepositorySpec) string
+	}{
+		{
+			name:       "description",
+			setManaged: func(repo *RepositorySpec) { repo.SetManagedDescription("reviewed description") },
+			change:     func(repo *RepositorySpec) { repo.Description = "changed description" },
+			want:       "changed description",
+			option:     RepositorySpec.DescriptionOption,
+			value:      func(repo RepositorySpec) string { return repo.Description },
+		},
+		{
+			name:       "homepage",
+			setManaged: func(repo *RepositorySpec) { repo.SetManagedHomepage("https://reviewed.example") },
+			change:     func(repo *RepositorySpec) { repo.Homepage = "https://changed.example" },
+			want:       "https://changed.example",
+			option:     RepositorySpec.HomepageOption,
+			value:      func(repo RepositorySpec) string { return repo.Homepage },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			repository := RepositorySpec{Name: "service", Visibility: "private"}
+			tt.setManaged(&repository)
+			tt.change(&repository)
+
+			got := NormalizeDesiredState(OrganizationConfig{
+				Organization: "orang-gaboets",
+				Repositories: []RepositorySpec{repository},
+			}).Repositories[0]
+			if value := tt.value(got); value != tt.want {
+				t.Fatalf("normalized %s = %q, want %q", tt.name, value, tt.want)
+			}
+			if option := tt.option(got); !option.Present || option.Null || option.Value != tt.want {
+				t.Fatalf("normalized %s option = %#v, want present non-null value %q", tt.name, option, tt.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeDesiredStateDoesNotMutateCaller(t *testing.T) {
 	t.Parallel()
 
