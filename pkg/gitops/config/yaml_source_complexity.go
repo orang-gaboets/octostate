@@ -196,15 +196,13 @@ func isYAMLSourceWhitespace(character byte) bool {
 }
 
 func isYAMLBlockScalarHeader(data []byte, marker int) bool {
-	lineEnd := marker + 1
-	for lineEnd < len(data) && data[lineEnd] != '\n' {
-		lineEnd++
-	}
 	seenChomping := false
 	seenIndentation := false
-	for index := marker + 1; index < lineEnd; index++ {
+	for index := marker + 1; index < len(data); index++ {
 		character := data[index]
 		switch {
+		case character == '\n':
+			return true
 		case character == '+' || character == '-':
 			if seenChomping {
 				return false
@@ -216,10 +214,10 @@ func isYAMLBlockScalarHeader(data []byte, marker int) bool {
 			}
 			seenIndentation = true
 		case isYAMLSourceWhitespace(character):
-			for index < lineEnd && isYAMLSourceWhitespace(data[index]) {
+			for index < len(data) && data[index] != '\n' && isYAMLSourceWhitespace(data[index]) {
 				index++
 			}
-			return index == lineEnd || data[index] == '#'
+			return index == len(data) || data[index] == '\n' || data[index] == '#'
 		default:
 			return false
 		}

@@ -774,6 +774,29 @@ func TestValidateDesiredYAMLSourceComplexityRejectsLargeFlowCollection(t *testin
 	}
 }
 
+func BenchmarkValidateDesiredYAMLSourceComplexityAdversarialBlockMarkers(b *testing.B) {
+	for _, benchmark := range []struct {
+		name        string
+		markerCount int
+	}{
+		{name: "4000", markerCount: 4_000},
+		{name: "8000", markerCount: 8_000},
+		{name: "16000", markerCount: 16_000},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			data := []byte(strings.Repeat("| ", benchmark.markerCount))
+			b.ReportAllocs()
+			b.SetBytes(int64(len(data)))
+			b.ResetTimer()
+			for range b.N {
+				if err := validateDesiredYAMLSourceComplexity(data, int64(benchmark.markerCount+2)); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadFileAcceptsOneHundredThousandSimpleEntries(t *testing.T) {
 	t.Parallel()
 
