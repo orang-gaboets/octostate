@@ -3,6 +3,8 @@ package sizeguard
 import (
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -42,6 +44,46 @@ func TestProcessRejectsInputOverLimitWithoutPassingExtraBytesToParser(t *testing
 	}
 	if got := parsed.String(); got != "abcd" {
 		t.Fatalf("parser received %q, want only the first four bytes", got)
+	}
+}
+
+func TestProcessRejectsFileThatGrowsAfterSizeInspection(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "input.yaml")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create input file: %v", err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	if _, err := file.WriteString("abc"); err != nil {
+		t.Fatalf("write initial file contents: %v", err)
+	}
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatalf("stat input file: %v", err)
+	}
+	if info.Size() > 3 {
+		t.Fatalf("initial file size = %d, want no more than the three-byte limit", info.Size())
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatalf("seek input file: %v", err)
+	}
+
+	err = Process(file, 3, func(input io.Reader) error {
+		if _, err := io.Copy(io.Discard, input); err != nil {
+			return err
+		}
+		grown, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = grown.Close() }()
+		_, err = grown.WriteString("d")
+		return err
+	})
+	if !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("Process error = %v, want ErrLimitExceeded after the file grows", err)
 	}
 }
 
