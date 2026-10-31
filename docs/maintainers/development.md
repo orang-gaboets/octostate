@@ -206,6 +206,27 @@ Run the full test suite:
 go test ./...
 ```
 
+### Structured-input memory observations
+
+The public `config.LoadFile` and `snapshot.ReadActual` paths were measured on
+Go 1.26.10, macOS arm64, Apple M4 Pro using the prior review's adversarial
+fixture shapes. Each fixture was padded with valid whitespace to its documented
+byte limit; peak RSS includes the Go runtime and input buffer. All cases were
+rejected during YAML source-complexity or JSON array-element preflight, before
+typed decoding. Peak RSS was read in-process with `getrusage`.
+
+| Fixture shape | Input size | Rejection | Peak RSS |
+| --- | ---: | --- | ---: |
+| YAML with 400,000 member entries | 16 MiB | 1.1 million source-complexity units | 46.8 MiB |
+| YAML with one repository and a large topics flow sequence | 16 MiB | 1.1 million source-complexity units | 46.4 MiB |
+| YAML with one team and a large members flow sequence | 16 MiB | 1.1 million source-complexity units | 46.5 MiB |
+| JSON with one repository and a large topics array | 128 MiB | 1 million total array elements | 284.7 MiB |
+| JSON with an array of empty member objects | 128 MiB | 1 million total array elements | 280.8 MiB |
+
+These are observations for this Go and host version, not portable upper-bound
+guarantees. Re-measure after changing input budgets, parser implementations,
+or supported Go versions.
+
 Generate a coverage report:
 
 ```bash
