@@ -19,6 +19,10 @@ const (
 	desiredStateYAMLSizeDisplay        = "16 MiB"
 	maxDesiredStateYAMLNodes     int64 = 500_000
 	desiredStateYAMLNodesDisplay       = "500,000 YAML nodes"
+	// This weighted source ceiling bounds parser-side node construction before
+	// yaml.v3 allocates the full tree; the exact node ceiling follows below.
+	maxDesiredStateYAMLSourceUnits          int64 = 1_100_000
+	desiredStateYAMLSourceUnitsDisplayValue       = "1.1 million YAML source complexity units"
 )
 
 // LoadDir loads the canonical organization configuration file from configDir,
@@ -99,7 +103,10 @@ func decodeYAMLFile(path string, out any) error {
 		})
 		decodeErr = desiredStateSizeLimitError(processErr)
 		if decodeErr == nil {
-			decodeErr = validateDesiredYAMLComplexity(data, maxDesiredStateYAMLNodes)
+			decodeErr = validateDesiredYAMLSourceComplexity(data, maxDesiredStateYAMLSourceUnits)
+			if decodeErr == nil {
+				decodeErr = validateDesiredYAMLComplexity(data, maxDesiredStateYAMLNodes)
+			}
 			if decodeErr == nil {
 				decodeErr = decodeYAML(bytes.NewReader(data), out)
 			}

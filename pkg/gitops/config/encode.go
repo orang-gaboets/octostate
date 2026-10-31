@@ -12,6 +12,10 @@ import (
 // EncodeYAML renders one canonical organization.yaml document from desired
 // configuration.
 func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
+	return encodeYAMLWithLimits(cfg, maxDesiredStateYAMLNodes, maxDesiredStateYAMLSourceUnits)
+}
+
+func encodeYAMLWithLimits(cfg OrganizationConfig, maxNodes, maxSourceUnits int64) ([]byte, error) {
 	normalized := NormalizeDesiredState(cfg)
 
 	document := &yaml.Node{
@@ -19,6 +23,9 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 		Content: []*yaml.Node{
 			encodeOrganizationConfig(normalized),
 		},
+	}
+	if err := countDesiredYAMLNodes(document, maxNodes); err != nil {
+		return nil, fmt.Errorf("encode organization config YAML: %w", err)
 	}
 
 	var buf bytes.Buffer
@@ -35,6 +42,9 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 	encoded := buf.Bytes()
 	if err := sizeguard.CheckSize(encoded, maxDesiredStateYAMLSize); err != nil {
 		return nil, desiredStateSizeLimitError(err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(encoded, maxSourceUnits); err != nil {
+		return nil, fmt.Errorf("encode organization config YAML: %w", err)
 	}
 	return encoded, nil
 }

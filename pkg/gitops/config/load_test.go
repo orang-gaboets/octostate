@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -719,6 +720,73 @@ func TestValidateDesiredYAMLComplexityRejectsAliasCycle(t *testing.T) {
 	data := []byte("root: &root [*root]\n")
 	if err := validateDesiredYAMLComplexity(data, 100); err == nil || !strings.Contains(err.Error(), "YAML alias cycle") {
 		t.Fatalf("validateDesiredYAMLComplexity error = %v, want YAML alias cycle error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityBoundariesAndIgnoresScalarText(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("description: \"many, punctuation: [inside]\"\n# ignored: [] ,,,\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 5); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected five source units at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(data, 4); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityCountsAfterBlockScalar(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("description: | # block comment\n  quote: \"[, ]\"\nrepositories:\n  - name: repo\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 14); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected 14 source units at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(data, 13); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityDoesNotSkipAfterInvalidBlockHeader(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("description: |++\nrepositories:\n  - name: repo\n")
+	if err := validateDesiredYAMLSourceComplexity(data, 13); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityRejectsLargeFlowCollection(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("[" + strings.Repeat("x,", 600_001) + "x]")
+	if err := validateDesiredYAMLSourceComplexity(data, maxDesiredStateYAMLSourceUnits); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestLoadFileAcceptsOneHundredThousandSimpleEntries(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create config file: %v", err)
+	}
+	if _, err := io.WriteString(file, "organization: acme\nrepositories:\n"+strings.Repeat("  - name: repo\n", 100_000)); err != nil {
+		_ = file.Close()
+		t.Fatalf("write config entries: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close config file: %v", err)
+	}
+
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile rejected 100,000 simple repository entries: %v", err)
+	}
+	if got := len(cfg.Repositories); got != 100_000 {
+		t.Fatalf("repository entry count = %d, want 100,000", got)
 	}
 }
 

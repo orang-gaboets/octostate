@@ -55,6 +55,17 @@ func TestEncodeYAMLRejectsOutputAboveSupportedLimit(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLRejectsOutputAboveStructuralBudgets(t *testing.T) {
+	t.Parallel()
+
+	if _, err := encodeYAMLWithLimits(OrganizationConfig{}, 0, maxDesiredStateYAMLSourceUnits); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("encodeYAMLWithLimits node-budget error = %v, want YAML node limit", err)
+	}
+	if _, err := encodeYAMLWithLimits(OrganizationConfig{}, maxDesiredStateYAMLNodes, 1); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("encodeYAMLWithLimits source-budget error = %v, want source complexity limit", err)
+	}
+}
+
 func TestEncodeYAMLValidRoundTrip(t *testing.T) {
 	t.Parallel()
 
