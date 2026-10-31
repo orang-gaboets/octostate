@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,9 +18,11 @@ import (
 )
 
 const (
-	actualSnapshotRelativePath       = "actual/snapshot.json"
-	maxActualSnapshotJSONSize  int64 = 128 << 20
-	actualSnapshotSizeDisplay        = "128 MiB"
+	actualSnapshotRelativePath        = "actual/snapshot.json"
+	maxActualSnapshotJSONSize   int64 = 128 << 20
+	actualSnapshotSizeDisplay         = "128 MiB"
+	maxActualSnapshotJSONTokens int64 = 12_000_000
+	actualSnapshotTokensDisplay       = "12 million JSON tokens"
 )
 
 // ActualSnapshot is the persisted actual-state snapshot written by audit pull.
@@ -132,21 +135,12 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 		return nil, fmt.Errorf("read actual-state snapshot %s: %w", path, actualSnapshotSizeLimitError(&sizeguard.LimitExceededError{Limit: maxActualSnapshotJSONSize}))
 	}
 
-	var snapshot ActualSnapshot
+	var data []byte
 	processErr := sizeguard.Process(file, maxActualSnapshotJSONSize, func(r io.Reader) error {
-		decoder := json.NewDecoder(r)
-		decoder.DisallowUnknownFields()
-
-		if err := decoder.Decode(&snapshot); err != nil {
-			return fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
-		}
-
-		var extra json.RawMessage
-		if err := decoder.Decode(&extra); err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
-		}
-		if len(extra) > 0 {
-			return fmt.Errorf("decode actual-state snapshot %s: multiple JSON values are not allowed", path)
+		var err error
+		data, err = io.ReadAll(r)
+		if err != nil {
+			return &sizeguard.ReadError{Err: err}
 		}
 		return nil
 	})
@@ -161,10 +155,103 @@ func readActualSnapshotAtWithHook(parent *os.Root, name, path string, afterLstat
 		return nil, processErr
 	}
 
-	if err := normalizeActualSnapshot(&snapshot); err != nil {
+	snapshot, err := decodeSnapshotJSON(data, maxActualSnapshotJSONTokens)
+	if err != nil {
+		return nil, fmt.Errorf("decode actual-state snapshot %s: %w", path, err)
+	}
+	if err := normalizeActualSnapshot(snapshot); err != nil {
 		return nil, fmt.Errorf("normalize actual-state snapshot %s: %w", path, err)
 	}
+	return snapshot, nil
+}
+
+func decodeSnapshotJSON(data []byte, maxTokens int64) (*ActualSnapshot, error) {
+	if err := validateSnapshotJSONComplexity(data, maxTokens); err != nil {
+		return nil, err
+	}
+
+	var snapshot ActualSnapshot
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&snapshot); err != nil {
+		return nil, err
+	}
+
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if len(extra) > 0 {
+		return nil, fmt.Errorf("multiple JSON values are not allowed")
+	}
 	return &snapshot, nil
+}
+
+func validateSnapshotJSONComplexity(data []byte, maxTokens int64) error {
+	if maxTokens < 0 {
+		return fmt.Errorf("JSON token limit must not be negative")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	containers := make([]json.Delim, 0, 16)
+	var tokenCount int64
+	rootStarted := false
+	rootComplete := false
+
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			if !rootStarted {
+				return fmt.Errorf("empty JSON input")
+			}
+			if len(containers) != 0 {
+				return fmt.Errorf("unexpected end of JSON input")
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if rootComplete {
+			return fmt.Errorf("multiple JSON values are not allowed")
+		}
+		if tokenCount == maxTokens {
+			return fmt.Errorf("actual-state snapshot exceeds the supported JSON token limit of %s", snapshotJSONTokenLimitDisplay(maxTokens))
+		}
+		tokenCount++
+
+		if delimiter, ok := token.(json.Delim); ok {
+			switch delimiter {
+			case '{', '[':
+				if !rootStarted {
+					rootStarted = true
+				}
+				containers = append(containers, delimiter)
+			case '}', ']':
+				if len(containers) == 0 || (delimiter == '}' && containers[len(containers)-1] != '{') || (delimiter == ']' && containers[len(containers)-1] != '[') {
+					return fmt.Errorf("unexpected JSON delimiter %q", delimiter)
+				}
+				containers = containers[:len(containers)-1]
+				if len(containers) == 0 {
+					rootComplete = true
+				}
+			}
+			continue
+		}
+		if !rootStarted {
+			rootStarted = true
+			rootComplete = true
+		} else if len(containers) == 0 {
+			rootComplete = true
+		}
+	}
+}
+
+func snapshotJSONTokenLimitDisplay(limit int64) string {
+	if limit == maxActualSnapshotJSONTokens {
+		return actualSnapshotTokensDisplay
+	}
+	return fmt.Sprintf("%d JSON tokens", limit)
 }
 
 // WriteActual writes the actual-state snapshot to

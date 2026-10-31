@@ -33,11 +33,12 @@ traversing, so replacing a checked path component cannot redirect the file
 operation to another directory. Snapshot access fails closed on platforms where
 Go cannot provide stable rooted filesystem operations.
 
-Snapshot JSON is limited to 128 MiB (128 × 1024 × 1024 bytes), inclusive.
-`audit diff` rejects larger snapshot files before decoding them, and `audit pull`
-does not persist a generated snapshot larger than the same limit. The
-desired-state YAML loaded by `audit pull` is subject to the 16 MiB limit in the
-[configuration schema](../gitops/config-schema.md).
+Snapshot JSON read by `audit diff` is limited to 128 MiB (128 × 1024 × 1024
+bytes) and 12,000,000 JSON decoder tokens, inclusive. Token count includes
+object keys, scalar values, and delimiters; snapshots above either limit are
+rejected before decoding. `audit pull` does not persist a generated snapshot
+larger than 128 MiB. The desired-state YAML loaded by `audit pull` is subject to
+the 16 MiB limit in the [configuration schema](../gitops/config-schema.md).
 
 ## `octostate audit pull`
 

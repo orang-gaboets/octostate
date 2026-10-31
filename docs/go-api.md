@@ -96,8 +96,10 @@ reject larger inputs before decoding them, and `config.EncodeYAML` applies the
 same cap to generated YAML.
 
 The snapshot API accepts JSON snapshots up to 128 MiB (128 × 1024 × 1024
-bytes), inclusive. `snapshot.ReadActual` rejects larger files before decoding,
-and `snapshot.WriteActual` rejects generated JSON above that limit before it
+bytes), inclusive. `snapshot.ReadActual` also accepts at most 12,000,000 JSON
+decoder tokens, counting object keys, scalar values, and delimiters, and rejects
+inputs above either limit before decoding into the snapshot model.
+`snapshot.WriteActual` rejects generated JSON above the byte limit before it
 replaces or creates the destination file. These limits are fixed API contracts;
 they have no command-line or environment-variable override.
 

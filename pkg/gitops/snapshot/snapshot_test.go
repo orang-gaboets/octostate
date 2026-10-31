@@ -415,6 +415,47 @@ func TestReadActualMissingSnapshot(t *testing.T) {
 	}
 }
 
+func TestDecodeSnapshotJSONComplexityBoundaries(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"members":[]}`)
+	if _, err := decodeSnapshotJSON(data, 5); err != nil {
+		t.Fatalf("decodeSnapshotJSON rejected a five-token snapshot at the limit: %v", err)
+	}
+	if _, err := decodeSnapshotJSON(data, 4); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want JSON token limit error", err)
+	}
+}
+
+func TestDecodeSnapshotJSONComplexityCountsRepeatedValues(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"repositories":[{"topics":["a","b","c"]}]}`)
+	if _, err := decodeSnapshotJSON(data, 12); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want JSON token limit error counting all topic values", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsMalformedAndMultipleValues(t *testing.T) {
+	t.Parallel()
+
+	if _, err := decodeSnapshotJSON([]byte(`{"members":`), 100); err == nil || strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON malformed error = %v, want JSON decode error", err)
+	}
+	if _, err := decodeSnapshotJSON([]byte(`{"members":[]} {"members":[]}`), 100); err == nil || !strings.Contains(err.Error(), "multiple JSON values are not allowed") {
+		t.Fatalf("decodeSnapshotJSON multiple-value error = %v, want multiple-value error", err)
+	}
+}
+
+func TestDecodeSnapshotJSONRejectsOverBudgetBeforeTypedDecode(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"members":[{}]}`)
+	if _, err := decodeSnapshotJSON(data, 6); err == nil || !strings.Contains(err.Error(), "JSON token limit") {
+		t.Fatalf("decodeSnapshotJSON error = %v, want token-limit error before typed decoding", err)
+	}
+}
+
 func TestReadActualMalformedJSON(t *testing.T) {
 	t.Parallel()
 
