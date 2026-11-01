@@ -723,80 +723,61 @@ func TestValidateDesiredYAMLComplexityRejectsAliasCycle(t *testing.T) {
 	}
 }
 
-func TestValidateDesiredYAMLSourceComplexityBoundariesAndIgnoresScalarText(t *testing.T) {
+func TestValidateDesiredYAMLSourceComplexityCountsMarkersInQuotedAndCommentText(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("description: \"many, punctuation: [inside]\"\n# ignored: [] ,,,\n")
-	if err := validateDesiredYAMLSourceComplexity(data, 5); err != nil {
-		t.Fatalf("validateDesiredYAMLSourceComplexity rejected five source units at the limit: %v", err)
+	if err := validateDesiredYAMLSourceComplexity(data, 23); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected 23 source units at the limit: %v", err)
 	}
-	if err := validateDesiredYAMLSourceComplexity(data, 4); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+	if err := validateDesiredYAMLSourceComplexity(data, 22); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
 		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
 	}
 }
 
-func TestValidateDesiredYAMLSourceComplexityCountsAfterBlockScalar(t *testing.T) {
+func TestValidateDesiredYAMLSourceComplexityIncludesDocumentAndRootNodes(t *testing.T) {
+	t.Parallel()
+
+	if err := validateDesiredYAMLSourceComplexity(nil, 2); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected the document and root nodes at the limit: %v", err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(nil, 1); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error for document and root nodes", err)
+	}
+}
+
+func TestValidateDesiredYAMLSourceComplexityCountsMarkersInBlockScalarAndFollowingYAML(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("description: | # block comment\n  quote: \"[, ]\"\nrepositories:\n  - name: repo\n")
-	if err := validateDesiredYAMLSourceComplexity(data, 14); err != nil {
-		t.Fatalf("validateDesiredYAMLSourceComplexity rejected 14 source units at the limit: %v", err)
+	if err := validateDesiredYAMLSourceComplexity(data, 21); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected 21 source units at the limit: %v", err)
 	}
-	if err := validateDesiredYAMLSourceComplexity(data, 13); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+	if err := validateDesiredYAMLSourceComplexity(data, 20); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
 		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
 	}
 }
 
-func TestValidateDesiredYAMLSourceComplexityDoesNotSkipAfterInvalidBlockHeader(t *testing.T) {
+func TestValidateDesiredYAMLSourceComplexityCountsSiblingKeysAfterEmptyBlockScalar(t *testing.T) {
 	t.Parallel()
 
-	data := []byte("description: |++\nrepositories:\n  - name: repo\n")
-	if err := validateDesiredYAMLSourceComplexity(data, 13); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
-		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
+	data := []byte("organization: acme\nrepositories:\n  - description: |\n    owner: acme\n    name: r\n    visibility: private\n    topics: [a,a]\n")
+	if err := validateDesiredYAMLComplexity(data, 100); err != nil {
+		t.Fatalf("validateDesiredYAMLComplexity rejected valid sibling-key fixture: %v", err)
 	}
-}
-
-func TestValidateDesiredYAMLSourceComplexityTreatsQuotesInsidePlainScalarsAsLiteral(t *testing.T) {
-	t.Parallel()
-
-	data := []byte("organization: acme\ndescription: text \"unclosed\nrepositories: [a,a,a,a,a,a]\n")
 	if err := validateDesiredYAMLSourceComplexity(data, 14); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
-		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error after the literal quote", err)
+		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error after the empty block scalar", err)
 	}
 }
 
-func TestValidateDesiredYAMLSourceComplexityTreatsPunctuationBeforeQuotesAsLiteral(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name     string
-		data     string
-		maxUnits int64
-	}{
-		{name: "comma", data: "organization: acme, \"unclosed\nmembers: []\n", maxUnits: 7},
-		{name: "bracket", data: "organization: acme [ \"unclosed\nmembers: []\n", maxUnits: 6},
-		{name: "dash", data: "organization: acme - \"unclosed\nmembers: []\n", maxUnits: 7},
-		{name: "colon inside plain scalar", data: "organization: acme:\"unclosed\nmembers: []\n", maxUnits: 8},
-		{name: "indented dash continuation", data: "organization: acme\n  - \"unclosed\nmembers: []\n", maxUnits: 7},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			if err := validateDesiredYAMLSourceComplexity([]byte(tc.data), tc.maxUnits); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
-				t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error after the literal quote", err)
-			}
-		})
-	}
-}
-
-func TestValidateDesiredYAMLSourceComplexityRecognizesQuotedFlowItemsAfterSeparators(t *testing.T) {
+func TestValidateDesiredYAMLSourceComplexityCountsMarkersInsideQuotedFlowItems(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("organization: [plain, \"many, punctuation: [inside]\"]\n")
-	if err := validateDesiredYAMLSourceComplexity(data, 9); err != nil {
-		t.Fatalf("validateDesiredYAMLSourceComplexity rejected nine source units: %v", err)
+	if err := validateDesiredYAMLSourceComplexity(data, 16); err != nil {
+		t.Fatalf("validateDesiredYAMLSourceComplexity rejected 16 source units: %v", err)
 	}
-	if err := validateDesiredYAMLSourceComplexity(data, 8); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+	if err := validateDesiredYAMLSourceComplexity(data, 15); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
 		t.Fatalf("validateDesiredYAMLSourceComplexity error = %v, want source-complexity limit error", err)
 	}
 }
@@ -811,6 +792,31 @@ func TestLoadFileRejectsComplexityAfterPunctuationBeforeLiteralQuote(t *testing.
 	}
 	if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
 		t.Fatalf("LoadFile error = %v, want source-complexity limit error", err)
+	}
+}
+
+func TestLoadFileRejectsPunctuationAfterEmptyBlockScalarInPreflight(t *testing.T) {
+	t.Parallel()
+
+	prefix := "organization: acme\nrepositories:\n  - description: |\n    owner: acme\n    name: r\n    visibility: private\n    homepage: x"
+	suffix := "\n    topics: [a,a]\n"
+	path := filepath.Join(t.TempDir(), organizationFileName)
+	if err := os.WriteFile(path, []byte(prefix+"x,,"+suffix), 0o600); err != nil {
+		t.Fatalf("write small config fixture: %v", err)
+	}
+	if _, err := LoadFile(path); err != nil {
+		t.Fatalf("LoadFile rejected the small valid sibling-key fixture: %v", err)
+	}
+
+	contents := prefix + strings.Repeat(",", 550_000) + suffix
+	if int64(len(contents)) >= maxDesiredStateYAMLSize {
+		t.Fatalf("complexity fixture is %d bytes, want less than the 16 MiB byte limit", len(contents))
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write complexity fixture: %v", err)
+	}
+	if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("LoadFile error = %v, want source-complexity preflight error", err)
 	}
 }
 
