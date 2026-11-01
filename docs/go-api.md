@@ -93,9 +93,13 @@ transition rather than moving it as unrelated cleanup.
 The supported config API accepts desired-state YAML files up to 16 MiB
 (16 × 1024 × 1024 bytes), 1,100,000 YAML source-complexity units, and 500,000
 effective YAML nodes, inclusive. The source preflight bounds parser work
-before construction of the YAML node tree; source-complexity units are a
-conservative weighted count of unquoted YAML punctuation. Effective node count
-includes the document, its content, and each alias target expansion.
+before construction of the YAML node tree. Source-complexity units are a
+conservative weighted count of YAML marker bytes; marker-like bytes in
+comments, quoted scalars, plain scalars, and block scalars count too. This
+context-free scan can reject punctuation-heavy content even when those bytes
+are not YAML syntax. Effective node count includes the document, its content,
+and each alias target expansion. The node cap is aggregate, not a resource-row
+quota; config capacity depends on how much nested structure each record uses.
 `config.LoadDir` and `config.LoadFile` reject inputs above any limit before
 decoding them into the config model. `config.EncodeYAML` applies the same byte,
 source-complexity, and node caps to generated YAML.
@@ -107,8 +111,12 @@ and delimiters. `snapshot.ReadActual` rejects inputs above any limit before
 decoding into the snapshot model; array and object budgets bound slice and map
 allocations during decoding and normalization. `snapshot.WriteActual` enforces
 the same limits on generated JSON before replacing or creating the destination
-file. These limits are fixed API contracts; they have no command-line or
-environment-variable override.
+file. The array-element budget is aggregate across all snapshot arrays, not a
+per-field allowance: 1,000 teams with 1,000 repository permissions each exceed
+the 1,000,000-element budget by themselves once the team entries are included.
+Other arrays need additional headroom, and actual record capacity depends on
+the record mix. These limits are fixed API contracts; they have no command-line
+or environment-variable override.
 
 ## Bind a live GitOps target
 
