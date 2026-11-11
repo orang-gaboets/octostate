@@ -215,7 +215,7 @@ binary through `PATH`, it checks that the binary's embedded Git revision
 matches the input and that its source tree was unmodified. The verified SHA
 and build metadata are printed as diagnostics. Fetch, build, or identity
 verification failures stop the job before live review operations.
-The selected CLI revision must build with Go `1.26.10`; the workflow sets
+The selected CLI revision must build with Go `1.26.11`; the workflow sets
 `GOTOOLCHAIN=local`, so an incompatible revision fails during installation
 instead of downloading a newer toolchain automatically.
 
