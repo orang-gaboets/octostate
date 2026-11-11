@@ -95,6 +95,7 @@ func TestBuildTreatsInheritedOnlyParentMembershipAsAbsent(t *testing.T) {
 			}
 			if parentAction == nil {
 				t.Fatalf("desired direct parent membership produced no action: %#v", report.Actions)
+				return
 			}
 			if parentAction.Operation != ActionOperationCreate || !parentAction.Executable {
 				t.Fatalf("direct parent membership action = %#v, want executable create", *parentAction)

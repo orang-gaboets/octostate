@@ -636,6 +636,7 @@ func TestBuildTeamRepositoryPermissionAvailability(t *testing.T) {
 			}
 			if permissionAction == nil {
 				t.Fatalf("team repository permission action not found: %#v", report.Actions)
+				return
 			}
 			if permissionAction.Operation != tt.wantOperation {
 				t.Fatalf("operation = %q, want %q", permissionAction.Operation, tt.wantOperation)
@@ -717,6 +718,7 @@ func TestBuildTeamRepositoryPermissionDiffDoesNotModelPlanOnlyDependencies(t *te
 	planPermission := findPlanPermissionAction(planReport.Actions)
 	if diffPermission == nil || planPermission == nil {
 		t.Fatalf("missing team repository permission action: diff=%#v plan=%#v", diffReport.Actions, planReport.Actions)
+		return
 	}
 	if !diffPermission.Executable {
 		t.Fatalf("diff permission should remain executable for offline-creatable repository: %#v", *diffPermission)
