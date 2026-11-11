@@ -9,7 +9,7 @@
    cd octostate
    ```
 
-2. Install Go 1.26.11 or higher:
+2. Install Go 1.26.11 or later in the 1.26 series, or Go 1.27.4 or later:
 
    ```bash
    go version

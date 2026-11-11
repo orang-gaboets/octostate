@@ -50,9 +50,10 @@ The complete newcomer walkthrough, including a fuller example, is in
 
 ## Install
 
-Go 1.26.11 or newer is required only when installing from source with `go
-install`, embedding Octostate in a Go program, or developing the repository. It
-is not required for normal CLI use from a prebuilt archive.
+Use Go 1.26.11 or later in the 1.26 series, or Go 1.27.4 or later, when
+installing from source with `go install`, embedding Octostate in a Go program,
+or developing the repository. A Go installation is not required for normal CLI
+use from a prebuilt archive.
 
 For releases that provide prebuilt artifacts (starting with v1.3.0), normal CLI
 users should download the matching archive from the
