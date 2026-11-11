@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/orang-gaboets/octostate/pkg/gitops/internal/sizeguard"
 	"gopkg.in/yaml.v3"
 )
 
 // EncodeYAML renders one canonical organization.yaml document from desired
 // configuration.
 func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
+	return encodeYAMLWithLimits(cfg, maxDesiredStateYAMLNodes, maxDesiredStateYAMLSourceUnits)
+}
+
+func encodeYAMLWithLimits(cfg OrganizationConfig, maxNodes, maxSourceUnits int64) ([]byte, error) {
 	normalized := NormalizeDesiredState(cfg)
 
 	document := &yaml.Node{
@@ -18,6 +23,9 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 		Content: []*yaml.Node{
 			encodeOrganizationConfig(normalized),
 		},
+	}
+	if err := countDesiredYAMLNodes(document, maxNodes); err != nil {
+		return nil, fmt.Errorf("encode organization config YAML: %w", err)
 	}
 
 	var buf bytes.Buffer
@@ -31,7 +39,14 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 		return nil, fmt.Errorf("close organization config YAML encoder: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	encoded := buf.Bytes()
+	if err := sizeguard.CheckSize(encoded, maxDesiredStateYAMLSize); err != nil {
+		return nil, desiredStateSizeLimitError(err)
+	}
+	if err := validateDesiredYAMLSourceComplexity(encoded, maxSourceUnits); err != nil {
+		return nil, fmt.Errorf("encode organization config YAML: %w", err)
+	}
+	return encoded, nil
 }
 
 func encodeOrganizationConfig(cfg OrganizationConfig) *yaml.Node {

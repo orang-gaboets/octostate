@@ -22,6 +22,22 @@ organization. It can describe:
 - `repositories` - optional list of repositories to manage
 - `teams` - optional list of teams to manage
 
+Desired-state YAML files are limited to 16 MiB (16 × 1024 × 1024 bytes),
+1,100,000 YAML source-complexity units, and 500,000 effective YAML nodes,
+inclusive. The source preflight bounds parser work before the YAML node tree is
+created. Source-complexity units are a conservative weighted count of YAML
+marker bytes; marker-like bytes in comments, quoted scalars, plain scalars, and
+block scalars count too. This context-free scan can reject punctuation-heavy
+content even when those bytes are not YAML syntax. Effective node count includes
+the document and its content; each alias reference counts the expanded target
+nodes. The node cap is aggregate, not a resource-row quota; config capacity
+depends on how much nested structure each record uses. Commands such as
+`config validate`, planning, apply, audit pull, and others that load
+`organization.yaml` reject inputs above any limit before
+decoding them into the config model. `config.EncodeYAML` enforces the same byte,
+source-complexity, and node limits on generated YAML before it is returned for
+config proposal or `config sync-from-live` workflows.
+
 ## Members
 
 Each top-level member entry requires:

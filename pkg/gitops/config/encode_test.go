@@ -41,6 +41,31 @@ func TestEncodeYAMLMinimal(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLRejectsOutputAboveSupportedLimit(t *testing.T) {
+	t.Parallel()
+
+	_, err := EncodeYAML(OrganizationConfig{
+		Organization: strings.Repeat("x", (16<<20)+1),
+	})
+	if err == nil {
+		t.Fatal("EncodeYAML accepted output larger than 16 MiB")
+	}
+	if !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("EncodeYAML error does not identify the supported size limit: %v", err)
+	}
+}
+
+func TestEncodeYAMLRejectsOutputAboveStructuralBudgets(t *testing.T) {
+	t.Parallel()
+
+	if _, err := encodeYAMLWithLimits(OrganizationConfig{}, 0, maxDesiredStateYAMLSourceUnits); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("encodeYAMLWithLimits node-budget error = %v, want YAML node limit", err)
+	}
+	if _, err := encodeYAMLWithLimits(OrganizationConfig{}, maxDesiredStateYAMLNodes, 1); err == nil || !strings.Contains(err.Error(), "source complexity limit") {
+		t.Fatalf("encodeYAMLWithLimits source-budget error = %v, want source complexity limit", err)
+	}
+}
+
 func TestEncodeYAMLValidRoundTrip(t *testing.T) {
 	t.Parallel()
 
