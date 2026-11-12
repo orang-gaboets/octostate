@@ -17,7 +17,7 @@ concurrency:
 jobs:
   probe:
     name: Compare GitHub App Git authentication schemes
-    if: github.repository == 'orang-gaboets/octostate' && github.ref == 'refs/heads/main'
+    if: github.repository == 'orang-gaboets/octostate' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: go-toolchain-remediation
       deployment: false
