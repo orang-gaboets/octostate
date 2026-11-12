@@ -81,13 +81,13 @@ jobs:
             local status=0
             local stderr_contents
 
-            if GIT_CONFIG_COUNT=1 \
+            if env -u GIT_CURL_VERBOSE \
+              GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0="http.${remote_url}/.extraheader" \
               GIT_CONFIG_VALUE_0="AUTHORIZATION: ${auth_header}" \
               GIT_TERMINAL_PROMPT=0 \
               GIT_TRACE=0 \
               GIT_TRACE_CURL=0 \
-              GIT_CURL_VERBOSE=0 \
               git ls-remote --exit-code --heads origin "$branch" > /dev/null 2> "$stderr_file"; then
               status=0
             else
