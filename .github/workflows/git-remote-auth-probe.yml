@@ -1,0 +1,135 @@
+name: Git remote authentication probe
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/git-remote-auth-probe.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: git-remote-auth-probe-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Compare GitHub App Git authentication schemes
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: go-toolchain-remediation
+      deployment: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the trusted main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Generate repository-scoped read token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.GO_TOOLCHAIN_REMEDIATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY }}
+          owner: orang-gaboets
+          repositories: octostate
+          permission-contents: read
+
+      - name: Compare invalid, Bearer, and Basic authentication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          set +x
+
+          [[ "$GITHUB_REPOSITORY" == "orang-gaboets/octostate" ]] || {
+            echo "Probe ran for an unexpected repository." >&2
+            exit 1
+          }
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || {
+            echo "Probe ran outside main." >&2
+            exit 1
+          }
+          [[ -n "$GH_TOKEN" ]] || {
+            echo "The maintenance App token was not generated." >&2
+            exit 1
+          }
+
+          remote_url="$(git remote get-url origin)"
+          expected_remote="${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}"
+          if [[ "$remote_url" != "$expected_remote" && "$remote_url" != "$expected_remote.git" ]]; then
+            echo "The configured origin is not the expected repository HTTPS remote." >&2
+            exit 1
+          fi
+
+          stderr_file="$(mktemp "${RUNNER_TEMP}/git-remote-auth-probe.XXXXXX")"
+          trap 'rm -f "$stderr_file"' EXIT
+
+          token_basic="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\r\n')"
+          invalid_basic="$(printf 'x-access-token:%s' 'invalid-issue346-probe-token' | base64 | tr -d '\r\n')"
+          absent_ref="issue346-probe-absent-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          git_probe() {
+            local auth_header="$1"
+            local branch="$2"
+            local status=0
+            local stderr_contents
+
+            if GIT_CONFIG_COUNT=1 \
+              GIT_CONFIG_KEY_0="http.${remote_url}/.extraheader" \
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: ${auth_header}" \
+              GIT_TERMINAL_PROMPT=0 \
+              GIT_TRACE=0 \
+              GIT_TRACE_CURL=0 \
+              GIT_CURL_VERBOSE=0 \
+              git ls-remote --exit-code --heads origin "$branch" > /dev/null 2> "$stderr_file"; then
+              status=0
+            else
+              status=$?
+            fi
+
+            stderr_contents="$(< "$stderr_file")"
+            if [[ "$stderr_contents" == *"$GH_TOKEN"* ||
+              "$stderr_contents" == *"$token_basic"* ||
+              "$stderr_contents" == *"$auth_header"* ]]; then
+              echo "Credential material appeared in Git error output." >&2
+              exit 1
+            fi
+            unset stderr_contents
+
+            printf '%s' "$status"
+          }
+
+          invalid_main_status="$(git_probe "Basic ${invalid_basic}" main)"
+          bearer_main_status="$(git_probe "Bearer ${GH_TOKEN}" main)"
+          basic_main_status="$(git_probe "Basic ${token_basic}" main)"
+          basic_absent_status="$(git_probe "Basic ${token_basic}" "$absent_ref")"
+
+          if [[ "$invalid_main_status" == "0" ]]; then
+            echo "Invalid credentials read the public main branch; authentication result is inconclusive." >&2
+            exit 1
+          fi
+          if [[ "$bearer_main_status" == "0" ]]; then
+            echo "Bearer authentication unexpectedly read main; the suspected scheme mismatch is unconfirmed." >&2
+            exit 1
+          fi
+          if [[ "$basic_main_status" != "0" ]]; then
+            echo "Basic authentication failed to read main." >&2
+            exit 1
+          fi
+          if [[ "$basic_absent_status" != "2" ]]; then
+            echo "Basic authentication did not return the expected absent-branch status." >&2
+            exit 1
+          fi
+
+          printf 'invalid-main=%s bearer-main=%s basic-main=%s basic-absent=%s\n' \
+            "$invalid_main_status" \
+            "$bearer_main_status" \
+            "$basic_main_status" \
+            "$basic_absent_status"
