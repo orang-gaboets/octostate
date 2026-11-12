@@ -111,6 +111,12 @@ jobs:
           basic_main_status="$(git_probe "Basic ${token_basic}" main)"
           basic_absent_status="$(git_probe "Basic ${token_basic}" "$absent_ref")"
 
+          printf 'invalid-main=%s bearer-main=%s basic-main=%s basic-absent=%s\n' \
+            "$invalid_main_status" \
+            "$bearer_main_status" \
+            "$basic_main_status" \
+            "$basic_absent_status"
+
           if [[ "$invalid_main_status" == "0" ]]; then
             echo "Invalid credentials read the public main branch; authentication result is inconclusive." >&2
             exit 1
@@ -127,9 +133,3 @@ jobs:
             echo "Basic authentication did not return the expected absent-branch status." >&2
             exit 1
           fi
-
-          printf 'invalid-main=%s bearer-main=%s basic-main=%s basic-absent=%s\n' \
-            "$invalid_main_status" \
-            "$bearer_main_status" \
-            "$basic_main_status" \
-            "$basic_absent_status"
