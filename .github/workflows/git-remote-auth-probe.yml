@@ -81,8 +81,8 @@ jobs:
             local status=0
             local stderr_contents
 
-            if env -u GIT_CURL_VERBOSE \
-              GIT_CONFIG_COUNT=1 \
+            unset GIT_CURL_VERBOSE
+            if GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0="http.${remote_url}/.extraheader" \
               GIT_CONFIG_VALUE_0="AUTHORIZATION: ${auth_header}" \
               GIT_TERMINAL_PROMPT=0 \
