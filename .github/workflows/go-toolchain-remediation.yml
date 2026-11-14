@@ -4,10 +4,12 @@ on:
   schedule:
     - cron: "42 4 * * *"
   workflow_dispatch:
-
-concurrency:
-  group: go-toolchain-remediation-${{ github.repository }}
-  cancel-in-progress: false
+    inputs:
+      verify_git_auth:
+        description: Run the read-only GitHub App authentication check
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -18,7 +20,10 @@ env:
 jobs:
   remediate:
     name: Propose Go toolchain remediation
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.verify_git_auth != true)
+    concurrency:
+      group: go-toolchain-remediation-${{ github.repository }}
+      cancel-in-progress: false
     environment:
       name: go-toolchain-remediation
       deployment: false
@@ -222,17 +227,19 @@ jobs:
             exit 0
           fi
 
-          branch_status=0
-          git_with_app_token "$GH_TOKEN" \
-            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
-          if [ "$branch_status" -eq 0 ]; then
-            echo "Target remediation branch already exists: $BRANCH_NAME" >&2
-            exit 1
-          fi
-          if [ "$branch_status" -ne 2 ]; then
-            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
-            exit 1
-          fi
+          branch_result="$(git_remote_branch_result "$BRANCH_NAME")"
+          case "$branch_result" in
+            absent:0|absent:2)
+              ;;
+            present:0)
+              echo "Target remediation branch already exists: $BRANCH_NAME" >&2
+              exit 1
+              ;;
+            *)
+              echo "Unable to verify remediation branch state ($branch_result)." >&2
+              exit 1
+              ;;
+          esac
 
           if [ "$(git rev-parse --verify HEAD)" != "$BASE_SHA" ]; then
             echo "Candidate is not based on the pinned main SHA." >&2
@@ -336,17 +343,19 @@ jobs:
             exit 0
           fi
 
-          branch_status=0
-          git_with_app_token "$GH_TOKEN" \
-            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
-          if [ "$branch_status" -eq 0 ]; then
-            echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
-            exit 1
-          fi
-          if [ "$branch_status" -ne 2 ]; then
-            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
-            exit 1
-          fi
+          branch_result="$(git_remote_branch_result "$BRANCH_NAME")"
+          case "$branch_result" in
+            absent:0|absent:2)
+              ;;
+            present:0)
+              echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
+              exit 1
+              ;;
+            *)
+              echo "Unable to verify remediation branch state ($branch_result)." >&2
+              exit 1
+              ;;
+          esac
 
           echo "proceed=true" >> "$GITHUB_OUTPUT"
 
@@ -419,17 +428,19 @@ jobs:
             exit 0
           fi
 
-          branch_status=0
-          git_with_app_token "$GH_TOKEN" \
-            ls-remote --exit-code --heads origin "$BRANCH_NAME" > /dev/null || branch_status=$?
-          if [ "$branch_status" -eq 0 ]; then
-            echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
-            exit 1
-          fi
-          if [ "$branch_status" -ne 2 ]; then
-            echo "Unable to verify remediation branch state (git ls-remote exit $branch_status)." >&2
-            exit 1
-          fi
+          branch_result="$(git_remote_branch_result "$BRANCH_NAME")"
+          case "$branch_result" in
+            absent:0|absent:2)
+              ;;
+            present:0)
+              echo "Target remediation branch appeared before branch creation: $BRANCH_NAME" >&2
+              exit 1
+              ;;
+            *)
+              echo "Unable to verify remediation branch state ($branch_result)." >&2
+              exit 1
+              ;;
+          esac
 
           ref_name="refs/heads/$BRANCH_NAME"
           if [[ ! "$ref_name" =~ ^refs/heads/ci/go-toolchain-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -568,3 +579,73 @@ jobs:
           fi
 
           echo "Created draft remediation PR: $pr_url"
+
+  verify-git-auth:
+    name: Verify GitHub App Git authentication
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_git_auth == true && github.repository == 'orang-gaboets/octostate' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: go-toolchain-remediation-git-auth-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    environment:
+      name: go-toolchain-remediation
+      deployment: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the dispatched main revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Confirm checked-out revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          checked_out_sha="$(git rev-parse --verify HEAD)"
+          if [[ "$checked_out_sha" != "$EXPECTED_SHA" ]]; then
+            echo "Checkout SHA $checked_out_sha does not match dispatched SHA $EXPECTED_SHA." >&2
+            exit 1
+          fi
+          echo "Verified dispatched revision: $checked_out_sha"
+          echo "- Dispatched revision: `$checked_out_sha`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate repository-scoped read-only GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.GO_TOOLCHAIN_REMEDIATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GO_TOOLCHAIN_REMEDIATION_APP_PRIVATE_KEY }}
+          owner: orang-gaboets
+          repositories: octostate
+          permission-contents: read
+
+      - name: Compare GitHub App authentication schemes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/git-remote-auth.sh
+
+          invalid_basic_main="$(git_remote_branch_result main invalid-basic)"
+          bearer_main="$(git_remote_branch_result main bearer)"
+          basic_main="$(git_remote_branch_result main basic)"
+          absent_branch="ci/issue-346-auth-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          basic_absent="$(git_remote_branch_result "$absent_branch" basic)"
+
+          {
+            printf 'invalid-basic-main=%s\n' "$invalid_basic_main"
+            printf 'bearer-main=%s\n' "$bearer_main"
+            printf 'basic-main=%s\n' "$basic_main"
+            printf 'basic-absent=%s\n' "$basic_absent"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$invalid_basic_main" != auth-failed:128 || "$bearer_main" != auth-failed:128 || "$basic_main" != present:0 || "$basic_absent" != absent:2 ]]; then
+            echo "GitHub App Git authentication results did not match the expected matrix." >&2
+            exit 1
+          fi
