@@ -166,6 +166,17 @@ assert_log_has_line 'GIT_CONFIG_VALUE_0_SET=' "$git_environment_log"
 assert_log_has_line 'GIT_CONFIG_PARAMETERS_SET=' "$git_environment_log"
 
 reset_logs
+saved_token="$GH_TOKEN"
+GH_TOKEN=''
+expect_result main basic setup-error
+[[ ! -s $git_calls_log ]] || fail 'credentialed Git ran without an App token'
+GH_TOKEN="$saved_token"
+
+reset_logs
+expect_result 'invalid..branch' basic setup-error
+[[ ! -s $git_calls_log ]] || fail 'credentialed Git ran for an invalid branch name'
+
+reset_logs
 TEST_ORIGIN='https://github.com/orang-gaboets/octostate.git'
 expect_result main basic present:0
 assert_log_contains 'AUTHORIZATION: Basic ' "$git_header_log"
@@ -199,6 +210,11 @@ expect_result main basic git-error:0
 
 reset_logs
 TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/unrelated\n'
+expect_result main basic git-error:0
+
+reset_logs
+TEST_GIT_STDERR='warning: unexpected Git stderr'
+TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n'
 expect_result main basic git-error:0
 
 reset_logs
