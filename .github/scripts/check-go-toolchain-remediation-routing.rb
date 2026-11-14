@@ -20,12 +20,14 @@ require_check(dispatch_input["required"] == false && dispatch_input["default"] =
 
 remediate_condition = remediate.fetch("if")
 verify_condition = verify.fetch("if")
-require_check(remediate_condition.include?("github.ref == 'refs/heads/main'"), "remediation must remain restricted to main")
-require_check(remediate_condition.include?("github.event_name != 'workflow_dispatch' || inputs.verify_git_auth != true"), "verification dispatch must skip remediation while normal dispatch remains enabled")
-require_check(verify_condition.include?("github.event_name == 'workflow_dispatch'"), "verification must be manual only")
-require_check(verify_condition.include?("inputs.verify_git_auth == true"), "verification must be explicitly enabled")
-require_check(verify_condition.include?("github.repository == 'orang-gaboets/octostate'"), "verification must be restricted to this repository")
-require_check(verify_condition.include?("github.ref == 'refs/heads/main'"), "verification must be restricted to main")
+require_check(
+  remediate_condition == "github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.verify_git_auth != true)",
+  "remediation routing must remain restricted to main and skip authentication-only dispatches"
+)
+require_check(
+  verify_condition == "github.event_name == 'workflow_dispatch' && inputs.verify_git_auth == true && github.repository == 'orang-gaboets/octostate' && github.ref == 'refs/heads/main'",
+  "authentication verification must remain opt-in, manual, repository-scoped, and restricted to main"
+)
 
 remediate_group = remediate.fetch("concurrency").fetch("group")
 verify_group = verify.fetch("concurrency").fetch("group")
