@@ -181,6 +181,9 @@ jobs:
       - name: Test Git remote authentication helper
         run: bash .github/scripts/git-remote-auth.test.sh
 
+      - name: Test Go toolchain remediation workflow routing
+        run: ruby .github/scripts/check-go-toolchain-remediation-routing.rb
+
       - name: Test trusted-main verification
         run: bash .github/scripts/verify-trusted-main.test.sh
 

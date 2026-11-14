@@ -88,12 +88,13 @@ monitoring workflow does not modify dependencies or the Go toolchain.
 
 The separate `.github/workflows/go-toolchain-remediation.yml` workflow is the
 only repository automation that may propose Go toolchain remediation. It does
-not change #223's detection-only contract. The remediation workflow runs only
-on its own daily schedule and `workflow_dispatch`, and the remediation job
-itself exits unless `github.ref` is exactly `refs/heads/main`. It checks out
-trusted `main`, fetches `origin/main`, and switches to the exact detached
-`origin/main` commit before it runs the classifier or mints any write-capable
-token.
+not change #223's detection-only contract. The workflow runs on its daily
+schedule and `workflow_dispatch`; the remediation job runs only on
+`refs/heads/main`. A manual dispatch defaults to the normal remediation flow.
+The opt-in `verify_git_auth` input instead runs a separate read-only job, and
+skips remediation entirely. The remediation job checks out trusted `main`,
+fetches `origin/main`, and switches to the exact detached `origin/main` commit
+before it runs the classifier or mints any write-capable token.
 
 `go.mod` remains the source of truth for the selected toolchain, and
 this development guide is the designated duplicate maintainer reference for
@@ -123,9 +124,29 @@ verified. The maintenance App must not be a `main` branch or ruleset bypass
 actor.
 
 The remediation workflow sources `.github/scripts/git-remote-auth.sh` for its
-three authenticated branch-existence checks. The helper supplies the App token
-through Git's environment-backed configuration, keeping it out of the `git`
-process argument list and limiting the credential to each command invocation.
+three authenticated branch-existence checks. The helper reads the App token
+from `GH_TOKEN`, builds GitHub's `x-access-token` Basic authorization header,
+and supplies the header through Git's environment-backed configuration. It
+keeps the token and encoded header out of child process arguments, clears
+inherited credential helpers and extra headers, disables redirects and Git
+tracing, validates the effective origin, and matches the returned full ref
+name before deciding whether a branch exists. Authentication, permission,
+network, and malformed-response failures all stop remediation and are reported
+as safe result labels with the Git exit status.
+
+The `verify_git_auth` dispatch option runs only in
+`orang-gaboets/octostate` on `refs/heads/main`. It checks out the dispatched
+SHA, then uses the existing protected `go-toolchain-remediation` environment
+to mint a repository-scoped App token with `contents: read`. It compares
+invalid Basic and legacy Bearer authentication against the existing `main`
+branch, then checks valid Basic authentication against `main` and a run-specific
+absent branch. The job reports only the four safe result labels, Git exit
+statuses, and the checked-out SHA. It does not run the vulnerability
+classifier, query pull requests, or create or change branches or pull requests.
+Use this verification
+after the Basic-authentication change reaches `main`; the Issue #346
+authentication acceptance remains open until the hosted read-only check
+passes.
 
 When the classifier finds an eligible same-minor Go patch upgrade, the
 remediation workflow proposes a draft PR from a deterministic branch named
