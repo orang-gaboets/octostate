@@ -31,7 +31,9 @@ require_check(
 
 remediate_group = remediate.fetch("concurrency").fetch("group")
 verify_group = verify.fetch("concurrency").fetch("group")
+require_check(remediate_group == 'go-toolchain-remediation-${{ github.repository }}', "remediation runs must serialize per repository")
 require_check(remediate_group != verify_group, "verification and remediation must use separate concurrency groups")
+require_check(remediate.fetch("concurrency").fetch("cancel-in-progress") == false, "running remediation jobs must not be cancelled")
 require_check(verify.fetch("permissions") == { "contents" => "read" }, "verification job must have read-only repository permissions")
 require_check(verify.fetch("environment").fetch("name") == remediate.fetch("environment").fetch("name"), "verification must use the protected remediation environment")
 
