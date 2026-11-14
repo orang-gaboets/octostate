@@ -77,7 +77,8 @@ export TEST_GIT_ENVIRONMENT_LOG="$git_environment_log"
 export TEST_GIT_STATUS=0
 export TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n'
 export TEST_GIT_STDERR=''
-export GH_TOKEN=$(printf '%0200d' 0)
+GH_TOKEN=$(printf '%0200d' 0)
+export GH_TOKEN
 export GIT_CURL_VERBOSE=1
 export GIT_TRACE_PACKET=1
 export GIT_TRACE_PACKFILE=1
