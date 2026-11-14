@@ -612,8 +612,8 @@ jobs:
             exit 1
           fi
           echo "Verified dispatched revision: $checked_out_sha"
-          printf -- '- Dispatched revision: `%s`\n' \
-            "$checked_out_sha" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "- Dispatched revision: \`$checked_out_sha\`" \
+            >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate repository-scoped read-only GitHub App token
         id: app-token
