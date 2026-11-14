@@ -205,6 +205,12 @@ expect_result ci/go-toolchain-1.26.12 basic absent:0
 
 reset_logs
 TEST_GIT_STATUS=0
+TEST_GIT_STDERR=''
+TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/archive/refs/heads/main\n0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n'
+expect_result main basic present:0
+
+reset_logs
+TEST_GIT_STATUS=0
 TEST_GIT_STDOUT='not-a-valid-ls-remote-row'
 expect_result main basic git-error:0
 
