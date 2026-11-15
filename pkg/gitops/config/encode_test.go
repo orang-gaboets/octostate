@@ -201,18 +201,26 @@ func TestEncodeYAMLMatchesLegacyBytesAcrossBoundedFragments(t *testing.T) {
 	for i := range cfg.Members {
 		cfg.Members[i] = OrganizationMemberSpec{Username: fmt.Sprintf("user-%04d", i), Role: "member"}
 	}
-	cfg.Invites = []InviteSpec{{Role: "direct_member", TeamSlugs: make([]string, 2_300)}}
+	cfg.Members[408].Username = "line one\nline two: [escaped] &"
+	cfg.Members[409].Username = "unicode ☃: \"quoted\""
+	cfg.Invites = []InviteSpec{{Username: nullOptionalString(), Email: optionalString("invite\nline: [escaped]"), Role: "direct_member", TeamSlugs: make([]string, 2_300)}}
 	for i := range cfg.Invites[0].TeamSlugs {
 		cfg.Invites[0].TeamSlugs[i] = fmt.Sprintf("team-%04d", i)
 	}
+	cfg.Invites[0].TeamSlugs[2046] = "line one\nline two: [escaped]"
+	cfg.Invites[0].TeamSlugs[2047] = "unicode ☃: \"quoted\""
 	cfg.Repositories = make([]RepositorySpec, 450)
 	for i := range cfg.Repositories {
 		cfg.Repositories[i] = RepositorySpec{Name: fmt.Sprintf("repo-%04d", i), Visibility: "private", Description: "generated"}
 	}
 	cfg.Repositories[0].Topics = make([]string, 2_200)
+	cfg.Repositories[0].description = nullOptionalString()
+	cfg.Repositories[0].SetManagedHomepage("homepage\nline: [escaped]")
 	for i := range cfg.Repositories[0].Topics {
 		cfg.Repositories[0].Topics[i] = fmt.Sprintf("topic-%04d", i)
 	}
+	cfg.Repositories[0].Topics[2046] = "line one\nline two: [escaped]"
+	cfg.Repositories[0].Topics[2047] = "unicode ☃: \"quoted\""
 	cfg.Teams = []TeamSpec{{
 		Slug: "platform", Name: "Platform", Privacy: "closed",
 		Members: make([]TeamMemberSpec, 500), Repositories: make([]TeamRepositorySpec, 500),
@@ -234,6 +242,22 @@ func TestEncodeYAMLMatchesLegacyBytesAcrossBoundedFragments(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("chunked encoder changed canonical YAML bytes (got %d, want %d bytes)", len(got), len(want))
+	}
+	roundTripped := loadEncodedConfig(t, got)
+	if roundTripped.Members[408].Username != cfg.Members[408].Username || roundTripped.Members[409].Username != cfg.Members[409].Username {
+		t.Fatalf("YAML round trip changed member values across a fragment boundary: %#v", roundTripped.Members[408:410])
+	}
+	if !roundTripped.Invites[0].Username.Present || !roundTripped.Invites[0].Username.Null || roundTripped.Invites[0].Email.Value != cfg.Invites[0].Email.Value {
+		t.Fatalf("YAML round trip changed invite optional values: %#v", roundTripped.Invites[0])
+	}
+	if !roundTripped.Repositories[0].DescriptionOption().Null || roundTripped.Repositories[0].HomepageOption().Value != cfg.Repositories[0].HomepageOption().Value {
+		t.Fatalf("YAML round trip changed repository optional values: description=%#v homepage=%#v", roundTripped.Repositories[0].DescriptionOption(), roundTripped.Repositories[0].HomepageOption())
+	}
+	if roundTripped.Invites[0].TeamSlugs[2046] != cfg.Invites[0].TeamSlugs[2046] || roundTripped.Invites[0].TeamSlugs[2047] != cfg.Invites[0].TeamSlugs[2047] {
+		t.Fatalf("YAML round trip changed invite values across a nested fragment boundary: %#v", roundTripped.Invites[0].TeamSlugs[2046:2048])
+	}
+	if roundTripped.Repositories[0].Topics[2046] != cfg.Repositories[0].Topics[2046] || roundTripped.Repositories[0].Topics[2047] != cfg.Repositories[0].Topics[2047] {
+		t.Fatalf("YAML round trip changed topic values across a nested fragment boundary: %#v", roundTripped.Repositories[0].Topics[2046:2048])
 	}
 }
 
