@@ -3,7 +3,9 @@ package snapshot
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -134,5 +136,26 @@ func TestActualSnapshotScalarPreflightMatchesResolvedInviteNormalization(t *test
 				t.Fatalf("preflight = %t, want %t", got, test.want)
 			}
 		})
+	}
+}
+
+func TestWriteActualSnapshotJSONBoundsSortingForOverLimitMap(t *testing.T) {
+	values := make(map[string]int64, maxActualSnapshotJSONObjectEntries+1)
+	for userID := int64(0); userID <= maxActualSnapshotJSONObjectEntries; userID++ {
+		values[strconv.FormatInt(userID, 10)] = userID
+	}
+	snapshot := ActualSnapshot{ResolvedInviteUserIDsByUsername: values}
+	runtime.GC()
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	err := writeActualSnapshotJSON(io.Discard, snapshot, actualSnapshotJSONLimits(), maxActualSnapshotJSONSize)
+	runtime.ReadMemStats(&after)
+
+	if err == nil || !strings.Contains(err.Error(), "JSON object entry limit") {
+		t.Fatalf("writeActualSnapshotJSON error = %v, want object entry limit", err)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 27<<20 {
+		t.Fatalf("writeActualSnapshotJSON allocated %d bytes for an over-limit map, want under 27 MiB", allocated)
 	}
 }

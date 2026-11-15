@@ -640,6 +640,18 @@ func (e *snapshotJSONEmitter) int64Map(values map[string]int64) error {
 	if err := e.beginObject(); err != nil {
 		return err
 	}
+	if int64(len(values)) > e.limits.objectEntriesPerObject {
+		// Over-limit maps are rejected, so their key order need not be stable.
+		for key, value := range values {
+			if err := e.key(key); err != nil {
+				return err
+			}
+			if err := e.int64Value(value); err != nil {
+				return err
+			}
+		}
+		return e.endObject()
+	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
