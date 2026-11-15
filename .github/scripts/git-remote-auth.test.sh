@@ -232,6 +232,16 @@ assert_log_contains "AUTHORIZATION: Basic $(printf '%s' 'x-access-token:invalid-
 
 reset_logs
 TEST_GIT_STATUS=128
+TEST_GIT_STDERR='fatal: unable to get password from user'
+expect_result main invalid-basic auth-failed:128
+
+reset_logs
+TEST_GIT_STATUS=128
+TEST_GIT_STDERR='fatal: unable to get username from user'
+expect_result main bearer auth-failed:128
+
+reset_logs
+TEST_GIT_STATUS=128
 TEST_GIT_STDERR='fatal: Authentication failed for https://github.com/orang-gaboets/octostate'
 expect_result main bearer auth-failed:128
 assert_log_contains "AUTHORIZATION: Bearer $GH_TOKEN" "$git_header_log"

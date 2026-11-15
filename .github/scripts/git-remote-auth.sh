@@ -155,7 +155,7 @@ git_remote_branch_result() (
         printf 'permission-failed:128\n'
         exit 0
         ;;
-      *'authentication failed'*|*'could not read username'*|*'http basic: access denied'*|*'invalid username or password'*|*'returned error: 401'*|*'bad credentials'*)
+      *'authentication failed'*|*'could not read username'*|*'unable to get password from user'*|*'unable to get username from user'*|*'http basic: access denied'*|*'invalid username or password'*|*'returned error: 401'*|*'bad credentials'*)
         printf 'auth-failed:128\n'
         exit 0
         ;;
