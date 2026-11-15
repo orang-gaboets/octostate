@@ -74,11 +74,7 @@ func resolvedInviteUsernameAboveLimit(username string, maxBytes int64) bool {
 	var normalizedBytes int64
 	for len(username) > 0 {
 		value, size := utf8.DecodeRuneInString(username)
-		if size == 1 && value == utf8.RuneError {
-			normalizedBytes++
-		} else {
-			normalizedBytes += int64(utf8.RuneLen(unicode.ToLower(value)))
-		}
+		normalizedBytes += int64(utf8.RuneLen(unicode.ToLower(value)))
 		if normalizedBytes > maxBytes {
 			return true
 		}

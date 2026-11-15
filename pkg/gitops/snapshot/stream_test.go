@@ -124,6 +124,7 @@ func TestActualSnapshotScalarPreflightMatchesResolvedInviteNormalization(t *test
 		{name: "nonpositive ID is discarded", username: strings.Repeat("x", 128), userID: 0, maxBytes: 64},
 		{name: "blank username is discarded", username: strings.Repeat(" ", 128), userID: 1, maxBytes: 64},
 		{name: "lowercased output length", username: strings.Repeat("\u212a", 30), userID: 1, maxBytes: 64},
+		{name: "invalid UTF-8 replacement length", username: strings.Repeat(string([]byte{0xff}), 30), userID: 1, maxBytes: 64, want: true},
 		{name: "retained oversized username", username: strings.Repeat("x", 128), userID: 1, maxBytes: 64, want: true},
 	}
 	for _, test := range tests {
