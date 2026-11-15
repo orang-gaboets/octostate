@@ -136,7 +136,8 @@ func WriteFileInRoot(root *os.Root, name string, contents []byte, perm os.FileMo
 }
 
 // WriteFileInRootWith streams generated contents into a same-directory
-// temporary file relative to root, then atomically replaces the destination.
+// temporary file relative to root, then renames it into place. Go does not
+// guarantee atomic rename on non-Unix platforms.
 // A populate error removes the temporary file and leaves any existing target
 // untouched.
 func WriteFileInRootWith(root *os.Root, name string, perm os.FileMode, populate func(io.Writer) error) error {
