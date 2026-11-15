@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/orang-gaboets/octostate/pkg/gitops/internal/sizeguard"
@@ -33,12 +34,26 @@ type snapshotJSONEmitter struct {
 	stringScratch [32 * 1024]byte
 }
 
+type snapshotEncodingError struct {
+	err error
+}
+
+func (e *snapshotEncodingError) Error() string { return e.err.Error() }
+func (e *snapshotEncodingError) Unwrap() error { return e.err }
+
+type snapshotOutputWriteError struct {
+	err error
+}
+
+func (e *snapshotOutputWriteError) Error() string { return e.err.Error() }
+func (e *snapshotOutputWriteError) Unwrap() error { return e.err }
+
 func actualSnapshotHasScalarAboveLimit(snapshot ActualSnapshot, maxBytes int64) bool {
 	if snapshotStringAboveLimit(snapshot.Organization, maxBytes) {
 		return true
 	}
-	for username := range snapshot.ResolvedInviteUserIDsByUsername {
-		if snapshotStringAboveLimit(strings.TrimSpace(username), maxBytes) {
+	for username, userID := range snapshot.ResolvedInviteUserIDsByUsername {
+		if userID > 0 && resolvedInviteUsernameAboveLimit(username, maxBytes) {
 			return true
 		}
 	}
@@ -52,6 +67,24 @@ func actualSnapshotHasScalarAboveLimit(snapshot ActualSnapshot, maxBytes int64) 
 
 func snapshotStringAboveLimit(value string, maxBytes int64) bool {
 	return int64(len(value)) > maxBytes
+}
+
+func resolvedInviteUsernameAboveLimit(username string, maxBytes int64) bool {
+	username = strings.TrimSpace(username)
+	var normalizedBytes int64
+	for len(username) > 0 {
+		value, size := utf8.DecodeRuneInString(username)
+		if size == 1 && value == utf8.RuneError {
+			normalizedBytes++
+		} else {
+			normalizedBytes += int64(utf8.RuneLen(unicode.ToLower(value)))
+		}
+		if normalizedBytes > maxBytes {
+			return true
+		}
+		username = username[size:]
+	}
+	return false
 }
 
 func membersHaveOversizedScalar(values []state.OrganizationMember, maxBytes int64) bool {
@@ -125,24 +158,29 @@ func writeActualSnapshotJSON(writer io.Writer, snapshot ActualSnapshot, limits s
 		emitter.structuralErr = fmt.Errorf("JSON complexity limits must not be negative")
 	}
 	if err := emitter.actualSnapshot(snapshot); err != nil {
-		if errors.Is(err, sizeguard.ErrLimitExceeded) {
-			return actualSnapshotSizeLimitError(err)
-		}
-		return err
+		return classifySnapshotJSONError(err)
 	}
 	if err := emitter.write([]byte{'\n'}); err != nil {
-		if errors.Is(err, sizeguard.ErrLimitExceeded) {
-			return actualSnapshotSizeLimitError(err)
-		}
-		return err
+		return classifySnapshotJSONError(err)
 	}
 	if err := buffered.Flush(); err != nil {
-		return err
+		return &snapshotOutputWriteError{err: err}
 	}
 	if emitter.structuralErr != nil {
-		return emitter.structuralErr
+		return &snapshotEncodingError{err: emitter.structuralErr}
 	}
 	return nil
+}
+
+func classifySnapshotJSONError(err error) error {
+	if errors.Is(err, sizeguard.ErrLimitExceeded) {
+		return &snapshotEncodingError{err: actualSnapshotSizeLimitError(err)}
+	}
+	var outputErr *snapshotOutputWriteError
+	if errors.As(err, &outputErr) {
+		return outputErr
+	}
+	return &snapshotEncodingError{err: err}
 }
 
 func (e *snapshotJSONEmitter) actualSnapshot(snapshot ActualSnapshot) error {
@@ -220,10 +258,10 @@ func (e *snapshotJSONEmitter) write(p []byte) error {
 			n, err := e.writer.Write(p[:int(remaining)])
 			e.written += int64(n)
 			if err != nil {
-				return err
+				return &snapshotOutputWriteError{err: err}
 			}
 			if n != int(remaining) {
-				return io.ErrShortWrite
+				return &snapshotOutputWriteError{err: io.ErrShortWrite}
 			}
 		}
 		return &sizeguard.LimitExceededError{Limit: e.maxBytes}
@@ -231,10 +269,10 @@ func (e *snapshotJSONEmitter) write(p []byte) error {
 	n, err := e.writer.Write(p)
 	e.written += int64(n)
 	if err != nil {
-		return err
+		return &snapshotOutputWriteError{err: err}
 	}
 	if n != len(p) {
-		return io.ErrShortWrite
+		return &snapshotOutputWriteError{err: io.ErrShortWrite}
 	}
 	return nil
 }

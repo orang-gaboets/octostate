@@ -112,3 +112,26 @@ func TestActualSnapshotScalarPreflightRejectsOversizedMapKeyWithoutCopyingIt(t *
 		t.Fatalf("preflight allocated %d bytes while inspecting a map key, want under 1 MiB", allocated)
 	}
 }
+
+func TestActualSnapshotScalarPreflightMatchesResolvedInviteNormalization(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		userID   int64
+		maxBytes int64
+		want     bool
+	}{
+		{name: "nonpositive ID is discarded", username: strings.Repeat("x", 128), userID: 0, maxBytes: 64},
+		{name: "blank username is discarded", username: strings.Repeat(" ", 128), userID: 1, maxBytes: 64},
+		{name: "lowercased output length", username: strings.Repeat("\u212a", 30), userID: 1, maxBytes: 64},
+		{name: "retained oversized username", username: strings.Repeat("x", 128), userID: 1, maxBytes: 64, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := ActualSnapshot{ResolvedInviteUserIDsByUsername: map[string]int64{test.username: test.userID}}
+			if got := actualSnapshotHasScalarAboveLimit(snapshot, test.maxBytes); got != test.want {
+				t.Fatalf("preflight = %t, want %t", got, test.want)
+			}
+		})
+	}
+}

@@ -391,6 +391,10 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 	if err := filereplace.WriteFileInRootWith(parent, name, 0o600, func(writer io.Writer) error {
 		return writeActualSnapshotJSON(writer, snapshot, actualSnapshotJSONLimits(), maxActualSnapshotJSONSize)
 	}); err != nil {
+		var encodingErr *snapshotEncodingError
+		if errors.As(err, &encodingErr) {
+			return fmt.Errorf("write snapshot %s: encode snapshot: %w", path, encodingErr.err)
+		}
 		return fmt.Errorf("write snapshot %s: %w", path, err)
 	}
 
