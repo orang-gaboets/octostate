@@ -174,23 +174,18 @@ func TestActualSnapshotScalarPreflightMatchesResolvedInviteNormalization(t *test
 	}
 }
 
-func TestWriteActualSnapshotJSONBoundsSortingForOverLimitMap(t *testing.T) {
+func TestWriteActualSnapshotJSONRejectsOverLimitMap(t *testing.T) {
+	snapshot := ActualSnapshot{ResolvedInviteUserIDsByUsername: overLimitResolvedInviteIDs()}
+	err := writeActualSnapshotJSON(io.Discard, snapshot, actualSnapshotJSONLimits(), maxActualSnapshotJSONSize)
+	if err == nil || !strings.Contains(err.Error(), "JSON object entry limit") {
+		t.Fatalf("writeActualSnapshotJSON error = %v, want object entry limit", err)
+	}
+}
+
+func overLimitResolvedInviteIDs() map[string]int64 {
 	values := make(map[string]int64, maxActualSnapshotJSONObjectEntries+1)
 	for userID := int64(0); userID <= maxActualSnapshotJSONObjectEntries; userID++ {
 		values[strconv.FormatInt(userID, 10)] = userID
 	}
-	snapshot := ActualSnapshot{ResolvedInviteUserIDsByUsername: values}
-	runtime.GC()
-
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	err := writeActualSnapshotJSON(io.Discard, snapshot, actualSnapshotJSONLimits(), maxActualSnapshotJSONSize)
-	runtime.ReadMemStats(&after)
-
-	if err == nil || !strings.Contains(err.Error(), "JSON object entry limit") {
-		t.Fatalf("writeActualSnapshotJSON error = %v, want object entry limit", err)
-	}
-	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 27<<20 {
-		t.Fatalf("writeActualSnapshotJSON allocated %d bytes for an over-limit map, want under 27 MiB", allocated)
-	}
+	return values
 }

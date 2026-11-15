@@ -58,6 +58,11 @@ func TestWriteFileInRootWithWritesAndPreservesExistingMode(t *testing.T) {
 	if err := os.WriteFile(path, []byte("old"), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeMode := before.Mode().Perm()
 	if err := WriteFileInRootWith(root, "snapshot.json", 0o600, func(writer io.Writer) error {
 		_, err := io.WriteString(writer, "new\n")
 		return err
@@ -75,8 +80,8 @@ func TestWriteFileInRootWithWritesAndPreservesExistingMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o640 {
-		t.Fatalf("mode = %o, want 640", info.Mode().Perm())
+	if info.Mode().Perm() != beforeMode {
+		t.Fatalf("mode = %o, want %o", info.Mode().Perm(), beforeMode)
 	}
 }
 
