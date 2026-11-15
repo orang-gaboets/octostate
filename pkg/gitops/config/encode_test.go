@@ -60,6 +60,40 @@ func TestEncodeYAMLRejectsOutputAboveSupportedLimit(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLEnforcesOutputLimitAtByteBoundary(t *testing.T) {
+	baseline, err := EncodeYAML(OrganizationConfig{Organization: "x"})
+	if err != nil {
+		t.Fatalf("encode baseline: %v", err)
+	}
+	fixedBytes := int64(len(baseline) - len("x"))
+
+	for _, test := range []struct {
+		name     string
+		wantSize int64
+		wantErr  bool
+	}{
+		{name: "exact limit accepted", wantSize: maxDesiredStateYAMLSize},
+		{name: "one byte over rejected", wantSize: maxDesiredStateYAMLSize + 1, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			organization := strings.Repeat("x", int(test.wantSize-fixedBytes))
+			got, err := EncodeYAML(OrganizationConfig{Organization: organization})
+			if test.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "16 MiB") {
+					t.Fatalf("EncodeYAML error = %v, want 16 MiB limit", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("EncodeYAML rejected output at the limit: %v", err)
+			}
+			if int64(len(got)) != test.wantSize {
+				t.Fatalf("encoded size = %d, want %d", len(got), test.wantSize)
+			}
+		})
+	}
+}
+
 func TestEncodeYAMLReportsSupportedSizeWhenDocumentOverflowsAfterScalarEncoding(t *testing.T) {
 	cfg := OrganizationConfig{Organization: strings.Repeat("x", int(maxDesiredStateYAMLSize)-40)}
 	_, err := EncodeYAML(cfg)
