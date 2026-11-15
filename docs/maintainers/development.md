@@ -211,8 +211,14 @@ go test ./...
 The generated YAML and snapshot JSON writers were measured on Go 1.26.11,
 macOS 26.6.2 (build 25G83), Darwin arm64. The same host was recorded as an
 Apple M4 Pro with 24 GiB of memory in the Issue #349 benchmark. The base was
-`b7f53e9f9beefa3f3e0ac7d30544eacb7722ffdc`; the final implementation was
-`a59d9543acdaa27bb9d070045a74ca47b659d7cc`.
+`b7f53e9f9beefa3f3e0ac7d30544eacb7722ffdc`; the measured implementation
+revision was `a59d9543acdaa27bb9d070045a74ca47b659d7cc`, not the current PR
+head. The only later behavior change, `5bf2337`, skips sorting maps
+already above the JSON object-entry limit. The measured near-limit and
+over-limit JSON fixtures use an empty ID map and exercise the byte limit via
+repository descriptions, so that change does not affect these measurements;
+the other later commits change tests or documentation. These results describe
+the measured revision and were not rerun on the current head.
 
 Each case used one warm-up and five measured pairs of fresh serial processes,
 with base/final order alternated by pair. The model-only process constructed
