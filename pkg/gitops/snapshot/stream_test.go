@@ -49,6 +49,41 @@ func TestWriteActualSnapshotJSONPrefersByteLimitOverStructureLimit(t *testing.T)
 	}
 }
 
+func TestWriteActualSnapshotJSONEnforcesOutputLimitAtByteBoundary(t *testing.T) {
+	var baseline bytes.Buffer
+	if err := writeActualSnapshotJSON(&baseline, ActualSnapshot{}, actualSnapshotJSONLimits(), maxActualSnapshotJSONSize); err != nil {
+		t.Fatalf("encode baseline: %v", err)
+	}
+	maxBytes := int64(baseline.Len() + 64)
+
+	for _, test := range []struct {
+		name     string
+		orgBytes int
+		wantErr  bool
+	}{
+		{name: "exact limit accepted", orgBytes: 64},
+		{name: "one byte over rejected", orgBytes: 65, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := ActualSnapshot{Organization: strings.Repeat("x", test.orgBytes)}
+			var output bytes.Buffer
+			err := writeActualSnapshotJSON(&output, snapshot, actualSnapshotJSONLimits(), maxBytes)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("writeActualSnapshotJSON accepted output above the byte limit")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("writeActualSnapshotJSON rejected output at the limit: %v", err)
+			}
+			if int64(output.Len()) != maxBytes {
+				t.Fatalf("encoded size = %d, want %d", output.Len(), maxBytes)
+			}
+		})
+	}
+}
+
 func TestWriteActualSnapshotJSONReturnsDeferredStructureLimit(t *testing.T) {
 	snapshot := sampleSnapshot()
 	snapshot.Repositories = []state.Repository{{Name: "repo"}}
