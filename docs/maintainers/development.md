@@ -212,7 +212,7 @@ The generated YAML and snapshot JSON writers were measured on Go 1.26.11,
 macOS 26.6.2 (build 25G83), Darwin arm64. The same host was recorded as an
 Apple M4 Pro with 24 GiB of memory in the Issue #349 benchmark. The base was
 `b7f53e9f9beefa3f3e0ac7d30544eacb7722ffdc`; the final implementation was
-`1ec00eb26fae6a8ce130c4b3b93bc0cf85255051`.
+`f4c46554fc7b51a20924a908b6001e267c64f301`.
 
 Each case used one warm-up and five measured pairs of fresh serial processes,
 with base/final order alternated by pair. The model-only process constructed
@@ -228,12 +228,12 @@ that unavailable harness.
 
 | Fixture | Variant | Expected output | Model peak RSS | API peak RSS | Paired RSS increase | Sampled heap increase | `TotalAlloc` | Elapsed |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| YAML, 20,000 repositories | Base | 4,754,668 B | 19.33 [19.23–19.48] MiB | 505.72 [428.53–505.98] MiB | 486.45 [409.05–486.66] MiB | 360.28 [360.28–360.29] MiB | 708.66 [708.66–708.67] MiB | 161.76 [161.35–163.17] ms |
-| YAML, 20,000 repositories | Final | 4,754,668 B | 19.44 [19.25–19.52] MiB | 54.61 [47.22–54.94] MiB | 35.17 [27.78–35.66] MiB | 32.26 [24.29–32.94] MiB | 435.80 [435.79–435.80] MiB | 114.10 [112.72–114.61] ms |
-| JSON, 256 repositories, accepted | Base | 134,217,727 B | 140.78 [140.70–140.84] MiB | 657.58 [656.53–657.75] MiB | 516.81 [515.69–517.05] MiB | 514.44 [514.44–514.45] MiB | 773.55 [773.55–773.56] MiB | 839.32 [836.90–882.70] ms |
-| JSON, 256 repositories, accepted | Final | 134,217,727 B | 140.84 [140.77–141.11] MiB | 141.30 [141.22–141.44] MiB | 0.41 [0.33–0.53] MiB | 0.39 [0.39–0.39] MiB | 0.39 [0.39–0.39] MiB | 346.58 [344.51–355.54] ms |
-| JSON, 256 repositories, rejected | Base | 134,217,729 B | 140.73 [140.70–140.94] MiB | 656.75 [656.67–656.78] MiB | 516.02 [515.73–516.08] MiB | 383.91 [383.91–383.92] MiB | 643.02 [643.02–643.03] MiB | 420.52 [417.71–445.37] ms |
-| JSON, 256 repositories, rejected | Final | 134,217,729 B | 140.80 [140.69–140.84] MiB | 141.36 [141.28–141.48] MiB | 0.61 [0.44–0.69] MiB | 0.40 [0.40–0.40] MiB | 0.40 [0.40–0.40] MiB | 341.57 [334.74–364.80] ms |
+| YAML, 20,000 repositories | Base | 4,754,668 B | 19.31 [19.20–19.62] MiB | 505.59 [428.09–505.84] MiB | 486.25 [408.69–486.39] MiB | 360.28 [360.27–360.28] MiB | 708.66 [708.65–708.66] MiB | 163.74 [162.78–165.45] ms |
+| YAML, 20,000 repositories | Final | 4,754,668 B | 19.33 [19.22–19.45] MiB | 54.50 [47.45–55.55] MiB | 35.23 [28.11–36.22] MiB | 32.95 [24.30–33.13] MiB | 435.80 [435.80–435.80] MiB | 113.14 [111.12–113.85] ms |
+| JSON, 256 repositories, accepted | Base | 134,217,727 B | 140.80 [140.75–140.92] MiB | 657.78 [656.55–657.84] MiB | 516.92 [515.75–517.09] MiB | 514.45 [514.44–514.45] MiB | 773.56 [773.55–773.56] MiB | 860.52 [849.84–880.45] ms |
+| JSON, 256 repositories, accepted | Final | 134,217,727 B | 140.78 [140.72–140.83] MiB | 141.41 [141.38–141.50] MiB | 0.62 [0.55–0.77] MiB | 0.39 [0.39–0.39] MiB | 0.39 [0.39–0.39] MiB | 347.42 [346.57–352.45] ms |
+| JSON, 256 repositories, rejected | Base | 134,217,729 B | 140.86 [140.70–140.91] MiB | 656.70 [528.42–656.89] MiB | 516.00 [387.59–516.03] MiB | 383.92 [383.91–383.92] MiB | 643.03 [643.02–643.03] MiB | 423.02 [419.86–427.30] ms |
+| JSON, 256 repositories, rejected | Final | 134,217,729 B | 140.78 [140.73–140.89] MiB | 141.45 [141.39–141.59] MiB | 0.67 [0.56–0.81] MiB | 0.40 [0.40–0.40] MiB | 0.40 [0.40–0.40] MiB | 342.25 [337.78–342.95] ms |
 
 The near-limit JSON case succeeded and the over-limit case returned the
 existing 128 MiB error; both implementations preserved the destination on
