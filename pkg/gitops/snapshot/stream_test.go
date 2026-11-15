@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -26,6 +27,29 @@ func TestWriteActualSnapshotJSONMatchesJSONEncoderForEscapingAndNestedValues(t *
 		TeamRepositoryPermissions:       []state.TeamRepositoryPermission{{TeamSlug: "platform", Owner: "octostate", Name: "repo", Permission: "push"}},
 	}
 
+	assertActualSnapshotJSONMatchesEncoder(t, snapshot)
+}
+
+func TestWriteActualSnapshotJSONMatchesJSONEncoderForEmptyCollections(t *testing.T) {
+	snapshot := ActualSnapshot{
+		PulledAt:                        time.Date(2026, 11, 14, 15, 16, 17, 0, time.UTC),
+		ResolvedInviteUserIDsByUsername: map[string]int64{},
+		Members:                         []state.OrganizationMember{},
+		PendingInvitations:              []state.PendingInvitation{{Username: "empty teams", TeamSlugs: []string{}}},
+		Repositories:                    []state.Repository{{Name: "empty topics", Topics: []string{}}},
+		Teams:                           []state.Team{},
+		TeamMembers:                     []state.TeamMember{},
+		TeamRepositoryPermissions:       []state.TeamRepositoryPermission{},
+	}
+
+	if got := assertActualSnapshotJSONMatchesEncoder(t, snapshot); !reflect.DeepEqual(got, snapshot) {
+		t.Fatalf("JSON round trip changed empty collections:\n got %#v\nwant %#v", got, snapshot)
+	}
+}
+
+func assertActualSnapshotJSONMatchesEncoder(t *testing.T, snapshot ActualSnapshot) ActualSnapshot {
+	t.Helper()
+
 	var want bytes.Buffer
 	encoder := json.NewEncoder(&want)
 	encoder.SetIndent("", "  ")
@@ -39,6 +63,11 @@ func TestWriteActualSnapshotJSONMatchesJSONEncoderForEscapingAndNestedValues(t *
 	if !bytes.Equal(got.Bytes(), want.Bytes()) {
 		t.Fatalf("streamed JSON differs from json.Encoder:\ngot:\n%s\nwant:\n%s", got.Bytes(), want.Bytes())
 	}
+	var decoded ActualSnapshot
+	if err := json.Unmarshal(got.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode streamed JSON: %v", err)
+	}
+	return decoded
 }
 
 func TestWriteActualSnapshotJSONPrefersByteLimitOverStructureLimit(t *testing.T) {
