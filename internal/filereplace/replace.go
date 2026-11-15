@@ -135,6 +135,73 @@ func WriteFileInRoot(root *os.Root, name string, contents []byte, perm os.FileMo
 	return nil
 }
 
+// WriteFileInRootWith streams generated contents into a same-directory
+// temporary file relative to root, then atomically replaces the destination.
+// A populate error removes the temporary file and leaves any existing target
+// untouched.
+func WriteFileInRootWith(root *os.Root, name string, perm os.FileMode, populate func(io.Writer) error) error {
+	if root == nil || !filepath.IsLocal(name) || name == "." || name == ".." || filepath.Base(name) != name {
+		return fmt.Errorf("file name must be a single path component")
+	}
+	if populate == nil {
+		return fmt.Errorf("file content writer is required")
+	}
+
+	switch info, err := root.Lstat(name); {
+	case err == nil:
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("stat existing file %s: target is not a regular file", name)
+		}
+		perm = info.Mode().Perm()
+	case errors.Is(err, fs.ErrNotExist):
+		// Creating the destination; perm applies as given.
+	default:
+		return fmt.Errorf("stat destination %s: %w", name, err)
+	}
+
+	tempName, tempFile, err := createTempInRoot(root)
+	if err != nil {
+		return fmt.Errorf("create temporary file in opened directory: %w", err)
+	}
+	replaced := false
+	defer func() {
+		if !replaced {
+			_ = tempFile.Close()      //nolint:errcheck // best-effort cleanup for temp files
+			_ = root.Remove(tempName) //nolint:errcheck // best-effort cleanup for temp files
+		}
+	}()
+
+	if err := writeTemporaryFileWith(tempFile, tempName, populate, perm); err != nil {
+		return err
+	}
+	if err := root.Rename(tempName, name); err != nil {
+		return fmt.Errorf("rename temporary file into place at %s: %w", name, err)
+	}
+	replaced = true
+
+	if parent, err := root.Open("."); err == nil {
+		_ = parent.Sync()  // best effort after commit; replacement already succeeded
+		_ = parent.Close() //nolint:errcheck // best-effort cleanup after commit
+	}
+	return nil
+}
+
+func writeTemporaryFileWith(file *os.File, name string, populate func(io.Writer) error, perm os.FileMode) error {
+	if err := populate(file); err != nil {
+		return fmt.Errorf("write temporary file %s: %w", name, err)
+	}
+	if err := file.Chmod(perm); err != nil {
+		return fmt.Errorf("set temporary file mode %s: %w", name, err)
+	}
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("sync temporary file %s: %w", name, err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close temporary file %s: %w", name, err)
+	}
+	return nil
+}
+
 func createTempInRoot(root *os.Root) (string, *os.File, error) {
 	for range 100 {
 		var random [16]byte

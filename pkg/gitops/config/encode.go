@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -17,36 +18,22 @@ func EncodeYAML(cfg OrganizationConfig) ([]byte, error) {
 
 func encodeYAMLWithLimits(cfg OrganizationConfig, maxNodes, maxSourceUnits int64) ([]byte, error) {
 	normalized := NormalizeDesiredState(cfg)
-
-	document := &yaml.Node{
-		Kind: yaml.DocumentNode,
-		Content: []*yaml.Node{
-			encodeOrganizationConfig(normalized),
-		},
-	}
-	if err := countDesiredYAMLNodes(document, maxNodes); err != nil {
+	if err := preflightDesiredYAML(normalized, maxNodes, maxDesiredStateYAMLSize); err != nil {
 		return nil, fmt.Errorf("encode organization config YAML: %w", err)
 	}
 
 	var buf bytes.Buffer
-	encoder := yaml.NewEncoder(&buf)
-	encoder.SetIndent(2)
-
-	if err := encoder.Encode(document); err != nil {
+	output := &desiredYAMLWriter{writer: &buf, maxBytes: maxDesiredStateYAMLSize, maxSourceUnits: maxSourceUnits}
+	if err := writeDesiredYAML(normalized, output); err != nil {
+		if output.limitExceeded || errors.Is(err, sizeguard.ErrLimitExceeded) {
+			return nil, desiredStateSizeLimitError(&sizeguard.LimitExceededError{Limit: maxDesiredStateYAMLSize})
+		}
 		return nil, fmt.Errorf("encode organization config YAML: %w", err)
 	}
-	if err := encoder.Close(); err != nil {
-		return nil, fmt.Errorf("close organization config YAML encoder: %w", err)
-	}
-
-	encoded := buf.Bytes()
-	if err := sizeguard.CheckSize(encoded, maxDesiredStateYAMLSize); err != nil {
-		return nil, desiredStateSizeLimitError(err)
-	}
-	if err := validateDesiredYAMLSourceComplexity(encoded, maxSourceUnits); err != nil {
+	if err := output.sourceError(); err != nil {
 		return nil, fmt.Errorf("encode organization config YAML: %w", err)
 	}
-	return encoded, nil
+	return buf.Bytes(), nil
 }
 
 func encodeOrganizationConfig(cfg OrganizationConfig) *yaml.Node {
