@@ -260,38 +260,134 @@ type yamlIndentWriter struct {
 	writer    io.Writer
 	indent    []byte
 	lineStart bool
+	pending   [2]byte
+	pendingN  int
 }
 
 func (w *yamlIndentWriter) Write(p []byte) (int, error) {
 	consumed := 0
-	for len(p) > 0 {
-		if w.lineStart && p[0] != '\n' && len(w.indent) > 0 {
-			if err := writeAll(w.writer, w.indent); err != nil {
+	if w.pendingN > 0 {
+		var prefix [3]byte
+		pendingN := w.pendingN
+		copy(prefix[:], w.pending[:pendingN])
+		take := min(len(p), len(prefix)-pendingN)
+		copy(prefix[pendingN:], p[:take])
+		lineBreak, incomplete := yamlLineBreakLength(prefix[:pendingN+take])
+		if incomplete {
+			copy(w.pending[pendingN:], p[:take])
+			w.pendingN += take
+			return take, nil
+		}
+		if lineBreak > 0 {
+			w.pendingN = 0
+			n, err := w.writeLineBreak(prefix[:lineBreak])
+			if n > pendingN {
+				consumed += n - pendingN
+			}
+			if err != nil {
 				return consumed, err
 			}
-			w.lineStart = false
-		}
-		lineEnd := len(p)
-		for i, b := range p {
-			if b == '\n' {
-				lineEnd = i + 1
-				break
+			p = p[lineBreak-pendingN:]
+		} else {
+			w.pendingN = 0
+			if _, err := w.writeText(w.pending[:pendingN]); err != nil {
+				return consumed, err
 			}
 		}
-		n, err := w.writer.Write(p[:lineEnd])
-		consumed += n
-		if n > 0 {
-			w.lineStart = p[n-1] == '\n'
+	}
+
+	start := 0
+	for i := 0; i < len(p); {
+		lineBreak, incomplete := yamlLineBreakLength(p[i:])
+		if incomplete {
+			n, err := w.writeText(p[start:i])
+			consumed += n
+			if err != nil {
+				return consumed, err
+			}
+			w.pendingN = copy(w.pending[:], p[i:])
+			return consumed + len(p[i:]), nil
 		}
+		if lineBreak == 0 {
+			i++
+			continue
+		}
+		n, err := w.writeText(p[start:i])
+		consumed += n
 		if err != nil {
 			return consumed, err
 		}
-		if n != lineEnd {
-			return consumed, io.ErrShortWrite
+		n, err = w.writeLineBreak(p[i : i+lineBreak])
+		consumed += n
+		if err != nil {
+			return consumed, err
 		}
-		p = p[lineEnd:]
+		i += lineBreak
+		start = i
 	}
-	return consumed, nil
+	n, err := w.writeText(p[start:])
+	return consumed + n, err
+}
+
+func (w *yamlIndentWriter) writeLineBreak(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	if n == len(p) && err == nil {
+		w.lineStart = true
+	}
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	return n, err
+}
+
+func (w *yamlIndentWriter) writeText(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if w.lineStart && len(w.indent) > 0 {
+		if err := writeAll(w.writer, w.indent); err != nil {
+			return 0, err
+		}
+	}
+	n, err := w.writer.Write(p)
+	if n > 0 {
+		w.lineStart = false
+	}
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	return n, err
+}
+
+func yamlLineBreakLength(p []byte) (int, bool) {
+	if len(p) == 0 {
+		return 0, false
+	}
+	switch p[0] {
+	case '\r', '\n':
+		return 1, false
+	case 0xc2:
+		if len(p) == 1 {
+			return 0, true
+		}
+		if p[1] == 0x85 {
+			return 2, false
+		}
+	case 0xe2:
+		if len(p) == 1 {
+			return 0, true
+		}
+		if p[1] != 0x80 {
+			return 0, false
+		}
+		if len(p) == 2 {
+			return 0, true
+		}
+		if p[2] == 0xa8 || p[2] == 0xa9 {
+			return 3, false
+		}
+	}
+	return 0, false
 }
 
 func writeAll(writer io.Writer, p []byte) error {

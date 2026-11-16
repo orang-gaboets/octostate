@@ -196,6 +196,60 @@ func TestEncodeYAMLMatchesLegacyBytesForScalarEdgeValues(t *testing.T) {
 	}
 }
 
+func TestEncodeYAMLPreservesCanonicalBytesForUnicodeLineSeparators(t *testing.T) {
+	cfg := OrganizationConfig{
+		Organization: "acme",
+		Repositories: []RepositorySpec{{Name: "repo", Visibility: "private", Description: "a\nb\u2028c"}},
+	}
+	cfg.Repositories[0].SetManagedDescription(cfg.Repositories[0].Description)
+
+	want, err := legacyEncodeYAMLForTest(cfg)
+	if err != nil {
+		t.Fatalf("legacy encoder returned an error: %v", err)
+	}
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("EncodeYAML returned an error: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("EncodeYAML changed canonical bytes for a Unicode line separator:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+
+	roundTripped := loadEncodedConfig(t, got)
+	if gotDescription := roundTripped.Repositories[0].Description; gotDescription != cfg.Repositories[0].Description {
+		t.Fatalf("YAML round trip changed description: got %q, want %q", gotDescription, cfg.Repositories[0].Description)
+	}
+}
+
+func TestYAMLIndentWriterPreservesIndentAfterSplitLineBreaks(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		lineBreak string
+	}{
+		{name: "CR", lineBreak: "\r"},
+		{name: "LF", lineBreak: "\n"},
+		{name: "CRLF", lineBreak: "\r\n"},
+		{name: "NEL", lineBreak: "\u0085"},
+		{name: "line separator", lineBreak: "\u2028"},
+		{name: "paragraph separator", lineBreak: "\u2029"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			writer := yamlIndentWriter{writer: &output, indent: []byte("  "), lineStart: true}
+			input := []byte("a" + test.lineBreak + "b")
+			for _, value := range input {
+				if n, err := writer.Write([]byte{value}); err != nil || n != 1 {
+					t.Fatalf("write byte %#x: n=%d err=%v", value, n, err)
+				}
+			}
+			want := "  a" + test.lineBreak + "  b"
+			if output.String() != want {
+				t.Fatalf("indented output = %q, want %q", output.String(), want)
+			}
+		})
+	}
+}
+
 func TestEncodeYAMLMatchesLegacyBytesAcrossBoundedFragments(t *testing.T) {
 	cfg := OrganizationConfig{Organization: "acme", Members: make([]OrganizationMemberSpec, 500)}
 	for i := range cfg.Members {
