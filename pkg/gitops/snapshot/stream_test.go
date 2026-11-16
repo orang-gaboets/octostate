@@ -64,13 +64,21 @@ func TestActualSnapshotJSONFieldCoverage(t *testing.T) {
 		reflect.TypeOf(state.TeamRepositoryPermission{}): {"team_slug", "owner", "name", "permission"},
 	}
 
-	for typ, want := range expected {
+	types := make([]reflect.Type, 0, len(expected))
+	for typ := range expected {
+		types = append(types, typ)
+	}
+	sort.Slice(types, func(i, j int) bool { return types[i].String() < types[j].String() })
+
+	for _, typ := range types {
+		want := expected[typ]
 		got := exportedJSONFieldNames(typ)
 		sort.Strings(got)
 		sort.Strings(want)
-		missing, extra := stringSetDifference(want, got), stringSetDifference(got, want)
+		missing, extra := sortedStringListDifference(want, got), sortedStringListDifference(got, want)
+		repeated := repeatedSortedStrings(got)
 		if len(missing) != 0 || len(extra) != 0 {
-			t.Errorf("%s JSON field coverage mismatch: missing keys %v; extra keys %v", typ, missing, extra)
+			t.Errorf("%s JSON field coverage mismatch: missing keys %v; extra keys %v; repeated keys %v", typ, missing, extra, repeated)
 		}
 	}
 }
@@ -95,18 +103,33 @@ func exportedJSONFieldNames(typ reflect.Type) []string {
 	return names
 }
 
-func stringSetDifference(left, right []string) []string {
-	rightSet := make(map[string]struct{}, len(right))
-	for _, value := range right {
-		rightSet[value] = struct{}{}
-	}
+func sortedStringListDifference(left, right []string) []string {
 	var difference []string
-	for _, value := range left {
-		if _, ok := rightSet[value]; !ok {
-			difference = append(difference, value)
+	leftIndex, rightIndex := 0, 0
+	for leftIndex < len(left) {
+		if rightIndex == len(right) || left[leftIndex] < right[rightIndex] {
+			difference = append(difference, left[leftIndex])
+			leftIndex++
+			continue
 		}
+		if left[leftIndex] == right[rightIndex] {
+			leftIndex++
+			rightIndex++
+			continue
+		}
+		rightIndex++
 	}
 	return difference
+}
+
+func repeatedSortedStrings(values []string) []string {
+	var repeated []string
+	for i := 1; i < len(values); i++ {
+		if values[i] == values[i-1] && (len(repeated) == 0 || repeated[len(repeated)-1] != values[i]) {
+			repeated = append(repeated, values[i])
+		}
+	}
+	return repeated
 }
 
 func assertActualSnapshotJSONMatchesEncoder(t *testing.T, snapshot ActualSnapshot) ActualSnapshot {
