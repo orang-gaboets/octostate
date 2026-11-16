@@ -103,12 +103,11 @@ reset_logs() {
 
 expect_result() {
 	local branch="$1"
-	local auth_mode="$2"
-	local expected="$3"
+	local expected="$2"
 	local actual
 
-	actual=$(git_remote_branch_result "$branch" "$auth_mode")
-	[[ $actual == "$expected" ]] || fail "expected $auth_mode/$branch to be $expected, got $actual"
+	actual=$(git_remote_branch_result "$branch")
+	[[ $actual == "$expected" ]] || fail "expected $branch to be $expected, got $actual"
 }
 
 assert_log_lacks() {
@@ -135,7 +134,7 @@ assert_log_has_line() {
 source "$script_dir/git-remote-auth.sh"
 
 reset_logs
-expect_result main basic present:0
+expect_result main present:0
 expected_basic_header="AUTHORIZATION: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\r\n')"
 assert_log_contains "$expected_basic_header" "$git_header_log"
 assert_log_lacks "$GH_TOKEN" "$git_args_log"
@@ -166,29 +165,35 @@ assert_log_has_line 'GIT_CONFIG_VALUE_0_SET=' "$git_environment_log"
 assert_log_has_line 'GIT_CONFIG_PARAMETERS_SET=' "$git_environment_log"
 
 reset_logs
+if [[ $(git_remote_branch_result main removed-mode) != setup-error ]]; then
+	fail 'helper accepted the removed authentication-mode argument'
+fi
+[[ ! -s $git_calls_log ]] || fail 'credentialed Git ran with an unsupported authentication-mode argument'
+
+reset_logs
 saved_token="$GH_TOKEN"
 GH_TOKEN=''
-expect_result main basic setup-error
+expect_result main setup-error
 [[ ! -s $git_calls_log ]] || fail 'credentialed Git ran without an App token'
 GH_TOKEN="$saved_token"
 
 reset_logs
-expect_result 'invalid..branch' basic setup-error
+expect_result 'invalid..branch' setup-error
 [[ ! -s $git_calls_log ]] || fail 'credentialed Git ran for an invalid branch name'
 
 reset_logs
 TEST_ORIGIN='https://github.com/orang-gaboets/octostate.git'
-expect_result main basic present:0
+expect_result main present:0
 assert_log_contains 'AUTHORIZATION: Basic ' "$git_header_log"
 
 reset_logs
 TEST_ORIGIN='https://example.invalid/orang-gaboets/octostate.git'
-expect_result main basic setup-error
+expect_result main setup-error
 [[ ! -s $git_calls_log ]] || fail 'credentialed Git ran for a mismatched effective origin'
 
 reset_logs
 TEST_ORIGIN=$'https://github.com/orang-gaboets/octostate.git\nhttps://example.invalid/other.git'
-expect_result main basic setup-error
+expect_result main setup-error
 [[ ! -s $git_calls_log ]] || fail 'credentialed Git ran for a multi-URL origin'
 TEST_ORIGIN='https://github.com/orang-gaboets/octostate'
 
@@ -196,76 +201,76 @@ reset_logs
 TEST_GIT_STATUS=2
 TEST_GIT_STDOUT=''
 TEST_GIT_STDERR=''
-expect_result ci/go-toolchain-1.26.12 basic absent:2
+expect_result ci/go-toolchain-1.26.12 absent:2
 
 reset_logs
 TEST_GIT_STATUS=0
 TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/archive/refs/heads/ci/go-toolchain-1.26.12\n'
-expect_result ci/go-toolchain-1.26.12 basic absent:0
+expect_result ci/go-toolchain-1.26.12 absent:0
 
 reset_logs
 TEST_GIT_STATUS=0
 TEST_GIT_STDERR=''
 TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/archive/refs/heads/main\n0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n'
-expect_result main basic present:0
+expect_result main present:0
 
 reset_logs
 TEST_GIT_STATUS=0
 TEST_GIT_STDOUT='not-a-valid-ls-remote-row'
-expect_result main basic git-error:0
+expect_result main git-error:0
 
 reset_logs
 TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/unrelated\n'
-expect_result main basic git-error:0
+expect_result main git-error:0
 
 reset_logs
 TEST_GIT_STDERR='warning: unexpected Git stderr'
 TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n'
-expect_result main basic git-error:0
+expect_result main git-error:0
 
 reset_logs
 TEST_GIT_STATUS=128
 TEST_GIT_STDOUT=''
 TEST_GIT_STDERR="fatal: could not read Username for 'https://github.com': terminal prompts disabled"
-expect_result main invalid-basic auth-failed:128
-assert_log_contains "AUTHORIZATION: Basic $(printf '%s' 'x-access-token:invalid-issue346-probe-token' | base64 | tr -d '\r\n')" "$git_header_log"
+expect_result main auth-failed:128
+assert_log_contains "$expected_basic_header" "$git_header_log"
 
 reset_logs
 TEST_GIT_STATUS=128
 TEST_GIT_STDERR='fatal: unable to get password from user'
-expect_result main invalid-basic auth-failed:128
+expect_result main auth-failed:128
 
 reset_logs
 TEST_GIT_STATUS=128
 TEST_GIT_STDERR='fatal: unable to get username from user'
-expect_result main bearer auth-failed:128
+expect_result main auth-failed:128
 
 reset_logs
 TEST_GIT_STATUS=128
 TEST_GIT_STDERR='fatal: Authentication failed for https://github.com/orang-gaboets/octostate'
-expect_result main bearer auth-failed:128
-assert_log_contains "AUTHORIZATION: Bearer $GH_TOKEN" "$git_header_log"
+expect_result main auth-failed:128
+assert_log_contains "$expected_basic_header" "$git_header_log"
 assert_log_lacks "$GH_TOKEN" "$git_args_log"
 
 reset_logs
 TEST_GIT_STATUS=128
 TEST_GIT_STDERR='fatal: unable to access https://github.com: Could not resolve host'
-expect_result main basic git-error:128
+expect_result main git-error:128
 
 reset_logs
 TEST_GIT_STATUS=128
 TEST_GIT_STDERR='fatal: unable to access https://github.com: The requested URL returned error: 403'
-expect_result main basic permission-failed:128
+expect_result main permission-failed:128
 
 reset_logs
 TEST_GIT_STATUS=1
 TEST_GIT_STDERR='unexpected Git failure'
-expect_result main basic git-error:1
+expect_result main git-error:1
 
 reset_logs
 TEST_GIT_STATUS=2
 TEST_GIT_STDERR='fatal: transport warning'
-expect_result main basic git-error:2
+expect_result main git-error:2
 
 reset_logs
 TEST_GIT_STATUS=0
@@ -274,7 +279,7 @@ TEST_GIT_STDOUT=$'0123456789abcdef0123456789abcdef01234567\trefs/heads/main\n'
 exec 9> "$xtrace_log"
 BASH_XTRACEFD=9
 set -x
-trace_result=$(git_remote_branch_result main basic)
+trace_result=$(git_remote_branch_result main)
 set +x
 unset BASH_XTRACEFD
 exec 9>&-

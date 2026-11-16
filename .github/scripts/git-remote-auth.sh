@@ -9,7 +9,6 @@ git_remote_branch_result() (
   set -euo pipefail
 
   local branch="${1:-}"
-  local auth_mode="${2:-basic}"
   local app_token="${GH_TOKEN-}"
   local expected_origin origin_url target_ref auth_header encoded_token
   local git_status stderr_text line object_id remote_ref config_variable trace_variable
@@ -44,7 +43,7 @@ git_remote_branch_result() (
   unset GIT_TRACE2_CONFIG_PARAMS GIT_TRACE2_ENV_VARS
   export GIT_TRACE_REDACT=1
 
-  if [[ ! "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$branch" == *..* || "$branch" == */ ]]; then
+  if [[ "$#" -ne 1 || ! "$branch" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$branch" == *..* || "$branch" == */ ]]; then
     printf 'setup-error\n'
     exit 0
   fi
@@ -52,11 +51,6 @@ git_remote_branch_result() (
     printf 'setup-error\n'
     exit 0
   fi
-  if [[ "$auth_mode" != basic && "$auth_mode" != bearer && "$auth_mode" != invalid-basic ]]; then
-    printf 'setup-error\n'
-    exit 0
-  fi
-
   expected_origin="https://github.com/${GITHUB_REPOSITORY}"
   if ! origin_url="$(git remote get-url --all origin 2>/dev/null)"; then
     printf 'setup-error\n'
@@ -67,18 +61,12 @@ git_remote_branch_result() (
     exit 0
   fi
 
-  if [[ "$auth_mode" == invalid-basic ]]; then
-    encoded_token="$(printf '%s' 'x-access-token:invalid-issue346-probe-token' | base64 | tr -d '\r\n')"
-    auth_header="AUTHORIZATION: Basic ${encoded_token}"
-  elif [[ -z "$app_token" ]]; then
+  if [[ -z "$app_token" ]]; then
     printf 'setup-error\n'
     exit 0
-  elif [[ "$auth_mode" == bearer ]]; then
-    auth_header="AUTHORIZATION: Bearer ${app_token}"
-  else
-    encoded_token="$(printf 'x-access-token:%s' "$app_token" | base64 | tr -d '\r\n')"
-    auth_header="AUTHORIZATION: Basic ${encoded_token}"
   fi
+  encoded_token="$(printf 'x-access-token:%s' "$app_token" | base64 | tr -d '\r\n')"
+  auth_header="AUTHORIZATION: Basic ${encoded_token}"
   unset app_token encoded_token
 
   scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/octostate-git-auth.XXXXXX")" || {
