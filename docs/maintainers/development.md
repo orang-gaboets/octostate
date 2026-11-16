@@ -90,7 +90,7 @@ The separate `.github/workflows/go-toolchain-remediation.yml` workflow is the
 only repository automation that may propose Go toolchain remediation. It does
 not change #223's detection-only contract. The workflow runs on its daily
 schedule and `workflow_dispatch`; the remediation job runs only on
-`refs/heads/main`. A manual dispatch defaults to the normal remediation flow.
+`refs/heads/main`. A manual dispatch runs the normal remediation flow.
 The remediation job checks out trusted `main`, fetches `origin/main`, and
 switches to the exact detached `origin/main` commit before it runs the
 classifier or mints any write-capable token.
