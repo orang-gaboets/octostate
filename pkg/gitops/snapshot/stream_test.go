@@ -6,6 +6,7 @@ import (
 	"io"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -45,6 +46,67 @@ func TestWriteActualSnapshotJSONMatchesJSONEncoderForEmptyCollections(t *testing
 	if got := assertActualSnapshotJSONMatchesEncoder(t, snapshot); !reflect.DeepEqual(got, snapshot) {
 		t.Fatalf("JSON round trip changed empty collections:\n got %#v\nwant %#v", got, snapshot)
 	}
+}
+
+func TestActualSnapshotJSONFieldCoverage(t *testing.T) {
+	expected := map[reflect.Type][]string{
+		reflect.TypeOf(ActualSnapshot{}): {
+			"pulled_at", "organization", "resolved_invite_user_ids_by_username", "members",
+			"pending_invitations", "repositories", "teams", "team_members", "team_repo_permissions",
+		},
+		reflect.TypeOf(state.OrganizationMember{}): {"id", "username", "role", "name", "email"},
+		reflect.TypeOf(state.PendingInvitation{}):  {"id", "username", "email", "role", "team_slugs"},
+		reflect.TypeOf(state.Repository{}): {
+			"owner", "name", "visibility", "description", "homepage", "topics", "allow_forking", "archived", "is_template",
+		},
+		reflect.TypeOf(state.Team{}):                     {"id", "slug", "name", "description", "privacy", "parent_slug"},
+		reflect.TypeOf(state.TeamMember{}):               {"team_slug", "username", "role"},
+		reflect.TypeOf(state.TeamRepositoryPermission{}): {"team_slug", "owner", "name", "permission"},
+	}
+
+	for typ, want := range expected {
+		got := exportedJSONFieldNames(typ)
+		sort.Strings(got)
+		sort.Strings(want)
+		missing, extra := stringSetDifference(want, got), stringSetDifference(got, want)
+		if len(missing) != 0 || len(extra) != 0 {
+			t.Errorf("%s JSON field coverage mismatch: missing keys %v; extra keys %v", typ, missing, extra)
+		}
+	}
+}
+
+func exportedJSONFieldNames(typ reflect.Type) []string {
+	var names []string
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" { // unexported
+			continue
+		}
+		tag := field.Tag.Get("json")
+		name := strings.Split(tag, ",")[0]
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func stringSetDifference(left, right []string) []string {
+	rightSet := make(map[string]struct{}, len(right))
+	for _, value := range right {
+		rightSet[value] = struct{}{}
+	}
+	var difference []string
+	for _, value := range left {
+		if _, ok := rightSet[value]; !ok {
+			difference = append(difference, value)
+		}
+	}
+	return difference
 }
 
 func assertActualSnapshotJSONMatchesEncoder(t *testing.T, snapshot ActualSnapshot) ActualSnapshot {
