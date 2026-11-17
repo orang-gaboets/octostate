@@ -84,14 +84,30 @@ func TestActualSnapshotJSONFieldCoverage(t *testing.T) {
 }
 
 func TestExportedJSONFieldNamesHandlesDashTagOptions(t *testing.T) {
-	type taggedFields struct {
-		Ignored string `json:"-"`
-		Literal string `json:"-,omitempty"`
-	}
+	stringType := reflect.TypeOf("")
+	taggedFields := reflect.StructOf([]reflect.StructField{
+		{Name: "Ignored", Type: stringType, Tag: reflect.StructTag(`json:"-"`)},
+		{Name: "Literal", Type: stringType, Tag: reflect.StructTag(`json:"-,omitempty"`)},
+	})
 
-	got := exportedJSONFieldNames(reflect.TypeOf(taggedFields{}))
+	got := exportedJSONFieldNames(taggedFields)
 	if !reflect.DeepEqual(got, []string{"-"}) {
 		t.Fatalf("exportedJSONFieldNames() = %v, want [\"-\"]", got)
+	}
+
+	value := reflect.New(taggedFields).Elem()
+	value.Field(0).SetString("ignored")
+	value.Field(1).SetString("included")
+	encoded, err := json.Marshal(value.Interface())
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var decoded map[string]string
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if !reflect.DeepEqual(decoded, map[string]string{"-": "included"}) {
+		t.Fatalf("JSON fields = %v, want map[\"-\"]included", decoded)
 	}
 }
 
