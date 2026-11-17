@@ -83,6 +83,18 @@ func TestActualSnapshotJSONFieldCoverage(t *testing.T) {
 	}
 }
 
+func TestExportedJSONFieldNamesHandlesDashTagOptions(t *testing.T) {
+	type taggedFields struct {
+		Ignored string `json:"-"`
+		Literal string `json:"-,omitempty"`
+	}
+
+	got := exportedJSONFieldNames(reflect.TypeOf(taggedFields{}))
+	if !reflect.DeepEqual(got, []string{"-"}) {
+		t.Fatalf("exportedJSONFieldNames() = %v, want [\"-\"]", got)
+	}
+}
+
 func exportedJSONFieldNames(typ reflect.Type) []string {
 	var names []string
 	for i := 0; i < typ.NumField(); i++ {
@@ -90,11 +102,12 @@ func exportedJSONFieldNames(typ reflect.Type) []string {
 		if field.PkgPath != "" { // unexported
 			continue
 		}
-		tag := field.Tag.Get("json")
-		name := strings.Split(tag, ",")[0]
-		if name == "-" {
+		rawTag := field.Tag.Get("json")
+		if rawTag == "-" {
 			continue
 		}
+		tag := rawTag
+		name := strings.Split(tag, ",")[0]
 		if name == "" {
 			name = field.Name
 		}
