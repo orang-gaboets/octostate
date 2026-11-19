@@ -118,6 +118,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.verify_git_auth == true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          RELEASE_CREDENTIAL_SOURCE: ${{ steps.app-token.outputs.token != '' && 'release-app' || 'GITHUB_TOKEN' }}
         run: |
           set -euo pipefail
           git_with_release_token() (
@@ -165,6 +166,7 @@ jobs:
             echo 'GitHub Git authentication check did not return refs/heads/main' >&2
             exit 1
           }
+          printf 'GitHub Git authentication check passed using %s.\n' "${RELEASE_CREDENTIAL_SOURCE}"
 
       - name: Check out the exact release tag
         if: steps.release.outputs.should_package == 'true'

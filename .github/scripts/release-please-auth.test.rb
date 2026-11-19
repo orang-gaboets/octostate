@@ -137,6 +137,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         "RETRY_TAG" => "",
         "RETRY_COMMIT" => "",
         "GH_TOKEN" => TOKEN,
+        "RELEASE_CREDENTIAL_SOURCE" => "release-app",
         "RELEASE_TAG" => TAG,
         "EXPECTED_COMMIT" => COMMIT,
         "TEST_HEAD_SHA" => COMMIT,
@@ -560,8 +561,13 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_predicate valid.fetch(:status), :success?, valid.fetch(:stderr)
 
     verifier = required_step("Verify Release Please Git authentication")
+    assert_equal(
+      "${{ steps.app-token.outputs.token != '' && 'release-app' || 'GITHUB_TOKEN' }}",
+      verifier.fetch("env").fetch("RELEASE_CREDENTIAL_SOURCE")
+    )
     result = run_step(verifier.fetch("name"))
     assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
+    assert_includes result.fetch(:stdout), "GitHub Git authentication check passed using release-app."
     calls = git_records(result)
     assert_equal 1, calls.length
     assert_basic_git_record(calls.first)
@@ -570,6 +576,12 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_equal "refs/heads/main", calls.first.fetch("args").last
     assert_empty gh_records(result)
     refute File.exist?(result.fetch(:release_edit))
+
+    fallback = run_step(verifier.fetch("name"), { "RELEASE_CREDENTIAL_SOURCE" => "GITHUB_TOKEN" })
+    assert_predicate fallback.fetch(:status), :success?, fallback.fetch(:stderr)
+    assert_includes fallback.fetch(:stdout), "GitHub Git authentication check passed using GITHUB_TOKEN."
+    refute_includes fallback.fetch(:stdout) + fallback.fetch(:stderr), TOKEN
+    refute_includes fallback.fetch(:stdout) + fallback.fetch(:stderr), ENCODED_TOKEN
 
     release_please = required_step("Run release-please")
     assert_equal "github.event_name != 'workflow_dispatch' || (inputs.release_tag == '' && inputs.verify_git_auth != true)", release_please.fetch("if")
