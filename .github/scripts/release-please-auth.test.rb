@@ -568,6 +568,9 @@ class ReleasePleaseAuthTest < Minitest::Test
     result = run_step(verifier.fetch("name"))
     assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
     assert_includes result.fetch(:stdout), "GitHub Git authentication check passed using release-app."
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), EXPECTED_HEADER
     calls = git_records(result)
     assert_equal 1, calls.length
     assert_basic_git_record(calls.first)
@@ -582,6 +585,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_includes fallback.fetch(:stdout), "GitHub Git authentication check passed using GITHUB_TOKEN."
     refute_includes fallback.fetch(:stdout) + fallback.fetch(:stderr), TOKEN
     refute_includes fallback.fetch(:stdout) + fallback.fetch(:stderr), ENCODED_TOKEN
+    refute_includes fallback.fetch(:stdout) + fallback.fetch(:stderr), EXPECTED_HEADER
 
     release_please = required_step("Run release-please")
     assert_equal "github.event_name != 'workflow_dispatch' || (inputs.release_tag == '' && inputs.verify_git_auth != true)", release_please.fetch("if")
