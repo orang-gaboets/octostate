@@ -14,6 +14,11 @@ on:
         description: 'Expected commit for release_tag when retrying'
         required: false
         type: string
+      verify_git_auth:
+        description: 'Run a read-only GitHub Git authentication check on main'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release-please-${{ github.workflow }}
@@ -28,6 +33,31 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate retry inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RETRY_TAG: ${{ inputs.release_tag }}
+          RETRY_COMMIT: ${{ inputs.release_commit }}
+          VERIFY_GIT_AUTH: ${{ inputs.verify_git_auth }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${VERIFY_GIT_AUTH}" == 'true' ]]; then
+            [[ "${DISPATCH_REF}" == 'refs/heads/main' ]] || {
+              echo 'verify_git_auth can only run from main' >&2
+              exit 1
+            }
+            [[ -z "${RETRY_TAG}" && -z "${RETRY_COMMIT}" ]] || {
+              echo 'verify_git_auth cannot be combined with release retry inputs' >&2
+              exit 1
+            }
+          fi
+          [[ -n "${RETRY_TAG}" && -n "${RETRY_COMMIT}" ]] ||
+            [[ -z "${RETRY_TAG}" && -z "${RETRY_COMMIT}" ]] || {
+              echo 'release_tag and release_commit must be supplied together' >&2
+              exit 1
+            }
+
       - name: Generate GitHub App token
         id: app-token
         env:
@@ -42,22 +72,9 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - name: Validate retry inputs
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          RETRY_TAG: ${{ inputs.release_tag }}
-          RETRY_COMMIT: ${{ inputs.release_commit }}
-        run: |
-          set -euo pipefail
-          [[ -n "${RETRY_TAG}" && -n "${RETRY_COMMIT}" ]] ||
-            [[ -z "${RETRY_TAG}" && -z "${RETRY_COMMIT}" ]] || {
-              echo 'release_tag and release_commit must be supplied together' >&2
-              exit 1
-            }
-
       - name: Run release-please
         id: release-please
-        if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
+        if: github.event_name != 'workflow_dispatch' || (inputs.release_tag == '' && inputs.verify_git_auth != true)
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
@@ -97,6 +114,51 @@ jobs:
             printf 'should_package=false\n' >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify Release Please Git authentication
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_git_auth == true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git_with_release_token() (
+            set +x
+            set -euo pipefail
+            local app_token="${GH_TOKEN-}"
+            local encoded_token auth_header config_variable trace_variable
+
+            [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
+            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
+            for config_variable in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+              unset "${config_variable}"
+            done
+            export GIT_CONFIG_COUNT=0
+            export GIT_TERMINAL_PROMPT=0
+            export GIT_ASKPASS=/bin/false
+            export SSH_ASKPASS=/bin/false
+            export GCM_INTERACTIVE=never
+            for trace_variable in \
+              GIT_TRACE GIT_TRACE_CURL GIT_TRACE_FSMONITOR GIT_TRACE_PACK_ACCESS \
+              GIT_TRACE_PACKET GIT_TRACE_PACKFILE GIT_TRACE_PERFORMANCE GIT_TRACE_REFS \
+              GIT_TRACE_SETUP GIT_TRACE_SHALLOW GIT_TRACE2 GIT_TRACE2_EVENT GIT_TRACE2_PERF; do
+              export "${trace_variable}=0"
+            done
+            unset GIT_TRACE2_CONFIG_PARAMS GIT_TRACE2_ENV_VARS
+            export GIT_TRACE_REDACT=1
+
+            encoded_token="$(printf 'x-access-token:%s' "${app_token}" | base64 | tr -d '\r\n')"
+            auth_header="AUTHORIZATION: Basic ${encoded_token}"
+            unset app_token encoded_token
+            OCTOSTATE_GIT_AUTH_HEADER="${auth_header}" git \
+              -c http.https://github.com/.extraheader= \
+              --config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER \
+              -c http.https://github.com.followredirects=false \
+              -c credential.helper= \
+              -c credential.interactive=false \
+              "$@"
+          )
+          git_with_release_token ls-remote --exit-code \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/main
+
       - name: Check out the exact release tag
         if: steps.release.outputs.should_package == 'true'
         env:
@@ -107,10 +169,44 @@ jobs:
           set -euo pipefail
           git init .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-          export GIT_CONFIG_COUNT=1
-          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
-          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
-          git fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          git_with_release_token() (
+            set +x
+            set -euo pipefail
+            local app_token="${GH_TOKEN-}"
+            local encoded_token auth_header config_variable trace_variable
+
+            [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
+            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
+            for config_variable in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+              unset "${config_variable}"
+            done
+            export GIT_CONFIG_COUNT=0
+            export GIT_TERMINAL_PROMPT=0
+            export GIT_ASKPASS=/bin/false
+            export SSH_ASKPASS=/bin/false
+            export GCM_INTERACTIVE=never
+            for trace_variable in \
+              GIT_TRACE GIT_TRACE_CURL GIT_TRACE_FSMONITOR GIT_TRACE_PACK_ACCESS \
+              GIT_TRACE_PACKET GIT_TRACE_PACKFILE GIT_TRACE_PERFORMANCE GIT_TRACE_REFS \
+              GIT_TRACE_SETUP GIT_TRACE_SHALLOW GIT_TRACE2 GIT_TRACE2_EVENT GIT_TRACE2_PERF; do
+              export "${trace_variable}=0"
+            done
+            unset GIT_TRACE2_CONFIG_PARAMS GIT_TRACE2_ENV_VARS
+            export GIT_TRACE_REDACT=1
+
+            encoded_token="$(printf 'x-access-token:%s' "${app_token}" | base64 | tr -d '\r\n')"
+            auth_header="AUTHORIZATION: Basic ${encoded_token}"
+            unset app_token encoded_token
+            OCTOSTATE_GIT_AUTH_HEADER="${auth_header}" git \
+              -c http.https://github.com/.extraheader= \
+              --config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER \
+              -c http.https://github.com.followredirects=false \
+              -c credential.helper= \
+              -c credential.interactive=false \
+              "$@"
+          )
+          git_with_release_token fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          unset GH_TOKEN
           git checkout --detach "${RELEASE_TAG}"
           [[ -n "${EXPECTED_COMMIT}" ]] || { echo 'retry requires release_commit' >&2; exit 1; }
           [[ "$(git rev-parse "HEAD^{commit}")" == "${EXPECTED_COMMIT}" ]] || {
@@ -184,12 +280,45 @@ jobs:
             echo 'release contains unexpected or missing assets; refusing to publish' >&2
             exit 1
           }
-          export GIT_CONFIG_COUNT=1
-          export GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'
-          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}"
-          peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+          git_with_release_token() (
+            set +x
+            set -euo pipefail
+            local app_token="${GH_TOKEN-}"
+            local encoded_token auth_header config_variable trace_variable
+
+            [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
+            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
+            for config_variable in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+              unset "${config_variable}"
+            done
+            export GIT_CONFIG_COUNT=0
+            export GIT_TERMINAL_PROMPT=0
+            export GIT_ASKPASS=/bin/false
+            export SSH_ASKPASS=/bin/false
+            export GCM_INTERACTIVE=never
+            for trace_variable in \
+              GIT_TRACE GIT_TRACE_CURL GIT_TRACE_FSMONITOR GIT_TRACE_PACK_ACCESS \
+              GIT_TRACE_PACKET GIT_TRACE_PACKFILE GIT_TRACE_PERFORMANCE GIT_TRACE_REFS \
+              GIT_TRACE_SETUP GIT_TRACE_SHALLOW GIT_TRACE2 GIT_TRACE2_EVENT GIT_TRACE2_PERF; do
+              export "${trace_variable}=0"
+            done
+            unset GIT_TRACE2_CONFIG_PARAMS GIT_TRACE2_ENV_VARS
+            export GIT_TRACE_REDACT=1
+
+            encoded_token="$(printf 'x-access-token:%s' "${app_token}" | base64 | tr -d '\r\n')"
+            auth_header="AUTHORIZATION: Basic ${encoded_token}"
+            unset app_token encoded_token
+            OCTOSTATE_GIT_AUTH_HEADER="${auth_header}" git \
+              -c http.https://github.com/.extraheader= \
+              --config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER \
+              -c http.https://github.com.followredirects=false \
+              -c credential.helper= \
+              -c credential.interactive=false \
+              "$@"
+          )
+          peeled=$(git_with_release_token ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
             "refs/tags/${RELEASE_TAG}^{}" | awk '{print $1}')
-          [[ -n "${peeled}" ]] || peeled=$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+          [[ -n "${peeled}" ]] || peeled=$(git_with_release_token ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
             "refs/tags/${RELEASE_TAG}" | awk '{print $1}')
           [[ "${peeled}" == "${EXPECTED_COMMIT}" ]] || {
             echo "release tag ${RELEASE_TAG} moved before publication; refusing to publish artifacts" >&2

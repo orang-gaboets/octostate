@@ -66,6 +66,18 @@ gh workflow run release-please.yml \
   -f release_commit=<tagged-commit-sha>
 ```
 
+To check the workflow's authenticated Git access without creating or changing a
+release, dispatch it from `main` with `verify_git_auth=true` and leave both
+retry inputs empty:
+
+```bash
+gh workflow run release-please.yml --ref main -f verify_git_auth=true
+```
+
+This mode skips Release Please and artifact packaging, then performs only a
+read-only `git ls-remote` check for `refs/heads/main`. It cannot upload assets or
+publish a release.
+
 GitHub recommends staging all assets on the draft Release before publication;
 see the [immutable releases guidance][github-immutable-releases]. As verified
 on 2026-09-15 with the read-only API checks below, the organization policy is
