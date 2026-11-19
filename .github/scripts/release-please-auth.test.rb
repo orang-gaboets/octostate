@@ -21,6 +21,7 @@ COMMIT = "0123456789abcdef0123456789abcdef01234567"
 REPOSITORY_URL = "https://github.com/orang-gaboets/octostate.git"
 REPOSITORY_EXTRAHEADER_KEY = "http.#{REPOSITORY_URL}.extraheader"
 REPOSITORY_FOLLOW_REDIRECTS_KEY = "http.#{REPOSITORY_URL}.followredirects"
+REPOSITORY_SSL_VERIFY_KEY = "http.#{REPOSITORY_URL}.sslVerify"
 ASSET_NAMES = %w[
   octostate_1.3.0_darwin_amd64.tar.gz
   octostate_1.3.0_darwin_arm64.tar.gz
@@ -91,8 +92,20 @@ class ReleasePleaseAuthTest < Minitest::Test
     global_config = File.join(root, "global.gitconfig")
     system_config = File.join(root, "system.gitconfig")
     local_config = File.join(git_dir, "config")
-    global_contents = "[http \"https://github.com\"]\n\textraheader = AUTHORIZATION: Basic inherited-global\n"
-    local_contents = "[http \"https://github.com\"]\n\textraheader = AUTHORIZATION: Basic inherited-local\n"
+    global_contents = <<~GITCONFIG
+      [http "https://github.com"]
+        extraheader = AUTHORIZATION: Basic inherited-global
+        sslVerify = false
+      [http "#{REPOSITORY_URL}"]
+        sslVerify = false
+    GITCONFIG
+    local_contents = <<~GITCONFIG
+      [http "https://github.com"]
+        extraheader = AUTHORIZATION: Basic inherited-local
+        sslVerify = false
+      [http "#{REPOSITORY_URL}"]
+        sslVerify = false
+    GITCONFIG
     File.write(global_config, global_contents)
     File.write(system_config, "")
     File.write(local_config, local_contents)
@@ -148,6 +161,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         "GITHUB_OUTPUT" => File.join(root, "github-output"),
         "GIT_CONFIG_GLOBAL" => global_config,
         "GIT_CONFIG_SYSTEM" => system_config,
+        "GIT_SSL_NO_VERIFY" => "1",
         "GIT_CONFIG_COUNT" => "2",
         "GIT_CONFIG_KEY_0" => "http.https://github.com/.extraheader",
         "GIT_CONFIG_VALUE_0" => "AUTHORIZATION: Basic inherited-environment",
@@ -193,6 +207,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         "auth_header_matches" => ENV["OCTOSTATE_GIT_AUTH_HEADER"] == ENV["TEST_EXPECTED_GIT_AUTH_HEADER"],
         "auth_header_present" => !ENV["OCTOSTATE_GIT_AUTH_HEADER"].to_s.empty?,
         "raw_token_present" => ENV.key?("GH_TOKEN"),
+        "ssl_no_verify_present" => ENV.key?("GIT_SSL_NO_VERIFY"),
         "config_count" => ENV["GIT_CONFIG_COUNT"],
         "config_keys" => ENV.keys.grep(/\AGIT_CONFIG_KEY_/),
         "config_values" => ENV.keys.grep(/\AGIT_CONFIG_VALUE_/),
@@ -384,6 +399,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_empty record.fetch("config_keys")
     assert_empty record.fetch("config_values")
     refute record.fetch("config_parameters_present")
+    refute record.fetch("ssl_no_verify_present")
     trace_values = record.fetch("trace_values")
     %w[
       GIT_TRACE GIT_TRACE_CURL GIT_TRACE_FSMONITOR GIT_TRACE_PACK_ACCESS
@@ -401,6 +417,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_includes args, "#{REPOSITORY_EXTRAHEADER_KEY}="
     assert_includes args, "--config-env=#{REPOSITORY_EXTRAHEADER_KEY}=OCTOSTATE_GIT_AUTH_HEADER"
     assert_includes args, "#{REPOSITORY_FOLLOW_REDIRECTS_KEY}=false"
+    assert_includes args, "#{REPOSITORY_SSL_VERIFY_KEY}=true"
     assert_includes args, "credential.helper="
     assert_includes args, "credential.interactive=false"
   end

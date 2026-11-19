@@ -128,7 +128,7 @@ jobs:
             local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
             [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
-            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
+            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS GIT_SSL_NO_VERIFY
             for config_variable in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
               unset "${config_variable}"
             done
@@ -153,6 +153,7 @@ jobs:
               -c "http.${auth_url}.extraheader=" \
               --config-env="http.${auth_url}.extraheader=OCTOSTATE_GIT_AUTH_HEADER" \
               -c "http.${auth_url}.followredirects=false" \
+              -c "http.${auth_url}.sslVerify=true" \
               -c credential.helper= \
               -c credential.interactive=false \
               "$@"
@@ -183,7 +184,7 @@ jobs:
             local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
             [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
-            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
+            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS GIT_SSL_NO_VERIFY
             for config_variable in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
               unset "${config_variable}"
             done
@@ -208,6 +209,7 @@ jobs:
               -c "http.${auth_url}.extraheader=" \
               --config-env="http.${auth_url}.extraheader=OCTOSTATE_GIT_AUTH_HEADER" \
               -c "http.${auth_url}.followredirects=false" \
+              -c "http.${auth_url}.sslVerify=true" \
               -c credential.helper= \
               -c credential.interactive=false \
               "$@"
@@ -295,7 +297,7 @@ jobs:
             local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
             [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
-            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
+            unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS GIT_SSL_NO_VERIFY
             for config_variable in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
               unset "${config_variable}"
             done
@@ -320,6 +322,7 @@ jobs:
               -c "http.${auth_url}.extraheader=" \
               --config-env="http.${auth_url}.extraheader=OCTOSTATE_GIT_AUTH_HEADER" \
               -c "http.${auth_url}.followredirects=false" \
+              -c "http.${auth_url}.sslVerify=true" \
               -c credential.helper= \
               -c credential.interactive=false \
               "$@"
