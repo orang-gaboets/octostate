@@ -136,6 +136,8 @@ class ReleasePleaseAuthTest < Minitest::Test
         "TEST_DRAFT" => "true",
         "TEST_TAG_NAME" => TAG,
         "TEST_EXTRA_ASSET" => "false",
+        "TEST_CORRUPT_ASSET" => "false",
+        "TEST_CORRUPT_ASSET_NAME" => ASSET_NAMES.first,
         "TEST_ASSET_NAMES" => expected_assets,
         "TEST_DIST_DIR" => dist_dir,
         "TEST_GIT_LOG" => File.join(root, "git-records.jsonl"),
@@ -249,7 +251,11 @@ class ReleasePleaseAuthTest < Minitest::Test
         asset_name = File.basename(args.last)
         path = File.join(ENV.fetch("TEST_DIST_DIR"), asset_name)
         abort "missing fixture asset" unless File.file?(path)
-        STDOUT.write(File.binread(path))
+        body = File.binread(path)
+        if ENV.fetch("TEST_CORRUPT_ASSET", "false") == "true" && asset_name == ENV.fetch("TEST_CORRUPT_ASSET_NAME")
+          body = "#{body}corrupted"
+        end
+        STDOUT.write(body)
         exit 0
       end
 
@@ -334,9 +340,24 @@ class ReleasePleaseAuthTest < Minitest::Test
     path = File.join(stub_bin, "sha256sum")
     File.write(path, <<~'RUBY')
       #!/usr/bin/env ruby
-      exit 0 if ARGV.include?("-c")
-      warn "unsupported sha256sum fixture operation"
-      exit 99
+      require "digest"
+
+      unless ARGV.first == "-c" && ARGV.length == 2
+        warn "unsupported sha256sum fixture operation"
+        exit 99
+      end
+
+      failed = false
+      File.foreach(ARGV.fetch(1)) do |line|
+        expected, filename = line.chomp.split(/\s+/, 2)
+        if filename && File.file?(filename) && Digest::SHA256.file(filename).hexdigest == expected
+          puts "#{filename}: OK"
+        else
+          warn "#{filename || ARGV.fetch(1)}: FAILED"
+          failed = true
+        end
+      end
+      exit(failed ? 1 : 0)
     RUBY
     FileUtils.chmod(0o755, path)
   end
@@ -487,6 +508,17 @@ class ReleasePleaseAuthTest < Minitest::Test
     )
     refute_predicate result.fetch(:status), :success?
     assert_includes result.fetch(:stderr), "not draft"
+    assert_no_release_edit(result)
+  end
+
+  def test_upload_rejects_corrupted_downloaded_asset_before_publication
+    result = run_step(
+      "Upload and verify release artifacts",
+      { "TEST_CORRUPT_ASSET" => "true" }
+    )
+
+    refute_predicate result.fetch(:status), :success?
+    assert_includes result.fetch(:stderr), "#{ASSET_NAMES.first}: FAILED"
     assert_no_release_edit(result)
   end
 
