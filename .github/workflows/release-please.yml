@@ -173,13 +173,16 @@ jobs:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           EXPECTED_COMMIT: ${{ steps.release.outputs.commit }}
         run: |
+          set +x
           set -euo pipefail
+          release_token="${GH_TOKEN-}"
+          unset GH_TOKEN
           git init .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
           git_with_release_token() (
             set +x
             set -euo pipefail
-            local app_token="${GH_TOKEN-}"
+            local app_token="${release_token-}"
             local encoded_token auth_header config_variable trace_variable
             local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
@@ -215,7 +218,7 @@ jobs:
               "$@"
           )
           git_with_release_token fetch --depth=1 origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
-          unset GH_TOKEN
+          unset release_token
           git checkout --detach "${RELEASE_TAG}"
           [[ -n "${EXPECTED_COMMIT}" ]] || { echo 'retry requires release_commit' >&2; exit 1; }
           [[ "$(git rev-parse "HEAD^{commit}")" == "${EXPECTED_COMMIT}" ]] || {

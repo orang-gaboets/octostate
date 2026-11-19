@@ -438,6 +438,11 @@ class ReleasePleaseAuthTest < Minitest::Test
     records = git_records(result)
     fetch = records.find { |record| record.fetch("args").include?("fetch") }
     refute_nil fetch
+    setup_git = records.take_while { |record| !record.fetch("args").include?("fetch") }
+    assert_equal %w[init remote], setup_git.map { |record| record.fetch("args").first }
+    setup_git.each do |record|
+      refute record.fetch("raw_token_present"), "GH_TOKEN must not be passed to pre-fetch Git commands"
+    end
     assert_basic_git_record(fetch)
     assert_includes fetch.fetch("args"), "refs/tags/#{TAG}:refs/tags/#{TAG}"
     assert records.any? { |record| record.fetch("args").include?("--detach") && record.fetch("args").include?(TAG) }
