@@ -28,7 +28,8 @@ ASSET_NAMES = %w[
   octostate_1.3.0_linux_arm64.tar.gz
   octostate_1.3.0_windows_amd64.zip
 ].freeze
-EXPECTED_HEADER = "AUTHORIZATION: Basic #{Base64.strict_encode64("x-access-token:#{TOKEN}")}"
+ENCODED_TOKEN = Base64.strict_encode64("x-access-token:#{TOKEN}")
+EXPECTED_HEADER = "AUTHORIZATION: Basic #{ENCODED_TOKEN}"
 
 class ReleasePleaseAuthTest < Minitest::Test
   def setup
@@ -374,7 +375,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_nil trace_values.fetch("GIT_TRACE2_ENV_VARS")
     args = record.fetch("args")
     refute_includes args.join("\n"), TOKEN
-    refute_includes args.join("\n"), Base64.strict_encode64("x-access-token:#{TOKEN}")
+    refute_includes args.join("\n"), ENCODED_TOKEN
     assert_includes args, "-c"
     assert_includes args, "#{REPOSITORY_EXTRAHEADER_KEY}="
     assert_includes args, "--config-env=#{REPOSITORY_EXTRAHEADER_KEY}=OCTOSTATE_GIT_AUTH_HEADER"
@@ -403,6 +404,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_includes fetch.fetch("args"), "refs/tags/#{TAG}:refs/tags/#{TAG}"
     assert records.any? { |record| record.fetch("args").include?("--detach") && record.fetch("args").include?(TAG) }
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), EXPECTED_HEADER
     assert_configs_unchanged(result)
   end
@@ -412,6 +414,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute_predicate result.fetch(:status), :success?
     refute git_records(result).any? { |record| record.fetch("args").include?("--detach") }
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
   end
 
   def test_checkout_rejects_expected_commit_mismatch
@@ -431,6 +434,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_equal "refs/tags/#{TAG}", calls[1].fetch("args").last
     assert File.exist?(result.fetch(:release_edit)), "verified draft release was not published"
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), EXPECTED_HEADER
     assert_configs_unchanged(result)
   end
@@ -443,6 +447,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute_predicate result.fetch(:status), :success?
     assert_no_release_edit(result)
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
   end
 
   def test_upload_transport_failure_stops_before_publication
@@ -452,6 +457,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     )
     refute_predicate result.fetch(:status), :success?
     assert_no_release_edit(result)
+    refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
   end
 
   def test_upload_rejects_moved_remote_tag_before_publication
@@ -693,6 +699,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute_includes headers, "inherited-global-path"
     refute_includes headers, "inherited-local"
     refute_includes stdout + stderr, TOKEN
+    refute_includes stdout + stderr, ENCODED_TOKEN
     refute_includes stdout + stderr, EXPECTED_HEADER
     assert_equal global_contents, File.read(global)
     assert_equal local_contents, File.read(local)
