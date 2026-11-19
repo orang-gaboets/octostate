@@ -466,7 +466,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_includes result.fetch(:stderr), "does not target expected commit"
   end
 
-  def test_upload_recheck_uses_basic_auth_and_allows_annotated_tag_fallback
+  def test_upload_recheck_uses_basic_auth_and_allows_lightweight_tag_fallback
     result = run_step("Upload and verify release artifacts", { "TEST_EMPTY_PEELED" => "true" }, xtrace: true)
     assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
 
