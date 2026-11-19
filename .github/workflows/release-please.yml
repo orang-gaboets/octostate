@@ -157,8 +157,13 @@ jobs:
               -c credential.interactive=false \
               "$@"
           )
-          git_with_release_token ls-remote --exit-code \
-            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/main
+          main_ref=$(git_with_release_token ls-remote --exit-code --heads \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/main \
+            | awk '$2 == "refs/heads/main" { print $2 }')
+          [[ "${main_ref}" == 'refs/heads/main' ]] || {
+            echo 'GitHub Git authentication check did not return refs/heads/main' >&2
+            exit 1
+          }
 
       - name: Check out the exact release tag
         if: steps.release.outputs.should_package == 'true'

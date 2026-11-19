@@ -219,6 +219,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         end
         if ref.include?("refs/heads/")
           sha = ENV.fetch("TEST_BRANCH_SHA", ENV.fetch("EXPECTED_COMMIT", ""))
+          ref = ENV.fetch("TEST_BRANCH_REF", ref)
         elsif ref.end_with?("^{}")
           sha = ENV.fetch("TEST_PEELED_SHA", ENV.fetch("EXPECTED_COMMIT", ""))
         else
@@ -549,6 +550,16 @@ class ReleasePleaseAuthTest < Minitest::Test
       }
     )
     refute_predicate with_retry.fetch(:status), :success?
+  end
+
+  def test_verifier_rejects_nested_ref_matching_main_suffix
+    result = run_step(
+      "Verify Release Please Git authentication",
+      { "TEST_BRANCH_REF" => "refs/heads/feature/refs/heads/main" }
+    )
+
+    refute_predicate result.fetch(:status), :success?
+    assert_includes result.fetch(:stderr), "did not return refs/heads/main"
   end
 
   def test_retry_inputs_must_be_supplied_together
