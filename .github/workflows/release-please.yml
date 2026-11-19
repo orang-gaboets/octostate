@@ -125,6 +125,7 @@ jobs:
             set -euo pipefail
             local app_token="${GH_TOKEN-}"
             local encoded_token auth_header config_variable trace_variable
+            local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
             [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
             unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
@@ -149,9 +150,9 @@ jobs:
             auth_header="AUTHORIZATION: Basic ${encoded_token}"
             unset app_token encoded_token
             OCTOSTATE_GIT_AUTH_HEADER="${auth_header}" git \
-              -c http.https://github.com/.extraheader= \
-              --config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER \
-              -c http.https://github.com.followredirects=false \
+              -c "http.${auth_url}.extraheader=" \
+              --config-env="http.${auth_url}.extraheader=OCTOSTATE_GIT_AUTH_HEADER" \
+              -c "http.${auth_url}.followredirects=false" \
               -c credential.helper= \
               -c credential.interactive=false \
               "$@"
@@ -174,6 +175,7 @@ jobs:
             set -euo pipefail
             local app_token="${GH_TOKEN-}"
             local encoded_token auth_header config_variable trace_variable
+            local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
             [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
             unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
@@ -198,9 +200,9 @@ jobs:
             auth_header="AUTHORIZATION: Basic ${encoded_token}"
             unset app_token encoded_token
             OCTOSTATE_GIT_AUTH_HEADER="${auth_header}" git \
-              -c http.https://github.com/.extraheader= \
-              --config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER \
-              -c http.https://github.com.followredirects=false \
+              -c "http.${auth_url}.extraheader=" \
+              --config-env="http.${auth_url}.extraheader=OCTOSTATE_GIT_AUTH_HEADER" \
+              -c "http.${auth_url}.followredirects=false" \
               -c credential.helper= \
               -c credential.interactive=false \
               "$@"
@@ -285,6 +287,7 @@ jobs:
             set -euo pipefail
             local app_token="${GH_TOKEN-}"
             local encoded_token auth_header config_variable trace_variable
+            local auth_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
             [[ -n "${app_token}" ]] || { echo 'GH_TOKEN is required for Git authentication' >&2; exit 1; }
             unset GH_TOKEN GIT_CURL_VERBOSE GIT_CONFIG_PARAMETERS
@@ -309,9 +312,9 @@ jobs:
             auth_header="AUTHORIZATION: Basic ${encoded_token}"
             unset app_token encoded_token
             OCTOSTATE_GIT_AUTH_HEADER="${auth_header}" git \
-              -c http.https://github.com/.extraheader= \
-              --config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER \
-              -c http.https://github.com.followredirects=false \
+              -c "http.${auth_url}.extraheader=" \
+              --config-env="http.${auth_url}.extraheader=OCTOSTATE_GIT_AUTH_HEADER" \
+              -c "http.${auth_url}.followredirects=false" \
               -c credential.helper= \
               -c credential.interactive=false \
               "$@"

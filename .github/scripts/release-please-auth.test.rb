@@ -18,6 +18,9 @@ WORKFLOW = File.join(ROOT, ".github/workflows/release-please.yml")
 TOKEN = "local-test-release-token-9bf2"
 TAG = "v1.3.0"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
+REPOSITORY_URL = "https://github.com/orang-gaboets/octostate.git"
+REPOSITORY_EXTRAHEADER_KEY = "http.#{REPOSITORY_URL}.extraheader"
+REPOSITORY_FOLLOW_REDIRECTS_KEY = "http.#{REPOSITORY_URL}.followredirects"
 ASSET_NAMES = %w[
   octostate_1.3.0_darwin_amd64.tar.gz
   octostate_1.3.0_darwin_arm64.tar.gz
@@ -372,9 +375,9 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute_includes args.join("\n"), TOKEN
     refute_includes args.join("\n"), Base64.strict_encode64("x-access-token:#{TOKEN}")
     assert_includes args, "-c"
-    assert_includes args, "http.https://github.com/.extraheader="
-    assert_includes args, "--config-env=http.https://github.com/.extraheader=OCTOSTATE_GIT_AUTH_HEADER"
-    assert_includes args, "http.https://github.com.followredirects=false"
+    assert_includes args, "#{REPOSITORY_EXTRAHEADER_KEY}="
+    assert_includes args, "--config-env=#{REPOSITORY_EXTRAHEADER_KEY}=OCTOSTATE_GIT_AUTH_HEADER"
+    assert_includes args, "#{REPOSITORY_FOLLOW_REDIRECTS_KEY}=false"
     assert_includes args, "credential.helper="
     assert_includes args, "credential.interactive=false"
   end
@@ -608,8 +611,16 @@ class ReleasePleaseAuthTest < Minitest::Test
     server = TCPServer.new("127.0.0.1", 0)
     port = server.addr[1]
     url = "http://127.0.0.1:#{port}"
-    config_key = "http.#{url}/.extraheader"
-    global_contents = "[http \"#{url}\"]\n\textraheader = AUTHORIZATION: Basic inherited-global\n"
+    repository_url = "#{url}/repo.git"
+    config_key = "http.#{repository_url}.extraheader"
+    follow_redirects_key = "http.#{repository_url}.followredirects"
+    global_contents = <<~GITCONFIG
+      [http "#{url}"]
+        extraheader = AUTHORIZATION: Basic inherited-global-root
+      [http "#{repository_url}"]
+        extraheader = AUTHORIZATION: Basic inherited-global-path
+        followredirects = true
+    GITCONFIG
     File.write(global, global_contents)
     File.write(system, "")
     _stdout, stderr, status = Open3.capture3("git", "init", "--quiet", root)
@@ -617,6 +628,10 @@ class ReleasePleaseAuthTest < Minitest::Test
     _stdout, stderr, status = Open3.capture3(
       "git", "config", "--local", "--add", config_key,
       "AUTHORIZATION: Basic inherited-local", chdir: root
+    )
+    assert_predicate status, :success?, stderr
+    _stdout, stderr, status = Open3.capture3(
+      "git", "config", "--local", "--add", follow_redirects_key, "true", chdir: root
     )
     assert_predicate status, :success?, stderr
     local_contents = File.read(local)
@@ -648,13 +663,13 @@ class ReleasePleaseAuthTest < Minitest::Test
       "#{config_key}=",
       "--config-env=#{config_key}=OCTOSTATE_GIT_AUTH_HEADER",
       "-c",
-      "http.#{url}.followredirects=false",
+      "#{follow_redirects_key}=false",
       "-c",
       "credential.helper=",
       "-c",
       "credential.interactive=false",
       "ls-remote",
-      "#{url}/repo.git",
+      repository_url,
       chdir: root
     )
     assert server_thread.join(5), "loopback Git request did not complete"
@@ -663,12 +678,31 @@ class ReleasePleaseAuthTest < Minitest::Test
     headers = request_headers.pop
     refute_nil headers, "Git did not reach the loopback fixture server: #{stderr}"
     assert_includes headers, EXPECTED_HEADER
-    refute_includes headers, "inherited-global"
+    refute_includes headers, "inherited-global-root"
+    refute_includes headers, "inherited-global-path"
     refute_includes headers, "inherited-local"
     refute_includes stdout + stderr, TOKEN
     refute_includes stdout + stderr, EXPECTED_HEADER
     assert_equal global_contents, File.read(global)
     assert_equal local_contents, File.read(local)
+
+    stdout, stderr, status = Open3.capture3(
+      {
+        "GIT_CONFIG_GLOBAL" => global,
+        "GIT_CONFIG_SYSTEM" => system,
+        "GIT_CONFIG_COUNT" => "0"
+      },
+      "git",
+      "-c",
+      "#{follow_redirects_key}=false",
+      "config",
+      "--get-urlmatch",
+      "http.followredirects",
+      "#{repository_url}/info/refs",
+      chdir: root
+    )
+    assert_predicate status, :success?, stderr
+    assert_equal "false\n", stdout
   ensure
     server.close if server && !server.closed?
     server_thread&.kill if server_thread&.alive?
