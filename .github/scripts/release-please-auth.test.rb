@@ -549,13 +549,13 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute File.exist?(result.fetch(:release_edit))
 
     release_please = required_step("Run release-please")
-    assert_includes release_please.fetch("if"), "inputs.verify_git_auth != true"
-    assert_includes verifier.fetch("if"), "inputs.verify_git_auth == true"
+    assert_equal "github.event_name != 'workflow_dispatch' || (inputs.release_tag == '' && inputs.verify_git_auth != true)", release_please.fetch("if")
+    assert_equal "github.event_name == 'workflow_dispatch' && inputs.verify_git_auth == true", verifier.fetch("if")
     package_steps = @steps.select do |candidate|
       ["Check out the exact release tag", "Build release artifacts", "Upload and verify release artifacts"].include?(candidate["name"])
     end
     package_steps.each do |candidate|
-      assert_includes candidate.fetch("if"), "steps.release.outputs.should_package == 'true'"
+      assert_equal "steps.release.outputs.should_package == 'true'", candidate.fetch("if")
     end
 
     output = run_step(
