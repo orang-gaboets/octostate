@@ -529,6 +529,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_equal false, input.fetch("default")
 
     validate = required_step("Validate retry inputs")
+    assert_equal "github.event_name == 'workflow_dispatch'", validate.fetch("if")
     assert_operator @steps.index(validate), :<, @steps.index(required_step("Generate GitHub App token"))
     valid = run_step(
       "Validate retry inputs",
