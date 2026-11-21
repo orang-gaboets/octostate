@@ -810,11 +810,11 @@ class ReleasePleaseAuthTest < Minitest::Test
       'local app_token="${release_token-}"',
       'local app_token="${GH_TOKEN-}"'
     )
-    refute_equal original, checkout.fetch("run"), "the source-swap mutation must change the checkout helper"
+    assert(original != checkout.fetch("run"), "source-swap mutation did not change the checkout helper")
 
     diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert_includes diagnostics, "Check out the exact release tag"
-    refute_includes diagnostics, 'local app_token="${GH_TOKEN-}"'
+    assert(diagnostics.include?("Check out the exact release tag"), "expected checkout source mismatch diagnostic")
+    assert(!diagnostics.include?('local app_token="${GH_TOKEN-}"'), "diagnostic echoed the source assignment")
   end
 
   def test_release_git_auth_helper_guard_rejects_single_copy_drift
@@ -823,54 +823,115 @@ class ReleasePleaseAuthTest < Minitest::Test
     verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
     original = verifier.fetch("run")
     verifier["run"] = original.sub("sslVerify=true", "sslVerify=false")
-    refute_equal original, verifier.fetch("run"), "the drift mutation must change one helper"
+    assert(original != verifier.fetch("run"), "drift mutation did not change the verifier helper")
 
     diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert_includes diagnostics, "Verify Release Please Git authentication"
-    refute_includes diagnostics, "sslVerify=false"
-    refute_includes diagnostics, TOKEN
-    refute_includes diagnostics, ENCODED_TOKEN
-    refute_includes diagnostics, EXPECTED_HEADER
+    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected verifier mismatch diagnostic")
+    assert(!diagnostics.include?("sslVerify=false"), "diagnostic echoed modified helper source")
+    assert(!diagnostics.include?(TOKEN), "diagnostic leaked the raw test token")
+    assert(!diagnostics.include?(ENCODED_TOKEN), "diagnostic leaked the encoded test token")
+    assert(!diagnostics.include?(EXPECTED_HEADER), "diagnostic leaked the expected auth header")
   end
 
   def test_release_git_auth_helper_guard_rejects_missing_or_extra_definitions
     missing_workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     missing_steps = missing_workflow.fetch("jobs").fetch("release-please").fetch("steps")
     checkout = missing_steps.find { |candidate| candidate["name"] == "Check out the exact release tag" }
-    checkout["run"] = checkout.fetch("run").sub(
+    original = checkout.fetch("run")
+    checkout["run"] = original.sub(
       /^git_with_release_token\(\) \($/,
       "# helper removed for guard test"
     )
+    assert(original != checkout.fetch("run"), "missing-copy mutation did not change the checkout helper")
     missing_diagnostics = release_git_helper_diagnostics(missing_workflow).join("\n")
-    assert_includes missing_diagnostics, "Check out the exact release tag"
-    refute_includes missing_diagnostics, "git_with_release_token() ("
+    assert(missing_diagnostics.include?("Check out the exact release tag"), "expected missing-helper location diagnostic")
+    assert(!missing_diagnostics.include?("git_with_release_token() ("), "missing-helper diagnostic echoed helper source")
 
     extra_workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     extra_steps = extra_workflow.fetch("jobs").fetch("release-please").fetch("steps")
     verifier = extra_steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    extra_steps << { "name" => "Unexpected helper copy", "run" => verifier.fetch("run") }
+    original_run = verifier.fetch("run")
+    commented_run = original_run.sub(
+      /^git_with_release_token\(\) \($/,
+      "git_with_release_token() ( # unexpected helper copy"
+    )
+    assert(original_run != commented_run, "commented extra-copy mutation did not change the helper declaration")
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: commented_run)
+    assert_predicate status, :success?, "commented helper declaration fixture must parse as Bash"
+    extra_steps << { "name" => "Unexpected helper copy", "run" => commented_run }
     extra_diagnostics = release_git_helper_diagnostics(extra_workflow).join("\n")
-    assert_includes extra_diagnostics, "Unexpected helper copy"
-    refute_includes extra_diagnostics, "git_with_release_token() ("
+    assert(extra_diagnostics.include?("Unexpected helper copy"), "expected unexpected-helper location diagnostic")
+    assert(!extra_diagnostics.include?("git_with_release_token() ("), "extra-helper diagnostic echoed helper source")
+  end
+
+  def test_release_git_auth_helper_guard_rejects_drift_after_nested_subshell
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    step_names = [
+      "Verify Release Please Git authentication",
+      "Check out the exact release tag",
+      "Upload and verify release artifacts"
+    ]
+    step_names.each do |step_name|
+      candidate = steps.find { |item| item["name"] == step_name }
+      original = candidate.fetch("run")
+      nested_probe = "(\n: nested_helper_probe\n)\n# SYNTHETIC_HELPER_SOURCE_MARKER\n"
+      candidate["run"] = original.sub("local auth_url=", "#{nested_probe}local auth_url=")
+      assert(original != candidate.fetch("run"), "nested-subshell fixture did not change #{step_name}")
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: candidate.fetch("run"))
+      assert_predicate status, :success?, "nested-subshell fixture for #{step_name} must parse as Bash"
+    end
+
+    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
+    original = verifier.fetch("run")
+    verifier["run"] = original.sub("sslVerify=true", "sslVerify=false")
+    assert(original != verifier.fetch("run"), "nested-boundary drift mutation did not change the verifier helper")
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected mismatch after nested subshell")
+    assert(!diagnostics.include?("SYNTHETIC_HELPER_SOURCE_MARKER"), "diagnostic leaked synthetic helper source")
+    assert(!diagnostics.include?(TOKEN), "diagnostic leaked the raw test token")
+    assert(!diagnostics.include?(ENCODED_TOKEN), "diagnostic leaked the encoded test token")
+  end
+
+  def test_release_git_auth_helper_guard_requires_release_please_job
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    jobs = workflow.fetch("jobs")
+    release_steps = jobs.fetch("release-please").fetch("steps")
+    verifier_index = release_steps.index do |candidate|
+      candidate["name"] == "Verify Release Please Git authentication"
+    end
+    verifier = release_steps.delete_at(verifier_index)
+    jobs["verification-copy"] = { "steps" => [verifier] }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("release-please"), "expected missing release job location diagnostic")
+    assert(diagnostics.include?("verification-copy"), "expected unexpected job location diagnostic")
+    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected verifier step location diagnostic")
+    assert(!diagnostics.include?("git_with_release_token() ("), "job-location diagnostic echoed helper source")
   end
 
   private
 
   def release_git_helper_diagnostics(workflow)
     expected_sources = {
-      "Verify Release Please Git authentication" => "GH_TOKEN",
-      "Check out the exact release tag" => "release_token",
-      "Upload and verify release artifacts" => "GH_TOKEN"
+      ["release-please", "Verify Release Please Git authentication"] => "GH_TOKEN",
+      ["release-please", "Check out the exact release tag"] => "release_token",
+      ["release-please", "Upload and verify release artifacts"] => "GH_TOKEN"
     }
     diagnostics = []
-    definitions = workflow.fetch("jobs", {}).flat_map do |_job_name, job|
+    definitions = workflow.fetch("jobs", {}).flat_map do |job_name, job|
+      next [] unless job.is_a?(Hash)
+
       job.fetch("steps", []).flat_map do |candidate|
+        next [] unless candidate.is_a?(Hash)
+
         run = candidate["run"]
         next [] unless run.is_a?(String)
 
         step_name = candidate["name"] || "(unnamed)"
         release_git_helper_definitions(run).map do |definition|
-          definition.merge(step_name: step_name)
+          definition.merge(job_name: job_name.to_s, step_name: step_name)
         end
       end
     end
@@ -879,50 +940,60 @@ class ReleasePleaseAuthTest < Minitest::Test
       diagnostics << "expected #{expected_sources.length} git_with_release_token definitions across workflow run blocks, found #{definitions.length}"
     end
 
-    expected_sources.each_key do |step_name|
-      found = definitions.count { |definition| definition.fetch(:step_name) == step_name }
+    expected_sources.each_key do |job_name, step_name|
+      found = definitions.count do |definition|
+        definition.fetch(:job_name) == job_name && definition.fetch(:step_name) == step_name
+      end
       if found != 1
-        diagnostics << "expected exactly one git_with_release_token definition in step '#{step_name}', found #{found}"
+        diagnostics << "expected exactly one git_with_release_token definition in job '#{job_name}', step '#{step_name}', found #{found}"
       end
     end
 
     definitions.each do |definition|
+      job_name = definition.fetch(:job_name)
       step_name = definition.fetch(:step_name)
-      unless expected_sources.key?(step_name)
-        diagnostics << "unexpected git_with_release_token definition in step '#{step_name}'"
+      location = [job_name, step_name]
+      unless expected_sources.key?(location)
+        diagnostics << "unexpected git_with_release_token definition in job '#{job_name}', step '#{step_name}'"
+      end
+      unless definition.fetch(:supported)
+        diagnostics << "unsupported git_with_release_token declaration in job '#{job_name}', step '#{step_name}'"
       end
       unless definition.fetch(:complete)
-        diagnostics << "git_with_release_token definition in step '#{step_name}' is missing its standalone closing delimiter"
+        diagnostics << "could not find the complete git_with_release_token definition in job '#{job_name}', step '#{step_name}'"
       end
     end
 
     normalized = {}
-    expected_sources.each do |step_name, source|
-      matches = definitions.select { |definition| definition.fetch(:step_name) == step_name }
-      next unless matches.one? && matches.first.fetch(:complete)
+    expected_sources.each do |location, source|
+      job_name, step_name = location
+      matches = definitions.select do |definition|
+        definition.fetch(:job_name) == job_name && definition.fetch(:step_name) == step_name
+      end
+      next unless matches.one? && matches.first.fetch(:complete) && matches.first.fetch(:supported)
 
       assignment = /\A([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"(\r?\n?)\z/
       body = matches.first.fetch(:body)
       lines = body.lines
       unless lines.count { |line| assignment.match?(line) } == 1
-        diagnostics << "expected exactly one credential-source assignment for step '#{step_name}'"
+        diagnostics << "expected exactly one credential-source assignment in job '#{job_name}', step '#{step_name}'"
         next
       end
 
-      normalized[step_name] = lines.map do |line|
+      normalized[location] = lines.map do |line|
         match = assignment.match(line)
         match ? "#{match[1]}local app_token=\"${RELEASE_GIT_AUTH_TOKEN-}\"#{match[2]}" : line
       end.join
     end
 
-    baseline_name = expected_sources.keys.first
-    baseline = normalized[baseline_name]
+    baseline_location = expected_sources.keys.first
+    baseline = normalized[baseline_location]
     if baseline
-      expected_sources.keys.drop(1).each do |step_name|
-        next unless normalized.key?(step_name)
-        next if normalized.fetch(step_name) == baseline
+      expected_sources.keys.drop(1).each do |location|
+        next unless normalized.key?(location)
+        next if normalized.fetch(location) == baseline
 
-        diagnostics << "git_with_release_token differs between steps '#{baseline_name}' and '#{step_name}' after credential-source normalization"
+        diagnostics << "git_with_release_token differs between job '#{baseline_location[0]}', step '#{baseline_location[1]}' and job '#{location[0]}', step '#{location[1]}' after credential-source normalization"
       end
     end
 
@@ -932,31 +1003,37 @@ class ReleasePleaseAuthTest < Minitest::Test
   def release_git_helper_definitions(script)
     lines = script.lines
     definitions = []
-    index = 0
-    declaration_pattern = /\A([ \t]*)git_with_release_token\(\)[ \t]+\([ \t]*\r?\n?\z/
+    candidate_pattern = /\A[ \t]*(?:function[ \t]+)?git_with_release_token\b(?:[ \t]*\([ \t]*\))?[ \t]*(?:\(|\{)/
+    supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
+    closing_pattern = /\A[ \t]*\)[ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
 
-    while index < lines.length
-      declaration = declaration_pattern.match(lines[index])
-      unless declaration
-        index += 1
+    lines.each_index do |index|
+      declaration = lines[index]
+      next unless candidate_pattern.match?(declaration)
+
+      supported = supported_pattern.match?(declaration)
+      unless supported
+        definitions << { body: declaration, complete: false, supported: false }
         next
       end
 
-      indentation = Regexp.escape(declaration[1])
-      closing_pattern = /\A#{indentation}\)[ \t]*\r?\n?\z/
       closing_index = ((index + 1)...lines.length).find do |line_index|
-        closing_pattern.match?(lines[line_index])
+        closing_pattern.match?(lines[line_index]) &&
+          release_git_helper_script_prefix_valid?(lines[0..line_index].join)
       end
 
       if closing_index
-        definitions << { body: lines[index..closing_index].join, complete: true }
-        index = closing_index + 1
+        definitions << { body: lines[index..closing_index].join, complete: true, supported: true }
       else
-        definitions << { body: lines[index..].join, complete: false }
-        index += 1
+        definitions << { body: lines[index..].join, complete: false, supported: true }
       end
     end
 
     definitions
+  end
+
+  def release_git_helper_script_prefix_valid?(script)
+    _stdout, _stderr, status = Open3.capture3({ "BASH_ENV" => nil }, "bash", "-n", stdin_data: script)
+    status.success?
   end
 end
