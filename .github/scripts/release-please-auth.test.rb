@@ -801,6 +801,31 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_empty release_git_helper_diagnostics(@workflow)
   end
 
+  def test_release_git_auth_helper_guard_accepts_equivalent_setup_options
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    step_names = [
+      "Verify Release Please Git authentication",
+      "Check out the exact release tag",
+      "Upload and verify release artifacts"
+    ]
+
+    step_names.each do |step_name|
+      step = steps.find { |candidate| candidate["name"] == step_name }
+      original = step.fetch("run")
+      helper = original[/^git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?\r?\n.*?^\)\n/m]
+      assert(!helper.nil?, "expected helper fixture for #{step_name}")
+      changed_helper = helper.sub("set +x", "set +o xtrace")
+        .sub("set -euo pipefail", "set -o errexit -o nounset -o pipefail")
+      step["run"] = original.sub(helper, changed_helper)
+      assert(original != step.fetch("run"), "equivalent setup fixture did not change #{step_name}")
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
+      assert_predicate status, :success?, "equivalent setup fixture for #{step_name} must parse as Bash"
+    end
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
   def test_release_git_auth_helper_guard_rejects_wrong_step_token_source
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1305,10 +1330,12 @@ class ReleasePleaseAuthTest < Minitest::Test
       body_commands = code_lines.each_with_index.reject do |line, _index|
         line.match?(/\A[ \t]*(?:\r?\n)?\z/)
       end.drop(1).take(3)
+      disable_xtrace_command = /\A[ \t]*set[ \t]+(?:\+x|\+o[ \t]+xtrace)[ \t]*\r?\n?\z/
+      strict_mode_command = /\A[ \t]*set[ \t]+(?:-euo[ \t]+pipefail|-o[ \t]+errexit[ \t]+-o[ \t]+nounset[ \t]+-o[ \t]+pipefail)[ \t]*\r?\n?\z/
       source_assignment_is_active = assignment_lines.one? &&
         body_commands.length == 3 &&
-        body_commands[0][0].match?(/\A[ \t]*set \+x[ \t]*\r?\n?\z/) &&
-        body_commands[1][0].match?(/\A[ \t]*set -euo pipefail[ \t]*\r?\n?\z/) &&
+        body_commands[0][0].match?(disable_xtrace_command) &&
+        body_commands[1][0].match?(strict_mode_command) &&
         body_commands[2][1] == assignment_lines.first
       unless source_assignment_is_active
         diagnostics << "expected exactly one credential-source assignment in job '#{job_name}', step '#{step_name}'"
