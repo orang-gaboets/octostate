@@ -112,3 +112,19 @@ func TestWriteContentsReturnsErrShortWrite(t *testing.T) {
 		t.Fatalf("writeContents error = %v, want io.ErrShortWrite", err)
 	}
 }
+
+type partialErrorWriter struct {
+	err error
+}
+
+func (writer partialErrorWriter) Write(contents []byte) (int, error) {
+	return len(contents) - 1, writer.err
+}
+
+func TestWriteContentsReturnsWriterError(t *testing.T) {
+	wantErr := errors.New("write failed")
+	err := writeContents(partialErrorWriter{err: wantErr}, []byte("payload"))
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("writeContents error = %v, want %v", err, wantErr)
+	}
+}
