@@ -998,6 +998,41 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(diagnostics.include?("Helper after arithmetic shift"), "expected helper after arithmetic shift diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_rejects_declaration_after_continued_and
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "true && \\\ngit_with_release_token() { :; }\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "continued-command declaration fixture must parse as Bash"
+    steps << { "name" => "Helper after continued &&", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Helper after continued &&"), "expected continued helper diagnostic")
+  end
+
+  def test_release_git_auth_helper_guard_ignores_function_words_in_arguments
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "printf '%s\\n' if function git_with_release_token\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "function-word argument fixture must parse as Bash"
+    steps << { "name" => "Function words as arguments", "run" => run }
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
+  def test_release_git_auth_helper_guard_rejects_declaration_after_multiline_arithmetic_shift
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "(( value =\n  8 << 2\n))\ngit_with_release_token() { :; }\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "multiline arithmetic fixture must parse as Bash"
+    steps << { "name" => "Helper after multiline arithmetic shift", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Helper after multiline arithmetic shift"), "expected helper after arithmetic diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_rejects_definition_text_inside_heredoc
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1128,7 +1163,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     helper_name = Regexp.escape("git_with_release_token")
     # shortcut: recognizes common command boundaries; use a Bash AST if run syntax grows beyond these forms.
     candidate_pattern = %r{
-      (?:\A[ \t]*|(?:&&|\|\||[;|&(){}])[ \t]*|\b(?:if|then|do|else|elif|while|until)\b[ \t]+)
+      (?:\A[ \t]*|(?:&&|\|\||[;|&(){}])[ \t]*|(?:\A|[;|&(){}])[ \t]*(?:if|then|do|else|elif|while|until)\b[ \t]+)
       (?:function[ \t]+#{helper_name}(?=$|[ \t(])|#{helper_name}[ \t]*\([ \t]*\))
     }x
     supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
@@ -1164,6 +1199,8 @@ class ReleasePleaseAuthTest < Minitest::Test
     heredocs = []
     quote = nil
     continued = false
+    continued_command_boundary = false
+    arithmetic = false
     script.lines.map do |line|
       if heredocs.any?
         delimiter, strip_tabs = heredocs.first
@@ -1173,16 +1210,17 @@ class ReleasePleaseAuthTest < Minitest::Test
         continued = false
         line.gsub(/[^\r\n]/, " ")
       else
-        code_line, found_heredocs, quote, next_continued = release_git_helper_mask_non_code(line, quote)
+        code_line, found_heredocs, quote, arithmetic, next_continued = release_git_helper_mask_non_code(line, quote, arithmetic)
         heredocs.concat(found_heredocs)
-        code_line = "x#{code_line}" if continued
+        code_line = "x#{code_line}" if continued && !continued_command_boundary
         continued = next_continued
+        continued_command_boundary = continued && code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/)
         code_line
       end
     end
   end
 
-  def release_git_helper_mask_non_code(line, quote)
+  def release_git_helper_mask_non_code(line, quote, arithmetic)
     code_line = line.dup
     heredocs = []
     continued = false
@@ -1219,9 +1257,15 @@ class ReleasePleaseAuthTest < Minitest::Test
       elsif character == "#" && (index.zero? || line[index - 1].match?(/[ \t;|&(){}]/))
         code_line[index..] = code_line[index..].gsub(/[^\r\n]/, " ")
         break
+      elsif line[index, 2] == "(("
+        arithmetic = true
+        index += 1
+      elsif line[index, 2] == "))"
+        arithmetic = false
+        index += 1
       elsif line[index, 3] == "<<<"
         index += 2
-      elsif line[index, 2] == "<<" && !release_git_helper_inside_arithmetic?(code_line, index)
+      elsif line[index, 2] == "<<" && !arithmetic
         heredoc, ending_index = release_git_helper_heredoc_delimiter(line, index + 2)
         if heredoc
           heredocs << heredoc
@@ -1232,14 +1276,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       index += 1
     end
 
-    [code_line, heredocs, quote, continued]
-  end
-
-  def release_git_helper_inside_arithmetic?(line, index)
-    prefix = line[0...index]
-    opening = prefix.rindex("((")
-    closing = prefix.rindex("))")
-    opening && (!closing || opening > closing)
+    [code_line, heredocs, quote, arithmetic, continued]
   end
 
   def release_git_helper_heredoc_delimiter(line, index)
