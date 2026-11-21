@@ -817,6 +817,34 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(!diagnostics.include?('local app_token="${GH_TOKEN-}"'), "diagnostic echoed the source assignment")
   end
 
+  def test_release_git_auth_helper_guard_rejects_credential_source_text_inside_heredoc
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    expected_sources = {
+      "Verify Release Please Git authentication" => "GH_TOKEN",
+      "Check out the exact release tag" => "release_token",
+      "Upload and verify release artifacts" => "GH_TOKEN"
+    }
+
+    expected_sources.each do |step_name, source|
+      step = steps.find { |candidate| candidate["name"] == step_name }
+      expected_assignment = /^([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"$/
+      original = step.fetch("run")
+      step["run"] = original.sub(expected_assignment) do
+        indent = Regexp.last_match(1)
+        "#{indent}: <<'EXPECTED_SOURCE'\n#{indent}local app_token=\"${#{source}-}\"\nEXPECTED_SOURCE\n#{indent}local app_token=\"${fixture_token-}\""
+      end
+      assert(original != step.fetch("run"), "heredoc source fixture did not change #{step_name}")
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
+      assert_predicate status, :success?, "heredoc source fixture for #{step_name} must parse as Bash"
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    expected_sources.each_key do |step_name|
+      assert(diagnostics.include?(step_name), "expected credential-source diagnostic for #{step_name}")
+    end
+  end
+
   def test_release_git_auth_helper_guard_rejects_single_copy_drift
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1131,14 +1159,21 @@ class ReleasePleaseAuthTest < Minitest::Test
       assignment = /\A([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"(\r?\n?)\z/
       body = matches.first.fetch(:body)
       lines = body.lines
-      unless lines.count { |line| assignment.match?(line) } == 1
+      code_lines = release_git_helper_code_lines(body)
+      assignment_lines = lines.each_index.select do |index|
+        assignment.match?(lines[index]) && code_lines[index].match?(/\A[ \t]*local[ \t]+app_token[ \t]*=/)
+      end
+      unless assignment_lines.one?
         diagnostics << "expected exactly one credential-source assignment in job '#{job_name}', step '#{step_name}'"
         next
       end
 
-      normalized[location] = lines.map do |line|
+      assignment_line = assignment_lines.first
+      normalized[location] = lines.each_with_index.map do |line, index|
+        next line unless index == assignment_line
+
         match = assignment.match(line)
-        match ? "#{match[1]}local app_token=\"${RELEASE_GIT_AUTH_TOKEN-}\"#{match[2]}" : line
+        "#{match[1]}local app_token=\"${RELEASE_GIT_AUTH_TOKEN-}\"#{match[2]}"
       end.join
     end
 
