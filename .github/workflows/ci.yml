@@ -53,6 +53,9 @@ jobs:
       - name: Test workflow Action pin checker
         run: ruby .github/scripts/check-action-pins.test.rb
 
+      - name: Test Release Please Git authentication workflow
+        run: ruby .github/scripts/release-please-auth.test.rb
+
       - name: Test reusable config review
         env:
           CONFIG_REVIEW_REAL_SOURCE_SMOKE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
