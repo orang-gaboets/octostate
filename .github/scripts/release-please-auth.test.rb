@@ -1038,6 +1038,42 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(diagnostics.include?("Helper after continued &&"), "expected continued helper diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_rejects_signature_split_by_continuation
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "git_with_release_token \\\n() (\n  : split_continuation_probe\n)\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "continued signature fixture must parse as Bash"
+    steps << { "name" => "Split continued helper", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Split continued helper"), "expected split continued-helper diagnostic")
+  end
+
+  def test_release_git_auth_helper_guard_rejects_declaration_after_continued_then
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "if true; then \\\ngit_with_release_token() { :; }\nfi\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "continued-then fixture must parse as Bash"
+    steps << { "name" => "Helper after continued then", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Helper after continued then"), "expected continued-then helper diagnostic")
+  end
+
+  def test_release_git_auth_helper_guard_rejects_function_keyword_split_by_continuation
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "function \\\ngit_with_release_token() { :; }\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "continued function-keyword fixture must parse as Bash"
+    steps << { "name" => "Continued function keyword", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Continued function keyword"), "expected continued function-keyword diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_ignores_function_words_in_arguments
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1225,6 +1261,9 @@ class ReleasePleaseAuthTest < Minitest::Test
     lines.each_index do |index|
       declaration = lines[index]
       candidates = code_lines[index].to_enum(:scan, candidate_pattern).map { Regexp.last_match[0] }
+      if candidates.empty? && release_git_helper_signature_continues?(lines, code_lines, index, candidate_pattern)
+        candidates << "continued function signature"
+      end
       candidates.each do
         supported = supported_pattern.match?(declaration)
         unless supported
@@ -1248,6 +1287,17 @@ class ReleasePleaseAuthTest < Minitest::Test
     definitions
   end
 
+  def release_git_helper_signature_continues?(lines, code_lines, index, candidate_pattern)
+    return false unless index + 1 < lines.length
+
+    trailing_backslashes = lines[index][/\\+\r?\n\z/]
+    return false unless trailing_backslashes && trailing_backslashes.count("\\").odd?
+    return false unless lines[index + 1].match?(/\A[ \t]*\([ \t]*\)/)
+
+    continued_line = code_lines[index].sub(/\r?\n\z/, "").rstrip + "()"
+    candidate_pattern.match?(continued_line)
+  end
+
   def release_git_helper_code_lines(script)
     heredocs = []
     quote = nil
@@ -1267,7 +1317,11 @@ class ReleasePleaseAuthTest < Minitest::Test
         heredocs.concat(found_heredocs)
         code_line = "x#{code_line}" if continued && !continued_command_boundary
         continued = next_continued
-        continued_command_boundary = continued && code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/)
+        continued_command_boundary = continued && (
+          code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
+            code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
+            code_line.rstrip.match?(/\A[ \t]*function\z/)
+        )
         code_line
       end
     end
