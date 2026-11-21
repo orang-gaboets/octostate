@@ -1142,6 +1142,23 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(diagnostics.include?("Function after continued &&"), "expected continued-and function diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_ignores_quoted_continuation_arguments
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
+    original = verifier.fetch("run")
+    quoted_call = <<~'BASH'
+      git_with_release_token '\
+      ()'
+    BASH
+    verifier["run"] = "#{original}\n#{quoted_call}"
+    assert(original != verifier.fetch("run"), "quoted continuation fixture did not change the verifier script")
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: verifier.fetch("run"))
+    assert_predicate status, :success?, "quoted continuation fixture must parse as Bash"
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
   def test_release_git_auth_helper_guard_ignores_function_words_in_arguments
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1323,7 +1340,7 @@ class ReleasePleaseAuthTest < Minitest::Test
 
   def release_git_helper_definitions(script)
     lines = script.lines
-    code_lines = release_git_helper_code_lines(script)
+    code_lines, continued_lines = release_git_helper_code_lines(script, with_continuations: true)
     definitions = []
     helper_name = Regexp.escape("git_with_release_token")
     # shortcut: recognizes common command boundaries; use a Bash AST if run syntax grows beyond these forms.
@@ -1337,7 +1354,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     lines.each_index do |index|
       declaration = lines[index]
       candidates = code_lines[index].to_enum(:scan, candidate_pattern).map { Regexp.last_match[0] }
-      if candidates.empty? && release_git_helper_signature_continues?(lines, code_lines, index, candidate_pattern)
+      if candidates.empty? && release_git_helper_signature_continues?(lines, code_lines, continued_lines, index, candidate_pattern)
         candidates << "continued function signature"
       end
       candidates.each do
@@ -1363,36 +1380,37 @@ class ReleasePleaseAuthTest < Minitest::Test
     definitions
   end
 
-  def release_git_helper_signature_continues?(lines, code_lines, index, candidate_pattern)
+  def release_git_helper_signature_continues?(lines, code_lines, continued_lines, index, candidate_pattern)
     return false unless index + 1 < lines.length
-
-    trailing_backslashes = lines[index][/\\+\r?\n\z/]
-    return false unless trailing_backslashes && trailing_backslashes.count("\\").odd?
+    return false unless continued_lines[index]
     return false unless lines[index + 1].match?(/\A[ \t]*\([ \t]*\)/)
 
     continued_line = code_lines[index].sub(/\r?\n\z/, "").rstrip + "()"
     candidate_pattern.match?(continued_line)
   end
 
-  def release_git_helper_code_lines(script)
+  def release_git_helper_code_lines(script, with_continuations: false)
     heredocs = []
     quote = nil
     continued = false
     continued_command_boundary = false
     arithmetic = false
-    script.lines.map do |line|
+    continuation_lines = []
+    code_lines = script.lines.map do |line|
       if heredocs.any?
         delimiter, strip_tabs = heredocs.first
         terminator = line.chomp
         terminator = terminator.sub(/\A\t*/, "") if strip_tabs
         heredocs.shift if terminator == delimiter
         continued = false
+        continuation_lines << false
         line.gsub(/[^\r\n]/, " ")
       else
         code_line, found_heredocs, quote, arithmetic, next_continued = release_git_helper_mask_non_code(line, quote, arithmetic)
         heredocs.concat(found_heredocs)
         code_line = "x#{code_line}" if continued && !continued_command_boundary
         continued = next_continued
+        continuation_lines << next_continued
         continued_command_boundary = continued && (
           code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
             code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
@@ -1401,6 +1419,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         code_line
       end
     end
+    with_continuations ? [code_lines, continuation_lines] : code_lines
   end
 
   def release_git_helper_mask_non_code(line, quote, arithmetic)
