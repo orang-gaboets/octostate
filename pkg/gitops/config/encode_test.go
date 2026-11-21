@@ -1,10 +1,15 @@
 package config
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestEncodeYAMLMinimal(t *testing.T) {
@@ -53,6 +58,288 @@ func TestEncodeYAMLRejectsOutputAboveSupportedLimit(t *testing.T) {
 	if !strings.Contains(err.Error(), "16 MiB") {
 		t.Fatalf("EncodeYAML error does not identify the supported size limit: %v", err)
 	}
+}
+
+func TestEncodeYAMLEnforcesOutputLimitAtByteBoundary(t *testing.T) {
+	baseline, err := EncodeYAML(OrganizationConfig{Organization: "x"})
+	if err != nil {
+		t.Fatalf("encode baseline: %v", err)
+	}
+	fixedBytes := int64(len(baseline) - len("x"))
+
+	for _, test := range []struct {
+		name     string
+		wantSize int64
+		wantErr  bool
+	}{
+		{name: "exact limit accepted", wantSize: maxDesiredStateYAMLSize},
+		{name: "one byte over rejected", wantSize: maxDesiredStateYAMLSize + 1, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			organization := strings.Repeat("x", int(test.wantSize-fixedBytes))
+			got, err := EncodeYAML(OrganizationConfig{Organization: organization})
+			if test.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "16 MiB") {
+					t.Fatalf("EncodeYAML error = %v, want 16 MiB limit", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("EncodeYAML rejected output at the limit: %v", err)
+			}
+			if int64(len(got)) != test.wantSize {
+				t.Fatalf("encoded size = %d, want %d", len(got), test.wantSize)
+			}
+		})
+	}
+}
+
+func TestEncodeYAMLReportsSupportedSizeWhenDocumentOverflowsAfterScalarEncoding(t *testing.T) {
+	cfg := OrganizationConfig{Organization: strings.Repeat("x", int(maxDesiredStateYAMLSize)-40)}
+	_, err := EncodeYAML(cfg)
+	if err == nil || !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("EncodeYAML error = %v, want supported 16 MiB size limit", err)
+	}
+}
+
+func TestEncodeYAMLRejectsOversizedScalarWithoutLargeSerializationAllocation(t *testing.T) {
+	oversized := strings.Repeat("x", int(maxDesiredStateYAMLSize)+1)
+	cfg := OrganizationConfig{Organization: oversized}
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := EncodeYAML(cfg)
+	runtime.ReadMemStats(&after)
+
+	if err == nil || !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("EncodeYAML error = %v, want 16 MiB output limit", err)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 8<<20 {
+		t.Fatalf("EncodeYAML allocated %d bytes for a scalar rejected by the output cap, want under 8 MiB", allocated)
+	}
+}
+
+func TestEncodeYAMLMatchesLegacyBytesForScalarEdgeValues(t *testing.T) {
+	cfg := OrganizationConfig{
+		Organization: "  123: value  ",
+		Members: []OrganizationMemberSpec{{
+			Username: " true ",
+			Role:     "null",
+		}},
+		Invites: []InviteSpec{{
+			Username:  optionalString("- leading"),
+			Email:     optionalString("  mail@example.test  "),
+			UserID:    optionalInt64(7),
+			Role:      " direct_member ",
+			TeamSlugs: []string{"?", "[flow]", "<&>", "line one\nline two"},
+		}},
+		Repositories: []RepositorySpec{{
+			Owner:      "other-owner",
+			Name:       " null ",
+			Visibility: " private ",
+			Template: TemplateSpec{
+				Owner:              " template-owner ",
+				Name:               " yes ",
+				IncludeAllBranches: true,
+			},
+			Description: "first line\nsecond line\n",
+			Homepage:    "https://example.test/<>&",
+			Topics:      []string{"true", "no", "12", `"quoted"`, "\tleading-tab"},
+		}},
+		Teams: []TeamSpec{{
+			Slug:        "platform",
+			Name:        "Platform",
+			Description: "description\nwith newline",
+			Privacy:     "closed",
+			ParentSlug:  "1-parent",
+			Members:     []TeamMemberSpec{{Username: "alice", Role: "maintainer"}},
+			Repositories: []TeamRepositorySpec{{
+				Owner:      "external-owner",
+				Name:       "repository",
+				Permission: "push",
+			}},
+		}},
+	}
+	cfg.Repositories[0].SetManagedDescription(cfg.Repositories[0].Description)
+	cfg.Repositories[0].SetManagedHomepage(cfg.Repositories[0].Homepage)
+
+	want, err := legacyEncodeYAMLForTest(cfg)
+	if err != nil {
+		t.Fatalf("legacy encoder returned an error: %v", err)
+	}
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("EncodeYAML returned an error: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("EncodeYAML changed canonical bytes:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+
+	var roundTrip OrganizationConfig
+	decoder := yaml.NewDecoder(bytes.NewReader(got))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&roundTrip); err != nil {
+		t.Fatalf("decode encoded edge-value config: %v", err)
+	}
+	normalized := NormalizeDesiredState(cfg)
+	if roundTrip.Repositories[0].Description != normalized.Repositories[0].Description || roundTrip.Repositories[0].Homepage != normalized.Repositories[0].Homepage {
+		t.Fatalf("round trip changed managed repository strings: %#v", roundTrip.Repositories[0])
+	}
+
+	legacyDocument := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{encodeOrganizationConfig(normalized)}}
+	nodeCount := countYAMLNodesForTest(legacyDocument)
+	if err := preflightDesiredYAML(normalized, nodeCount, maxDesiredStateYAMLSize); err != nil {
+		t.Fatalf("preflight rejected exactly %d YAML nodes: %v", nodeCount, err)
+	}
+	if err := preflightDesiredYAML(normalized, nodeCount-1, maxDesiredStateYAMLSize); err == nil || !strings.Contains(err.Error(), "YAML node limit") {
+		t.Fatalf("preflight error at %d nodes = %v, want node limit", nodeCount-1, err)
+	}
+}
+
+func TestEncodeYAMLPreservesCanonicalBytesForUnicodeLineSeparators(t *testing.T) {
+	cfg := OrganizationConfig{
+		Organization: "acme",
+		Repositories: []RepositorySpec{{Name: "repo", Visibility: "private", Description: "a\nb\u2028c"}},
+	}
+	cfg.Repositories[0].SetManagedDescription(cfg.Repositories[0].Description)
+
+	want, err := legacyEncodeYAMLForTest(cfg)
+	if err != nil {
+		t.Fatalf("legacy encoder returned an error: %v", err)
+	}
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("EncodeYAML returned an error: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("EncodeYAML changed canonical bytes for a Unicode line separator:\ngot:\n%s\nwant:\n%s", got, want)
+	}
+
+	roundTripped := loadEncodedConfig(t, got)
+	if gotDescription := roundTripped.Repositories[0].Description; gotDescription != cfg.Repositories[0].Description {
+		t.Fatalf("YAML round trip changed description: got %q, want %q", gotDescription, cfg.Repositories[0].Description)
+	}
+}
+
+func TestYAMLIndentWriterPreservesIndentAfterSplitLineBreaks(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		lineBreak string
+	}{
+		{name: "CR", lineBreak: "\r"},
+		{name: "LF", lineBreak: "\n"},
+		{name: "CRLF", lineBreak: "\r\n"},
+		{name: "NEL", lineBreak: "\u0085"},
+		{name: "line separator", lineBreak: "\u2028"},
+		{name: "paragraph separator", lineBreak: "\u2029"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			writer := yamlIndentWriter{writer: &output, indent: []byte("  "), lineStart: true}
+			input := []byte("a" + test.lineBreak + "b")
+			for _, value := range input {
+				if n, err := writer.Write([]byte{value}); err != nil || n != 1 {
+					t.Fatalf("write byte %#x: n=%d err=%v", value, n, err)
+				}
+			}
+			want := "  a" + test.lineBreak + "  b"
+			if output.String() != want {
+				t.Fatalf("indented output = %q, want %q", output.String(), want)
+			}
+		})
+	}
+}
+
+func TestEncodeYAMLMatchesLegacyBytesAcrossBoundedFragments(t *testing.T) {
+	cfg := OrganizationConfig{Organization: "acme", Members: make([]OrganizationMemberSpec, 500)}
+	for i := range cfg.Members {
+		cfg.Members[i] = OrganizationMemberSpec{Username: fmt.Sprintf("user-%04d", i), Role: "member"}
+	}
+	cfg.Members[408].Username = "line one\nline two: [escaped] &"
+	cfg.Members[409].Username = "unicode ☃: \"quoted\""
+	cfg.Invites = []InviteSpec{{Username: nullOptionalString(), Email: optionalString("invite\nline: [escaped]"), Role: "direct_member", TeamSlugs: make([]string, 2_300)}}
+	for i := range cfg.Invites[0].TeamSlugs {
+		cfg.Invites[0].TeamSlugs[i] = fmt.Sprintf("team-%04d", i)
+	}
+	cfg.Invites[0].TeamSlugs[2046] = "line one\nline two: [escaped]"
+	cfg.Invites[0].TeamSlugs[2047] = "unicode ☃: \"quoted\""
+	cfg.Repositories = make([]RepositorySpec, 450)
+	for i := range cfg.Repositories {
+		cfg.Repositories[i] = RepositorySpec{Name: fmt.Sprintf("repo-%04d", i), Visibility: "private", Description: "generated"}
+	}
+	cfg.Repositories[0].Topics = make([]string, 2_200)
+	cfg.Repositories[0].description = nullOptionalString()
+	cfg.Repositories[0].SetManagedHomepage("homepage\nline: [escaped]")
+	for i := range cfg.Repositories[0].Topics {
+		cfg.Repositories[0].Topics[i] = fmt.Sprintf("topic-%04d", i)
+	}
+	cfg.Repositories[0].Topics[2046] = "line one\nline two: [escaped]"
+	cfg.Repositories[0].Topics[2047] = "unicode ☃: \"quoted\""
+	cfg.Teams = []TeamSpec{{
+		Slug: "platform", Name: "Platform", Privacy: "closed",
+		Members: make([]TeamMemberSpec, 500), Repositories: make([]TeamRepositorySpec, 500),
+	}}
+	for i := range cfg.Teams[0].Members {
+		cfg.Teams[0].Members[i] = TeamMemberSpec{Username: fmt.Sprintf("user-%04d", i), Role: "member"}
+	}
+	for i := range cfg.Teams[0].Repositories {
+		cfg.Teams[0].Repositories[i] = TeamRepositorySpec{Name: fmt.Sprintf("repo-%04d", i), Permission: "push"}
+	}
+
+	want, err := legacyEncodeYAMLForTest(cfg)
+	if err != nil {
+		t.Fatalf("legacy encoder returned an error: %v", err)
+	}
+	got, err := EncodeYAML(cfg)
+	if err != nil {
+		t.Fatalf("EncodeYAML returned an error: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("chunked encoder changed canonical YAML bytes (got %d, want %d bytes)", len(got), len(want))
+	}
+	roundTripped := loadEncodedConfig(t, got)
+	if roundTripped.Members[408].Username != cfg.Members[408].Username || roundTripped.Members[409].Username != cfg.Members[409].Username {
+		t.Fatalf("YAML round trip changed member values across a fragment boundary: %#v", roundTripped.Members[408:410])
+	}
+	if !roundTripped.Invites[0].Username.Present || !roundTripped.Invites[0].Username.Null || roundTripped.Invites[0].Email.Value != cfg.Invites[0].Email.Value {
+		t.Fatalf("YAML round trip changed invite optional values: %#v", roundTripped.Invites[0])
+	}
+	if !roundTripped.Repositories[0].DescriptionOption().Null || roundTripped.Repositories[0].HomepageOption().Value != cfg.Repositories[0].HomepageOption().Value {
+		t.Fatalf("YAML round trip changed repository optional values: description=%#v homepage=%#v", roundTripped.Repositories[0].DescriptionOption(), roundTripped.Repositories[0].HomepageOption())
+	}
+	if roundTripped.Invites[0].TeamSlugs[2046] != cfg.Invites[0].TeamSlugs[2046] || roundTripped.Invites[0].TeamSlugs[2047] != cfg.Invites[0].TeamSlugs[2047] {
+		t.Fatalf("YAML round trip changed invite values across a nested fragment boundary: %#v", roundTripped.Invites[0].TeamSlugs[2046:2048])
+	}
+	if roundTripped.Repositories[0].Topics[2046] != cfg.Repositories[0].Topics[2046] || roundTripped.Repositories[0].Topics[2047] != cfg.Repositories[0].Topics[2047] {
+		t.Fatalf("YAML round trip changed topic values across a nested fragment boundary: %#v", roundTripped.Repositories[0].Topics[2046:2048])
+	}
+}
+
+func legacyEncodeYAMLForTest(cfg OrganizationConfig) ([]byte, error) {
+	legacyDocument := &yaml.Node{
+		Kind: yaml.DocumentNode,
+		Content: []*yaml.Node{
+			encodeOrganizationConfig(NormalizeDesiredState(cfg)),
+		},
+	}
+	var output bytes.Buffer
+	encoder := yaml.NewEncoder(&output)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(legacyDocument); err != nil {
+		return nil, err
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, err
+	}
+	return output.Bytes(), nil
+}
+
+func countYAMLNodesForTest(node *yaml.Node) int64 {
+	count := int64(1)
+	for _, child := range node.Content {
+		count += countYAMLNodesForTest(child)
+	}
+	return count
 }
 
 func TestEncodeYAMLRejectsOutputAboveStructuralBudgets(t *testing.T) {

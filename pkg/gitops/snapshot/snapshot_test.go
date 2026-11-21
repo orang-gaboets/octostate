@@ -611,7 +611,9 @@ func TestWriteActualRejectsOversizedOutputWithoutReplacingSnapshot(t *testing.T)
 	}
 
 	_, err := WriteActual(stateDir, ActualSnapshot{
-		Organization: strings.Repeat("x", (128<<20)+1),
+		// Escaping these raw bytes produces more than 128 MiB of JSON while
+		// keeping the source scalar below the preflight size threshold.
+		Organization: strings.Repeat("\x00", (128<<20)/6+1),
 	})
 	if err == nil {
 		t.Fatal("WriteActual persisted output larger than 128 MiB")
@@ -621,6 +623,12 @@ func TestWriteActualRejectsOversizedOutputWithoutReplacingSnapshot(t *testing.T)
 	}
 	if !strings.Contains(err.Error(), path) {
 		t.Fatalf("WriteActual error does not identify the snapshot path %q: %v", path, err)
+	}
+	if !strings.Contains(err.Error(), "encode snapshot: actual-state snapshot exceeds the supported size limit") {
+		t.Fatalf("WriteActual error lost stable encoding context: %v", err)
+	}
+	if strings.Contains(err.Error(), "write temporary file .octostate-") {
+		t.Fatalf("WriteActual exposed the random staging filename in an encoding error: %v", err)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {

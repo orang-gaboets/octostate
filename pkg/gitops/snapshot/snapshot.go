@@ -351,11 +351,14 @@ func WriteActual(stateDir string, snapshot ActualSnapshot) (string, error) {
 	if stateDir == "" {
 		return "", fmt.Errorf("state directory is required")
 	}
+	path := ActualPath(stateDir)
+	if actualSnapshotHasScalarAboveLimit(snapshot, maxActualSnapshotJSONSize) {
+		return "", fmt.Errorf("write snapshot %s: encode snapshot: %w", path, actualSnapshotSizeLimitError(&sizeguard.LimitExceededError{Limit: maxActualSnapshotJSONSize}))
+	}
 	if err := normalizeActualSnapshot(&snapshot); err != nil {
 		return "", fmt.Errorf("normalize snapshot: %w", err)
 	}
 
-	path := ActualPath(stateDir)
 	parent, name, err := openSnapshotParent(path, true)
 	if err != nil {
 		return "", fmt.Errorf("write snapshot %s: %w", path, err)
@@ -382,15 +385,16 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 		return fmt.Errorf("write snapshot %s: inspect destination: %w", path, err)
 	}
 
-	encoded, err := encodeActualSnapshot(snapshot, actualSnapshotJSONLimits())
-	if err != nil {
-		return fmt.Errorf("write snapshot %s: encode snapshot: %w", path, err)
-	}
-
 	// 0600 matches what the previous os.CreateTemp path produced on first
 	// write. The snapshot carries organization member and invitation data,
 	// so first creation must not widen it.
-	if err := filereplace.WriteFileInRoot(parent, name, encoded, 0o600); err != nil {
+	if err := filereplace.WriteFileInRootWith(parent, name, 0o600, func(writer io.Writer) error {
+		return writeActualSnapshotJSON(writer, snapshot, actualSnapshotJSONLimits(), maxActualSnapshotJSONSize)
+	}); err != nil {
+		var encodingErr *snapshotEncodingError
+		if errors.As(err, &encodingErr) {
+			return fmt.Errorf("write snapshot %s: encode snapshot: %w", path, encodingErr.err)
+		}
 		return fmt.Errorf("write snapshot %s: %w", path, err)
 	}
 
@@ -398,20 +402,11 @@ func writeActualSnapshotAt(parent *os.Root, name, path string, snapshot ActualSn
 }
 
 func encodeActualSnapshot(snapshot ActualSnapshot, limits snapshotJSONLimits) ([]byte, error) {
-	encoded, err := json.MarshalIndent(snapshot, "", "  ")
-	if err != nil {
+	var encoded bytes.Buffer
+	if err := writeActualSnapshotJSON(&encoded, snapshot, limits, maxActualSnapshotJSONSize); err != nil {
 		return nil, err
 	}
-	// json.Encoder.Encode terminated the document with a newline; MarshalIndent
-	// does not, so add it back to keep the file byte-identical.
-	encoded = append(encoded, '\n')
-	if err := sizeguard.CheckSize(encoded, maxActualSnapshotJSONSize); err != nil {
-		return nil, actualSnapshotSizeLimitError(err)
-	}
-	if err := validateSnapshotJSONComplexity(encoded, limits); err != nil {
-		return nil, err
-	}
-	return encoded, nil
+	return encoded.Bytes(), nil
 }
 
 func actualSnapshotSizeLimitError(err error) error {

@@ -212,6 +212,50 @@ Run the full test suite:
 go test ./...
 ```
 
+### Generated-output serialization memory observations
+
+The generated YAML and snapshot JSON writers were measured on Go 1.26.11,
+macOS 26.6.2 (build 25G83), Darwin arm64. The same host was recorded as an
+Apple M4 Pro with 24 GiB of memory in the Issue #349 benchmark. The base was
+`b7f53e9f9beefa3f3e0ac7d30544eacb7722ffdc`; the measured implementation
+revision was `a59d9543acdaa27bb9d070045a74ca47b659d7cc`, not the current PR
+head. Two later serializer changes are not represented: `5bf2337` skips
+sorting maps already above the JSON object-entry limit, and `e34a996` preserves
+indentation after YAML line breaks. The measured near-limit and over-limit JSON
+fixtures use an empty ID map and exercise the byte limit via repository
+descriptions, so the JSON change does not affect these measurements. These
+results describe the measured revision and were not rerun on the current head.
+
+Each case used one warm-up and five measured pairs of fresh serial processes,
+with base/final order alternated by pair. The model-only process constructed
+the same fixture and seeded snapshot destination without calling the writer.
+Paired RSS is API-process peak RSS minus its matching model-only peak RSS;
+sampled heap is the maximum API-process heap above retained heap after setup
+and GC; `TotalAlloc` and elapsed time cover the API call. Values below are
+medians with the full five-run range in brackets. The fixtures reproduce the
+published repository counts and exact output sizes from #349, but the original
+#349 harness and complete record layouts were not available in this checkout;
+these are deterministic local reconstructions, not a byte-for-byte rerun of
+that unavailable harness.
+
+| Fixture | Variant | Expected output | Model peak RSS | API peak RSS | Paired RSS increase | Sampled heap increase | `TotalAlloc` | Elapsed |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| YAML, 20,000 repositories | Base | 4,754,668 B | 19.38 [19.28–19.47] MiB | 456.84 [428.39–505.73] MiB | 437.56 [409.02–486.44] MiB | 360.29 [360.28–360.29] MiB | 708.67 [708.66–708.67] MiB | 162.68 [161.62–164.70] ms |
+| YAML, 20,000 repositories | Final | 4,754,668 B | 19.39 [19.30–19.62] MiB | 54.55 [48.95–55.30] MiB | 34.92 [29.56–35.92] MiB | 32.25 [24.41–32.95] MiB | 435.80 [435.79–435.80] MiB | 113.29 [110.31–113.64] ms |
+| JSON, 256 repositories, accepted | Base | 134,217,727 B | 140.78 [140.70–140.84] MiB | 657.41 [656.48–658.12] MiB | 516.56 [515.77–517.42] MiB | 514.45 [514.45–514.45] MiB | 773.56 [773.56–773.56] MiB | 858.04 [852.54–883.08] ms |
+| JSON, 256 repositories, accepted | Final | 134,217,727 B | 140.86 [140.77–140.91] MiB | 141.50 [141.38–141.52] MiB | 0.61 [0.53–0.73] MiB | 0.39 [0.39–0.39] MiB | 0.39 [0.39–0.39] MiB | 345.92 [344.49–360.32] ms |
+| JSON, 256 repositories, rejected | Base | 134,217,729 B | 140.75 [140.67–140.78] MiB | 656.75 [529.05–656.94] MiB | 516.02 [388.36–516.19] MiB | 383.92 [383.91–383.92] MiB | 643.03 [643.03–643.03] MiB | 422.80 [419.45–423.90] ms |
+| JSON, 256 repositories, rejected | Final | 134,217,729 B | 140.83 [140.75–140.98] MiB | 141.59 [141.44–141.69] MiB | 0.62 [0.61–0.94] MiB | 0.40 [0.40–0.40] MiB | 0.40 [0.40–0.40] MiB | 333.41 [332.61–343.82] ms |
+
+The near-limit JSON case succeeded and the over-limit case returned the
+existing 128 MiB error; both implementations preserved the destination on
+rejection. Separate final diagnostics also accepted the 16 MiB-minus-one-byte
+YAML output and rejected the YAML byte, node, and oversized-scalar cases plus
+the JSON object-entry and oversized-scalar cases. The JSON rejection cases
+preserved the seeded destination. The fixture generator, raw process
+measurements, and aggregation data remain in the ignored local `out/` directory
+and are not part of the repository.
+
 ### Structured-input memory observations
 
 The public `config.LoadFile` and `snapshot.ReadActual` paths were measured on
