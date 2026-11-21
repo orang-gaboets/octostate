@@ -1080,6 +1080,27 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(!diagnostics.include?(inline_run.strip), "diagnostic echoed inline helper source")
   end
 
+  def test_release_git_auth_helper_guard_rejects_timed_and_negated_declarations
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    declarations = {
+      "Timed helper" => "time git_with_release_token() (\n  : timed_probe\n)\n",
+      "POSIX-timed helper" => "time -p git_with_release_token() (\n  : posix_timed_probe\n)\n",
+      "Negated helper" => "! git_with_release_token() (\n  : negated_probe\n)\n"
+    }
+
+    declarations.each do |step_name, run|
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+      assert_predicate status, :success?, "prefixed helper fixture must parse as Bash"
+      steps << { "name" => step_name, "run" => run }
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    declarations.each_key do |step_name|
+      assert(diagnostics.include?(step_name), "expected prefixed-helper diagnostic")
+    end
+  end
+
   def test_release_git_auth_helper_guard_ignores_heredoc_text_and_similar_names
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1383,6 +1404,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     # shortcut: recognizes common command boundaries; use a Bash AST if run syntax grows beyond these forms.
     candidate_pattern = %r{
       (?:\A[ \t]*|(?:&&|\|\||[;|&(){}])[ \t]*|(?:\A|[;|&(){}])[ \t]*(?:if|then|do|else|elif|while|until)\b[ \t]+)
+      (?:(?:time(?:[ \t]+-p)?|!)[ \t]+)?
       (?:function[ \t]+#{helper_name}(?=$|[ \t(])|#{helper_name}[ \t]*\([ \t]*\))
     }x
     supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
