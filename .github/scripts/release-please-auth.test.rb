@@ -862,12 +862,12 @@ class ReleasePleaseAuthTest < Minitest::Test
   end
 
   def test_release_git_auth_helper_guard_rejects_missing_or_extra_definitions
-    missing_workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    missing_workflow = workflow_with_commented_git_helper_openers
     missing_steps = missing_workflow.fetch("jobs").fetch("release-please").fetch("steps")
     checkout = missing_steps.find { |candidate| candidate["name"] == "Check out the exact release tag" }
     original = checkout.fetch("run")
     checkout["run"] = original.sub(
-      /^git_with_release_token\(\) \($/,
+      /^[ \t]*git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?$/,
       "# helper removed for guard test"
     )
     assert(original != checkout.fetch("run"), "missing-copy mutation did not change the checkout helper")
@@ -1062,11 +1062,11 @@ class ReleasePleaseAuthTest < Minitest::Test
   end
 
   def test_release_git_auth_helper_guard_rejects_definition_text_inside_heredoc
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    workflow = workflow_with_commented_git_helper_openers
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
     verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
     original = verifier.fetch("run")
-    helper = original[/^git_with_release_token\(\) \(\n.*?^\)\n/m]
+    helper = original[/^git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?\r?\n.*?^\)\n/m]
     assert(!helper.nil?, "expected verifier helper fixture")
     wrapped = ": <<'EXAMPLE'\n#{helper}EXAMPLE\n"
     verifier["run"] = original.sub(helper, wrapped)
@@ -1079,14 +1079,13 @@ class ReleasePleaseAuthTest < Minitest::Test
   end
 
   def test_release_git_auth_helper_guard_accepts_helper_inside_conditional
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    workflow = workflow_with_commented_git_helper_openers
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
     verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
     original = verifier.fetch("run")
     wrapped = original.sub(
-      "git_with_release_token() (\n",
-      "if true; then\ngit_with_release_token() (\n"
-    ).sub(/^\)\n/m, ")\nfi\n")
+      /^git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?\r?\n/
+    ) { |declaration| "if true; then\n#{declaration}" }.sub(/^\)\n/m, ")\nfi\n")
     assert(original != wrapped, "conditional-wrapper mutation did not change the verifier helper")
     _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: wrapped)
     assert_predicate status, :success?, "conditional helper fixture must parse as Bash"
@@ -1096,6 +1095,25 @@ class ReleasePleaseAuthTest < Minitest::Test
   end
 
   private
+
+  def workflow_with_commented_git_helper_openers
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    [
+      "Verify Release Please Git authentication",
+      "Check out the exact release tag",
+      "Upload and verify release artifacts"
+    ].each do |step_name|
+      step = steps.find { |candidate| candidate["name"] == step_name }
+      original = step.fetch("run")
+      commented = original.sub(/^([ \t]*git_with_release_token\(\) \()[ \t]*$/) do
+        "#{Regexp.last_match(1)} # mutation fixture"
+      end
+      assert(original != commented, "inline-comment fixture did not change #{step_name}")
+      step["run"] = commented
+    end
+    workflow
+  end
 
   def release_git_helper_diagnostics(workflow)
     expected_sources = {
