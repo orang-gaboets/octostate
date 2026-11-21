@@ -947,6 +947,88 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(!diagnostics.include?("git_with_release_token()"), "diagnostic echoed split traditional helper source")
   end
 
+  def test_release_git_auth_helper_guard_rejects_inline_declaration
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    inline_run = "if true; then git_with_release_token() { :; }; fi\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: inline_run)
+    assert_predicate status, :success?, "inline helper declaration fixture must parse as Bash"
+    steps << { "name" => "Unexpected inline helper", "run" => inline_run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Unexpected inline helper"), "expected inline-helper location diagnostic")
+    assert(!diagnostics.include?(inline_run.strip), "diagnostic echoed inline helper source")
+  end
+
+  def test_release_git_auth_helper_guard_ignores_heredoc_text_and_similar_names
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    heredoc_run = <<~'BASH'
+      : <<'EXAMPLE'
+      git_with_release_token() (
+        : example text
+      )
+      EXAMPLE
+    BASH
+    similar_name_run = "function git_with_release_token-probe { :; }\n"
+    continued_text_run = "echo \\\nfunction git_with_release_token\n"
+    [heredoc_run, similar_name_run, continued_text_run].each do |run|
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+      assert_predicate status, :success?, "non-standard fixture must parse as Bash"
+    end
+    steps << { "name" => "Heredoc example", "run" => heredoc_run }
+    steps << { "name" => "Similar function name", "run" => similar_name_run }
+    steps << { "name" => "Continued function text", "run" => continued_text_run }
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
+  def test_release_git_auth_helper_guard_rejects_declaration_after_arithmetic_shift
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    arithmetic_run = "(( value = 8 << 2 ))\ngit_with_release_token() { :; }\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: arithmetic_run)
+    assert_predicate status, :success?, "arithmetic-shift declaration fixture must parse as Bash"
+    steps << { "name" => "Helper after arithmetic shift", "run" => arithmetic_run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Helper after arithmetic shift"), "expected helper after arithmetic shift diagnostic")
+  end
+
+  def test_release_git_auth_helper_guard_rejects_definition_text_inside_heredoc
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
+    original = verifier.fetch("run")
+    helper = original[/^git_with_release_token\(\) \(\n.*?^\)\n/m]
+    assert(!helper.nil?, "expected verifier helper fixture")
+    wrapped = ": <<'EXAMPLE'\n#{helper}EXAMPLE\n"
+    verifier["run"] = original.sub(helper, wrapped)
+    assert(original != verifier.fetch("run"), "heredoc mutation did not remove the verifier function")
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: verifier.fetch("run"))
+    assert_predicate status, :success?, "heredoc-wrapped function text fixture must parse as Bash"
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected missing verifier helper diagnostic")
+  end
+
+  def test_release_git_auth_helper_guard_accepts_helper_inside_conditional
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
+    original = verifier.fetch("run")
+    wrapped = original.sub(
+      "git_with_release_token() (\n",
+      "if true; then\ngit_with_release_token() (\n"
+    ).sub(/^\)\n/m, ")\nfi\n")
+    assert(original != wrapped, "conditional-wrapper mutation did not change the verifier helper")
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: wrapped)
+    assert_predicate status, :success?, "conditional helper fixture must parse as Bash"
+    verifier["run"] = wrapped
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
   private
 
   def release_git_helper_diagnostics(workflow)
@@ -1038,34 +1120,164 @@ class ReleasePleaseAuthTest < Minitest::Test
 
   def release_git_helper_definitions(script)
     lines = script.lines
+    code_lines = release_git_helper_code_lines(script)
     definitions = []
-    candidate_pattern = /\A[ \t]*(?:function[ \t]+git_with_release_token\b|git_with_release_token\b[ \t]*\([ \t]*\))/
+    helper_name = Regexp.escape("git_with_release_token")
+    # shortcut: recognizes common command boundaries; use a Bash AST if run syntax grows beyond these forms.
+    candidate_pattern = %r{
+      (?:\A[ \t]*|(?:&&|\|\||[;|&(){}])[ \t]*|\b(?:if|then|do|else|elif|while|until)\b[ \t]+)
+      (?:function[ \t]+#{helper_name}(?=$|[ \t(])|#{helper_name}[ \t]*\([ \t]*\))
+    }x
     supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
     closing_pattern = /\A[ \t]*\)[ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
 
     lines.each_index do |index|
       declaration = lines[index]
-      next unless candidate_pattern.match?(declaration)
+      candidates = code_lines[index].to_enum(:scan, candidate_pattern).map { Regexp.last_match[0] }
+      candidates.each do
+        supported = supported_pattern.match?(declaration)
+        unless supported
+          definitions << { body: declaration, complete: false, supported: false }
+          next
+        end
 
-      supported = supported_pattern.match?(declaration)
-      unless supported
-        definitions << { body: declaration, complete: false, supported: false }
-        next
-      end
+        closing_index = ((index + 1)...lines.length).find do |line_index|
+          closing_pattern.match?(lines[line_index]) &&
+            release_git_helper_script_prefix_valid?(lines[index..line_index].join)
+        end
 
-      closing_index = ((index + 1)...lines.length).find do |line_index|
-        closing_pattern.match?(lines[line_index]) &&
-          release_git_helper_script_prefix_valid?(lines[0..line_index].join)
-      end
-
-      if closing_index
-        definitions << { body: lines[index..closing_index].join, complete: true, supported: true }
-      else
-        definitions << { body: lines[index..].join, complete: false, supported: true }
+        if closing_index
+          definitions << { body: lines[index..closing_index].join, complete: true, supported: true }
+        else
+          definitions << { body: lines[index..].join, complete: false, supported: true }
+        end
       end
     end
 
     definitions
+  end
+
+  def release_git_helper_code_lines(script)
+    heredocs = []
+    quote = nil
+    continued = false
+    script.lines.map do |line|
+      if heredocs.any?
+        delimiter, strip_tabs = heredocs.first
+        terminator = line.chomp
+        terminator = terminator.sub(/\A\t*/, "") if strip_tabs
+        heredocs.shift if terminator == delimiter
+        continued = false
+        line.gsub(/[^\r\n]/, " ")
+      else
+        code_line, found_heredocs, quote, next_continued = release_git_helper_mask_non_code(line, quote)
+        heredocs.concat(found_heredocs)
+        code_line = "x#{code_line}" if continued
+        continued = next_continued
+        code_line
+      end
+    end
+  end
+
+  def release_git_helper_mask_non_code(line, quote)
+    code_line = line.dup
+    heredocs = []
+    continued = false
+    index = 0
+
+    while index < line.length
+      character = line[index]
+      if quote
+        if character == quote
+          code_line[index] = " "
+          quote = nil
+        elsif quote != "'" && character == "\\"
+          code_line[index] = " "
+          if index + 1 < line.length && line[index + 1] != "\n"
+            code_line[index + 1] = " "
+            index += 1
+          end
+        elsif character != "\n"
+          code_line[index] = " "
+        end
+      elsif character == "\\"
+        code_line[index] = " "
+        if index + 1 < line.length
+          if line[index + 1] == "\n"
+            continued = true
+          else
+            code_line[index + 1] = " "
+            index += 1
+          end
+        end
+      elsif ["'", '"'].include?(character)
+        code_line[index] = " "
+        quote = character
+      elsif character == "#" && (index.zero? || line[index - 1].match?(/[ \t;|&(){}]/))
+        code_line[index..] = code_line[index..].gsub(/[^\r\n]/, " ")
+        break
+      elsif line[index, 3] == "<<<"
+        index += 2
+      elsif line[index, 2] == "<<" && !release_git_helper_inside_arithmetic?(code_line, index)
+        heredoc, ending_index = release_git_helper_heredoc_delimiter(line, index + 2)
+        if heredoc
+          heredocs << heredoc
+          (index...ending_index).each { |position| code_line[position] = " " unless line[position] == "\n" }
+          index = ending_index - 1
+        end
+      end
+      index += 1
+    end
+
+    [code_line, heredocs, quote, continued]
+  end
+
+  def release_git_helper_inside_arithmetic?(line, index)
+    prefix = line[0...index]
+    opening = prefix.rindex("((")
+    closing = prefix.rindex("))")
+    opening && (!closing || opening > closing)
+  end
+
+  def release_git_helper_heredoc_delimiter(line, index)
+    strip_tabs = line[index] == "-"
+    index += 1 if strip_tabs
+    index += 1 while [" ", "\t"].include?(line[index])
+    delimiter = +""
+    started = false
+    quote = nil
+
+    while index < line.length
+      character = line[index]
+      if quote
+        if character == quote
+          quote = nil
+        elsif quote == '"' && character == "\\" && index + 1 < line.length
+          delimiter << line[index + 1]
+          index += 1
+        else
+          delimiter << character
+        end
+        started = true
+      elsif ["'", '"'].include?(character)
+        quote = character
+        started = true
+      elsif character == "\\" && index + 1 < line.length
+        delimiter << line[index + 1]
+        started = true
+        index += 1
+      elsif character.match?(/[\s;|&()<>]/)
+        break
+      else
+        delimiter << character
+        started = true
+      end
+      index += 1
+    end
+
+    return [nil, index] unless started && quote.nil?
+
+    [[delimiter, strip_tabs], index]
   end
 
   def release_git_helper_script_prefix_valid?(script)
