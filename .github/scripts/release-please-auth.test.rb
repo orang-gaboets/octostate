@@ -845,6 +845,62 @@ class ReleasePleaseAuthTest < Minitest::Test
     end
   end
 
+  def test_release_git_auth_helper_guard_rejects_source_assignment_in_false_branch
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    expected_sources = {
+      "Verify Release Please Git authentication" => "GH_TOKEN",
+      "Check out the exact release tag" => "release_token",
+      "Upload and verify release artifacts" => "GH_TOKEN"
+    }
+
+    expected_sources.each do |step_name, source|
+      step = steps.find { |candidate| candidate["name"] == step_name }
+      expected_assignment = /^([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"$/
+      original = step.fetch("run")
+      step["run"] = original.sub(expected_assignment) do
+        indent = Regexp.last_match(1)
+        "#{indent}if false; then\n#{indent}  local app_token=\"${#{source}-}\"\n#{indent}fi\n#{indent}local app_token=\"${wrong_token-}\""
+      end
+      assert(original != step.fetch("run"), "false-branch source fixture did not change #{step_name}")
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
+      assert_predicate status, :success?, "false-branch source fixture for #{step_name} must parse as Bash"
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    expected_sources.each_key do |step_name|
+      assert(diagnostics.include?(step_name), "expected active-source diagnostic for #{step_name}")
+    end
+  end
+
+  def test_release_git_auth_helper_guard_rejects_source_assignment_in_nested_function
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    expected_sources = {
+      "Verify Release Please Git authentication" => "GH_TOKEN",
+      "Check out the exact release tag" => "release_token",
+      "Upload and verify release artifacts" => "GH_TOKEN"
+    }
+
+    expected_sources.each do |step_name, source|
+      step = steps.find { |candidate| candidate["name"] == step_name }
+      expected_assignment = /^([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"$/
+      original = step.fetch("run")
+      step["run"] = original.sub(expected_assignment) do
+        indent = Regexp.last_match(1)
+        "#{indent}read_token_source() {\n#{indent}  local app_token=\"${#{source}-}\"\n#{indent}}\n#{indent}local app_token=\"${wrong_token-}\""
+      end
+      assert(original != step.fetch("run"), "nested-function source fixture did not change #{step_name}")
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
+      assert_predicate status, :success?, "nested-function source fixture for #{step_name} must parse as Bash"
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    expected_sources.each_key do |step_name|
+      assert(diagnostics.include?(step_name), "expected active-source diagnostic for #{step_name}")
+    end
+  end
+
   def test_release_git_auth_helper_guard_rejects_single_copy_drift
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1217,7 +1273,15 @@ class ReleasePleaseAuthTest < Minitest::Test
       assignment_lines = lines.each_index.select do |index|
         assignment.match?(lines[index]) && code_lines[index].match?(/\A[ \t]*local[ \t]+app_token[ \t]*=/)
       end
-      unless assignment_lines.one?
+      body_commands = code_lines.each_with_index.reject do |line, _index|
+        line.match?(/\A[ \t]*(?:\r?\n)?\z/)
+      end.drop(1).take(3)
+      source_assignment_is_active = assignment_lines.one? &&
+        body_commands.length == 3 &&
+        body_commands[0][0].match?(/\A[ \t]*set \+x[ \t]*\r?\n?\z/) &&
+        body_commands[1][0].match?(/\A[ \t]*set -euo pipefail[ \t]*\r?\n?\z/) &&
+        body_commands[2][1] == assignment_lines.first
+      unless source_assignment_is_active
         diagnostics << "expected exactly one credential-source assignment in job '#{job_name}', step '#{step_name}'"
         next
       end
