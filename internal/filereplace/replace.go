@@ -92,47 +92,9 @@ func WriteFile(path string, contents []byte, perm os.FileMode) error {
 // opened directory. The root keeps temporary-file creation and replacement
 // anchored to the same directory if its original path is renamed or replaced.
 func WriteFileInRoot(root *os.Root, name string, contents []byte, perm os.FileMode) error {
-	if root == nil || !filepath.IsLocal(name) || name == "." || name == ".." || filepath.Base(name) != name {
-		return fmt.Errorf("file name must be a single path component")
-	}
-
-	switch info, err := root.Lstat(name); {
-	case err == nil:
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return fmt.Errorf("stat existing file %s: target is not a regular file", name)
-		}
-		perm = info.Mode().Perm()
-	case errors.Is(err, fs.ErrNotExist):
-		// Creating the destination; perm applies as given.
-	default:
-		return fmt.Errorf("stat destination %s: %w", name, err)
-	}
-
-	tempName, tempFile, err := createTempInRoot(root)
-	if err != nil {
-		return fmt.Errorf("create temporary file in opened directory: %w", err)
-	}
-	replaced := false
-	defer func() {
-		if !replaced {
-			_ = tempFile.Close()      //nolint:errcheck // best-effort cleanup for temp files
-			_ = root.Remove(tempName) //nolint:errcheck // best-effort cleanup for temp files
-		}
-	}()
-
-	if err := writeTemporaryFile(tempFile, tempName, contents, perm); err != nil {
-		return err
-	}
-	if err := root.Rename(tempName, name); err != nil {
-		return fmt.Errorf("rename temporary file into place at %s: %w", name, err)
-	}
-	replaced = true
-
-	if parent, err := root.Open("."); err == nil {
-		_ = parent.Sync()  // best effort after commit; replacement already succeeded
-		_ = parent.Close() //nolint:errcheck // best-effort cleanup after commit
-	}
-	return nil
+	return WriteFileInRootWith(root, name, perm, func(writer io.Writer) error {
+		return writeContents(writer, contents)
+	})
 }
 
 // WriteFileInRootWith streams generated contents into a same-directory
@@ -265,10 +227,8 @@ func writeAtomic(path string, contents []byte, perm os.FileMode, destinationExis
 }
 
 func writeTemporaryFile(file *os.File, name string, contents []byte, perm os.FileMode) error {
-	if n, err := file.Write(contents); err != nil {
+	if err := writeContents(file, contents); err != nil {
 		return fmt.Errorf("write temporary file %s: %w", name, err)
-	} else if n != len(contents) {
-		return fmt.Errorf("write temporary file %s: %w", name, io.ErrShortWrite)
 	}
 	if err := file.Chmod(perm); err != nil {
 		return fmt.Errorf("set temporary file mode %s: %w", name, err)
@@ -278,6 +238,17 @@ func writeTemporaryFile(file *os.File, name string, contents []byte, perm os.Fil
 	}
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close temporary file %s: %w", name, err)
+	}
+	return nil
+}
+
+func writeContents(writer io.Writer, contents []byte) error {
+	n, err := writer.Write(contents)
+	if err != nil {
+		return err
+	}
+	if n != len(contents) {
+		return io.ErrShortWrite
 	}
 	return nil
 }

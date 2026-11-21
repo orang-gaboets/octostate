@@ -99,3 +99,16 @@ func TestWriteFileInRootWithRejectsNonLocalNames(t *testing.T) {
 		}
 	}
 }
+
+type shortWriter struct{}
+
+func (shortWriter) Write(contents []byte) (int, error) {
+	return len(contents) - 1, nil
+}
+
+func TestWriteContentsReturnsErrShortWrite(t *testing.T) {
+	err := writeContents(shortWriter{}, []byte("payload"))
+	if !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("writeContents error = %v, want io.ErrShortWrite", err)
+	}
+}
