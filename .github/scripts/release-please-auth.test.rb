@@ -911,6 +911,24 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(!diagnostics.include?("git_with_release_token() ("), "job-location diagnostic echoed helper source")
   end
 
+  def test_release_git_auth_helper_guard_rejects_split_function_declaration
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    split_run = <<~'BASH'
+      function git_with_release_token
+      (
+        : split_declaration_probe
+      )
+    BASH
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: split_run)
+    assert_predicate status, :success?, "split declaration fixture must parse as Bash"
+    steps << { "name" => "Unexpected split helper", "run" => split_run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Unexpected split helper"), "expected split-helper location diagnostic")
+    assert(!diagnostics.include?("function git_with_release_token"), "diagnostic echoed split helper source")
+  end
+
   private
 
   def release_git_helper_diagnostics(workflow)
@@ -1003,7 +1021,7 @@ class ReleasePleaseAuthTest < Minitest::Test
   def release_git_helper_definitions(script)
     lines = script.lines
     definitions = []
-    candidate_pattern = /\A[ \t]*(?:function[ \t]+)?git_with_release_token\b(?:[ \t]*\([ \t]*\))?[ \t]*(?:\(|\{)/
+    candidate_pattern = /\A[ \t]*(?:function[ \t]+git_with_release_token\b|git_with_release_token\b[ \t]*\([ \t]*\)[ \t]*(?:\(|\{))/
     supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
     closing_pattern = /\A[ \t]*\)[ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
 
