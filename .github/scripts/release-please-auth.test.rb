@@ -881,6 +881,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: candidate.fetch("run"))
       assert_predicate status, :success?, "nested-subshell fixture for #{step_name} must parse as Bash"
     end
+    assert_empty release_git_helper_diagnostics(workflow), "identical nested helpers should remain complete and match"
 
     verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
     original = verifier.fetch("run")
@@ -888,7 +889,9 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(original != verifier.fetch("run"), "nested-boundary drift mutation did not change the verifier helper")
 
     diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected mismatch after nested subshell")
+    assert(diagnostics.include?("differs between"), "expected normalized helper-body mismatch after nested subshell")
+    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected mismatch to identify verifier step")
+    assert(!diagnostics.include?("could not find the complete"), "nested helpers should remain complete after drift")
     assert(!diagnostics.include?("SYNTHETIC_HELPER_SOURCE_MARKER"), "diagnostic leaked synthetic helper source")
     assert(!diagnostics.include?(TOKEN), "diagnostic leaked the raw test token")
     assert(!diagnostics.include?(ENCODED_TOKEN), "diagnostic leaked the encoded test token")
