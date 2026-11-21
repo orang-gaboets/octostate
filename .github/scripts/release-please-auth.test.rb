@@ -1130,6 +1130,18 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(diagnostics.include?("Continued function keyword"), "expected continued function-keyword diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_rejects_function_keyword_after_continued_and
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = "true && function \\\ngit_with_release_token() { :; }\n"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "continued-and function fixture must parse as Bash"
+    steps << { "name" => "Function after continued &&", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Function after continued &&"), "expected continued-and function diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_ignores_function_words_in_arguments
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1384,7 +1396,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         continued_command_boundary = continued && (
           code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
             code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
-            code_line.rstrip.match?(/\A[ \t]*function\z/)
+            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/)
         )
         code_line
       end
