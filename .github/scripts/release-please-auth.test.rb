@@ -921,6 +921,70 @@ class ReleasePleaseAuthTest < Minitest::Test
       "expected helper-after-continued-heredoc diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_ignores_helper_text_inside_indented_continued_heredoc
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = <<~'BASH'
+      : <<\
+        EOF
+      heredoc body
+      git_with_release_token() { :; }
+      EOF
+      git_with_release_token() { :; }
+    BASH
+
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+    assert_predicate status, :success?, "indented continued-heredoc fixture must execute as Bash"
+    assert_equal "function\n", stdout
+    assert_equal 1, release_git_helper_definitions(run).length
+    steps << { "name" => "Indented continued heredoc", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Indented continued heredoc'"),
+      "expected real post-heredoc helper diagnostic")
+  end
+
+  def test_release_git_auth_helper_guard_masks_command_suffix_after_continued_heredoc
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = <<~'BASH'
+      : <<\
+      EOF; printf '%s' 'x; git_with_release_token() { :; }'
+      heredoc body
+      EOF
+    BASH
+
+    stdout, _stderr, status = Open3.capture3(
+      "bash",
+      stdin_data: "#{run}type -t git_with_release_token 2>/dev/null || printf 'absent\\n'\n"
+    )
+    assert_predicate status, :success?, "continued-heredoc suffix fixture must execute as Bash"
+    assert_equal "x; git_with_release_token() { :; }absent\n", stdout
+    steps << { "name" => "Continued heredoc suffix text", "run" => run }
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
+  def test_release_git_auth_helper_guard_detects_executable_suffix_after_continued_heredoc
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = <<~'BASH'
+      : <<\
+      EOF; git_with_release_token() { :; }
+      heredoc body
+      EOF
+    BASH
+
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+    assert_predicate status, :success?, "executable heredoc-suffix fixture must execute as Bash"
+    assert_equal "function\n", stdout
+    steps << { "name" => "Executable continued heredoc suffix", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Executable continued heredoc suffix'"),
+      "expected executable-suffix helper diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_rejects_source_assignment_in_false_branch
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1577,10 +1641,14 @@ class ReleasePleaseAuthTest < Minitest::Test
       if continued_heredoc_delimiter_line
         delimiter_end = [continued_heredoc_delimiter_line, line.length].min
         continued_heredoc_delimiter_line = nil
-        continued = false
-        continued_command_boundary = false
-        continuation_lines << false
-        line[0...delimiter_end].gsub(/[^\r\n]/, " ") + line[delimiter_end..]
+        delimiter_code = line[0...delimiter_end].gsub(/[^\r\n]/, " ")
+        code_suffix, found_heredocs, quote, arithmetic, continued, suffix_delimiter_end =
+          release_git_helper_mask_non_code(line[delimiter_end..], quote, arithmetic, script_lines[line_index + 1])
+        heredocs.concat(found_heredocs)
+        continued_heredoc_delimiter_line = delimiter_end + suffix_delimiter_end if suffix_delimiter_end
+        continuation_lines << continued
+        continued_command_boundary = continued && release_git_helper_continuation_boundary?(code_suffix)
+        delimiter_code + code_suffix
       elsif heredocs.any?
         delimiter, strip_tabs = heredocs.first
         terminator = line.chomp
@@ -1596,16 +1664,18 @@ class ReleasePleaseAuthTest < Minitest::Test
         code_line = "x#{code_line}" if continued && !continued_command_boundary
         continued = next_continued
         continuation_lines << next_continued
-        continued_command_boundary = continued && (
-          code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
-            code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
-            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
-            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
-        )
+        continued_command_boundary = continued && release_git_helper_continuation_boundary?(code_line)
         code_line
       end
     end
     with_continuations ? [code_lines, continuation_lines] : code_lines
+  end
+
+  def release_git_helper_continuation_boundary?(code_line)
+    code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
+      code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
+      code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
+      code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
   end
 
   def release_git_helper_mask_non_code(line, quote, arithmetic, following_line = nil)
@@ -1709,6 +1779,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         line = line[0...index] + following_line
         following_line = nil
         continued_delimiter_prefix = index
+        index += 1 while [" ", "\t"].include?(line[index])
         next
       elsif character == "\\" && index + 1 < line.length
         delimiter << line[index + 1]
