@@ -898,6 +898,29 @@ class ReleasePleaseAuthTest < Minitest::Test
       "expected helper-after-heredoc diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_detects_definition_after_continued_heredoc_delimiter
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = <<~'BASH'
+      : <<\
+      EOF
+      heredoc body
+      git_with_release_token() { :; }
+      EOF
+      git_with_release_token() { :; }
+    BASH
+
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+    assert_predicate status, :success?, "continued-heredoc fixture must execute as Bash"
+    assert_equal "function\n", stdout
+    assert_equal 1, release_git_helper_definitions(run).length
+    steps << { "name" => "Helper after continued heredoc", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Helper after continued heredoc'"),
+      "expected helper-after-continued-heredoc diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_rejects_source_assignment_in_false_branch
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1548,8 +1571,17 @@ class ReleasePleaseAuthTest < Minitest::Test
     continued_command_boundary = false
     arithmetic = false
     continuation_lines = []
-    code_lines = script.lines.map do |line|
-      if heredocs.any?
+    continued_heredoc_delimiter_line = nil
+    script_lines = script.lines
+    code_lines = script_lines.each_with_index.map do |line, line_index|
+      if continued_heredoc_delimiter_line
+        delimiter_end = [continued_heredoc_delimiter_line, line.length].min
+        continued_heredoc_delimiter_line = nil
+        continued = false
+        continued_command_boundary = false
+        continuation_lines << false
+        line[0...delimiter_end].gsub(/[^\r\n]/, " ") + line[delimiter_end..]
+      elsif heredocs.any?
         delimiter, strip_tabs = heredocs.first
         terminator = line.chomp
         terminator = terminator.sub(/\A\t*/, "") if strip_tabs
@@ -1558,7 +1590,8 @@ class ReleasePleaseAuthTest < Minitest::Test
         continuation_lines << false
         line.gsub(/[^\r\n]/, " ")
       else
-        code_line, found_heredocs, quote, arithmetic, next_continued = release_git_helper_mask_non_code(line, quote, arithmetic)
+        code_line, found_heredocs, quote, arithmetic, next_continued, continued_heredoc_delimiter_line =
+          release_git_helper_mask_non_code(line, quote, arithmetic, script_lines[line_index + 1])
         heredocs.concat(found_heredocs)
         code_line = "x#{code_line}" if continued && !continued_command_boundary
         continued = next_continued
@@ -1575,10 +1608,11 @@ class ReleasePleaseAuthTest < Minitest::Test
     with_continuations ? [code_lines, continuation_lines] : code_lines
   end
 
-  def release_git_helper_mask_non_code(line, quote, arithmetic)
+  def release_git_helper_mask_non_code(line, quote, arithmetic, following_line = nil)
     code_line = line.dup
     heredocs = []
     continued = false
+    continued_heredoc_delimiter_line = nil
     index = 0
 
     while index < line.length
@@ -1621,32 +1655,43 @@ class ReleasePleaseAuthTest < Minitest::Test
       elsif line[index, 3] == "<<<"
         index += 2
       elsif line[index, 2] == "<<" && !arithmetic
-        heredoc, ending_index = release_git_helper_heredoc_delimiter(line, index + 2)
+        heredoc, ending_index, continued_delimiter_end =
+          release_git_helper_heredoc_delimiter(line, index + 2, following_line)
         if heredoc
           heredocs << heredoc
-          (index...ending_index).each { |position| code_line[position] = " " unless line[position] == "\n" }
-          index = ending_index - 1
+          continued_heredoc_delimiter_line = continued_delimiter_end
+          mask_end = [ending_index, line.length].min
+          (index...mask_end).each { |position| code_line[position] = " " unless line[position] == "\n" }
+          index = mask_end - 1
         end
       end
       index += 1
     end
 
-    [code_line, heredocs, quote, arithmetic, continued]
+    [code_line, heredocs, quote, arithmetic, continued, continued_heredoc_delimiter_line]
   end
 
-  def release_git_helper_heredoc_delimiter(line, index)
+  def release_git_helper_heredoc_delimiter(line, index, following_line = nil)
     strip_tabs = line[index] == "-"
     index += 1 if strip_tabs
     index += 1 while [" ", "\t"].include?(line[index])
     delimiter = +""
     started = false
     quote = nil
+    continued_delimiter_prefix = nil
 
     while index < line.length
       character = line[index]
       if quote
         if character == quote
           quote = nil
+        elsif quote == '"' && character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
+          return [nil, index, nil] unless following_line
+
+          line = line[0...index] + following_line
+          following_line = nil
+          continued_delimiter_prefix = index
+          next
         elsif quote == '"' && character == "\\" && index + 1 < line.length &&
             ["$", "`", '"', "\\"].include?(line[index + 1])
           delimiter << line[index + 1]
@@ -1658,6 +1703,13 @@ class ReleasePleaseAuthTest < Minitest::Test
       elsif ["'", '"'].include?(character)
         quote = character
         started = true
+      elsif character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
+        return [nil, index, nil] unless following_line
+
+        line = line[0...index] + following_line
+        following_line = nil
+        continued_delimiter_prefix = index
+        next
       elsif character == "\\" && index + 1 < line.length
         delimiter << line[index + 1]
         started = true
@@ -1671,9 +1723,10 @@ class ReleasePleaseAuthTest < Minitest::Test
       index += 1
     end
 
-    return [nil, index] unless started && quote.nil?
+    return [nil, index, nil] unless started && quote.nil?
 
-    [[delimiter, strip_tabs], index]
+    continued_delimiter_line_end = continued_delimiter_prefix && index - continued_delimiter_prefix
+    [[delimiter, strip_tabs], index, continued_delimiter_line_end]
   end
 
   def release_git_helper_script_prefix_valid?(script)
