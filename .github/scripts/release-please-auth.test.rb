@@ -985,6 +985,28 @@ class ReleasePleaseAuthTest < Minitest::Test
       "expected executable-suffix helper diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_detects_helper_after_continued_delimiter_word
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = <<~'BASH'
+      : <<EOF\
+        FOO
+      heredoc body
+      EOF
+      git_with_release_token() { :; }
+    BASH
+
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+    assert_predicate status, :success?, "continued delimiter-word fixture must execute as Bash"
+    assert_equal "function\n", stdout
+    assert_equal 1, release_git_helper_definitions(run).length
+    steps << { "name" => "Helper after continued delimiter word", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Helper after continued delimiter word'"),
+      "expected helper-after-delimiter-word diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_rejects_source_assignment_in_false_branch
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1779,7 +1801,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         line = line[0...index] + following_line
         following_line = nil
         continued_delimiter_prefix = index
-        index += 1 while [" ", "\t"].include?(line[index])
+        index += 1 while !started && [" ", "\t"].include?(line[index])
         next
       elsif character == "\\" && index + 1 < line.length
         delimiter << line[index + 1]
