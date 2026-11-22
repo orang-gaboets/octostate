@@ -1165,6 +1165,33 @@ class ReleasePleaseAuthTest < Minitest::Test
     end
   end
 
+  def test_release_git_auth_helper_guard_rejects_continued_time_option_before_negation
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    declarations = {
+      "Unexpected split time-option helper" => "time \\\n-p ! git_with_release_token() { printf override; }\n",
+      "Unexpected continued split time-option helper" => "time \\\n-p \\\n! git_with_release_token() { printf override; }\n"
+    }
+
+    declarations.each do |step_name, run|
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+      assert_predicate status, :success?, "split time-option fixture must parse as Bash"
+      stdout, _stderr, status = Open3.capture3(
+        "bash",
+        stdin_data: "git_with_release_token() { printf original; }\n#{run}git_with_release_token\n"
+      )
+      assert_predicate status, :success?, "split time-option fixture must redefine the helper"
+      assert_equal "override", stdout
+      steps << { "name" => step_name, "run" => run }
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    declarations.each_key do |step_name|
+      assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step '#{step_name}'"),
+        "expected split-time-option helper diagnostic")
+    end
+  end
+
   def test_release_git_auth_helper_guard_ignores_heredoc_text_and_similar_names
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1468,7 +1495,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     # shortcut: recognizes common command boundaries; use a Bash AST if run syntax grows beyond these forms.
     candidate_pattern = %r{
       (?:\A[ \t]*|(?:&&|\|\||[;|&(){}])[ \t]*|(?:\A|[;|&(){}])[ \t]*(?:if|then|do|else|elif|while|until)\b[ \t]+)
-      (?:(?:time(?:[ \t]+-p)?|!)[ \t]+)*
+      (?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*
       (?:function[ \t]+#{helper_name}(?=$|[ \t(])|#{helper_name}[ \t]*\([ \t]*\))
     }x
     supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
@@ -1482,7 +1509,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       end
       candidates.each do
         continued_prefix = index.positive? && continued_lines[index - 1] &&
-          code_lines[index - 1].rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!)[ \t]+)*(?:time(?:[ \t]+-p)?|!)\z/)
+          code_lines[index - 1].rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
         supported = !continued_prefix && supported_pattern.match?(declaration)
         unless supported
           definitions << { body: declaration, complete: false, supported: false }
@@ -1540,7 +1567,7 @@ class ReleasePleaseAuthTest < Minitest::Test
           code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
             code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
             code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
-            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!)[ \t]+)*(?:time(?:[ \t]+-p)?|!)\z/)
+            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
         )
         code_line
       end
