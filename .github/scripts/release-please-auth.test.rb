@@ -878,6 +878,26 @@ class ReleasePleaseAuthTest < Minitest::Test
     end
   end
 
+  def test_release_git_auth_helper_guard_detects_definition_after_escaped_quoted_heredoc_delimiter
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = <<~'BASH'
+      : <<"E\OF"
+      heredoc body
+      E\OF
+      git_with_release_token() { :; }
+    BASH
+
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+    assert_predicate status, :success?, "escaped quoted-heredoc fixture must execute as Bash"
+    assert_equal "function\n", stdout
+    steps << { "name" => "Helper after escaped quoted heredoc", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Helper after escaped quoted heredoc'"),
+      "expected helper-after-heredoc diagnostic")
+  end
+
   def test_release_git_auth_helper_guard_rejects_source_assignment_in_false_branch
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1600,7 +1620,8 @@ class ReleasePleaseAuthTest < Minitest::Test
       if quote
         if character == quote
           quote = nil
-        elsif quote == '"' && character == "\\" && index + 1 < line.length
+        elsif quote == '"' && character == "\\" && index + 1 < line.length &&
+            ["$", "`", '"', "\\"].include?(line[index + 1])
           delimiter << line[index + 1]
           index += 1
         else
