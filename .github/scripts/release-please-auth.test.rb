@@ -265,7 +265,6 @@ class ReleasePleaseAuthTest < Minitest::Test
     File.write(path, <<~'RUBY')
       #!/usr/bin/env ruby
       require "json"
-      require "uri"
 
       args = ARGV
       File.open(ENV.fetch("TEST_GH_LOG"), "a") { |f| f.puts(JSON.generate(args)) }
@@ -477,7 +476,7 @@ class ReleasePleaseAuthTest < Minitest::Test
   end
 
   def test_upload_finds_draft_when_tag_endpoint_returns_404
-    result = run_step("Upload and verify release artifacts", { "TEST_TAG_ENDPOINT_404" => "true" })
+    result = run_step("Upload and verify release artifacts")
 
     assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
     assert File.exist?(result.fetch(:release_edit)), "verified draft release was not published"
