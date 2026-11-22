@@ -1101,6 +1101,28 @@ class ReleasePleaseAuthTest < Minitest::Test
     end
   end
 
+  def test_release_git_auth_helper_guard_rejects_continued_prefixed_declarations
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    declarations = {
+      "Continued timed helper" => "time \\\ngit_with_release_token() (\n  : timed_probe\n)\n",
+      "Continued POSIX-timed helper" => "time -p \\\ngit_with_release_token() (\n  : posix_timed_probe\n)\n",
+      "Continued negated helper" => "! \\\ngit_with_release_token() (\n  : negated_probe\n)\n"
+    }
+
+    declarations.each do |step_name, run|
+      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+      assert_predicate status, :success?, "continued prefixed helper fixture must parse as Bash"
+      steps << { "name" => step_name, "run" => run }
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    declarations.each_key do |step_name|
+      assert(diagnostics.include?("unsupported git_with_release_token declaration in job 'release-please', step '#{step_name}'"),
+        "expected unsupported-declaration diagnostic for #{step_name}")
+    end
+  end
+
   def test_release_git_auth_helper_guard_ignores_heredoc_text_and_similar_names
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1417,7 +1439,9 @@ class ReleasePleaseAuthTest < Minitest::Test
         candidates << "continued function signature"
       end
       candidates.each do
-        supported = supported_pattern.match?(declaration)
+        continued_prefix = index.positive? && continued_lines[index - 1] &&
+          code_lines[index - 1].rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:time(?:[ \t]+-p)?|!)\z/)
+        supported = !continued_prefix && supported_pattern.match?(declaration)
         unless supported
           definitions << { body: declaration, complete: false, supported: false }
           next
@@ -1473,7 +1497,8 @@ class ReleasePleaseAuthTest < Minitest::Test
         continued_command_boundary = continued && (
           code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
             code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
-            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/)
+            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
+            code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:time(?:[ \t]+-p)?|!)\z/)
         )
         code_line
       end
