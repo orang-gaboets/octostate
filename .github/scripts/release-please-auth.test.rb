@@ -59,6 +59,10 @@ class ReleasePleaseAuthTest < Minitest::Test
     root = Dir.mktmpdir("release-please-auth-")
     @tempdirs << root
     fixture = prepare_fixture(root)
+    if overrides["TEST_TRUNCATE_CHECKSUMS"] == "true"
+      manifest = File.join(fixture.fetch(:dist_dir), "checksums.txt")
+      File.write(manifest, File.readlines(manifest).drop(1).join)
+    end
     mapfile_compat = <<~'BASH'
       mapfile() {
         local array_name="${2:-}" line
@@ -112,7 +116,6 @@ class ReleasePleaseAuthTest < Minitest::Test
 
     write_git_stub(stub_bin)
     write_gh_stub(stub_bin)
-    write_jq_stub(stub_bin)
     write_sha256sum_stub(stub_bin)
 
     expected_assets = (ASSET_NAMES + ["checksums.txt"]).join("\n")
@@ -131,6 +134,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       env: {
         "PATH" => "#{stub_bin}:#{ENV.fetch("PATH", "")}",
         "GITHUB_SERVER_URL" => "https://github.com",
+        "GITHUB_API_URL" => "https://api.github.com",
         "GITHUB_REPOSITORY" => "orang-gaboets/octostate",
         "DISPATCH_REF" => "refs/heads/main",
         "VERIFY_GIT_AUTH" => "false",
@@ -244,6 +248,10 @@ class ReleasePleaseAuthTest < Minitest::Test
         else
           sha = ENV.fetch("TEST_LIGHTWEIGHT_SHA", ENV.fetch("EXPECTED_COMMIT", ""))
         end
+        state_path = ENV.fetch("TEST_GH_API_COUNT")
+        if File.file?(state_path) && JSON.parse(File.read(state_path))["reads"].to_s == ENV.fetch("TEST_DRIFT_AT", "never")
+          sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        end
         puts "#{sha}\t#{ref}"
         exit 0
       end
@@ -257,96 +265,82 @@ class ReleasePleaseAuthTest < Minitest::Test
     File.write(path, <<~'RUBY')
       #!/usr/bin/env ruby
       require "json"
+      require "uri"
 
       args = ARGV
-      File.open(ENV.fetch("TEST_GH_LOG"), "a") do |file|
-        file.puts(JSON.generate(args))
-      end
-
-      if args[0] == "api" && args[1] == "-H"
-        asset_name = File.basename(args.last)
-        path = File.join(ENV.fetch("TEST_DIST_DIR"), asset_name)
-        abort "missing fixture asset" unless File.file?(path)
-        body = File.binread(path)
-        if ENV.fetch("TEST_CORRUPT_ASSET", "false") == "true" && asset_name == ENV.fetch("TEST_CORRUPT_ASSET_NAME")
-          body = "#{body}corrupted"
-        end
-        STDOUT.write(body)
-        exit 0
-      end
-
-      if args[0] == "api" && args[1] == "--method" && args[2] == "DELETE"
-        exit 0
-      end
-
-      if args[0] == "api"
-        count_path = ENV.fetch("TEST_GH_API_COUNT")
-        count = File.exist?(count_path) ? File.read(count_path).to_i : 0
-        count += 1
-        File.write(count_path, count.to_s)
-        names = ENV.fetch("TEST_ASSET_NAMES").split("\n")
-        assets = if count == 1
-          []
-        else
-          names.each_with_index.map do |name, index|
-            {
-              "name" => name,
-              "id" => (index + 1).to_s,
-              "url" => "https://api.github.com/assets/#{name}"
-            }
-          end
-        end
-        if ENV.fetch("TEST_EXTRA_ASSET", "false") == "true" && count > 1
-          assets << { "name" => "unexpected.bin", "id" => "999", "url" => "https://api.github.com/assets/unexpected.bin" }
-        end
-        puts JSON.generate({
-          "tag_name" => ENV.fetch("TEST_TAG_NAME", "v1.3.0"),
-          "draft" => ENV.fetch("TEST_DRAFT", "true") == "true",
-          "assets" => assets
-        })
-        exit 0
-      end
-
-      if args[0] == "release" && args[1] == "upload"
-        exit 0
-      end
-      if args[0] == "release" && args[1] == "edit"
-        File.write(ENV.fetch("TEST_RELEASE_EDIT"), "called")
-        exit 0
-      end
-      abort "unexpected gh invocation"
-    RUBY
-    FileUtils.chmod(0o755, path)
-  end
-
-  def write_jq_stub(stub_bin)
-    path = File.join(stub_bin, "jq")
-    File.write(path, <<~'RUBY')
-      #!/usr/bin/env ruby
-      require "json"
-
-      args = ARGV
-      expression = args.last
-      name_index = args.index("--arg")
-      asset_name = name_index ? args[name_index + 2] : nil
-      document = JSON.parse(STDIN.read)
-
-      case expression
-      when ".tag_name"
-        puts document.fetch("tag_name")
-      when ".draft"
-        puts(document.fetch("draft") ? "true" : "false")
-      when ".assets[].name"
-        document.fetch("assets").each { |asset| puts asset.fetch("name") }
-      when ".assets[] | select(.name == $name) | .id"
-        asset = document.fetch("assets").find { |item| item.fetch("name") == asset_name }
-        puts(asset ? asset.fetch("id") : "")
-      when ".assets[] | select(.name == $name) | .url"
-        asset = document.fetch("assets").find { |item| item.fetch("name") == asset_name }
-        puts(asset ? asset.fetch("url") : "")
+      File.open(ENV.fetch("TEST_GH_LOG"), "a") { |f| f.puts(JSON.generate(args)) }
+      abort "unexpected gh invocation" unless args.first == "api"
+      endpoint = args.find { |arg| arg.start_with?("repos/", "https://") }.to_s
+      repo = "repos/orang-gaboets/octostate"
+      state_path = ENV.fetch("TEST_GH_API_COUNT")
+      state = if File.file?(state_path)
+        JSON.parse(File.read(state_path))
       else
-        warn "unsupported jq fixture expression"
-        exit 99
+        initial = ENV.fetch("TEST_PARTIAL", "false") == "true" ? ENV.fetch("TEST_ASSET_NAMES").split("\n").first(2) : []
+        { "reads" => 0, "assets" => initial.each_with_index.map { |name, i| { "name" => name, "id" => i + 1, "state" => "uploaded" } } }
+      end
+      save = -> { File.write(state_path, JSON.generate(state)) }
+      fail_at = ENV.fetch("TEST_API_FAILURE", "")
+      if endpoint.include?("/releases/tags/")
+        warn "gh: Not Found (HTTP 404)"
+        exit 1
+      elsif endpoint == "#{repo}/releases?per_page=100"
+        abort "discovery error" if fail_at == "discovery"
+        count = Integer(ENV.fetch("TEST_MATCH_COUNT", "1"))
+        releases = Array.new(count) { |i| { "id" => 42 + i, "tag_name" => ENV.fetch("TEST_TAG_NAME"), "draft" => ENV.fetch("TEST_DRAFT") == "true" } }
+        puts JSON.generate([ENV["TEST_MALFORMED_DISCOVERY"] == "true" ? {} : [], releases])
+      elsif endpoint == "#{repo}/releases/42" && !args.include?("PATCH")
+        state["reads"] += 1
+        save.call
+        abort "release metadata error" if fail_at == "metadata#{state['reads']}"
+        change = ENV.fetch("TEST_CHANGE_AT", "").split(":")
+        tag = change == [state["reads"].to_s, "tag"] ? "wrong-tag" : ENV.fetch("TEST_TAG_NAME")
+        id = change == [state["reads"].to_s, "id"] ? 99 : 42
+        draft = change == [state["reads"].to_s, "draft"] ? false : ENV.fetch("TEST_DRAFT") == "true"
+        url = ENV.fetch("TEST_UPLOAD_URL", "https://uploads.github.com/repos/orang-gaboets/octostate/releases/42/assets{?name,label}")
+        puts JSON.generate({ "id" => id, "tag_name" => tag, "draft" => draft,
+          "url" => "https://api.github.com/#{repo}/releases/42", "upload_url" => url })
+      elsif endpoint == "#{repo}/releases/42/assets?per_page=100"
+        abort "asset list error" if fail_at == "assets#{state['reads']}"
+        if ENV.fetch("TEST_MALFORMED_AT", "") == state["reads"].to_s
+          puts "[null]"
+          exit 0
+        end
+        assets = state.fetch("assets").map(&:dup)
+        assets << { "name" => "unexpected.bin", "id" => 999, "state" => "uploaded" } if ENV["TEST_EXTRA_ASSET"] == "true"
+        assets << assets.first.dup if ENV["TEST_DUPLICATE_ASSET"] == "true" && !assets.empty?
+        assets.pop if ENV.fetch("TEST_MISSING_AT", "") == state["reads"].to_s
+        assets.first["id"] = 777 if ENV["TEST_REPLACE_ASSET"] == "true" && state["reads"] == 3 && !assets.empty?
+        assets.first["state"] = "starter" if ENV["TEST_STARTER_ASSET"] == "true" && state["reads"] > 1 && !assets.empty?
+        puts JSON.generate([assets.take(2), assets.drop(2)])
+      elsif endpoint.match?(%r{\A#{repo}/releases/assets/\d+\z}) && args.include?("DELETE")
+        abort "delete error" if fail_at == "delete"
+        id = endpoint.split("/").last.to_i
+        abort "unknown asset" unless state["assets"].any? { |a| a["id"] == id }
+        state["assets"].reject! { |a| a["id"] == id }
+        save.call
+      elsif endpoint.match?(%r{\A#{repo}/releases/assets/\d+\z}) && args.include?("Accept: application/octet-stream")
+        abort "download error" if fail_at == "download"
+        asset = state.fetch("assets").find { |a| a["id"] == endpoint.split("/").last.to_i }
+        abort "unknown asset" unless asset
+        body = File.binread(File.join(ENV.fetch("TEST_DIST_DIR"), asset.fetch("name")))
+        body += "corrupt" if ENV["TEST_CORRUPT_ASSET"] == "true" && asset["name"] == ENV["TEST_CORRUPT_ASSET_NAME"]
+        STDOUT.write(body)
+      elsif endpoint == "https://uploads.github.com/#{repo}/releases/42/assets" && args.include?("POST")
+        abort "upload error" if fail_at == "upload"
+        name_arg = args.find { |arg| arg.start_with?("name=") }
+        name = name_arg&.delete_prefix("name=")
+        input = args[args.index("--input").to_i + 1]
+        abort "bad upload" unless name && File.basename(input) == name && File.file?(input)
+        abort "duplicate asset" if state["assets"].any? { |asset| asset["name"] == name }
+        state["assets"] << { "name" => name, "id" => 100 + state["assets"].length, "state" => "uploaded" }
+        save.call
+        puts "{}"
+      elsif endpoint == "#{repo}/releases/42" && args.include?("PATCH")
+        abort "bad publication payload" unless args.include?("draft=false") && args.include?("tag_name=#{ENV.fetch('RELEASE_TAG')}")
+        File.write(ENV.fetch("TEST_RELEASE_EDIT"), "called")
+      else
+        abort "unexpected gh endpoint: #{endpoint}"
       end
     RUBY
     FileUtils.chmod(0o755, path)
@@ -472,15 +466,85 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
 
     calls = git_records(result).select { |record| record.fetch("args").include?("ls-remote") }
-    assert_equal 2, calls.length
+    assert_equal 6, calls.length
     calls.each { |record| assert_basic_git_record(record) }
-    assert_equal "refs/tags/#{TAG}^{}", calls[0].fetch("args").last
-    assert_equal "refs/tags/#{TAG}", calls[1].fetch("args").last
+    assert_equal ["refs/tags/#{TAG}^{}", "refs/tags/#{TAG}"] * 3, calls.map { |call| call.fetch("args").last }
     assert File.exist?(result.fetch(:release_edit)), "verified draft release was not published"
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), EXPECTED_HEADER
     assert_configs_unchanged(result)
+  end
+
+  def test_upload_finds_draft_when_tag_endpoint_returns_404
+    result = run_step("Upload and verify release artifacts", { "TEST_TAG_ENDPOINT_404" => "true" })
+
+    assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
+    assert File.exist?(result.fetch(:release_edit)), "verified draft release was not published"
+    calls = gh_records(result)
+    assert_equal 3, calls.count { |call| call.include?("repos/orang-gaboets/octostate/releases/42") && !call.include?("PATCH") }
+    assert_equal 6, calls.count { |call| call.include?("POST") && call.include?("https://uploads.github.com/repos/orang-gaboets/octostate/releases/42/assets") }
+    refute calls.flatten.any? { |arg| arg.include?("/releases/tags/") }
+  end
+
+  def test_upload_fails_closed_for_invalid_discovery_and_metadata
+    cases = [
+      { "TEST_MATCH_COUNT" => "0" }, { "TEST_MATCH_COUNT" => "2" },
+      { "TEST_TAG_NAME" => "wrong-tag" }, { "TEST_DRAFT" => "false" },
+      { "TEST_MALFORMED_DISCOVERY" => "true" },
+      { "TEST_API_FAILURE" => "discovery" }, { "TEST_UPLOAD_URL" => "https://attacker.invalid/upload{?name,label}" }
+    ]
+    (1..3).each do |boundary|
+      %w[id tag draft].each { |field| cases << { "TEST_CHANGE_AT" => "#{boundary}:#{field}" } }
+      cases << { "TEST_API_FAILURE" => "metadata#{boundary}" }
+      cases << { "TEST_API_FAILURE" => "assets#{boundary}" }
+      cases << { "TEST_DRIFT_AT" => boundary.to_s }
+      cases << { "TEST_MALFORMED_AT" => boundary.to_s }
+    end
+    cases.each do |scenario|
+      result = run_step("Upload and verify release artifacts", scenario)
+      refute_predicate result.fetch(:status), :success?, scenario.inspect
+      assert_no_release_edit(result)
+    end
+  end
+
+  def test_upload_retries_only_matching_partial_assets
+    result = run_step("Upload and verify release artifacts", { "TEST_PARTIAL" => "true" })
+
+    assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
+    deleted = gh_records(result).select { |call| call.include?("DELETE") }.map(&:last)
+    assert_equal %w[repos/orang-gaboets/octostate/releases/assets/1 repos/orang-gaboets/octostate/releases/assets/2], deleted
+    assert File.exist?(result.fetch(:release_edit))
+  end
+
+  def test_upload_rejects_manifest_missing_an_archive_before_mutation
+    result = run_step("Upload and verify release artifacts", {
+      "TEST_TRUNCATE_CHECKSUMS" => "true", "TEST_CORRUPT_ASSET" => "true"
+    })
+
+    refute_predicate result.fetch(:status), :success?
+    assert_no_release_edit(result)
+    refute gh_records(result).any? { |call| call.include?("DELETE") || call.include?("POST") }
+  end
+
+  def test_upload_refuses_unverified_or_changed_assets_and_api_errors
+    scenarios = [
+      { "TEST_EXTRA_ASSET" => "true", "TEST_PARTIAL" => "true" },
+      { "TEST_DUPLICATE_ASSET" => "true", "TEST_PARTIAL" => "true" },
+      { "TEST_REPLACE_ASSET" => "true" }, { "TEST_STARTER_ASSET" => "true" },
+      { "TEST_MISSING_AT" => "2" }, { "TEST_MISSING_AT" => "3" },
+      { "TEST_API_FAILURE" => "delete", "TEST_PARTIAL" => "true" },
+      { "TEST_API_FAILURE" => "upload" }, { "TEST_API_FAILURE" => "download" },
+      { "TEST_CORRUPT_ASSET" => "true", "TEST_CORRUPT_ASSET_NAME" => "checksums.txt" }
+    ]
+    scenarios.each do |scenario|
+      result = run_step("Upload and verify release artifacts", scenario)
+      refute_predicate result.fetch(:status), :success?, scenario.inspect
+      assert_no_release_edit(result)
+      if scenario.key?("TEST_EXTRA_ASSET") || scenario.key?("TEST_DUPLICATE_ASSET")
+        refute gh_records(result).any? { |call| call.include?("DELETE") || call.include?("POST") }
+      end
+    end
   end
 
   def test_upload_authentication_failure_stops_before_publication
@@ -520,7 +584,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       { "TEST_EXTRA_ASSET" => "true" }
     )
     refute_predicate result.fetch(:status), :success?
-    assert_includes result.fetch(:stderr), "unexpected or missing assets"
+    assert_includes result.fetch(:stderr), "unexpected or duplicate assets"
     assert_no_release_edit(result)
   end
 
@@ -530,7 +594,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       { "TEST_DRAFT" => "false" }
     )
     refute_predicate result.fetch(:status), :success?
-    assert_includes result.fetch(:stderr), "not draft"
+    assert_includes result.fetch(:stderr), "draft"
     assert_no_release_edit(result)
   end
 
@@ -686,6 +750,49 @@ class ReleasePleaseAuthTest < Minitest::Test
       _stdout, stderr, status = Open3.capture3("bash", "-n", stdin_data: script)
       assert_predicate status, :success?, "#{name}: #{stderr}"
     end
+  end
+
+  def test_real_gh_upload_sends_authenticated_binary_with_encoded_name
+    root = Dir.mktmpdir("release-please-gh-upload-")
+    @tempdirs << root
+    asset = File.join(root, "asset.bin")
+    File.binwrite(asset, "binary\x00payload\n")
+    server = TCPServer.new("127.0.0.1", 0)
+    port = server.addr[1]
+    requests = Queue.new
+    server_thread = Thread.new do
+      client = Timeout.timeout(10) { server.accept }
+      request = client.gets
+      headers = {}
+      while (line = client.gets) && line != "\r\n"
+        key, value = line.split(":", 2)
+        headers[key.downcase] = value.strip
+      end
+      body = client.read(Integer(headers.fetch("content-length")))
+      requests << [request, headers, body]
+      client.write("HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+      client.close
+    ensure
+      server.close unless server.closed?
+    end
+    stdout, stderr, status = Open3.capture3(
+      { "GH_HOST" => "github.com", "GH_TOKEN" => TOKEN, "HTTP_PROXY" => "http://127.0.0.1:#{port}",
+        "http_proxy" => "http://127.0.0.1:#{port}", "NO_PROXY" => "", "no_proxy" => "" },
+      "gh", "api", "--method", "POST", "--input", asset, "-H", "Content-Type: application/octet-stream",
+      "-f", "name=asset+name.bin", "http://uploads.github.com/repos/owner/repo/releases/42/assets"
+    )
+    assert server_thread.join(10), "gh upload did not reach the loopback server: #{stderr}"
+    server_thread.value
+    assert_predicate status, :success?, stderr
+    request, headers, body = requests.pop
+    assert_equal "POST http://uploads.github.com/repos/owner/repo/releases/42/assets?name=asset%2Bname.bin HTTP/1.1\r\n", request
+    assert_equal "application/octet-stream", headers.fetch("content-type")
+    assert_equal "token #{TOKEN}", headers.fetch("authorization")
+    assert_equal "binary\x00payload\n", body
+    refute_includes stdout + stderr, TOKEN
+  ensure
+    server&.close unless server&.closed?
+    server_thread&.kill
   end
 
   def test_config_env_command_replaces_inherited_extraheaders_without_persisting_them
