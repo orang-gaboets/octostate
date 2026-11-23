@@ -33,7 +33,13 @@ ENCODED_TOKEN = Base64.strict_encode64("x-access-token:#{TOKEN}")
 EXPECTED_HEADER = "AUTHORIZATION: Basic #{ENCODED_TOKEN}"
 
 class ReleasePleaseAuthTest < Minitest::Test
+  EXPECTED_GIT_HELPERS = {
+    ["release-please", "Verify Release Please Git authentication"] => "GH_TOKEN",
+    ["release-please", "Check out the exact release tag"] => "release_token",
+    ["release-please", "Upload and verify release artifacts"] => "GH_TOKEN"
+  }.freeze
   GIT_HELPER_PATTERN = /^( *)git_with_release_token\(\) \(\n(.*?)^\1\)$/m
+  GIT_TOKEN_ASSIGNMENT = /^[ \t]*local app_token="\$\{(\w+)-\}"$/
 
   def setup
     @tempdirs = []
@@ -923,10 +929,10 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute_empty helper
 
     missing = workflow.sub(helper, "")
-    assert_includes release_git_auth_helper_diagnostics(missing).join("\n"), "found 2"
+    assert_includes release_git_auth_helper_diagnostics(missing).join("\n"), "found 0"
 
     extra = workflow.sub(helper) { "#{helper}\n#{helper}" }
-    assert_includes release_git_auth_helper_diagnostics(extra).join("\n"), "found 4"
+    assert_includes release_git_auth_helper_diagnostics(extra).join("\n"), "found 2"
   end
 
   def test_release_git_auth_helper_guard_rejects_wrong_token_source
@@ -935,21 +941,92 @@ class ReleasePleaseAuthTest < Minitest::Test
     refute_equal workflow, mutated
 
     diagnostics = release_git_auth_helper_diagnostics(mutated).join("\n")
-    assert_includes diagnostics, "credential sources differ"
+    assert_includes diagnostics, "expected token source 'release_token'"
     refute_includes diagnostics, 'local app_token="${GH_TOKEN-}"'
   end
 
-  def release_git_auth_helper_diagnostics(workflow)
-    bodies = workflow.scan(GIT_HELPER_PATTERN).map do |_, body|
-      body.sub(/^ *local app_token="\$\{(?:GH_TOKEN|release_token)-\}"$/, "TOKEN_SOURCE")
+  def test_release_git_auth_helper_guard_rejects_a_helper_moved_to_another_step
+    workflow = YAML.safe_load(File.read(WORKFLOW), aliases: true)
+    verify_step = workflow_step(workflow, "Verify Release Please Git authentication")
+    retry_step = workflow_step(workflow, "Validate retry inputs")
+    helper = verify_step.fetch("run").match(GIT_HELPER_PATTERN).to_s
+    refute_empty helper
+    verify_step["run"] = verify_step.fetch("run").sub(helper, "")
+    retry_step["run"] = "#{retry_step.fetch("run")}\n#{helper}\n"
+
+    diagnostics = release_git_auth_helper_diagnostics(workflow).join("\n")
+    assert_includes diagnostics, "Verify Release Please Git authentication"
+    assert_includes diagnostics, "unexpected git_with_release_token definition"
+    assert_includes diagnostics, "Validate retry inputs"
+  end
+
+  def test_release_git_auth_helper_guard_rejects_continued_prefixes_in_another_step
+    ["time \\\n", "time -p \\\n", "! \\\n"].each do |prefix|
+      workflow = YAML.safe_load(File.read(WORKFLOW), aliases: true)
+      verify_step = workflow_step(workflow, "Verify Release Please Git authentication")
+      retry_step = workflow_step(workflow, "Validate retry inputs")
+      helper = verify_step.fetch("run").match(GIT_HELPER_PATTERN).to_s
+      refute_empty helper
+
+      retry_step["run"] = "#{retry_step.fetch("run")}\n#{prefix}#{helper}\n"
+      diagnostics = release_git_auth_helper_diagnostics(workflow).join("\n")
+      assert_includes diagnostics, "unexpected git_with_release_token definition"
+      assert_includes diagnostics, "Validate retry inputs"
     end
-    sources = workflow.scan(/local app_token="\$\{(GH_TOKEN|release_token)-\}"/).flatten
-    expected_sources = %w[GH_TOKEN release_token GH_TOKEN]
+  end
+
+  def release_git_auth_helper_diagnostics(workflow)
+    workflow = YAML.safe_load(workflow, aliases: true) if workflow.is_a?(String)
+    bodies = {}
+
+    workflow.fetch("jobs", {}).each do |job_name, job|
+      next unless job.is_a?(Hash)
+
+      job.fetch("steps", []).each do |candidate|
+        next unless candidate.is_a?(Hash) && candidate["run"].is_a?(String)
+
+        step_name = candidate["name"] || "(unnamed)"
+        location = [job_name.to_s, step_name]
+        run = candidate.fetch("run")
+        run.scan(GIT_HELPER_PATTERN).each do |_, body|
+          bodies[location] ||= []
+          bodies[location] << body
+        end
+      end
+    end
 
     diagnostics = []
-    diagnostics << "expected exactly three helper definitions, found #{bodies.length}" unless bodies.length == 3
-    diagnostics << "helper bodies differ" unless bodies.uniq.length == 1
-    diagnostics << "credential sources differ from the expected order" unless sources == expected_sources
+    bodies.each_key do |job_name, step_name|
+      next if EXPECTED_GIT_HELPERS.key?([job_name, step_name])
+
+      diagnostics << "unexpected git_with_release_token definition in job '#{job_name}', step '#{step_name}'"
+    end
+
+    normalized_bodies = []
+    EXPECTED_GIT_HELPERS.each do |location, expected_source|
+      matches = bodies.fetch(location, [])
+      if matches.length != 1
+        diagnostics << "expected exactly one git_with_release_token definition in job '#{location[0]}', step '#{location[1]}', found #{matches.length}"
+        next
+      end
+
+      body = matches.first
+      actual_sources = body.scan(GIT_TOKEN_ASSIGNMENT).flatten
+      unless actual_sources == [expected_source]
+        diagnostics << "expected token source '#{expected_source}' in job '#{location[0]}', step '#{location[1]}'"
+      end
+      normalized_bodies << body.sub(/^ *local app_token="\$\{(?:GH_TOKEN|release_token)-\}"$/, "TOKEN_SOURCE")
+    end
+
+    if normalized_bodies.length == EXPECTED_GIT_HELPERS.length && normalized_bodies.uniq.length != 1
+      diagnostics << "helper bodies differ"
+    end
     diagnostics
+  end
+
+  def workflow_step(workflow, name)
+    workflow.fetch("jobs").fetch("release-please").fetch("steps").find do |candidate|
+      candidate["name"] == name
+    end || flunk("missing workflow step: #{name}")
   end
 end
