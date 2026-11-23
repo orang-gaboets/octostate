@@ -1418,6 +1418,20 @@ class ReleasePleaseAuthTest < Minitest::Test
     end
   end
 
+  def test_release_git_auth_helper_guard_ignores_helper_text_after_terminal_ansi_c_control_escape
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    run = ": <<$'EOF\\c'\ngit_with_release_token() { :; }\nEOF\\\n"
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token || printf absent\n")
+    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must execute as Bash"
+    assert_equal "absent", stdout, "helper-looking heredoc text must not define the helper"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must parse as Bash"
+    steps << { "name" => "Terminal ANSI-C control escape heredoc", "run" => run }
+
+    assert_empty release_git_helper_diagnostics(workflow)
+  end
+
   def test_release_git_auth_helper_guard_rejects_function_keyword_split_by_continuation
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1915,6 +1929,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       [value.chr(encoding).b, index + 1 + digits.length]
     when "c"
       control = line[index + 2]
+      return ["\\".b, index + 1] if control == "'"
       return ["\\c".b, index + 1] unless control
 
       value = control == "?" ? 0x7f : control.ord & 0x1f
