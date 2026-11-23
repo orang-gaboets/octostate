@@ -33,6 +33,8 @@ ENCODED_TOKEN = Base64.strict_encode64("x-access-token:#{TOKEN}")
 EXPECTED_HEADER = "AUTHORIZATION: Basic #{ENCODED_TOKEN}"
 
 class ReleasePleaseAuthTest < Minitest::Test
+  GIT_HELPER_PATTERN = /^( *)git_with_release_token\(\) \(\n(.*?)^\1\)$/m
+
   def setup
     @tempdirs = []
     @workflow = YAML.safe_load(File.read(WORKFLOW), aliases: true)
@@ -59,6 +61,10 @@ class ReleasePleaseAuthTest < Minitest::Test
     root = Dir.mktmpdir("release-please-auth-")
     @tempdirs << root
     fixture = prepare_fixture(root)
+    if overrides["TEST_TRUNCATE_CHECKSUMS"] == "true"
+      manifest = File.join(fixture.fetch(:dist_dir), "checksums.txt")
+      File.write(manifest, File.readlines(manifest).drop(1).join)
+    end
     mapfile_compat = <<~'BASH'
       mapfile() {
         local array_name="${2:-}" line
@@ -112,7 +118,6 @@ class ReleasePleaseAuthTest < Minitest::Test
 
     write_git_stub(stub_bin)
     write_gh_stub(stub_bin)
-    write_jq_stub(stub_bin)
     write_sha256sum_stub(stub_bin)
 
     expected_assets = (ASSET_NAMES + ["checksums.txt"]).join("\n")
@@ -131,6 +136,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       env: {
         "PATH" => "#{stub_bin}:#{ENV.fetch("PATH", "")}",
         "GITHUB_SERVER_URL" => "https://github.com",
+        "GITHUB_API_URL" => "https://api.github.com",
         "GITHUB_REPOSITORY" => "orang-gaboets/octostate",
         "DISPATCH_REF" => "refs/heads/main",
         "VERIFY_GIT_AUTH" => "false",
@@ -244,6 +250,10 @@ class ReleasePleaseAuthTest < Minitest::Test
         else
           sha = ENV.fetch("TEST_LIGHTWEIGHT_SHA", ENV.fetch("EXPECTED_COMMIT", ""))
         end
+        state_path = ENV.fetch("TEST_GH_API_COUNT")
+        if File.file?(state_path) && JSON.parse(File.read(state_path))["reads"].to_s == ENV.fetch("TEST_DRIFT_AT", "never")
+          sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        end
         puts "#{sha}\t#{ref}"
         exit 0
       end
@@ -259,94 +269,79 @@ class ReleasePleaseAuthTest < Minitest::Test
       require "json"
 
       args = ARGV
-      File.open(ENV.fetch("TEST_GH_LOG"), "a") do |file|
-        file.puts(JSON.generate(args))
-      end
-
-      if args[0] == "api" && args[1] == "-H"
-        asset_name = File.basename(args.last)
-        path = File.join(ENV.fetch("TEST_DIST_DIR"), asset_name)
-        abort "missing fixture asset" unless File.file?(path)
-        body = File.binread(path)
-        if ENV.fetch("TEST_CORRUPT_ASSET", "false") == "true" && asset_name == ENV.fetch("TEST_CORRUPT_ASSET_NAME")
-          body = "#{body}corrupted"
-        end
-        STDOUT.write(body)
-        exit 0
-      end
-
-      if args[0] == "api" && args[1] == "--method" && args[2] == "DELETE"
-        exit 0
-      end
-
-      if args[0] == "api"
-        count_path = ENV.fetch("TEST_GH_API_COUNT")
-        count = File.exist?(count_path) ? File.read(count_path).to_i : 0
-        count += 1
-        File.write(count_path, count.to_s)
-        names = ENV.fetch("TEST_ASSET_NAMES").split("\n")
-        assets = if count == 1
-          []
-        else
-          names.each_with_index.map do |name, index|
-            {
-              "name" => name,
-              "id" => (index + 1).to_s,
-              "url" => "https://api.github.com/assets/#{name}"
-            }
-          end
-        end
-        if ENV.fetch("TEST_EXTRA_ASSET", "false") == "true" && count > 1
-          assets << { "name" => "unexpected.bin", "id" => "999", "url" => "https://api.github.com/assets/unexpected.bin" }
-        end
-        puts JSON.generate({
-          "tag_name" => ENV.fetch("TEST_TAG_NAME", "v1.3.0"),
-          "draft" => ENV.fetch("TEST_DRAFT", "true") == "true",
-          "assets" => assets
-        })
-        exit 0
-      end
-
-      if args[0] == "release" && args[1] == "upload"
-        exit 0
-      end
-      if args[0] == "release" && args[1] == "edit"
-        File.write(ENV.fetch("TEST_RELEASE_EDIT"), "called")
-        exit 0
-      end
-      abort "unexpected gh invocation"
-    RUBY
-    FileUtils.chmod(0o755, path)
-  end
-
-  def write_jq_stub(stub_bin)
-    path = File.join(stub_bin, "jq")
-    File.write(path, <<~'RUBY')
-      #!/usr/bin/env ruby
-      require "json"
-
-      args = ARGV
-      expression = args.last
-      name_index = args.index("--arg")
-      asset_name = name_index ? args[name_index + 2] : nil
-      document = JSON.parse(STDIN.read)
-
-      case expression
-      when ".tag_name"
-        puts document.fetch("tag_name")
-      when ".draft"
-        puts(document.fetch("draft") ? "true" : "false")
-      when ".assets[].name"
-        document.fetch("assets").each { |asset| puts asset.fetch("name") }
-      when ".assets[] | select(.name == $name) | .id"
-        asset = document.fetch("assets").find { |item| item.fetch("name") == asset_name }
-        puts(asset ? asset.fetch("id") : "")
-      when ".assets[] | select(.name == $name) | .url"
-        asset = document.fetch("assets").find { |item| item.fetch("name") == asset_name }
-        puts(asset ? asset.fetch("url") : "")
+      File.open(ENV.fetch("TEST_GH_LOG"), "a") { |f| f.puts(JSON.generate(args)) }
+      abort "unexpected gh invocation" unless args.first == "api"
+      endpoint = args.find { |arg| arg.start_with?("repos/", "https://") }.to_s
+      repo = "repos/orang-gaboets/octostate"
+      state_path = ENV.fetch("TEST_GH_API_COUNT")
+      state = if File.file?(state_path)
+        JSON.parse(File.read(state_path))
       else
-        warn "unsupported jq fixture expression"
-        exit 99
+        initial = ENV.fetch("TEST_PARTIAL", "false") == "true" ? ENV.fetch("TEST_ASSET_NAMES").split("\n").first(2) : []
+        { "reads" => 0, "assets" => initial.each_with_index.map { |name, i| { "name" => name, "id" => i + 1, "state" => "uploaded" } } }
+      end
+      save = -> { File.write(state_path, JSON.generate(state)) }
+      fail_at = ENV.fetch("TEST_API_FAILURE", "")
+      if endpoint.include?("/releases/tags/")
+        warn "gh: Not Found (HTTP 404)"
+        exit 1
+      elsif endpoint == "#{repo}/releases?per_page=100"
+        abort "discovery error" if fail_at == "discovery"
+        count = Integer(ENV.fetch("TEST_MATCH_COUNT", "1"))
+        releases = Array.new(count) { |i| { "id" => 42 + i, "tag_name" => ENV.fetch("TEST_TAG_NAME"), "draft" => ENV.fetch("TEST_DRAFT") == "true" } }
+        puts JSON.generate([ENV["TEST_MALFORMED_DISCOVERY"] == "true" ? {} : [], releases])
+      elsif endpoint == "#{repo}/releases/42" && !args.include?("PATCH")
+        state["reads"] += 1
+        save.call
+        abort "release metadata error" if fail_at == "metadata#{state['reads']}"
+        change = ENV.fetch("TEST_CHANGE_AT", "").split(":")
+        tag = change == [state["reads"].to_s, "tag"] ? "wrong-tag" : ENV.fetch("TEST_TAG_NAME")
+        id = change == [state["reads"].to_s, "id"] ? 99 : 42
+        draft = change == [state["reads"].to_s, "draft"] ? false : ENV.fetch("TEST_DRAFT") == "true"
+        url = ENV.fetch("TEST_UPLOAD_URL", "https://uploads.github.com/repos/orang-gaboets/octostate/releases/42/assets{?name,label}")
+        puts JSON.generate({ "id" => id, "tag_name" => tag, "draft" => draft,
+          "url" => "https://api.github.com/#{repo}/releases/42", "upload_url" => url })
+      elsif endpoint == "#{repo}/releases/42/assets?per_page=100"
+        abort "asset list error" if fail_at == "assets#{state['reads']}"
+        if ENV.fetch("TEST_MALFORMED_AT", "") == state["reads"].to_s
+          puts "[null]"
+          exit 0
+        end
+        assets = state.fetch("assets").map(&:dup)
+        assets << { "name" => "unexpected.bin", "id" => 999, "state" => "uploaded" } if ENV["TEST_EXTRA_ASSET"] == "true"
+        assets << assets.first.dup if ENV["TEST_DUPLICATE_ASSET"] == "true" && !assets.empty?
+        assets.pop if ENV.fetch("TEST_MISSING_AT", "") == state["reads"].to_s
+        assets.first["id"] = 777 if ENV["TEST_REPLACE_ASSET"] == "true" && state["reads"] == 3 && !assets.empty?
+        assets.first["state"] = "starter" if ENV["TEST_STARTER_ASSET"] == "true" && state["reads"] > 1 && !assets.empty?
+        puts JSON.generate([assets.take(2), assets.drop(2)])
+      elsif endpoint.match?(%r{\A#{repo}/releases/assets/\d+\z}) && args.include?("DELETE")
+        abort "delete error" if fail_at == "delete"
+        id = endpoint.split("/").last.to_i
+        abort "unknown asset" unless state["assets"].any? { |a| a["id"] == id }
+        state["assets"].reject! { |a| a["id"] == id }
+        save.call
+      elsif endpoint.match?(%r{\A#{repo}/releases/assets/\d+\z}) && args.include?("Accept: application/octet-stream")
+        abort "download error" if fail_at == "download"
+        asset = state.fetch("assets").find { |a| a["id"] == endpoint.split("/").last.to_i }
+        abort "unknown asset" unless asset
+        body = File.binread(File.join(ENV.fetch("TEST_DIST_DIR"), asset.fetch("name")))
+        body += "corrupt" if ENV["TEST_CORRUPT_ASSET"] == "true" && asset["name"] == ENV["TEST_CORRUPT_ASSET_NAME"]
+        STDOUT.write(body)
+      elsif endpoint == "https://uploads.github.com/#{repo}/releases/42/assets" && args.include?("POST")
+        abort "upload error" if fail_at == "upload"
+        name_arg = args.find { |arg| arg.start_with?("name=") }
+        name = name_arg&.delete_prefix("name=")
+        input = args[args.index("--input").to_i + 1]
+        abort "bad upload" unless name && File.basename(input) == name && File.file?(input)
+        abort "duplicate asset" if state["assets"].any? { |asset| asset["name"] == name }
+        state["assets"] << { "name" => name, "id" => 100 + state["assets"].length, "state" => "uploaded" }
+        save.call
+        puts "{}"
+      elsif endpoint == "#{repo}/releases/42" && args.include?("PATCH")
+        abort "bad publication payload" unless args.include?("draft=false") && args.include?("tag_name=#{ENV.fetch('RELEASE_TAG')}")
+        File.write(ENV.fetch("TEST_RELEASE_EDIT"), "called")
+      else
+        abort "unexpected gh endpoint: #{endpoint}"
       end
     RUBY
     FileUtils.chmod(0o755, path)
@@ -472,15 +467,85 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
 
     calls = git_records(result).select { |record| record.fetch("args").include?("ls-remote") }
-    assert_equal 2, calls.length
+    assert_equal 6, calls.length
     calls.each { |record| assert_basic_git_record(record) }
-    assert_equal "refs/tags/#{TAG}^{}", calls[0].fetch("args").last
-    assert_equal "refs/tags/#{TAG}", calls[1].fetch("args").last
+    assert_equal ["refs/tags/#{TAG}^{}", "refs/tags/#{TAG}"] * 3, calls.map { |call| call.fetch("args").last }
     assert File.exist?(result.fetch(:release_edit)), "verified draft release was not published"
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), TOKEN
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), ENCODED_TOKEN
     refute_includes result.fetch(:stdout) + result.fetch(:stderr), EXPECTED_HEADER
     assert_configs_unchanged(result)
+  end
+
+  def test_upload_finds_draft_when_tag_endpoint_returns_404
+    result = run_step("Upload and verify release artifacts")
+
+    assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
+    assert File.exist?(result.fetch(:release_edit)), "verified draft release was not published"
+    calls = gh_records(result)
+    assert_equal 3, calls.count { |call| call.include?("repos/orang-gaboets/octostate/releases/42") && !call.include?("PATCH") }
+    assert_equal 6, calls.count { |call| call.include?("POST") && call.include?("https://uploads.github.com/repos/orang-gaboets/octostate/releases/42/assets") }
+    refute calls.flatten.any? { |arg| arg.include?("/releases/tags/") }
+  end
+
+  def test_upload_fails_closed_for_invalid_discovery_and_metadata
+    cases = [
+      { "TEST_MATCH_COUNT" => "0" }, { "TEST_MATCH_COUNT" => "2" },
+      { "TEST_TAG_NAME" => "wrong-tag" }, { "TEST_DRAFT" => "false" },
+      { "TEST_MALFORMED_DISCOVERY" => "true" },
+      { "TEST_API_FAILURE" => "discovery" }, { "TEST_UPLOAD_URL" => "https://attacker.invalid/upload{?name,label}" }
+    ]
+    (1..3).each do |boundary|
+      %w[id tag draft].each { |field| cases << { "TEST_CHANGE_AT" => "#{boundary}:#{field}" } }
+      cases << { "TEST_API_FAILURE" => "metadata#{boundary}" }
+      cases << { "TEST_API_FAILURE" => "assets#{boundary}" }
+      cases << { "TEST_DRIFT_AT" => boundary.to_s }
+      cases << { "TEST_MALFORMED_AT" => boundary.to_s }
+    end
+    cases.each do |scenario|
+      result = run_step("Upload and verify release artifacts", scenario)
+      refute_predicate result.fetch(:status), :success?, scenario.inspect
+      assert_no_release_edit(result)
+    end
+  end
+
+  def test_upload_retries_only_matching_partial_assets
+    result = run_step("Upload and verify release artifacts", { "TEST_PARTIAL" => "true" })
+
+    assert_predicate result.fetch(:status), :success?, result.fetch(:stderr)
+    deleted = gh_records(result).select { |call| call.include?("DELETE") }.map(&:last)
+    assert_equal %w[repos/orang-gaboets/octostate/releases/assets/1 repos/orang-gaboets/octostate/releases/assets/2], deleted
+    assert File.exist?(result.fetch(:release_edit))
+  end
+
+  def test_upload_rejects_manifest_missing_an_archive_before_mutation
+    result = run_step("Upload and verify release artifacts", {
+      "TEST_TRUNCATE_CHECKSUMS" => "true", "TEST_CORRUPT_ASSET" => "true"
+    })
+
+    refute_predicate result.fetch(:status), :success?
+    assert_no_release_edit(result)
+    refute gh_records(result).any? { |call| call.include?("DELETE") || call.include?("POST") }
+  end
+
+  def test_upload_refuses_unverified_or_changed_assets_and_api_errors
+    scenarios = [
+      { "TEST_EXTRA_ASSET" => "true", "TEST_PARTIAL" => "true" },
+      { "TEST_DUPLICATE_ASSET" => "true", "TEST_PARTIAL" => "true" },
+      { "TEST_REPLACE_ASSET" => "true" }, { "TEST_STARTER_ASSET" => "true" },
+      { "TEST_MISSING_AT" => "2" }, { "TEST_MISSING_AT" => "3" },
+      { "TEST_API_FAILURE" => "delete", "TEST_PARTIAL" => "true" },
+      { "TEST_API_FAILURE" => "upload" }, { "TEST_API_FAILURE" => "download" },
+      { "TEST_CORRUPT_ASSET" => "true", "TEST_CORRUPT_ASSET_NAME" => "checksums.txt" }
+    ]
+    scenarios.each do |scenario|
+      result = run_step("Upload and verify release artifacts", scenario)
+      refute_predicate result.fetch(:status), :success?, scenario.inspect
+      assert_no_release_edit(result)
+      if scenario.key?("TEST_EXTRA_ASSET") || scenario.key?("TEST_DUPLICATE_ASSET")
+        refute gh_records(result).any? { |call| call.include?("DELETE") || call.include?("POST") }
+      end
+    end
   end
 
   def test_upload_authentication_failure_stops_before_publication
@@ -520,7 +585,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       { "TEST_EXTRA_ASSET" => "true" }
     )
     refute_predicate result.fetch(:status), :success?
-    assert_includes result.fetch(:stderr), "unexpected or missing assets"
+    assert_includes result.fetch(:stderr), "unexpected or duplicate assets"
     assert_no_release_edit(result)
   end
 
@@ -530,7 +595,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       { "TEST_DRAFT" => "false" }
     )
     refute_predicate result.fetch(:status), :success?
-    assert_includes result.fetch(:stderr), "not draft"
+    assert_includes result.fetch(:stderr), "draft"
     assert_no_release_edit(result)
   end
 
@@ -688,6 +753,49 @@ class ReleasePleaseAuthTest < Minitest::Test
     end
   end
 
+  def test_real_gh_upload_sends_authenticated_binary_with_encoded_name
+    root = Dir.mktmpdir("release-please-gh-upload-")
+    @tempdirs << root
+    asset = File.join(root, "asset.bin")
+    File.binwrite(asset, "binary\x00payload\n")
+    server = TCPServer.new("127.0.0.1", 0)
+    port = server.addr[1]
+    requests = Queue.new
+    server_thread = Thread.new do
+      client = Timeout.timeout(10) { server.accept }
+      request = client.gets
+      headers = {}
+      while (line = client.gets) && line != "\r\n"
+        key, value = line.split(":", 2)
+        headers[key.downcase] = value.strip
+      end
+      body = client.read(Integer(headers.fetch("content-length")))
+      requests << [request, headers, body]
+      client.write("HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+      client.close
+    ensure
+      server.close unless server.closed?
+    end
+    stdout, stderr, status = Open3.capture3(
+      { "GH_HOST" => "github.com", "GH_TOKEN" => TOKEN, "HTTP_PROXY" => "http://127.0.0.1:#{port}",
+        "http_proxy" => "http://127.0.0.1:#{port}", "NO_PROXY" => "", "no_proxy" => "" },
+      "gh", "api", "--method", "POST", "--input", asset, "-H", "Content-Type: application/octet-stream",
+      "-f", "name=asset+name.bin", "http://uploads.github.com/repos/owner/repo/releases/42/assets"
+    )
+    assert server_thread.join(10), "gh upload did not reach the loopback server: #{stderr}"
+    server_thread.value
+    assert_predicate status, :success?, stderr
+    request, headers, body = requests.pop
+    assert_equal "POST http://uploads.github.com/repos/owner/repo/releases/42/assets?name=asset%2Bname.bin HTTP/1.1\r\n", request
+    assert_equal "application/octet-stream", headers.fetch("content-type")
+    assert_equal "token #{TOKEN}", headers.fetch("authorization")
+    assert_equal "binary\x00payload\n", body
+    refute_includes stdout + stderr, TOKEN
+  ensure
+    server&.close unless server&.closed?
+    server_thread&.kill
+  end
+
   def test_config_env_command_replaces_inherited_extraheaders_without_persisting_them
     root = Dir.mktmpdir("release-please-git-config-")
     @tempdirs << root
@@ -797,1180 +905,51 @@ class ReleasePleaseAuthTest < Minitest::Test
     server_thread&.kill if server_thread&.alive?
   end
 
-  def test_release_git_auth_helpers_match_with_step_specific_sources
-    assert_empty release_git_helper_diagnostics(@workflow)
+  def test_release_git_auth_helpers_do_not_drift
+    assert_empty release_git_auth_helper_diagnostics(File.read(WORKFLOW))
   end
 
-  def test_release_git_auth_helper_guard_accepts_equivalent_setup_options
-    step_names = [
-      "Verify Release Please Git authentication",
-      "Check out the exact release tag",
-      "Upload and verify release artifacts"
-    ]
+  def test_release_git_auth_helper_guard_rejects_body_drift
+    workflow = File.read(WORKFLOW)
+    mutated = workflow.sub("http.${auth_url}.sslVerify=true", "http.${auth_url}.sslVerify=false")
+    refute_equal workflow, mutated
 
-    [
-      "set -e -u -o pipefail",
-      "set -o errexit -o nounset -o pipefail"
-    ].each do |strict_mode|
-      workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-      steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-      step_names.each do |step_name|
-        step = steps.find { |candidate| candidate["name"] == step_name }
-        original = step.fetch("run")
-        helper = original[/^git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?\r?\n.*?^\)\n/m]
-        assert(!helper.nil?, "expected helper fixture for #{step_name}")
-        changed_helper = helper.sub("set +x", "set +o xtrace")
-          .sub("set -euo pipefail", strict_mode)
-          .sub(/^([ \t]*)local app_token=/) do
-            "#{Regexp.last_match(1)}:\n#{Regexp.last_match(1)}local app_token="
-          end
-        step["run"] = original.sub(helper, changed_helper)
-        assert(original != step.fetch("run"), "equivalent setup fixture did not change #{step_name}")
-        _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
-        assert_predicate status, :success?, "equivalent setup fixture for #{step_name} must parse as Bash"
-      end
+    assert_includes release_git_auth_helper_diagnostics(mutated), "helper bodies differ"
+  end
 
-      assert_empty release_git_helper_diagnostics(workflow)
+  def test_release_git_auth_helper_guard_rejects_missing_or_extra_helpers
+    workflow = File.read(WORKFLOW)
+    helper = workflow.match(GIT_HELPER_PATTERN).to_s
+    refute_empty helper
+
+    missing = workflow.sub(helper, "")
+    assert_includes release_git_auth_helper_diagnostics(missing).join("\n"), "found 2"
+
+    extra = workflow.sub(helper) { "#{helper}\n#{helper}" }
+    assert_includes release_git_auth_helper_diagnostics(extra).join("\n"), "found 4"
+  end
+
+  def test_release_git_auth_helper_guard_rejects_wrong_token_source
+    workflow = File.read(WORKFLOW)
+    mutated = workflow.sub('local app_token="${release_token-}"', 'local app_token="${GH_TOKEN-}"')
+    refute_equal workflow, mutated
+
+    diagnostics = release_git_auth_helper_diagnostics(mutated).join("\n")
+    assert_includes diagnostics, "credential sources differ"
+    refute_includes diagnostics, 'local app_token="${GH_TOKEN-}"'
+  end
+
+  def release_git_auth_helper_diagnostics(workflow)
+    bodies = workflow.scan(GIT_HELPER_PATTERN).map do |_, body|
+      body.sub(/^ *local app_token="\$\{(?:GH_TOKEN|release_token)-\}"$/, "TOKEN_SOURCE")
     end
-  end
+    sources = workflow.scan(/local app_token="\$\{(GH_TOKEN|release_token)-\}"/).flatten
+    expected_sources = %w[GH_TOKEN release_token GH_TOKEN]
 
-  def test_release_git_auth_helper_guard_rejects_wrong_step_token_source
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    checkout = steps.find { |candidate| candidate["name"] == "Check out the exact release tag" }
-    original = checkout.fetch("run")
-    checkout["run"] = original.sub(
-      'local app_token="${release_token-}"',
-      'local app_token="${GH_TOKEN-}"'
-    )
-    assert(original != checkout.fetch("run"), "source-swap mutation did not change the checkout helper")
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Check out the exact release tag"), "expected checkout source mismatch diagnostic")
-    assert(!diagnostics.include?('local app_token="${GH_TOKEN-}"'), "diagnostic echoed the source assignment")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_credential_source_text_inside_heredoc
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    expected_sources = {
-      "Verify Release Please Git authentication" => "GH_TOKEN",
-      "Check out the exact release tag" => "release_token",
-      "Upload and verify release artifacts" => "GH_TOKEN"
-    }
-
-    expected_sources.each do |step_name, source|
-      step = steps.find { |candidate| candidate["name"] == step_name }
-      expected_assignment = /^([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"$/
-      original = step.fetch("run")
-      step["run"] = original.sub(expected_assignment) do
-        indent = Regexp.last_match(1)
-        "#{indent}: <<'EXPECTED_SOURCE'\n#{indent}local app_token=\"${#{source}-}\"\nEXPECTED_SOURCE\n#{indent}local app_token=\"${fixture_token-}\""
-      end
-      assert(original != step.fetch("run"), "heredoc source fixture did not change #{step_name}")
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
-      assert_predicate status, :success?, "heredoc source fixture for #{step_name} must parse as Bash"
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    expected_sources.each_key do |step_name|
-      assert(diagnostics.include?(step_name), "expected credential-source diagnostic for #{step_name}")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_detects_definition_after_escaped_quoted_heredoc_delimiter
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = <<~'BASH'
-      : <<"E\OF"
-      heredoc body
-      E\OF
-      git_with_release_token() { :; }
-    BASH
-
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-    assert_predicate status, :success?, "escaped quoted-heredoc fixture must execute as Bash"
-    assert_equal "function\n", stdout
-    steps << { "name" => "Helper after escaped quoted heredoc", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Helper after escaped quoted heredoc'"),
-      "expected helper-after-heredoc diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_detects_definition_after_continued_heredoc_delimiter
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = <<~'BASH'
-      : <<\
-      EOF
-      heredoc body
-      git_with_release_token() { :; }
-      EOF
-      git_with_release_token() { :; }
-    BASH
-
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-    assert_predicate status, :success?, "continued-heredoc fixture must execute as Bash"
-    assert_equal "function\n", stdout
-    assert_equal 1, release_git_helper_definitions(run).length
-    steps << { "name" => "Helper after continued heredoc", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Helper after continued heredoc'"),
-      "expected helper-after-continued-heredoc diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_ignores_helper_text_inside_indented_continued_heredoc
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = <<~'BASH'
-      : <<\
-        EOF
-      heredoc body
-      git_with_release_token() { :; }
-      EOF
-      git_with_release_token() { :; }
-    BASH
-
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-    assert_predicate status, :success?, "indented continued-heredoc fixture must execute as Bash"
-    assert_equal "function\n", stdout
-    assert_equal 1, release_git_helper_definitions(run).length
-    steps << { "name" => "Indented continued heredoc", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Indented continued heredoc'"),
-      "expected real post-heredoc helper diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_masks_command_suffix_after_continued_heredoc
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = <<~'BASH'
-      : <<\
-      EOF; printf '%s' 'x; git_with_release_token() { :; }'
-      heredoc body
-      EOF
-    BASH
-
-    stdout, _stderr, status = Open3.capture3(
-      "bash",
-      stdin_data: "#{run}type -t git_with_release_token 2>/dev/null || printf 'absent\\n'\n"
-    )
-    assert_predicate status, :success?, "continued-heredoc suffix fixture must execute as Bash"
-    assert_equal "x; git_with_release_token() { :; }absent\n", stdout
-    steps << { "name" => "Continued heredoc suffix text", "run" => run }
-
-    assert_empty release_git_helper_diagnostics(workflow)
-  end
-
-  def test_release_git_auth_helper_guard_detects_executable_suffix_after_continued_heredoc
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = <<~'BASH'
-      : <<\
-      EOF; git_with_release_token() { :; }
-      heredoc body
-      EOF
-    BASH
-
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-    assert_predicate status, :success?, "executable heredoc-suffix fixture must execute as Bash"
-    assert_equal "function\n", stdout
-    steps << { "name" => "Executable continued heredoc suffix", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Executable continued heredoc suffix'"),
-      "expected executable-suffix helper diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_detects_helper_after_continued_delimiter_word
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = <<~'BASH'
-      : <<EOF\
-        FOO
-      heredoc body
-      EOF
-      git_with_release_token() { :; }
-    BASH
-
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-    assert_predicate status, :success?, "continued delimiter-word fixture must execute as Bash"
-    assert_equal "function\n", stdout
-    assert_equal 1, release_git_helper_definitions(run).length
-    steps << { "name" => "Helper after continued delimiter word", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step 'Helper after continued delimiter word'"),
-      "expected helper-after-delimiter-word diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_source_assignment_in_false_branch
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    expected_sources = {
-      "Verify Release Please Git authentication" => "GH_TOKEN",
-      "Check out the exact release tag" => "release_token",
-      "Upload and verify release artifacts" => "GH_TOKEN"
-    }
-
-    expected_sources.each do |step_name, source|
-      step = steps.find { |candidate| candidate["name"] == step_name }
-      expected_assignment = /^([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"$/
-      original = step.fetch("run")
-      step["run"] = original.sub(expected_assignment) do
-        indent = Regexp.last_match(1)
-        "#{indent}if false; then\n#{indent}  local app_token=\"${#{source}-}\"\n#{indent}fi\n#{indent}local app_token=\"${wrong_token-}\""
-      end
-      assert(original != step.fetch("run"), "false-branch source fixture did not change #{step_name}")
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
-      assert_predicate status, :success?, "false-branch source fixture for #{step_name} must parse as Bash"
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    expected_sources.each_key do |step_name|
-      assert(diagnostics.include?(step_name), "expected active-source diagnostic for #{step_name}")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_rejects_source_assignment_in_nested_function
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    expected_sources = {
-      "Verify Release Please Git authentication" => "GH_TOKEN",
-      "Check out the exact release tag" => "release_token",
-      "Upload and verify release artifacts" => "GH_TOKEN"
-    }
-
-    expected_sources.each do |step_name, source|
-      step = steps.find { |candidate| candidate["name"] == step_name }
-      expected_assignment = /^([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"$/
-      original = step.fetch("run")
-      step["run"] = original.sub(expected_assignment) do
-        indent = Regexp.last_match(1)
-        "#{indent}read_token_source() {\n#{indent}  local app_token=\"${#{source}-}\"\n#{indent}}\n#{indent}local app_token=\"${wrong_token-}\""
-      end
-      assert(original != step.fetch("run"), "nested-function source fixture did not change #{step_name}")
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: step.fetch("run"))
-      assert_predicate status, :success?, "nested-function source fixture for #{step_name} must parse as Bash"
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    expected_sources.each_key do |step_name|
-      assert(diagnostics.include?(step_name), "expected active-source diagnostic for #{step_name}")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_rejects_single_copy_drift
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    original = verifier.fetch("run")
-    verifier["run"] = original.sub("sslVerify=true", "sslVerify=false")
-    assert(original != verifier.fetch("run"), "drift mutation did not change the verifier helper")
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected verifier mismatch diagnostic")
-    assert(!diagnostics.include?("sslVerify=false"), "diagnostic echoed modified helper source")
-    assert(!diagnostics.include?(TOKEN), "diagnostic leaked the raw test token")
-    assert(!diagnostics.include?(ENCODED_TOKEN), "diagnostic leaked the encoded test token")
-    assert(!diagnostics.include?(EXPECTED_HEADER), "diagnostic leaked the expected auth header")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_missing_or_extra_definitions
-    missing_workflow = workflow_with_commented_git_helper_openers
-    missing_steps = missing_workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    checkout = missing_steps.find { |candidate| candidate["name"] == "Check out the exact release tag" }
-    original = checkout.fetch("run")
-    checkout["run"] = original.sub(
-      /^[ \t]*git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?$/,
-      "# helper removed for guard test"
-    )
-    assert(original != checkout.fetch("run"), "missing-copy mutation did not change the checkout helper")
-    missing_diagnostics = release_git_helper_diagnostics(missing_workflow).join("\n")
-    assert(missing_diagnostics.include?("Check out the exact release tag"), "expected missing-helper location diagnostic")
-    assert(!missing_diagnostics.include?("git_with_release_token() ("), "missing-helper diagnostic echoed helper source")
-
-    extra_workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    extra_steps = extra_workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    verifier = extra_steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    original_run = verifier.fetch("run")
-    commented_run = original_run.sub(
-      /^git_with_release_token\(\) \($/,
-      "git_with_release_token() ( # unexpected helper copy"
-    )
-    assert(original_run != commented_run, "commented extra-copy mutation did not change the helper declaration")
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: commented_run)
-    assert_predicate status, :success?, "commented helper declaration fixture must parse as Bash"
-    extra_steps << { "name" => "Unexpected helper copy", "run" => commented_run }
-    extra_diagnostics = release_git_helper_diagnostics(extra_workflow).join("\n")
-    assert(extra_diagnostics.include?("Unexpected helper copy"), "expected unexpected-helper location diagnostic")
-    assert(!extra_diagnostics.include?("git_with_release_token() ("), "extra-helper diagnostic echoed helper source")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_drift_after_nested_subshell
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    step_names = [
-      "Verify Release Please Git authentication",
-      "Check out the exact release tag",
-      "Upload and verify release artifacts"
-    ]
-    step_names.each do |step_name|
-      candidate = steps.find { |item| item["name"] == step_name }
-      original = candidate.fetch("run")
-      nested_probe = "(\n: nested_helper_probe\n)\n# SYNTHETIC_HELPER_SOURCE_MARKER\n"
-      candidate["run"] = original.sub("local auth_url=", "#{nested_probe}local auth_url=")
-      assert(original != candidate.fetch("run"), "nested-subshell fixture did not change #{step_name}")
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: candidate.fetch("run"))
-      assert_predicate status, :success?, "nested-subshell fixture for #{step_name} must parse as Bash"
-    end
-    assert_empty release_git_helper_diagnostics(workflow), "identical nested helpers should remain complete and match"
-
-    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    original = verifier.fetch("run")
-    verifier["run"] = original.sub("sslVerify=true", "sslVerify=false")
-    assert(original != verifier.fetch("run"), "nested-boundary drift mutation did not change the verifier helper")
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("differs between"), "expected normalized helper-body mismatch after nested subshell")
-    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected mismatch to identify verifier step")
-    assert(!diagnostics.include?("could not find the complete"), "nested helpers should remain complete after drift")
-    assert(!diagnostics.include?("SYNTHETIC_HELPER_SOURCE_MARKER"), "diagnostic leaked synthetic helper source")
-    assert(!diagnostics.include?(TOKEN), "diagnostic leaked the raw test token")
-    assert(!diagnostics.include?(ENCODED_TOKEN), "diagnostic leaked the encoded test token")
-  end
-
-  def test_release_git_auth_helper_guard_requires_release_please_job
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    jobs = workflow.fetch("jobs")
-    release_steps = jobs.fetch("release-please").fetch("steps")
-    verifier_index = release_steps.index do |candidate|
-      candidate["name"] == "Verify Release Please Git authentication"
-    end
-    verifier = release_steps.delete_at(verifier_index)
-    jobs["verification-copy"] = { "steps" => [verifier] }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("release-please"), "expected missing release job location diagnostic")
-    assert(diagnostics.include?("verification-copy"), "expected unexpected job location diagnostic")
-    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected verifier step location diagnostic")
-    assert(!diagnostics.include?("git_with_release_token() ("), "job-location diagnostic echoed helper source")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_split_function_declaration
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    split_run = <<~'BASH'
-      function git_with_release_token
-      (
-        : split_declaration_probe
-      )
-    BASH
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: split_run)
-    assert_predicate status, :success?, "split declaration fixture must parse as Bash"
-    steps << { "name" => "Unexpected split helper", "run" => split_run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Unexpected split helper"), "expected split-helper location diagnostic")
-    assert(!diagnostics.include?("function git_with_release_token"), "diagnostic echoed split helper source")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_split_traditional_declaration
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    split_run = <<~'BASH'
-      git_with_release_token()
-      (
-        : split_traditional_declaration_probe
-      )
-    BASH
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: split_run)
-    assert_predicate status, :success?, "split traditional declaration fixture must parse as Bash"
-    steps << { "name" => "Unexpected split traditional helper", "run" => split_run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Unexpected split traditional helper"), "expected split traditional helper location diagnostic")
-    assert(!diagnostics.include?("git_with_release_token()"), "diagnostic echoed split traditional helper source")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_inline_declaration
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    inline_run = "if true; then git_with_release_token() { :; }; fi\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: inline_run)
-    assert_predicate status, :success?, "inline helper declaration fixture must parse as Bash"
-    steps << { "name" => "Unexpected inline helper", "run" => inline_run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Unexpected inline helper"), "expected inline-helper location diagnostic")
-    assert(!diagnostics.include?(inline_run.strip), "diagnostic echoed inline helper source")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_timed_and_negated_declarations
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    declarations = {
-      "Timed helper" => "time git_with_release_token() (\n  : timed_probe\n)\n",
-      "POSIX-timed helper" => "time -p git_with_release_token() (\n  : posix_timed_probe\n)\n",
-      "Negated helper" => "! git_with_release_token() (\n  : negated_probe\n)\n"
-    }
-
-    declarations.each do |step_name, run|
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-      assert_predicate status, :success?, "prefixed helper fixture must parse as Bash"
-      steps << { "name" => step_name, "run" => run }
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    declarations.each_key do |step_name|
-      assert(diagnostics.include?(step_name), "expected prefixed-helper diagnostic")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_rejects_continued_prefixed_declarations
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    declarations = {
-      "Continued timed helper" => "time \\\ngit_with_release_token() (\n  : timed_probe\n)\n",
-      "Continued POSIX-timed helper" => "time -p \\\ngit_with_release_token() (\n  : posix_timed_probe\n)\n",
-      "Continued negated helper" => "! \\\ngit_with_release_token() (\n  : negated_probe\n)\n"
-    }
-
-    declarations.each do |step_name, run|
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-      assert_predicate status, :success?, "continued prefixed helper fixture must parse as Bash"
-      steps << { "name" => step_name, "run" => run }
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    declarations.each_key do |step_name|
-      assert(diagnostics.include?("unsupported git_with_release_token declaration in job 'release-please', step '#{step_name}'"),
-        "expected unsupported-declaration diagnostic for #{step_name}")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_rejects_combined_timing_and_negation_prefixes
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    declarations = {
-      "Combined timed-negated helper" => "time ! git_with_release_token() { :; }\n",
-      "Continued combined timed-negated helper" => "time ! \\\ngit_with_release_token() { :; }\n",
-      "Split continued timed-negated helper" => "time \\\n! git_with_release_token() { :; }\n"
-    }
-
-    declarations.each do |step_name, run|
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-      assert_predicate status, :success?, "combined-prefix fixture must parse as Bash"
-      steps << { "name" => step_name, "run" => run }
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    declarations.each_key do |step_name|
-      assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step '#{step_name}'"),
-        "expected unexpected-definition diagnostic for #{step_name}")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_rejects_continued_time_option_before_negation
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    declarations = {
-      "Unexpected split time-option helper" => "time \\\n-p ! git_with_release_token() { printf override; }\n",
-      "Unexpected continued split time-option helper" => "time \\\n-p \\\n! git_with_release_token() { printf override; }\n"
-    }
-
-    declarations.each do |step_name, run|
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-      assert_predicate status, :success?, "split time-option fixture must parse as Bash"
-      stdout, _stderr, status = Open3.capture3(
-        "bash",
-        stdin_data: "git_with_release_token() { printf original; }\n#{run}git_with_release_token\n"
-      )
-      assert_predicate status, :success?, "split time-option fixture must redefine the helper"
-      assert_equal "override", stdout
-      steps << { "name" => step_name, "run" => run }
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    declarations.each_key do |step_name|
-      assert(diagnostics.include?("unexpected git_with_release_token definition in job 'release-please', step '#{step_name}'"),
-        "expected split-time-option helper diagnostic")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_ignores_heredoc_text_and_similar_names
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    heredoc_run = <<~'BASH'
-      : <<'EXAMPLE'
-      git_with_release_token() (
-        : example text
-      )
-      EXAMPLE
-    BASH
-    similar_name_run = "function git_with_release_token-probe { :; }\n"
-    continued_text_run = "echo \\\nfunction git_with_release_token\n"
-    [heredoc_run, similar_name_run, continued_text_run].each do |run|
-      _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-      assert_predicate status, :success?, "non-standard fixture must parse as Bash"
-    end
-    steps << { "name" => "Heredoc example", "run" => heredoc_run }
-    steps << { "name" => "Similar function name", "run" => similar_name_run }
-    steps << { "name" => "Continued function text", "run" => continued_text_run }
-
-    assert_empty release_git_helper_diagnostics(workflow)
-  end
-
-  def test_release_git_auth_helper_guard_rejects_declaration_after_arithmetic_shift
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    arithmetic_run = "(( value = 8 << 2 ))\ngit_with_release_token() { :; }\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: arithmetic_run)
-    assert_predicate status, :success?, "arithmetic-shift declaration fixture must parse as Bash"
-    steps << { "name" => "Helper after arithmetic shift", "run" => arithmetic_run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Helper after arithmetic shift"), "expected helper after arithmetic shift diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_declaration_after_continued_and
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "true && \\\ngit_with_release_token() { :; }\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "continued-command declaration fixture must parse as Bash"
-    steps << { "name" => "Helper after continued &&", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Helper after continued &&"), "expected continued helper diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_signature_split_by_continuation
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "git_with_release_token \\\n() (\n  : split_continuation_probe\n)\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "continued signature fixture must parse as Bash"
-    steps << { "name" => "Split continued helper", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Split continued helper"), "expected split continued-helper diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_declaration_after_continued_then
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "if true; then \\\ngit_with_release_token() { :; }\nfi\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "continued-then fixture must parse as Bash"
-    steps << { "name" => "Helper after continued then", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Helper after continued then"), "expected continued-then helper diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_declaration_after_continued_condition_keyword
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    fixtures = {
-      "Helper after continued && if" => "true && if \\\ngit_with_release_token() { :; }; then :; fi\n",
-      "Helper after continued if" => "if \\\ngit_with_release_token() { :; }; then :; fi\n",
-      "Helper after continued elif" => "if false; then :; elif \\\ngit_with_release_token() { :; }; then :; fi\n",
-      "Helper after continued while" => "while \\\ngit_with_release_token() { :; }; do break; done\n",
-      "Helper after continued until" => "until \\\ngit_with_release_token() { :; }; do :; done\n"
-    }
-
-    fixtures.each do |step_name, run|
-      stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-      assert_predicate status, :success?, "continued condition fixture must execute as Bash"
-      assert_equal "function\n", stdout, "continued condition fixture must define the helper"
-      steps << { "name" => step_name, "run" => run }
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    fixtures.each_key do |step_name|
-      assert(diagnostics.include?(step_name), "expected #{step_name} diagnostic")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_rejects_declaration_after_ansi_c_quoted_heredoc
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    fixtures = {
-      "Helper after ANSI-C quoted heredoc" => ": <<$'EOF'\ntext\nEOF\ngit_with_release_token() { :; }\n",
-      "Helper after ANSI-C hexadecimal heredoc" => ": <<$'E\\x4fF'\ntext\nEOF\ngit_with_release_token() { :; }\n",
-      "Helper after ANSI-C octal heredoc" => ": <<$'E\\117F'\ntext\nEOF\ngit_with_release_token() { :; }\n"
-    }
-
-    fixtures.each do |step_name, run|
-      stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-      assert_predicate status, :success?, "ANSI-C heredoc fixture must execute as Bash"
-      assert_equal "function\n", stdout, "ANSI-C heredoc fixture must define the helper after its terminator"
-      steps << { "name" => step_name, "run" => run }
-    end
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    fixtures.each_key do |step_name|
-      assert(diagnostics.include?(step_name), "expected #{step_name} diagnostic")
-    end
-  end
-
-  def test_release_git_auth_helper_guard_ignores_helper_text_after_terminal_ansi_c_control_escape
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    terminator = "EOF#{release_git_helper_ansi_c_terminal_c_suffix}"
-    run = ": <<$'EOF\\c'\ngit_with_release_token() { :; }\n#{terminator}\n"
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token || printf absent\n")
-    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must execute as Bash"
-    assert_equal "absent", stdout, "helper-looking heredoc text must not define the helper"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must parse as Bash"
-    steps << { "name" => "Terminal ANSI-C control escape heredoc", "run" => run }
-
-    assert_empty release_git_helper_diagnostics(workflow)
-  end
-
-  def test_release_git_auth_helper_guard_detects_definition_after_terminal_ansi_c_control_escape
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    terminator = "EOF#{release_git_helper_ansi_c_terminal_c_suffix}"
-    run = ": <<$'EOF\\c'\ntext\n#{terminator}\ngit_with_release_token() { :; }\n"
-    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
-    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must execute as Bash"
-    assert_equal "function\n", stdout, "the helper after the heredoc terminator must execute"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must parse as Bash"
-    steps << { "name" => "Helper after terminal ANSI-C control escape heredoc", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Helper after terminal ANSI-C control escape heredoc"),
-      "expected helper after terminal ANSI-C heredoc diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_function_keyword_split_by_continuation
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "function \\\ngit_with_release_token() { :; }\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "continued function-keyword fixture must parse as Bash"
-    steps << { "name" => "Continued function keyword", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Continued function keyword"), "expected continued function-keyword diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_function_keyword_after_continued_and
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "true && function \\\ngit_with_release_token() { :; }\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "continued-and function fixture must parse as Bash"
-    steps << { "name" => "Function after continued &&", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Function after continued &&"), "expected continued-and function diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_ignores_quoted_continuation_arguments
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    original = verifier.fetch("run")
-    quoted_call = <<~'BASH'
-      git_with_release_token '\
-      ()'
-    BASH
-    verifier["run"] = "#{original}\n#{quoted_call}"
-    assert(original != verifier.fetch("run"), "quoted continuation fixture did not change the verifier script")
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: verifier.fetch("run"))
-    assert_predicate status, :success?, "quoted continuation fixture must parse as Bash"
-
-    assert_empty release_git_helper_diagnostics(workflow)
-  end
-
-  def test_release_git_auth_helper_guard_ignores_function_words_in_arguments
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "printf '%s\\n' if function git_with_release_token\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "function-word argument fixture must parse as Bash"
-    steps << { "name" => "Function words as arguments", "run" => run }
-
-    assert_empty release_git_helper_diagnostics(workflow)
-  end
-
-  def test_release_git_auth_helper_guard_rejects_declaration_after_multiline_arithmetic_shift
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = "(( value =\n  8 << 2\n))\ngit_with_release_token() { :; }\n"
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
-    assert_predicate status, :success?, "multiline arithmetic fixture must parse as Bash"
-    steps << { "name" => "Helper after multiline arithmetic shift", "run" => run }
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Helper after multiline arithmetic shift"), "expected helper after arithmetic diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_rejects_definition_text_inside_heredoc
-    workflow = workflow_with_commented_git_helper_openers
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    original = verifier.fetch("run")
-    helper = original[/^git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?\r?\n.*?^\)\n/m]
-    assert(!helper.nil?, "expected verifier helper fixture")
-    wrapped = ": <<'EXAMPLE'\n#{helper}EXAMPLE\n"
-    verifier["run"] = original.sub(helper, wrapped)
-    assert(original != verifier.fetch("run"), "heredoc mutation did not remove the verifier function")
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: verifier.fetch("run"))
-    assert_predicate status, :success?, "heredoc-wrapped function text fixture must parse as Bash"
-
-    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
-    assert(diagnostics.include?("Verify Release Please Git authentication"), "expected missing verifier helper diagnostic")
-  end
-
-  def test_release_git_auth_helper_guard_accepts_helper_inside_conditional
-    workflow = workflow_with_commented_git_helper_openers
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    verifier = steps.find { |candidate| candidate["name"] == "Verify Release Please Git authentication" }
-    original = verifier.fetch("run")
-    wrapped = original.sub(
-      /^git_with_release_token\(\) \([ \t]*(?:\#[^\r\n]*)?\r?\n/
-    ) { |declaration| "if true; then\n#{declaration}" }.sub(/^\)\n/m, ")\nfi\n")
-    assert(original != wrapped, "conditional-wrapper mutation did not change the verifier helper")
-    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: wrapped)
-    assert_predicate status, :success?, "conditional helper fixture must parse as Bash"
-    verifier["run"] = wrapped
-
-    assert_empty release_git_helper_diagnostics(workflow)
-  end
-
-  private
-
-  def release_git_helper_ansi_c_terminal_c_suffix
-    return @release_git_helper_ansi_c_terminal_c_suffix if defined?(@release_git_helper_ansi_c_terminal_c_suffix)
-
-    @release_git_helper_ansi_c_terminal_c_suffix = ["\\", "\\c"].find do |suffix|
-      probe = ": <<$'EOF\\c'\nEOF#{suffix}\nprintf '__ANSI_C_TERMINATOR__\\n'\n"
-      stdout, _stderr, = Open3.capture3({ "BASH_ENV" => nil }, "bash", stdin_data: probe)
-      stdout.include?("__ANSI_C_TERMINATOR__")
-    end || "\\c"
-  end
-
-  def workflow_with_commented_git_helper_openers
-    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
-    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    [
-      "Verify Release Please Git authentication",
-      "Check out the exact release tag",
-      "Upload and verify release artifacts"
-    ].each do |step_name|
-      step = steps.find { |candidate| candidate["name"] == step_name }
-      original = step.fetch("run")
-      commented = original.sub(/^([ \t]*git_with_release_token\(\) \()[ \t]*$/) do
-        "#{Regexp.last_match(1)} # mutation fixture"
-      end
-      assert(original != commented, "inline-comment fixture did not change #{step_name}")
-      step["run"] = commented
-    end
-    workflow
-  end
-
-  def release_git_helper_diagnostics(workflow)
-    expected_sources = {
-      ["release-please", "Verify Release Please Git authentication"] => "GH_TOKEN",
-      ["release-please", "Check out the exact release tag"] => "release_token",
-      ["release-please", "Upload and verify release artifacts"] => "GH_TOKEN"
-    }
     diagnostics = []
-    definitions = workflow.fetch("jobs", {}).flat_map do |job_name, job|
-      next [] unless job.is_a?(Hash)
-
-      job.fetch("steps", []).flat_map do |candidate|
-        next [] unless candidate.is_a?(Hash)
-
-        run = candidate["run"]
-        next [] unless run.is_a?(String)
-
-        step_name = candidate["name"] || "(unnamed)"
-        release_git_helper_definitions(run).map do |definition|
-          definition.merge(job_name: job_name.to_s, step_name: step_name)
-        end
-      end
-    end
-
-    if definitions.length != expected_sources.length
-      diagnostics << "expected #{expected_sources.length} git_with_release_token definitions across workflow run blocks, found #{definitions.length}"
-    end
-
-    expected_sources.each_key do |job_name, step_name|
-      found = definitions.count do |definition|
-        definition.fetch(:job_name) == job_name && definition.fetch(:step_name) == step_name
-      end
-      if found != 1
-        diagnostics << "expected exactly one git_with_release_token definition in job '#{job_name}', step '#{step_name}', found #{found}"
-      end
-    end
-
-    definitions.each do |definition|
-      job_name = definition.fetch(:job_name)
-      step_name = definition.fetch(:step_name)
-      location = [job_name, step_name]
-      unless expected_sources.key?(location)
-        diagnostics << "unexpected git_with_release_token definition in job '#{job_name}', step '#{step_name}'"
-      end
-      unless definition.fetch(:supported)
-        diagnostics << "unsupported git_with_release_token declaration in job '#{job_name}', step '#{step_name}'"
-      end
-      unless definition.fetch(:complete)
-        diagnostics << "could not find the complete git_with_release_token definition in job '#{job_name}', step '#{step_name}'"
-      end
-    end
-
-    normalized = {}
-    expected_sources.each do |location, source|
-      job_name, step_name = location
-      matches = definitions.select do |definition|
-        definition.fetch(:job_name) == job_name && definition.fetch(:step_name) == step_name
-      end
-      next unless matches.one? && matches.first.fetch(:complete) && matches.first.fetch(:supported)
-
-      assignment = /\A([ \t]*)local app_token="\$\{#{Regexp.escape(source)}-\}"(\r?\n?)\z/
-      body = matches.first.fetch(:body)
-      lines = body.lines
-      code_lines = release_git_helper_code_lines(body)
-      assignment_lines = lines.each_index.select do |index|
-        assignment.match?(lines[index]) && code_lines[index].match?(/\A[ \t]*local[ \t]+app_token[ \t]*=/)
-      end
-      body_commands = code_lines.each_with_index.reject do |line, _index|
-        line.match?(/\A[ \t]*(?:\r?\n)?\z/)
-      end.drop(1)
-      source_assignment_position = body_commands.index { |_line, index| index == assignment_lines.first }
-      disable_xtrace_command = /\A[ \t]*set[ \t]+(?:\+x|\+o[ \t]+xtrace)[ \t]*\r?\n?\z/
-      strict_mode_command = /\A[ \t]*set[ \t]+(?:-euo[ \t]+pipefail|-e[ \t]+-u[ \t]+-o[ \t]+pipefail|-o[ \t]+errexit[ \t]+-o[ \t]+nounset[ \t]+-o[ \t]+pipefail)[ \t]*\r?\n?\z/
-      no_op_command = /\A[ \t]*:[ \t]*\r?\n?\z/
-      source_assignment_is_active = assignment_lines.one? &&
-        source_assignment_position && source_assignment_position >= 2 &&
-        body_commands[0][0].match?(disable_xtrace_command) &&
-        body_commands[1][0].match?(strict_mode_command) &&
-        body_commands[2...source_assignment_position].all? { |line, _index| line.match?(no_op_command) }
-      unless source_assignment_is_active
-        diagnostics << "expected exactly one credential-source assignment in job '#{job_name}', step '#{step_name}'"
-        next
-      end
-
-      assignment_line = assignment_lines.first
-      normalized[location] = lines.each_with_index.map do |line, index|
-        next line unless index == assignment_line
-
-        match = assignment.match(line)
-        "#{match[1]}local app_token=\"${RELEASE_GIT_AUTH_TOKEN-}\"#{match[2]}"
-      end.join
-    end
-
-    baseline_location = expected_sources.keys.first
-    baseline = normalized[baseline_location]
-    if baseline
-      expected_sources.keys.drop(1).each do |location|
-        next unless normalized.key?(location)
-        next if normalized.fetch(location) == baseline
-
-        diagnostics << "git_with_release_token differs between job '#{baseline_location[0]}', step '#{baseline_location[1]}' and job '#{location[0]}', step '#{location[1]}' after credential-source normalization"
-      end
-    end
-
+    diagnostics << "expected exactly three helper definitions, found #{bodies.length}" unless bodies.length == 3
+    diagnostics << "helper bodies differ" unless bodies.uniq.length == 1
+    diagnostics << "credential sources differ from the expected order" unless sources == expected_sources
     diagnostics
-  end
-
-  def release_git_helper_definitions(script)
-    lines = script.lines
-    code_lines, continued_lines = release_git_helper_code_lines(script, with_continuations: true)
-    definitions = []
-    helper_name = Regexp.escape("git_with_release_token")
-    # shortcut: recognizes common command boundaries; use a Bash AST if run syntax grows beyond these forms.
-    candidate_pattern = %r{
-      (?:\A[ \t]*|(?:&&|\|\||[;|&(){}])[ \t]*|(?:\A|[;|&(){}])[ \t]*(?:if|then|do|else|elif|while|until)\b[ \t]+)
-      (?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*
-      (?:function[ \t]+#{helper_name}(?=$|[ \t(])|#{helper_name}[ \t]*\([ \t]*\))
-    }x
-    supported_pattern = /\A[ \t]*git_with_release_token\(\)[ \t]+\([ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
-    closing_pattern = /\A[ \t]*\)[ \t]*(?:\#[^\r\n]*)?\r?\n?\z/
-
-    lines.each_index do |index|
-      declaration = lines[index]
-      candidates = code_lines[index].to_enum(:scan, candidate_pattern).map { Regexp.last_match[0] }
-      if candidates.empty? && release_git_helper_signature_continues?(lines, code_lines, continued_lines, index, candidate_pattern)
-        candidates << "continued function signature"
-      end
-      candidates.each do
-        continued_prefix = index.positive? && continued_lines[index - 1] &&
-          code_lines[index - 1].rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
-        supported = !continued_prefix && supported_pattern.match?(declaration)
-        unless supported
-          definitions << { body: declaration, complete: false, supported: false }
-          next
-        end
-
-        closing_index = ((index + 1)...lines.length).find do |line_index|
-          closing_pattern.match?(lines[line_index]) &&
-            release_git_helper_script_prefix_valid?(lines[index..line_index].join)
-        end
-
-        if closing_index
-          definitions << { body: lines[index..closing_index].join, complete: true, supported: true }
-        else
-          definitions << { body: lines[index..].join, complete: false, supported: true }
-        end
-      end
-    end
-
-    definitions
-  end
-
-  def release_git_helper_signature_continues?(lines, code_lines, continued_lines, index, candidate_pattern)
-    return false unless index + 1 < lines.length
-    return false unless continued_lines[index]
-    return false unless lines[index + 1].match?(/\A[ \t]*\([ \t]*\)/)
-
-    continued_line = code_lines[index].sub(/\r?\n\z/, "").rstrip + "()"
-    candidate_pattern.match?(continued_line)
-  end
-
-  def release_git_helper_code_lines(script, with_continuations: false)
-    heredocs = []
-    quote = nil
-    continued = false
-    continued_command_boundary = false
-    arithmetic = false
-    continuation_lines = []
-    continued_heredoc_delimiter_line = nil
-    script_lines = script.lines
-    code_lines = script_lines.each_with_index.map do |line, line_index|
-      if continued_heredoc_delimiter_line
-        delimiter_end = [continued_heredoc_delimiter_line, line.length].min
-        continued_heredoc_delimiter_line = nil
-        delimiter_code = line[0...delimiter_end].gsub(/[^\r\n]/, " ")
-        code_suffix, found_heredocs, quote, arithmetic, continued, suffix_delimiter_end =
-          release_git_helper_mask_non_code(line[delimiter_end..], quote, arithmetic, script_lines[line_index + 1])
-        heredocs.concat(found_heredocs)
-        continued_heredoc_delimiter_line = delimiter_end + suffix_delimiter_end if suffix_delimiter_end
-        continuation_lines << continued
-        continued_command_boundary = continued && release_git_helper_continuation_boundary?(code_suffix)
-        delimiter_code + code_suffix
-      elsif heredocs.any?
-        delimiter, strip_tabs = heredocs.first
-        terminator = line.chomp.b
-        terminator = terminator.sub(/\A\t*/, "") if strip_tabs
-        heredocs.shift if terminator == delimiter
-        continued = false
-        continuation_lines << false
-        line.gsub(/[^\r\n]/, " ")
-      else
-        code_line, found_heredocs, quote, arithmetic, next_continued, continued_heredoc_delimiter_line =
-          release_git_helper_mask_non_code(line, quote, arithmetic, script_lines[line_index + 1])
-        heredocs.concat(found_heredocs)
-        code_line = "x#{code_line}" if continued && !continued_command_boundary
-        continued = next_continued
-        continuation_lines << next_continued
-        continued_command_boundary = continued && release_git_helper_continuation_boundary?(code_line)
-        code_line
-      end
-    end
-    with_continuations ? [code_lines, continuation_lines] : code_lines
-  end
-
-  def release_git_helper_continuation_boundary?(code_line)
-    code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
-      code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:then|else|do|if|elif|while|until)\z/) ||
-      code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
-      code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
-  end
-
-  def release_git_helper_mask_non_code(line, quote, arithmetic, following_line = nil)
-    code_line = line.dup
-    heredocs = []
-    continued = false
-    continued_heredoc_delimiter_line = nil
-    index = 0
-
-    while index < line.length
-      character = line[index]
-      if quote
-        if character == quote
-          code_line[index] = " "
-          quote = nil
-        elsif quote != "'" && character == "\\"
-          code_line[index] = " "
-          if index + 1 < line.length && line[index + 1] != "\n"
-            code_line[index + 1] = " "
-            index += 1
-          end
-        elsif character != "\n"
-          code_line[index] = " "
-        end
-      elsif character == "\\"
-        code_line[index] = " "
-        if index + 1 < line.length
-          if line[index + 1] == "\n"
-            continued = true
-          else
-            code_line[index + 1] = " "
-            index += 1
-          end
-        end
-      elsif ["'", '"'].include?(character)
-        code_line[index] = " "
-        quote = character
-      elsif character == "#" && (index.zero? || line[index - 1].match?(/[ \t;|&(){}]/))
-        code_line[index..] = code_line[index..].gsub(/[^\r\n]/, " ")
-        break
-      elsif line[index, 2] == "(("
-        arithmetic = true
-        index += 1
-      elsif line[index, 2] == "))"
-        arithmetic = false
-        index += 1
-      elsif line[index, 3] == "<<<"
-        index += 2
-      elsif line[index, 2] == "<<" && !arithmetic
-        heredoc, ending_index, continued_delimiter_end =
-          release_git_helper_heredoc_delimiter(line, index + 2, following_line)
-        if heredoc
-          heredocs << heredoc
-          continued_heredoc_delimiter_line = continued_delimiter_end
-          mask_end = [ending_index, line.length].min
-          (index...mask_end).each { |position| code_line[position] = " " unless line[position] == "\n" }
-          index = mask_end - 1
-        end
-      end
-      index += 1
-    end
-
-    [code_line, heredocs, quote, arithmetic, continued, continued_heredoc_delimiter_line]
-  end
-
-  def release_git_helper_heredoc_delimiter(line, index, following_line = nil)
-    strip_tabs = line[index] == "-"
-    index += 1 if strip_tabs
-    index += 1 while [" ", "\t"].include?(line[index])
-    delimiter = +"".b
-    started = false
-    quote = nil
-    continued_delimiter_prefix = nil
-
-    while index < line.length
-      character = line[index]
-      if quote == :ansi_c
-        if character == "'"
-          quote = nil
-        elsif character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
-          return [nil, index, nil] unless following_line
-
-          line = line[0...index] + following_line
-          following_line = nil
-          continued_delimiter_prefix = index
-          next
-        elsif character == "\\"
-          decoded, index = release_git_helper_ansi_c_escape(line, index)
-          delimiter << decoded
-        else
-          delimiter << character.b
-        end
-        started = true
-      elsif quote
-        if character == quote
-          quote = nil
-        elsif quote == '"' && character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
-          return [nil, index, nil] unless following_line
-
-          line = line[0...index] + following_line
-          following_line = nil
-          continued_delimiter_prefix = index
-          next
-        elsif quote == '"' && character == "\\" && index + 1 < line.length &&
-            ["$", "`", '"', "\\"].include?(line[index + 1])
-          delimiter << line[index + 1].b
-          index += 1
-        else
-          delimiter << character.b
-        end
-        started = true
-      elsif line[index, 2] == "$'"
-        quote = :ansi_c
-        started = true
-        index += 1
-      elsif ["'", '"'].include?(character)
-        quote = character
-        started = true
-      elsif character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
-        return [nil, index, nil] unless following_line
-
-        line = line[0...index] + following_line
-        following_line = nil
-        continued_delimiter_prefix = index
-        index += 1 while !started && [" ", "\t"].include?(line[index])
-        next
-      elsif character == "\\" && index + 1 < line.length
-        delimiter << line[index + 1].b
-        started = true
-        index += 1
-      elsif character.match?(/[\s;|&()<>]/)
-        break
-      else
-        delimiter << character
-        started = true
-      end
-      index += 1
-    end
-
-    return [nil, index, nil] unless started && quote.nil?
-
-    continued_delimiter_line_end = continued_delimiter_prefix && index - continued_delimiter_prefix
-    [[delimiter, strip_tabs], index, continued_delimiter_line_end]
-  end
-
-  def release_git_helper_ansi_c_escape(line, index)
-    escaped = line[index + 1]
-    escapes = {
-      "a" => "\a", "b" => "\b", "e" => "\e", "E" => "\e",
-      "f" => "\f", "n" => "\n", "r" => "\r", "t" => "\t", "v" => "\v",
-      "\\" => "\\", "'" => "'", '"' => '"', "?" => "?"
-    }
-    return [escapes.fetch(escaped).b, index + 1] if escapes.key?(escaped)
-
-    if escaped && escaped.match?(/[0-7]/)
-      digits = line[(index + 1)..].match(/\A[0-7]{1,3}/).to_s
-      return [(digits.to_i(8) & 0xff).chr(Encoding::BINARY), index + digits.length]
-    end
-
-    case escaped
-    when "x", "u", "U"
-      max_digits = { "x" => 2, "u" => 4, "U" => 8 }.fetch(escaped)
-      digits = line[(index + 2)..].match(/\A[0-9a-fA-F]{1,#{max_digits}}/).to_s
-      return ["\\#{escaped}".b, index + 1] if digits.empty?
-
-      value = digits.to_i(16)
-      value &= 0xff if escaped == "x"
-      encoding = escaped == "x" ? Encoding::BINARY : Encoding::UTF_8
-      [value.chr(encoding).b, index + 1 + digits.length]
-    when "c"
-      control = line[index + 2]
-      return [release_git_helper_ansi_c_terminal_c_suffix.b, index + 1] if control == "'"
-      return ["\\c".b, index + 1] unless control
-
-      value = control == "?" ? 0x7f : control.ord & 0x1f
-      [value.chr(Encoding::BINARY), index + 2]
-    else
-      ["\\#{escaped}".b, index + 1]
-    end
-  rescue RangeError
-    ["\\#{escaped}".b, index + 1]
-  end
-
-  def release_git_helper_script_prefix_valid?(script)
-    _stdout, _stderr, status = Open3.capture3({ "BASH_ENV" => nil }, "bash", "-n", stdin_data: script)
-    status.success?
   end
 end
