@@ -1421,7 +1421,8 @@ class ReleasePleaseAuthTest < Minitest::Test
   def test_release_git_auth_helper_guard_ignores_helper_text_after_terminal_ansi_c_control_escape
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
-    run = ": <<$'EOF\\c'\ngit_with_release_token() { :; }\nEOF\\\n"
+    terminator = "EOF#{release_git_helper_ansi_c_terminal_c_suffix}"
+    run = ": <<$'EOF\\c'\ngit_with_release_token() { :; }\n#{terminator}\n"
     stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token || printf absent\n")
     assert_predicate status, :success?, "terminal ANSI-C control escape fixture must execute as Bash"
     assert_equal "absent", stdout, "helper-looking heredoc text must not define the helper"
@@ -1430,6 +1431,23 @@ class ReleasePleaseAuthTest < Minitest::Test
     steps << { "name" => "Terminal ANSI-C control escape heredoc", "run" => run }
 
     assert_empty release_git_helper_diagnostics(workflow)
+  end
+
+  def test_release_git_auth_helper_guard_detects_definition_after_terminal_ansi_c_control_escape
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    terminator = "EOF#{release_git_helper_ansi_c_terminal_c_suffix}"
+    run = ": <<$'EOF\\c'\ntext\n#{terminator}\ngit_with_release_token() { :; }\n"
+    stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must execute as Bash"
+    assert_equal "function\n", stdout, "the helper after the heredoc terminator must execute"
+    _stdout, _stderr, status = Open3.capture3("bash", "-n", stdin_data: run)
+    assert_predicate status, :success?, "terminal ANSI-C control escape fixture must parse as Bash"
+    steps << { "name" => "Helper after terminal ANSI-C control escape heredoc", "run" => run }
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    assert(diagnostics.include?("Helper after terminal ANSI-C control escape heredoc"),
+      "expected helper after terminal ANSI-C heredoc diagnostic")
   end
 
   def test_release_git_auth_helper_guard_rejects_function_keyword_split_by_continuation
@@ -1530,6 +1548,16 @@ class ReleasePleaseAuthTest < Minitest::Test
   end
 
   private
+
+  def release_git_helper_ansi_c_terminal_c_suffix
+    return @release_git_helper_ansi_c_terminal_c_suffix if defined?(@release_git_helper_ansi_c_terminal_c_suffix)
+
+    @release_git_helper_ansi_c_terminal_c_suffix = ["\\", "\\c"].find do |suffix|
+      probe = ": <<$'EOF\\c'\nEOF#{suffix}\nprintf '__ANSI_C_TERMINATOR__\\n'\n"
+      stdout, _stderr, = Open3.capture3({ "BASH_ENV" => nil }, "bash", stdin_data: probe)
+      stdout.include?("__ANSI_C_TERMINATOR__")
+    end || "\\c"
+  end
 
   def workflow_with_commented_git_helper_openers
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
@@ -1929,7 +1957,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       [value.chr(encoding).b, index + 1 + digits.length]
     when "c"
       control = line[index + 2]
-      return ["\\".b, index + 1] if control == "'"
+      return [release_git_helper_ansi_c_terminal_c_suffix.b, index + 1] if control == "'"
       return ["\\c".b, index + 1] unless control
 
       value = control == "?" ? 0x7f : control.ord & 0x1f
