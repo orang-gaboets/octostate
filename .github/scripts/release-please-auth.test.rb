@@ -1372,6 +1372,51 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert(diagnostics.include?("Helper after continued then"), "expected continued-then helper diagnostic")
   end
 
+  def test_release_git_auth_helper_guard_rejects_declaration_after_continued_condition_keyword
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    fixtures = {
+      "Helper after continued if" => "if \\\ngit_with_release_token() { :; }; then :; fi\n",
+      "Helper after continued elif" => "if false; then :; elif \\\ngit_with_release_token() { :; }; then :; fi\n",
+      "Helper after continued while" => "while \\\ngit_with_release_token() { :; }; do break; done\n",
+      "Helper after continued until" => "until \\\ngit_with_release_token() { :; }; do :; done\n"
+    }
+
+    fixtures.each do |step_name, run|
+      stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+      assert_predicate status, :success?, "continued condition fixture must execute as Bash"
+      assert_equal "function\n", stdout, "continued condition fixture must define the helper"
+      steps << { "name" => step_name, "run" => run }
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    fixtures.each_key do |step_name|
+      assert(diagnostics.include?(step_name), "expected #{step_name} diagnostic")
+    end
+  end
+
+  def test_release_git_auth_helper_guard_rejects_declaration_after_ansi_c_quoted_heredoc
+    workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
+    steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
+    fixtures = {
+      "Helper after ANSI-C quoted heredoc" => ": <<$'EOF'\ntext\nEOF\ngit_with_release_token() { :; }\n",
+      "Helper after ANSI-C hexadecimal heredoc" => ": <<$'E\\x4fF'\ntext\nEOF\ngit_with_release_token() { :; }\n",
+      "Helper after ANSI-C octal heredoc" => ": <<$'E\\117F'\ntext\nEOF\ngit_with_release_token() { :; }\n"
+    }
+
+    fixtures.each do |step_name, run|
+      stdout, _stderr, status = Open3.capture3("bash", stdin_data: "#{run}type -t git_with_release_token\n")
+      assert_predicate status, :success?, "ANSI-C heredoc fixture must execute as Bash"
+      assert_equal "function\n", stdout, "ANSI-C heredoc fixture must define the helper after its terminator"
+      steps << { "name" => step_name, "run" => run }
+    end
+
+    diagnostics = release_git_helper_diagnostics(workflow).join("\n")
+    fixtures.each_key do |step_name|
+      assert(diagnostics.include?(step_name), "expected #{step_name} diagnostic")
+    end
+  end
+
   def test_release_git_auth_helper_guard_rejects_function_keyword_split_by_continuation
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
@@ -1673,7 +1718,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         delimiter_code + code_suffix
       elsif heredocs.any?
         delimiter, strip_tabs = heredocs.first
-        terminator = line.chomp
+        terminator = line.chomp.b
         terminator = terminator.sub(/\A\t*/, "") if strip_tabs
         heredocs.shift if terminator == delimiter
         continued = false
@@ -1695,7 +1740,7 @@ class ReleasePleaseAuthTest < Minitest::Test
 
   def release_git_helper_continuation_boundary?(code_line)
     code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
-      code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do)\z/) ||
+      code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do|if|elif|while|until)\z/) ||
       code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
       code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
   end
@@ -1767,14 +1812,31 @@ class ReleasePleaseAuthTest < Minitest::Test
     strip_tabs = line[index] == "-"
     index += 1 if strip_tabs
     index += 1 while [" ", "\t"].include?(line[index])
-    delimiter = +""
+    delimiter = +"".b
     started = false
     quote = nil
     continued_delimiter_prefix = nil
 
     while index < line.length
       character = line[index]
-      if quote
+      if quote == :ansi_c
+        if character == "'"
+          quote = nil
+        elsif character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
+          return [nil, index, nil] unless following_line
+
+          line = line[0...index] + following_line
+          following_line = nil
+          continued_delimiter_prefix = index
+          next
+        elsif character == "\\"
+          decoded, index = release_git_helper_ansi_c_escape(line, index)
+          delimiter << decoded
+        else
+          delimiter << character.b
+        end
+        started = true
+      elsif quote
         if character == quote
           quote = nil
         elsif quote == '"' && character == "\\" && line[index, 3].match?(/\A\\\r?\n\z/)
@@ -1786,12 +1848,16 @@ class ReleasePleaseAuthTest < Minitest::Test
           next
         elsif quote == '"' && character == "\\" && index + 1 < line.length &&
             ["$", "`", '"', "\\"].include?(line[index + 1])
-          delimiter << line[index + 1]
+          delimiter << line[index + 1].b
           index += 1
         else
-          delimiter << character
+          delimiter << character.b
         end
         started = true
+      elsif line[index, 2] == "$'"
+        quote = :ansi_c
+        started = true
+        index += 1
       elsif ["'", '"'].include?(character)
         quote = character
         started = true
@@ -1804,7 +1870,7 @@ class ReleasePleaseAuthTest < Minitest::Test
         index += 1 while !started && [" ", "\t"].include?(line[index])
         next
       elsif character == "\\" && index + 1 < line.length
-        delimiter << line[index + 1]
+        delimiter << line[index + 1].b
         started = true
         index += 1
       elsif character.match?(/[\s;|&()<>]/)
@@ -1820,6 +1886,43 @@ class ReleasePleaseAuthTest < Minitest::Test
 
     continued_delimiter_line_end = continued_delimiter_prefix && index - continued_delimiter_prefix
     [[delimiter, strip_tabs], index, continued_delimiter_line_end]
+  end
+
+  def release_git_helper_ansi_c_escape(line, index)
+    escaped = line[index + 1]
+    escapes = {
+      "a" => "\a", "b" => "\b", "e" => "\e", "E" => "\e",
+      "f" => "\f", "n" => "\n", "r" => "\r", "t" => "\t", "v" => "\v",
+      "\\" => "\\", "'" => "'", '"' => '"', "?" => "?"
+    }
+    return [escapes.fetch(escaped).b, index + 1] if escapes.key?(escaped)
+
+    if escaped && escaped.match?(/[0-7]/)
+      digits = line[(index + 1)..].match(/\A[0-7]{1,3}/).to_s
+      return [(digits.to_i(8) & 0xff).chr(Encoding::BINARY), index + digits.length]
+    end
+
+    case escaped
+    when "x", "u", "U"
+      max_digits = { "x" => 2, "u" => 4, "U" => 8 }.fetch(escaped)
+      digits = line[(index + 2)..].match(/\A[0-9a-fA-F]{1,#{max_digits}}/).to_s
+      return ["\\#{escaped}".b, index + 1] if digits.empty?
+
+      value = digits.to_i(16)
+      value &= 0xff if escaped == "x"
+      encoding = escaped == "x" ? Encoding::BINARY : Encoding::UTF_8
+      [value.chr(encoding).b, index + 1 + digits.length]
+    when "c"
+      control = line[index + 2]
+      return ["\\c".b, index + 1] unless control
+
+      value = control == "?" ? 0x7f : control.ord & 0x1f
+      [value.chr(Encoding::BINARY), index + 2]
+    else
+      ["\\#{escaped}".b, index + 1]
+    end
+  rescue RangeError
+    ["\\#{escaped}".b, index + 1]
   end
 
   def release_git_helper_script_prefix_valid?(script)
