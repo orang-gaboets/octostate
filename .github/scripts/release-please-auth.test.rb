@@ -1376,6 +1376,7 @@ class ReleasePleaseAuthTest < Minitest::Test
     workflow = YAML.safe_load(YAML.dump(@workflow), aliases: true)
     steps = workflow.fetch("jobs").fetch("release-please").fetch("steps")
     fixtures = {
+      "Helper after continued && if" => "true && if \\\ngit_with_release_token() { :; }; then :; fi\n",
       "Helper after continued if" => "if \\\ngit_with_release_token() { :; }; then :; fi\n",
       "Helper after continued elif" => "if false; then :; elif \\\ngit_with_release_token() { :; }; then :; fi\n",
       "Helper after continued while" => "while \\\ngit_with_release_token() { :; }; do break; done\n",
@@ -1740,7 +1741,7 @@ class ReleasePleaseAuthTest < Minitest::Test
 
   def release_git_helper_continuation_boundary?(code_line)
     code_line.rstrip.match?(/(?:&&|\|\||[;|&])\z/) ||
-      code_line.rstrip.match?(/(?:\A|;)[ \t]*(?:then|else|do|if|elif|while|until)\z/) ||
+      code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:then|else|do|if|elif|while|until)\z/) ||
       code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:then|else|do)[ \t]+)?function\z/) ||
       code_line.rstrip.match?(/(?:\A|&&|\|\||[;|&])[ \t]*(?:(?:time(?:[ \t]+-p)?|!|-p)[ \t]+)*(?:time(?:[ \t]+-p)?|!|-p)\z/)
   end
