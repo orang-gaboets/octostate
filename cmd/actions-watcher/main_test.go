@@ -598,6 +598,68 @@ func TestApplyPlanStopsBeforeWriteOnConcurrentHumanEdit(t *testing.T) {
 	}
 }
 
+func TestApplyPlanCreatesMultipleNewIncidentsInOneReconciliation(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	secondFailure := testFailureAttempt(102, 102, started.Add(time.Minute))
+	secondFailure.WorkflowID = 2
+	secondFailure.WorkflowName = "CodeQL Security"
+	plan, err := watcher.Reconcile(repo, expectedAppSlug+"[bot]", []watcher.RunAttempt{
+		testFailureAttempt(101, 101, started), secondFailure,
+	}, nil, started.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Changes) != 2 {
+		t.Fatalf("planned changes = %d, want two new incidents", len(plan.Changes))
+	}
+
+	issues := make(map[int]map[string]any)
+	comments := make(map[int][]any)
+	nextNumber := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues":
+			listed := make([]any, 0, len(issues))
+			for number := 1; number <= nextNumber; number++ {
+				if issue, ok := issues[number]; ok {
+					listed = append(listed, issue)
+				}
+			}
+			writeJSON(w, http.StatusOK, listed)
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues":
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode create issue: %v", err)
+			}
+			nextNumber++
+			issues[nextNumber] = issueJSON(nextNumber, "open", request.Title, request.Body, request.Labels)
+			comments[nextNumber] = []any{}
+			writeJSON(w, http.StatusCreated, issues[nextNumber])
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/") && strings.HasSuffix(path, "/comments"):
+			parts := strings.Split(path, "/")
+			number, _ := strconv.Atoi(parts[4])
+			writeJSON(w, http.StatusOK, comments[number])
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, repo)
+	if err := client.applyPlan(context.Background(), plan, nil); err != nil {
+		t.Fatalf("applyPlan() with two creates returned error: %v", err)
+	}
+	if nextNumber != 2 {
+		t.Fatalf("created issues = %d, want two", nextNumber)
+	}
+}
+
 func TestListManagedIssuesPaginatesIssuesAndIssueComments(t *testing.T) {
 	var issuePages, commentPages atomic.Int32
 	marker := `<!-- actions-watcher:v1 repo_id=99 workflow_id=1 workflow_name="CI" -->`

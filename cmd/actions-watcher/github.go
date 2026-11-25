@@ -737,10 +737,11 @@ func (c *watcherClient) requireLabels(ctx context.Context, plan watcher.Plan) er
 }
 
 func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) error {
+	expected := append([]watcher.IssueSnapshot(nil), initial...)
 	for _, change := range plan.Changes {
 		switch change.Action {
 		case watcher.ActionCreate:
-			created, err := c.createIncident(ctx, change, initial)
+			created, err := c.createIncident(ctx, change, expected)
 			if err != nil {
 				return err
 			}
@@ -755,14 +756,21 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				}
 				finalize := change
 				finalize.AddLabels, finalize.RemoveLabels = labelDeltaToTarget(created.Labels, change.AddLabels)
-				if _, err := c.patchIssue(ctx, created, finalize); err != nil {
+				finalized, err := c.patchIssue(ctx, created, finalize)
+				if err != nil {
 					return fmt.Errorf("finalize created issue #%d: %w", created.Number, err)
 				}
-			} else if err := c.ensureComments(ctx, created, change.Archives, change.Comments); err != nil {
-				return fmt.Errorf("issue #%d: %w", created.Number, err)
+				created = finalized
+			} else {
+				issueNumber := created.Number
+				created, err = c.ensureComments(ctx, created, change.Archives, change.Comments)
+				if err != nil {
+					return fmt.Errorf("issue #%d: %w", issueNumber, err)
+				}
 			}
+			expected = append(expected, created)
 		case watcher.ActionUpdate:
-			original, ok := findIssue(initial, change.IssueNumber)
+			original, ok := findIssue(expected, change.IssueNumber)
 			if !ok {
 				return fmt.Errorf("planned issue #%d was absent from the authoritative snapshot", change.IssueNumber)
 			}
@@ -781,14 +789,26 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 			if err != nil {
 				return fmt.Errorf("issue #%d: %w", change.IssueNumber, err)
 			}
-			if _, err = c.patchIssue(ctx, current, change); err != nil {
+			updated, err := c.patchIssue(ctx, current, change)
+			if err != nil {
 				return fmt.Errorf("update issue #%d: %w", change.IssueNumber, err)
 			}
+			expected = replaceIssue(expected, updated)
 		default:
 			return fmt.Errorf("unsupported planned action %q", change.Action)
 		}
 	}
 	return nil
+}
+
+func replaceIssue(issues []watcher.IssueSnapshot, updated watcher.IssueSnapshot) []watcher.IssueSnapshot {
+	for i := range issues {
+		if issues[i].Number == updated.Number {
+			issues[i] = updated
+			return issues
+		}
+	}
+	return append(issues, updated)
 }
 
 func (c *watcherClient) createIncident(ctx context.Context, change watcher.IssueChange, initial []watcher.IssueSnapshot) (watcher.IssueSnapshot, error) {
@@ -892,15 +912,14 @@ func (c *watcherClient) patchIssue(ctx context.Context, current watcher.IssueSna
 	return readback, nil
 }
 
-func (c *watcherClient) ensureComments(ctx context.Context, initial watcher.IssueSnapshot, archives []watcher.ArchiveComment, comments []watcher.ManagedComment) error {
+func (c *watcherClient) ensureComments(ctx context.Context, initial watcher.IssueSnapshot, archives []watcher.ArchiveComment, comments []watcher.ManagedComment) (watcher.IssueSnapshot, error) {
 	current := initial
 	var err error
 	current, err = c.ensureArchiveComments(ctx, current, archives)
 	if err != nil {
-		return err
+		return watcher.IssueSnapshot{}, err
 	}
-	_, err = c.ensureTransitionComments(ctx, current, comments)
-	return err
+	return c.ensureTransitionComments(ctx, current, comments)
 }
 
 func (c *watcherClient) ensureArchiveComments(ctx context.Context, initial watcher.IssueSnapshot, archives []watcher.ArchiveComment) (watcher.IssueSnapshot, error) {
