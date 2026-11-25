@@ -652,6 +652,47 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 	}
 }
 
+func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
+	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
+	for i := 1; i <= 400; i++ {
+		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+	body, archives, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) == 0 {
+		t.Fatal("initial history did not create archives")
+	}
+
+	late := attempt(1000, 1000, "CI", "push", "main", "failure", started, "https://example.test/late-attempt/"+strings.Repeat("y", 5000))
+	state.Failures = append(state.Failures, late)
+	comments := make([]CommentSnapshot, 0, len(archives))
+	for _, archive := range archives {
+		comments = append(comments, CommentSnapshot{AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
+	}
+
+	updated, newArchives, err := RenderBody(testRepository(), state, body, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() with a late older failure: %v", err)
+	}
+	if len(newArchives) == 0 {
+		t.Fatal("late failure did not force a new archive")
+	}
+	for _, archive := range newArchives {
+		comments = append(comments, CommentSnapshot{AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
+	}
+	readback, duplicateArchives, err := RenderBody(testRepository(), state, updated, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() readback after adding a late archive: %v", err)
+	}
+	if readback != updated || len(duplicateArchives) != 0 {
+		t.Fatalf("late archive readback was not stable: body_same=%t new_archives=%d", readback == updated, len(duplicateArchives))
+	}
+}
+
 func TestRenderCheckpointBodyArchivesHistoryBeforePendingRunOverflow(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 25; i++ {

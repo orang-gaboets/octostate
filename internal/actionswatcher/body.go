@@ -217,6 +217,7 @@ func renderWithOverflow(repo RepositoryIdentity, state IncidentState, visibleFai
 		}
 		newArchives = append(newArchives, archive)
 		allArchives := append(append([]ArchiveComment(nil), oldArchives...), newArchives...)
+		sortArchives(allArchives)
 		body, err = renderBodyOnce(repo, state, visibleFailures, existing, allArchives)
 		if err != nil {
 			return "", nil, err
@@ -636,15 +637,18 @@ func parseArchives(comments []CommentSnapshot, workflowID int64) ([]ArchiveComme
 			keys[key] = true
 		}
 	}
+	sortArchives(archives)
+	return archives, keys, nil
+}
+
+func sortArchives(archives []ArchiveComment) {
 	sort.Slice(archives, func(i, j int) bool {
-		left, _ := parseFailureMarkers(archives[i].Body)
-		right, _ := parseFailureMarkers(archives[j].Body)
+		left, right := archives[i].Attempts, archives[j].Attempts
 		if len(left) > 0 && len(right) > 0 && !left[0].StartedAt.Equal(right[0].StartedAt) {
 			return attemptLess(left[0], right[0])
 		}
 		return archives[i].Marker < archives[j].Marker
 	})
-	return archives, keys, nil
 }
 
 func parseTransitionMarker(body string) (string, error) {
