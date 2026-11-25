@@ -95,7 +95,7 @@ func validateLatestIncidentState(state IncidentState, failures []RunAttempt) err
 	if state.Status == StatusFailing && !isFailure(state.Latest.Conclusion) {
 		return errors.New("failing incident must have a latest failed attempt")
 	}
-	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || attemptKey(*state.Recovery) != attemptKey(state.Latest)) {
+	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || !sameAttempt(*state.Recovery, state.Latest)) {
 		return errors.New("recovered incident must have its latest successful attempt as recovery")
 	}
 	if state.Recovery != nil && (state.Recovery.WorkflowID != state.WorkflowID || state.Recovery.WorkflowName != state.WorkflowName || state.Recovery.Conclusion != "success") {
@@ -410,7 +410,7 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 	if state.Status == StatusFailing && !isFailure(state.Latest.Conclusion) {
 		return errors.New("managed failing status does not match its latest attempt")
 	}
-	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || attemptKey(*state.Recovery) != attemptKey(state.Latest)) {
+	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || !sameAttempt(*state.Recovery, state.Latest)) {
 		return errors.New("managed recovered status does not match its latest attempt")
 	}
 	if state.Recovery != nil && (state.Recovery.WorkflowID != workflowID || state.Recovery.WorkflowName != workflowName || !validPersistedRunAttempt(*state.Recovery) || state.Recovery.Conclusion != "success") {

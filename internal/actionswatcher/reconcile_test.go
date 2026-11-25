@@ -304,6 +304,29 @@ func TestRenderBodyPreservesHumanTextAndRejectsMalformedMarkers(t *testing.T) {
 	}
 }
 
+func TestRenderBodyStateRejectsRecoveryThatDiffersFromLatest(t *testing.T) {
+	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour), "https://example.test/recovery")
+	state := IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusRecovered,
+		Failures: []RunAttempt{failure}, Latest: recovery, Recovery: &recovery,
+	}
+	body, _, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	forgedRecovery := recovery
+	forgedRecovery.HTMLURL = "https://example.test/forged-recovery"
+	tampered := state
+	tampered.Recovery = &forgedRecovery
+	body = strings.Replace(body, stateMarker(state), stateMarker(tampered), 1)
+	if _, err := RenderBodyState(body, testRepository(), 100, "CI"); err == nil {
+		t.Fatal("RenderBodyState accepted recovery metadata that differs from verified latest")
+	}
+}
+
 func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
