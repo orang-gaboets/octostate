@@ -435,6 +435,21 @@ func SetPendingRunIDs(body string, repo RepositoryIdentity, workflowID int64, wo
 	return updated, nil
 }
 
+// RenderCheckpointBody stores pending run IDs and archives visible failure
+// history when needed to keep the issue body within GitHub's size limit.
+// archiveComments must contain only comments authored by the watcher App.
+func RenderCheckpointBody(body string, repo RepositoryIdentity, runIDs []int64, archiveComments []CommentSnapshot) (string, []ArchiveComment, error) {
+	state, err := RenderManagedBodyState(body, repo)
+	if err != nil {
+		return "", nil, err
+	}
+	state.PendingRunIDs, err = normalizePendingRunIDs(runIDs)
+	if err != nil {
+		return "", nil, err
+	}
+	return RenderBody(repo, state, body, archiveComments)
+}
+
 func managedBody(body string, repo RepositoryIdentity, workflowID int64, workflowName string) (string, error) {
 	gotWorkflowID, gotWorkflowName, err := managedIssueIdentity(body, repo)
 	if err != nil {

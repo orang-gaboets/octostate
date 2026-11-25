@@ -805,12 +805,24 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 			staged := change.InitialBody != ""
 			if len(change.PendingRunIDs) > 0 {
 				checkpointBase := change.Body
+				var archiveComments []watcher.CommentSnapshot
 				if change.InitialBody != "" {
 					checkpointBase = change.InitialBody
+				} else {
+					for _, archive := range change.Archives {
+						archiveComments = append(archiveComments, watcher.CommentSnapshot{AuthorLogin: c.appLogin, Body: archive.Body})
+					}
 				}
-				checkpointBody, err := watcher.SetPendingRunIDs(checkpointBase, c.repo, change.WorkflowID, change.WorkflowName, change.PendingRunIDs)
+				checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(checkpointBase, c.repo, change.PendingRunIDs, archiveComments)
 				if err != nil {
 					return fmt.Errorf("checkpoint pending runs for %q: %w", change.WorkflowName, err)
+				}
+				if err := c.verifyCheckpointArchives(ctx, change.Archives, checkpointArchives); err != nil {
+					return fmt.Errorf("verify checkpoint archives for %q: %w", change.WorkflowName, err)
+				}
+				createChange.Archives, err = mergeArchiveComments(change.Archives, checkpointArchives)
+				if err != nil {
+					return fmt.Errorf("merge checkpoint archives for %q: %w", change.WorkflowName, err)
 				}
 				createChange.InitialBody = checkpointBody
 				if change.InitialBody == "" {
@@ -823,7 +835,7 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				return err
 			}
 			if staged {
-				created, err = c.ensureArchiveComments(ctx, created, change.Archives)
+				created, err = c.ensureArchiveComments(ctx, created, createChange.Archives)
 				if err != nil {
 					return fmt.Errorf("issue #%d: %w", created.Number, err)
 				}
@@ -864,9 +876,16 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 			}
 			pendingRunIDs := append(append([]int64(nil), state.PendingRunIDs...), change.PendingRunIDs...)
 			if len(pendingRunIDs) > 0 {
-				checkpointBody, err := watcher.SetPendingRunIDs(current.Body, c.repo, change.WorkflowID, change.WorkflowName, pendingRunIDs)
+				checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, pendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
 				if err != nil {
 					return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
+				}
+				if err := c.verifyCheckpointArchives(ctx, change.Archives, checkpointArchives); err != nil {
+					return fmt.Errorf("verify checkpoint archives for issue #%d: %w", current.Number, err)
+				}
+				current, err = c.ensureArchiveComments(ctx, current, checkpointArchives)
+				if err != nil {
+					return fmt.Errorf("preserve checkpoint history for issue #%d: %w", current.Number, err)
 				}
 				checkpoint := watcher.IssueChange{Title: current.Title, Body: checkpointBody}
 				current, err = c.patchIssue(ctx, current, checkpoint)
@@ -911,6 +930,59 @@ func (c *watcherClient) verifyArchiveAttempts(ctx context.Context, plan watcher.
 		}
 	}
 	return nil
+}
+
+func (c *watcherClient) verifyCheckpointArchives(ctx context.Context, planned, generated []watcher.ArchiveComment) error {
+	plannedMarkers := make(map[string]bool, len(planned))
+	for _, archive := range planned {
+		plannedMarkers[archive.Marker] = true
+	}
+	for _, archive := range generated {
+		if plannedMarkers[archive.Marker] {
+			continue
+		}
+		if len(archive.Attempts) == 0 {
+			return errors.New("checkpoint archive has no verifiable failure attempts")
+		}
+		for _, attempt := range archive.Attempts {
+			if err := c.verifyPersistedFailure(ctx, attempt); err != nil {
+				return fmt.Errorf("verify failure run %d attempt %d before checkpoint archive: %w", attempt.RunID, attempt.Attempt, err)
+			}
+		}
+	}
+	return nil
+}
+
+func watcherAuthoredComments(comments []watcher.CommentSnapshot, appLogin string) []watcher.CommentSnapshot {
+	trusted := make([]watcher.CommentSnapshot, 0, len(comments))
+	for _, comment := range comments {
+		if comment.AuthorLogin == appLogin {
+			trusted = append(trusted, comment)
+		}
+	}
+	return trusted
+}
+
+func mergeArchiveComments(existing, additional []watcher.ArchiveComment) ([]watcher.ArchiveComment, error) {
+	merged := append([]watcher.ArchiveComment(nil), existing...)
+	byMarker := make(map[string]string, len(existing)+len(additional))
+	for _, archive := range existing {
+		if previous, ok := byMarker[archive.Marker]; ok && previous != archive.Body {
+			return nil, fmt.Errorf("archive marker %q has conflicting bodies", archive.Marker)
+		}
+		byMarker[archive.Marker] = archive.Body
+	}
+	for _, archive := range additional {
+		if previous, ok := byMarker[archive.Marker]; ok {
+			if previous != archive.Body {
+				return nil, fmt.Errorf("archive marker %q has conflicting bodies", archive.Marker)
+			}
+			continue
+		}
+		merged = append(merged, archive)
+		byMarker[archive.Marker] = archive.Body
+	}
+	return merged, nil
 }
 
 func replaceIssue(issues []watcher.IssueSnapshot, updated watcher.IssueSnapshot) []watcher.IssueSnapshot {

@@ -650,6 +650,68 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 	}
 }
 
+func TestRenderCheckpointBodyArchivesHistoryBeforePendingRunOverflow(t *testing.T) {
+	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
+	for i := 1; i <= 25; i++ {
+		started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Minute)
+		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started, "https://example.test/attempt/"+string(rune('a'+i%26))))
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+	body, archives, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 0 {
+		t.Fatalf("initial body unexpectedly overflowed into %d archives", len(archives))
+	}
+
+	const note = "maintainer note "
+	notes := "\n" + strings.Repeat(note, (MaxIssueBodyBytes-len(body)-32)/len(note))
+	body += notes
+	if len(body) >= MaxIssueBodyBytes {
+		t.Fatalf("test body is %d bytes; expected it just below the limit", len(body))
+	}
+	pendingRunIDs := make([]int64, MaxPendingRunIDs)
+	for i := range pendingRunIDs {
+		pendingRunIDs[i] = int64(10000 + i)
+	}
+
+	checkpoint, newArchives, err := RenderCheckpointBody(body, testRepository(), pendingRunIDs, nil)
+	if err != nil {
+		t.Fatalf("RenderCheckpointBody() error = %v", err)
+	}
+	if len(checkpoint) > MaxIssueBodyBytes {
+		t.Fatalf("checkpoint body is %d bytes, exceeds %d", len(checkpoint), MaxIssueBodyBytes)
+	}
+	if len(newArchives) == 0 {
+		t.Fatal("checkpoint did not archive failure history to make room for pending run IDs")
+	}
+	if !strings.HasSuffix(checkpoint, notes) {
+		t.Fatal("checkpoint did not preserve maintainer notes")
+	}
+	checkpointState, err := RenderBodyState(checkpoint, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpointState.PendingRunIDs) != len(pendingRunIDs) {
+		t.Fatalf("checkpoint stored %d pending run IDs, want %d", len(checkpointState.PendingRunIDs), len(pendingRunIDs))
+	}
+	archivedKeys := make(map[string]bool)
+	for _, archive := range newArchives {
+		for _, failure := range archive.Attempts {
+			archivedKeys[attemptKey(failure)] = true
+		}
+	}
+	for _, failure := range checkpointState.Failures {
+		archivedKeys[attemptKey(failure)] = true
+	}
+	for _, failure := range state.Failures {
+		if !archivedKeys[attemptKey(failure)] {
+			t.Errorf("checkpoint dropped failure run %d", failure.RunID)
+		}
+	}
+}
+
 func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	const archiveCount = 1000
 	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
