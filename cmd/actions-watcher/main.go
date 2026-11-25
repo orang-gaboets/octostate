@@ -98,6 +98,21 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := recordRunEvents(&plan, triggerEvents, unavailableRuns); err != nil {
 		return fmt.Errorf("record workflow run events: %w", err)
 	}
+	attemptCount := len(attempts)
+	refreshed, err := client.refreshUnavailableArchiveAttempts(ctx, plan, issues)
+	if err != nil {
+		return fmt.Errorf("refresh archived workflow attempts: %w", err)
+	}
+	if len(refreshed) > 0 {
+		attempts = mergeArchiveRefreshes(attempts, refreshed)
+		plan, err = watcher.Reconcile(cfg.Repository, client.appLogin, attempts, issues, cfg.ReconcileAt)
+		if err != nil {
+			return fmt.Errorf("replan incident reconciliation: %w", err)
+		}
+		if err := recordRunEvents(&plan, triggerEvents, unavailableRuns); err != nil {
+			return fmt.Errorf("record workflow run events: %w", err)
+		}
+	}
 	if len(plan.Changes) > 0 {
 		if err := client.requireLabels(ctx, plan); err != nil {
 			return err
@@ -106,11 +121,34 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 			return fmt.Errorf("apply incident reconciliation: %w", err)
 		}
 	}
-	result := resultFor(len(attempts), plan, unavailableRuns...)
+	result := resultFor(attemptCount, plan, unavailableRuns...)
 	if err := json.NewEncoder(stdout).Encode(result); err != nil {
 		return fmt.Errorf("write reconciliation result: %w", err)
 	}
 	return nil
+}
+
+func mergeArchiveRefreshes(attempts, refreshed []watcher.RunAttempt) []watcher.RunAttempt {
+	updates := make(map[string]watcher.RunAttempt, len(refreshed))
+	for _, attempt := range refreshed {
+		updates[fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)] = attempt
+	}
+	result := append([]watcher.RunAttempt(nil), attempts...)
+	for i, attempt := range result {
+		key := fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)
+		if update, ok := updates[key]; ok {
+			result[i] = update
+			delete(updates, key)
+		}
+	}
+	for _, attempt := range refreshed {
+		key := fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)
+		if _, ok := updates[key]; ok {
+			result = append(result, attempt)
+			delete(updates, key)
+		}
+	}
+	return result
 }
 
 func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {

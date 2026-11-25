@@ -307,6 +307,160 @@ func TestRunRejectsForgedPersistedLatestAttempt(t *testing.T) {
 	}
 }
 
+func TestRunRefreshesUnavailableFailureBeforeArchiving(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	started := time.Date(2026, 11, 25, 10, 1, 0, 0, time.UTC)
+	history := make([]watcher.RunAttempt, 0)
+	var body string
+	for i := 0; i < 100; i++ {
+		runID := int64(1001 + i)
+		failure := testFailureAttempt(runID, int(runID), started)
+		failure.HTMLURL = fmt.Sprintf("https://github.com/orang-gaboets/octostate/actions/runs/%d/%s", runID, strings.Repeat("x", 900))
+		if i == 0 {
+			failure.JobDataAvailable = false
+			failure.FailedJobs = nil
+		}
+		candidate := append(append([]watcher.RunAttempt(nil), history...), failure)
+		candidateBody, archives, err := watcher.RenderBody(repo, watcher.IncidentState{
+			WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+			Failures: candidate, Latest: candidate[len(candidate)-1],
+		}, "", nil)
+		if err != nil {
+			t.Fatalf("RenderBody() for initial history: %v", err)
+		}
+		if len(archives) != 0 {
+			break
+		}
+		history = candidate
+		body = candidateBody
+	}
+	if len(history) < 2 {
+		t.Fatalf("fixture has %d failures before body limit; want at least 2", len(history))
+	}
+	if body == "" {
+		t.Fatal("fixture did not produce a body below the archive limit")
+	}
+	unavailable := history[0]
+	newFailure := testFailureAttempt(9000, 9000, started.Add(time.Hour))
+	newFailure.CompletedAt = newFailure.StartedAt.Add(10 * time.Minute)
+	newFailure.HTMLURL = "https://github.com/orang-gaboets/octostate/actions/runs/9000/" + strings.Repeat("n", 12000)
+
+	attemptsByID := make(map[int64]watcher.RunAttempt, len(history)+1)
+	for _, attempt := range history {
+		attemptsByID[attempt.RunID] = attempt
+	}
+	attemptsByID[newFailure.RunID] = newFailure
+	runJSON := func(attempt watcher.RunAttempt) map[string]any {
+		value := runAttemptFixture(repo.ID, attempt.RunID, attempt.Attempt, attempt.Conclusion)
+		value["run_number"] = attempt.RunNumber
+		value["run_started_at"] = attempt.StartedAt.Format(time.RFC3339)
+		value["updated_at"] = attempt.CompletedAt.Format(time.RFC3339)
+		value["head_sha"] = attempt.HeadSHA
+		value["html_url"] = attempt.HTMLURL
+		return value
+	}
+	newRun := runJSON(newFailure)
+	issueTitle := "ci(actions): investigate CI workflow failures on main"
+	issueLabels := []string{watcher.ManagedLabel, watcher.FailingLabel}
+	var comments []any
+	var nextCommentID int64 = 500
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "installation/repositories":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "repositories": []any{map[string]any{"id": repo.ID, "full_name": expectedRepository}}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/workflows":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 7, "workflows": workflowFixtures()})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/") && strings.HasSuffix(path, "/runs"):
+			if strings.Contains(path, "/workflows/1/") {
+				writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "workflow_runs": []any{newRun}})
+			} else {
+				writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "workflow_runs": []any{}})
+			}
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/") && strings.HasSuffix(path, "/jobs"):
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": "test", "conclusion": "failure"}}})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/"):
+			parts := strings.Split(path, "/")
+			runID, err := strconv.ParseInt(parts[5], 10, 64)
+			if err != nil {
+				t.Errorf("invalid run ID in request %q: %v", path, err)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid run ID"})
+				return
+			}
+			attempt, ok := attemptsByID[runID]
+			if !ok {
+				t.Errorf("unexpected attempt request for run %d", runID)
+				writeJSON(w, http.StatusNotFound, map[string]any{"message": "unknown run"})
+				return
+			}
+			writeJSON(w, http.StatusOK, runJSON(attempt))
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues":
+			writeJSON(w, http.StatusOK, []any{issueJSON(7, "open", issueTitle, body, issueLabels)})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, issueJSON(7, "open", issueTitle, body, issueLabels))
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			var request struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode comment request: %v", err)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid comment"})
+				return
+			}
+			comment := map[string]any{"id": nextCommentID, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"}}
+			nextCommentID++
+			comments = append(comments, comment)
+			writeJSON(w, http.StatusCreated, comment)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode issue update: %v", err)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid issue update"})
+				return
+			}
+			issueTitle, body, issueLabels = request.Title, request.Body, request.Labels
+			writeJSON(w, http.StatusOK, issueJSON(7, "open", issueTitle, body, issueLabels))
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	eventPath := t.TempDir() + "/event.json"
+	if err := os.WriteFile(eventPath, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"GITHUB_REPOSITORY": expectedRepository, "GITHUB_REPOSITORY_ID": "99", "GITHUB_EVENT_NAME": "schedule",
+		"GITHUB_EVENT_PATH": eventPath, "GITHUB_REF": "refs/heads/main", "GITHUB_API_URL": server.URL,
+		"ACTIONS_WATCHER_TOKEN": "installation-token", "ACTIONS_WATCHER_APP_SLUG": expectedAppSlug,
+		"ACTIONS_WATCHER_ACTIVATED_AT": "2026-11-24T00:00:00Z",
+	}
+	var stdout bytes.Buffer
+	err := run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	foundRefreshedArchive := false
+	for _, raw := range comments {
+		comment, _ := raw.(map[string]any)
+		text, _ := comment["body"].(string)
+		if strings.Contains(text, fmt.Sprintf("run ID %d, attempt 1", unavailable.RunID)) {
+			foundRefreshedArchive = strings.Contains(text, "failed jobs: `test`")
+		}
+	}
+	if !foundRefreshedArchive {
+		t.Fatalf("archive did not preserve newly available job evidence for run %d", unavailable.RunID)
+	}
+}
+
 func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
 	const repoID = 99
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

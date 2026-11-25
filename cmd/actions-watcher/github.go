@@ -947,6 +947,75 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 	return nil
 }
 
+func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) ([]watcher.RunAttempt, error) {
+	byKey := make(map[string]watcher.RunAttempt)
+	keys := make([]string, 0)
+	addArchives := func(archives []watcher.ArchiveComment) {
+		for _, archive := range archives {
+			for _, attempt := range archive.Attempts {
+				if attempt.JobDataAvailable {
+					continue
+				}
+				key := fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)
+				if _, exists := byKey[key]; !exists {
+					byKey[key] = attempt
+					keys = append(keys, key)
+				}
+			}
+		}
+	}
+	for _, change := range plan.Changes {
+		if change.Action != watcher.ActionUpdate {
+			continue
+		}
+		addArchives(change.Archives)
+		current, ok := findIssue(initial, change.IssueNumber)
+		if !ok {
+			return nil, fmt.Errorf("planned issue #%d was absent from the authoritative snapshot", change.IssueNumber)
+		}
+		state, err := watcher.RenderManagedBodyState(current.Body, c.repo)
+		if err != nil {
+			return nil, fmt.Errorf("read pending run state from issue #%d: %w", current.Number, err)
+		}
+		pendingRunIDs := append(append([]int64(nil), state.PendingRunIDs...), change.PendingRunIDs...)
+		_, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, pendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
+		if err != nil {
+			return nil, fmt.Errorf("plan checkpoint archives for issue #%d: %w", current.Number, err)
+		}
+		plannedMarkers := make(map[string]bool, len(change.Archives))
+		for _, archive := range change.Archives {
+			plannedMarkers[archive.Marker] = true
+		}
+		for _, archive := range checkpointArchives {
+			if !plannedMarkers[archive.Marker] {
+				addArchives([]watcher.ArchiveComment{archive})
+			}
+		}
+	}
+
+	refreshed := make([]watcher.RunAttempt, 0)
+	for _, key := range keys {
+		attempt := byKey[key]
+		if len(attempt.FailedJobs) != 0 || !isRunFailure(attempt.Conclusion) {
+			return nil, fmt.Errorf("archive contains invalid unavailable failure attempt %s", key)
+		}
+		if err := c.verifyPersistedAttempt(ctx, attempt); err != nil {
+			return nil, fmt.Errorf("verify unavailable failure attempt %s before archiving: %w", key, err)
+		}
+		failedJobs, available, err := c.listFailedJobs(ctx, attempt.RunID, attempt.Attempt)
+		if err != nil {
+			return nil, fmt.Errorf("refresh failed jobs for attempt %s: %w", key, err)
+		}
+		if !available {
+			continue
+		}
+		attempt.FailedJobs = failedJobs
+		attempt.JobDataAvailable = true
+		refreshed = append(refreshed, attempt)
+	}
+	return refreshed, nil
+}
+
 func (c *watcherClient) verifyArchiveAttempts(ctx context.Context, plan watcher.Plan) error {
 	for _, change := range plan.Changes {
 		if change.Action != watcher.ActionUpdate {

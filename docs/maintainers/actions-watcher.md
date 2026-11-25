@@ -145,6 +145,8 @@ record when it sees that attempt again. Other missing or mismatched metadata
 stops reconciliation rather than trusting editable issue content. If GitHub
 has expired the stored attempt, a maintainer should review and manually close
 the stale incident; later failures will then start a new linked incident.
+Before archiving an unavailable job snapshot, the watcher rechecks the attempt
+and adds job names if GitHub now exposes them.
 
 That API verification covers the latest ordering cursor. Failure records kept
 in the issue body are structurally checked and must not be later than the
