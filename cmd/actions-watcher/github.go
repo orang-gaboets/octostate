@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	apiPageSize       = 100
-	apiResultLimit    = 1000
-	maxRateRetries    = 3
-	maxRateWait       = time.Minute
-	maxAttemptHistory = 20000
+	apiPageSize             = 100
+	apiResultLimit          = 1000
+	maxRateRetries          = 3
+	maxRateWait             = time.Minute
+	rateLimitRequestTimeout = time.Duration(maxRateRetries+1)*githubclient.DefaultTimeout + time.Duration(maxRateRetries)*maxRateWait
+	maxAttemptHistory       = 20000
 )
 
 var expectedWorkflowPaths = map[string]string{
@@ -56,7 +57,7 @@ func newWatcherClient(ctx context.Context, token, apiURL string, repo watcher.Re
 	if err != nil {
 		return nil, err
 	}
-	pat, err := githubclient.NewPAT(ctx, token)
+	pat, err := githubclient.NewPAT(ctx, token, githubclient.WithTimeout(rateLimitRequestTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("construct authenticated GitHub client: %w", err)
 	}

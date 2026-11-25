@@ -596,6 +596,42 @@ func TestRateRetryDelayDoesNotOverflowForLargeRetryAfter(t *testing.T) {
 	}
 }
 
+func TestWatcherClientAllowsRateLimitWaitWithinConfiguredTimeout(t *testing.T) {
+	var calls atomic.Int32
+	var waits []time.Duration
+	client := testWatcherClient(t, "https://api.github.com", watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
+	httpClient := client.client.Client()
+	httpClient.Transport = &rateLimitTransport{
+		base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			status := http.StatusOK
+			header := make(http.Header)
+			if calls.Add(1) == 1 {
+				status = http.StatusTooManyRequests
+				header.Set("Retry-After", "40")
+			}
+			return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(`{}`)), Request: req}, nil
+		}),
+		wait: func(ctx context.Context, delay time.Duration) error {
+			deadline, ok := ctx.Deadline()
+			if !ok || time.Until(deadline) <= delay {
+				return fmt.Errorf("retry delay %s exceeds the configured request deadline", delay)
+			}
+			waits = append(waits, delay)
+			return nil
+		},
+		now: func() time.Time { return time.Unix(0, 0) }, maxRetries: maxRateRetries, maxWait: maxRateWait,
+	}
+
+	response, err := httpClient.Get("https://api.github.com/test")
+	if err != nil {
+		t.Fatalf("configured watcher client GET: %v", err)
+	}
+	_ = response.Body.Close()
+	if calls.Load() != 2 || !reflect.DeepEqual(waits, []time.Duration{40 * time.Second}) {
+		t.Fatalf("GET calls/waits = %d/%v, want 2/[40s]", calls.Load(), waits)
+	}
+}
+
 func TestPatchIssueReadsBackAmbiguousMutationWithoutRetry(t *testing.T) {
 	issue := issueJSON(7, "open", "old title", "old body", []string{watcher.ManagedLabel, watcher.FailingLabel, "keep-me"})
 	var patchCalls atomic.Int32
