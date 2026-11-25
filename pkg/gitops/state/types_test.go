@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -148,5 +149,18 @@ func TestOrganizationStateJSONUsesSnapshotFieldNames(t *testing.T) {
 	}
 	if _, ok := got["team_repository_permissions"]; ok {
 		t.Fatalf("did not expect legacy team_repository_permissions key in JSON payload: %s", string(payload))
+	}
+}
+
+func TestCanonicalTeamMembersRejectsMissingAndUnsupportedRoles(t *testing.T) {
+	for _, role := range []string{"", "owner"} {
+		t.Run(role, func(t *testing.T) {
+			_, err := CanonicalTeamMembers([]TeamMember{{
+				TeamSlug: "platform", Username: "alice", Role: role, Origin: githubpkg.TeamMembershipOriginDirect,
+			}})
+			if !errors.Is(err, githubpkg.ErrValidationFailed) {
+				t.Fatalf("CanonicalTeamMembers role %q error = %v, want %v", role, err, githubpkg.ErrValidationFailed)
+			}
+		})
 	}
 }

@@ -26,6 +26,26 @@ func TestBootstrapAndAdoptFailClosedForUnknownMembershipOrigin(t *testing.T) {
 	}
 }
 
+func TestBootstrapAndAdoptRejectInvalidTeamMemberRole(t *testing.T) {
+	actual := &state.OrganizationState{
+		Organization: "acme",
+		Members:      []state.OrganizationMember{{Username: "alice", Role: "member"}},
+		Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		TeamMembers: []state.TeamMember{{
+			TeamSlug: "platform", Username: "alice", Role: "owner", Origin: githubpkg.TeamMembershipOriginDirect,
+		}},
+	}
+	if _, err := BuildBootstrapConfig(BootstrapOptions{Actual: actual}); !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("BuildBootstrapConfig error = %v, want %v", err, githubpkg.ErrValidationFailed)
+	}
+	if _, err := BuildAdoptConfig(AdoptOptions{
+		Desired: config.OrganizationConfig{Organization: "acme"},
+		Actual:  actual,
+	}); !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("BuildAdoptConfig error = %v, want %v", err, githubpkg.ErrValidationFailed)
+	}
+}
+
 func TestBootstrapDoesNotMaterializeInheritedMembershipAsDirect(t *testing.T) {
 	configValue, err := BuildBootstrapConfig(BootstrapOptions{Actual: &state.OrganizationState{
 		Organization: "acme",

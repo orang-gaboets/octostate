@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
@@ -85,5 +86,20 @@ func TestBuildDoesNotPlanRemovalForInheritedOnlyMembership(t *testing.T) {
 	}
 	if len(report.Actions) != 0 {
 		t.Fatalf("actions = %#v, want no action for inherited-only membership", report.Actions)
+	}
+}
+
+func TestBuildRejectsInvalidActualTeamMemberRole(t *testing.T) {
+	_, err := Build(context.Background(), Options{
+		Desired: config.OrganizationConfig{Organization: "acme"},
+		Actual: &state.OrganizationState{
+			Organization: "acme",
+			TeamMembers: []state.TeamMember{{
+				TeamSlug: "platform", Username: "alice", Role: "owner", Origin: githubpkg.TeamMembershipOriginDirect,
+			}},
+		},
+	})
+	if !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("Build error = %v, want %v", err, githubpkg.ErrValidationFailed)
 	}
 }

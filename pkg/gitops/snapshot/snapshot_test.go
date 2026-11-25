@@ -176,6 +176,20 @@ func TestWriteActualWritesSnapshotFile(t *testing.T) {
 	}
 }
 
+func TestWriteActualRejectsInvalidTeamMemberRole(t *testing.T) {
+	t.Parallel()
+
+	_, err := WriteActual(physicalTempDir(t), ActualSnapshot{
+		Organization: "acme",
+		TeamMembers: []state.TeamMember{{
+			TeamSlug: "platform", Username: "alice", Role: "owner", Origin: githubpkg.TeamMembershipOriginDirect,
+		}},
+	})
+	if !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("WriteActual error = %v, want %v", err, githubpkg.ErrValidationFailed)
+	}
+}
+
 func TestWriteActualOverwritesExistingSnapshotFile(t *testing.T) {
 	t.Parallel()
 

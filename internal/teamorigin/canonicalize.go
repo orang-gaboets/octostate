@@ -3,6 +3,7 @@
 package teamorigin
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -25,14 +26,15 @@ type membershipKey struct {
 }
 
 // Canonicalize trims membership keys, resolves case-insensitive duplicate
-// identities by origin precedence, validates winning roles, and returns rows
-// in deterministic order. Empty origins represent legacy zero-value rows and
+// identities by origin precedence, validates roles, and returns rows in
+// deterministic order. Empty origins represent legacy zero-value rows and
 // are normalized to unknown.
 func Canonicalize(values []Membership) ([]Membership, error) {
 	byKey := make(map[membershipKey][]Membership, len(values))
 	for _, value := range values {
 		value.TeamSlug = strings.TrimSpace(value.TeamSlug)
 		value.Username = strings.TrimSpace(value.Username)
+		value.Role = strings.TrimSpace(value.Role)
 		if value.Origin == "" {
 			value.Origin = github.TeamMembershipOriginUnknown
 		}
@@ -41,6 +43,9 @@ func Canonicalize(values []Membership) ([]Membership, error) {
 		}
 		if value.TeamSlug == "" || value.Username == "" {
 			return nil, fmt.Errorf("team membership requires a team slug and username: %w", github.ErrValidationFailed)
+		}
+		if value.Role != "member" && value.Role != "maintainer" {
+			return nil, fmt.Errorf("team membership %q/%q has invalid role %q: %w", value.TeamSlug, value.Username, value.Role, github.ErrValidationFailed)
 		}
 
 		key := membershipKey{
@@ -56,10 +61,10 @@ func Canonicalize(values []Membership) ([]Membership, error) {
 		keys = append(keys, key)
 	}
 	slices.SortFunc(keys, func(a, b membershipKey) int {
-		if diff := compareStrings(a.teamSlug, b.teamSlug); diff != 0 {
+		if diff := cmp.Compare(a.teamSlug, b.teamSlug); diff != 0 {
 			return diff
 		}
-		return compareStrings(a.username, b.username)
+		return cmp.Compare(a.username, b.username)
 	})
 	for _, key := range keys {
 		duplicates := byKey[key]
@@ -87,18 +92,6 @@ func Canonicalize(values []Membership) ([]Membership, error) {
 		canonical = append(canonical, winner)
 	}
 
-	slices.SortFunc(canonical, func(a, b Membership) int {
-		if diff := compareStrings(strings.ToLower(a.TeamSlug), strings.ToLower(b.TeamSlug)); diff != 0 {
-			return diff
-		}
-		if diff := compareStrings(strings.ToLower(a.Username), strings.ToLower(b.Username)); diff != 0 {
-			return diff
-		}
-		if diff := compareStrings(a.TeamSlug, b.TeamSlug); diff != 0 {
-			return diff
-		}
-		return compareStrings(a.Username, b.Username)
-	})
 	return canonical, nil
 }
 
@@ -117,18 +110,7 @@ func originPrecedence(origin github.TeamMembershipOrigin) int {
 
 func membershipSpellingLess(a, b Membership) bool {
 	if a.TeamSlug != b.TeamSlug {
-		return a.TeamSlug < b.TeamSlug
+		return cmp.Compare(a.TeamSlug, b.TeamSlug) < 0
 	}
-	return a.Username < b.Username
-}
-
-func compareStrings(a, b string) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	default:
-		return 0
-	}
+	return cmp.Compare(a.Username, b.Username) < 0
 }

@@ -84,3 +84,55 @@ func TestCanonicalizeMembershipsDefaultsEmptyOriginToUnknownAndRejectsInvalidOri
 		t.Fatalf("missing membership key error = %v, want %v", err, github.ErrValidationFailed)
 	}
 }
+
+func TestCanonicalizeMembershipsRejectsMissingAndUnsupportedRoles(t *testing.T) {
+	for _, role := range []string{"", "owner", "Member"} {
+		t.Run(role, func(t *testing.T) {
+			_, err := Canonicalize([]Membership{{
+				TeamSlug: "platform",
+				Username: "alice",
+				Role:     role,
+				Origin:   github.TeamMembershipOriginDirect,
+			}})
+			if !errors.Is(err, github.ErrValidationFailed) {
+				t.Fatalf("Canonicalize role %q error = %v, want %v", role, err, github.ErrValidationFailed)
+			}
+		})
+	}
+}
+
+func TestCanonicalizeMembershipsTrimsRecognizedRoleBeforeConflictValidation(t *testing.T) {
+	got, err := Canonicalize([]Membership{
+		{TeamSlug: "platform", Username: "alice", Role: " maintainer ", Origin: github.TeamMembershipOriginDirect},
+		{TeamSlug: "PLATFORM", Username: "ALICE", Role: "maintainer", Origin: github.TeamMembershipOriginDirect},
+	})
+	if err != nil {
+		t.Fatalf("Canonicalize returned error: %v", err)
+	}
+	want := []Membership{{
+		TeamSlug: "PLATFORM", Username: "ALICE", Role: "maintainer", Origin: github.TeamMembershipOriginDirect,
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Canonicalize = %#v, want %#v", got, want)
+	}
+}
+
+func TestCanonicalizeMembershipsReturnsSortedCaseInsensitiveKeys(t *testing.T) {
+	got, err := Canonicalize([]Membership{
+		{TeamSlug: "Zeta", Username: "bob", Role: "member", Origin: github.TeamMembershipOriginUnknown},
+		{TeamSlug: "platform", Username: "Zoe", Role: "maintainer", Origin: github.TeamMembershipOriginDirect},
+		{TeamSlug: "PLATFORM", Username: "zoe", Role: "member", Origin: github.TeamMembershipOriginInherited},
+		{TeamSlug: "alpha", Username: "Alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
+	})
+	if err != nil {
+		t.Fatalf("Canonicalize returned error: %v", err)
+	}
+	want := []Membership{
+		{TeamSlug: "alpha", Username: "Alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
+		{TeamSlug: "platform", Username: "Zoe", Role: "maintainer", Origin: github.TeamMembershipOriginDirect},
+		{TeamSlug: "Zeta", Username: "bob", Role: "member", Origin: github.TeamMembershipOriginUnknown},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Canonicalize = %#v, want %#v", got, want)
+	}
+}

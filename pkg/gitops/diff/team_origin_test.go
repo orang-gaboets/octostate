@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -84,5 +85,18 @@ func TestBuildDoesNotPlanRemovalForInheritedOnlyMembership(t *testing.T) {
 	}
 	if len(report.Actions) != 0 {
 		t.Fatalf("actions = %#v, want no action for inherited-only membership", report.Actions)
+	}
+}
+
+func TestBuildRejectsInvalidSnapshotTeamMemberRole(t *testing.T) {
+	snap := snapshot.NewActualSnapshot(time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC), &state.OrganizationState{
+		Organization: "acme",
+		TeamMembers: []state.TeamMember{{
+			TeamSlug: "platform", Username: "alice", Role: "owner", Origin: githubpkg.TeamMembershipOriginDirect,
+		}},
+	})
+	_, err := Build(Options{Desired: config.OrganizationConfig{Organization: "acme"}, Snapshot: &snap})
+	if !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("Build error = %v, want %v", err, githubpkg.ErrValidationFailed)
 	}
 }
