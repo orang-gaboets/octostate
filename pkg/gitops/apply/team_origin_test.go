@@ -109,7 +109,7 @@ func TestReviewedCheckAndExecuteRequireExecutableForUnresolvedDesiredMembership(
 	}
 }
 
-func TestCallerSuppliedTeamMembershipActionForUnknownOriginFailsBeforeWrites(t *testing.T) {
+func TestCallerSuppliedTeamMembershipActionsForUnknownOriginFailBeforeWrites(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "org-a",
 		Members:      []config.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
@@ -129,45 +129,57 @@ func TestCallerSuppliedTeamMembershipActionForUnknownOriginFailsBeforeWrites(t *
 			TeamSlug: "PLATFORM", Username: "ALICE", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown,
 		}},
 	}
-	plan := planWith(
-		gitopsplan.Action{
-			ResourceType: gitopsplan.ActionResourceTypeTeamMember,
-			Operation:    gitopsplan.ActionOperationCreate,
-			ResourceID:   "Platform/Alice",
-			Executable:   true,
-		},
-		gitopsplan.Action{
-			ResourceType: gitopsplan.ActionResourceTypeRepository,
-			Operation:    gitopsplan.ActionOperationCreate,
-			ResourceID:   repositoryResourceID("org-a", "application"),
-			Executable:   true,
-		},
-	)
-	if len(plan.Actions) < 2 || plan.Actions[0].ResourceType != gitopsplan.ActionResourceTypeRepository || plan.Actions[1].ResourceType != gitopsplan.ActionResourceTypeTeamMember {
-		t.Fatalf("plan order = %#v, want repository mutation before offending membership action", plan.Actions)
-	}
-	teamWrites := 0
-	repositoryWrites := 0
-	options := testApplyOptions(desired, actual, plan, withRepoService(&testRepoService{
-		createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
-			repositoryWrites++
-			return &gh.Repository{}, nil, nil
-		},
-	}), withTeamService(&testTeamService{
-		addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
-			teamWrites++
-			return &gh.Membership{}, nil, nil
-		},
-	}))
+	for _, operation := range []gitopsplan.ActionOperation{
+		gitopsplan.ActionOperationCreate,
+		gitopsplan.ActionOperationUpdate,
+		gitopsplan.ActionOperationRemove,
+	} {
+		t.Run(string(operation), func(t *testing.T) {
+			plan := planWith(
+				gitopsplan.Action{
+					ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+					Operation:    operation,
+					ResourceID:   "Platform/Alice",
+					Executable:   true,
+				},
+				gitopsplan.Action{
+					ResourceType: gitopsplan.ActionResourceTypeRepository,
+					Operation:    gitopsplan.ActionOperationCreate,
+					ResourceID:   repositoryResourceID("org-a", "application"),
+					Executable:   true,
+				},
+			)
+			if len(plan.Actions) < 2 || plan.Actions[0].ResourceType != gitopsplan.ActionResourceTypeRepository || plan.Actions[1].ResourceType != gitopsplan.ActionResourceTypeTeamMember {
+				t.Fatalf("plan order = %#v, want repository mutation before offending membership action", plan.Actions)
+			}
+			teamWrites := 0
+			repositoryWrites := 0
+			options := testApplyOptions(desired, actual, plan, withRepoService(&testRepoService{
+				createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+					repositoryWrites++
+					return &gh.Repository{}, nil, nil
+				},
+			}), withTeamService(&testTeamService{
+				addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
+					teamWrites++
+					return &gh.Membership{}, nil, nil
+				},
+				removeTeamMembershipFunc: func(context.Context, string, string, string) (*gh.Response, error) {
+					teamWrites++
+					return nil, nil
+				},
+			}))
 
-	if _, err := Check(context.Background(), options); !errors.Is(err, ErrUnresolvedTeamMembership) {
-		t.Fatalf("Check error = %v, want ErrUnresolvedTeamMembership", err)
-	}
-	if _, err := Execute(context.Background(), options); !errors.Is(err, ErrUnresolvedTeamMembership) {
-		t.Fatalf("Execute error = %v, want ErrUnresolvedTeamMembership", err)
-	}
-	if repositoryWrites != 0 || teamWrites != 0 {
-		t.Fatalf("writes before unresolved membership rejection = repository:%d team-membership:%d, want 0", repositoryWrites, teamWrites)
+			if _, err := Check(context.Background(), options); !errors.Is(err, ErrUnresolvedTeamMembership) {
+				t.Fatalf("Check error = %v, want ErrUnresolvedTeamMembership", err)
+			}
+			if _, err := Execute(context.Background(), options); !errors.Is(err, ErrUnresolvedTeamMembership) {
+				t.Fatalf("Execute error = %v, want ErrUnresolvedTeamMembership", err)
+			}
+			if repositoryWrites != 0 || teamWrites != 0 {
+				t.Fatalf("writes before unresolved membership rejection = repository:%d team-membership:%d, want 0", repositoryWrites, teamWrites)
+			}
+		})
 	}
 }
 
