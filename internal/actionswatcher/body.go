@@ -264,6 +264,10 @@ func replaceManagedRegion(repo RepositoryIdentity, state IncidentState, existing
 	if start < 0 || end < start+len(managedStart) {
 		return "", "", "", errors.New("managed issue markers are out of order")
 	}
+	identityStart := strings.Index(existing, identityLines[0])
+	if identityStart >= start && identityStart < end+len(managedEnd) {
+		return "", "", "", errors.New("managed issue identity marker must remain outside the replaceable body region")
+	}
 	prefix = existing[:start]
 	suffix = existing[end+len(managedEnd):]
 	return prefix + managed + suffix, prefix, suffix, nil

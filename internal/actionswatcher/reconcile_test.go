@@ -350,6 +350,15 @@ func TestRenderBodyPreservesHumanTextAndRejectsMalformedMarkers(t *testing.T) {
 	if _, _, err := RenderBody(testRepository(), state, original+"\n"+managedStart, nil); err == nil {
 		t.Fatal("RenderBody accepted duplicate/malformed managed markers")
 	}
+	validBody, _, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := identityMarker(testRepository(), 100, "CI")
+	movedIdentity := strings.Replace(validBody, identity+"\n\n"+managedStart, managedStart+"\n"+identity, 1)
+	if _, _, err := RenderBody(testRepository(), state, movedIdentity, nil); err == nil {
+		t.Fatal("RenderBody accepted an identity marker inside the replaceable managed region")
+	}
 }
 
 func TestRenderBodyStateRejectsRecoveryThatDiffersFromLatest(t *testing.T) {
