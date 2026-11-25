@@ -15,6 +15,7 @@ import (
 	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
@@ -223,6 +224,77 @@ func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
 	assertUnixMode(t, writtenPath, os.FileMode(syncFromLiveConfigFileMode))
+}
+
+func TestSyncFromLiveConfigCmdUnknownTeamMembershipFailsWithoutWriting(t *testing.T) {
+	for _, mode := range []string{syncFromLiveModeBootstrap, syncFromLiveModeAdopt} {
+		t.Run(mode, func(t *testing.T) {
+			restoreSyncFromLiveHooks(t)
+
+			configDir := filepath.Join(t.TempDir(), "config")
+			configPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+			before := []byte("organization: acme\nmembers: []\ninvites: []\nrepositories: []\nteams: []\n")
+			if mode == syncFromLiveModeAdopt {
+				if err := os.MkdirAll(configDir, 0o755); err != nil {
+					t.Fatalf("create config directory: %v", err)
+				}
+				if err := os.WriteFile(configPath, before, 0o644); err != nil {
+					t.Fatalf("seed existing config: %v", err)
+				}
+			}
+
+			actual := &state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{Username: "alice", Role: "member"}},
+				Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+				TeamMembers: []state.TeamMember{{
+					TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown,
+				}},
+			}
+			newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+				return internalauth.MockClient{}, nil
+			}
+			collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				return actual, nil
+			}
+
+			cmd := SyncFromLiveConfigCmd()
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&errBuf)
+			cmd.SetArgs([]string{
+				"--mode", mode,
+				"--org", "acme",
+				"--config-dir", configDir,
+				"--token", "secret-token",
+				"--write",
+			})
+
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "team membership origin is unknown") {
+				t.Fatalf("expected unknown-origin failure, got %v", err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("expected no generated YAML on stdout, got %q", out.String())
+			}
+			assertNoSyncFromLiveTempFiles(t, configDir)
+			if mode == syncFromLiveModeBootstrap {
+				if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+					t.Fatalf("bootstrap output file stat error = %v, want no file", err)
+				}
+				if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+					t.Fatalf("bootstrap config directory stat error = %v, want no directory", err)
+				}
+				return
+			}
+			if got, err := os.ReadFile(configPath); err != nil {
+				t.Fatalf("read existing adopt config: %v", err)
+			} else if string(got) != string(before) {
+				t.Fatalf("adopt changed existing config:\n got %q\nwant %q", got, before)
+			}
+		})
+	}
 }
 
 func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {
