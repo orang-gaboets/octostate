@@ -1,6 +1,8 @@
 package actionswatcher
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"slices"
 	"strings"
 	"testing"
@@ -713,7 +715,7 @@ func TestRenderCheckpointBodyArchivesHistoryBeforePendingRunOverflow(t *testing.
 }
 
 func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
-	const archiveCount = 1000
+	const archiveCount = 2000
 	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	comments := make([]CommentSnapshot, 0, archiveCount)
@@ -749,8 +751,8 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasIndex || len(indexed) != archiveCount {
-		t.Fatalf("body archive index contains %d entries (present=%t), want %d", len(indexed), hasIndex, archiveCount)
+	if !hasIndex || indexed.Version != 2 || indexed.Count != archiveCount || len(indexed.Digest) != sha256.Size*2 {
+		t.Fatalf("body archive index = %#v (present=%t), want v2 count %d with one SHA-256 digest", indexed, hasIndex, archiveCount)
 	}
 
 	secondBody, secondArchives, err := RenderBody(testRepository(), state, body, comments)
@@ -776,6 +778,33 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	stateWithoutOldest.Failures = append([]RunAttempt(nil), state.Failures[1:]...)
 	if _, _, err := RenderBody(testRepository(), stateWithoutOldest, withoutIndex, comments[1:]); err == nil {
 		t.Fatal("RenderBody accepted archived history without its full-set index")
+	}
+}
+
+func TestRenderBodyUpgradesLegacyArchiveIndex(t *testing.T) {
+	failure := attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), "https://example.test/run")
+	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing, Failures: []RunAttempt{failure}, Latest: failure}
+	archive, err := makeArchive(state.WorkflowID, []RunAttempt{failure})
+	if err != nil {
+		t.Fatal(err)
+	}
+	comments := []CommentSnapshot{{AuthorLogin: "actions-watcher[bot]", Body: archive.Body}}
+	body, _, err := RenderBody(testRepository(), state, "", comments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markerHash := sha256.Sum256([]byte(archive.Marker))
+	legacyIndex := legacyArchiveIndexPrefix + "count=1 hashes=" + base64.RawStdEncoding.EncodeToString(markerHash[:]) + " -->"
+	legacyBody := strings.Replace(body, archiveIndexMarker([]ArchiveComment{archive}), legacyIndex, 1)
+	if legacyBody == body {
+		t.Fatal("test failed to replace the v2 archive index with the legacy v1 marker")
+	}
+	upgraded, newArchives, err := RenderBody(testRepository(), state, legacyBody, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() rejected legacy archive index: %v", err)
+	}
+	if len(newArchives) != 0 || !strings.Contains(upgraded, archiveIndexPrefix) || strings.Contains(upgraded, legacyArchiveIndexPrefix) {
+		t.Fatalf("legacy index was not upgraded in place: new_archives=%d body=%s", len(newArchives), upgraded)
 	}
 }
 

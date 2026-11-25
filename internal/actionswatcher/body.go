@@ -1,7 +1,6 @@
 package actionswatcher
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -19,13 +18,14 @@ import (
 )
 
 const (
-	failureMarkerPrefix    = "<!-- actions-watcher:failure:v1 "
-	stateMarkerPrefix      = "<!-- actions-watcher:state:v1 "
-	archiveMarkerPrefix    = "<!-- actions-watcher:archive:v1 "
-	archiveIndexPrefix     = "<!-- actions-watcher:archive-index:v1 "
-	transitionMarkerPrefix = "<!-- actions-watcher:transition:v1 "
-	archiveChunkFailures   = 25
-	archiveReferenceLimit  = 20
+	failureMarkerPrefix      = "<!-- actions-watcher:failure:v1 "
+	stateMarkerPrefix        = "<!-- actions-watcher:state:v1 "
+	archiveMarkerPrefix      = "<!-- actions-watcher:archive:v1 "
+	archiveIndexPrefix       = "<!-- actions-watcher:archive-index:v2 "
+	legacyArchiveIndexPrefix = "<!-- actions-watcher:archive-index:v1 "
+	transitionMarkerPrefix   = "<!-- actions-watcher:transition:v1 "
+	archiveChunkFailures     = 25
+	archiveReferenceLimit    = 20
 	// MaxPendingRunIDs bounds the retry cursor stored in one incident body.
 	MaxPendingRunIDs = 1000
 )
@@ -38,6 +38,13 @@ type persistedState struct {
 	Recovery            *RunAttempt    `json:"recovery,omitempty"`
 	PreviousIssueNumber int            `json:"previous_issue_number,omitempty"`
 	PendingRunIDs       []int64        `json:"pending_run_ids,omitempty"`
+}
+
+type archiveIndex struct {
+	Version int
+	Count   int
+	Digest  string
+	Hashes  []string
 }
 
 func identityMarker(repo RepositoryIdentity, workflowID int64, workflowName string) string {
@@ -160,7 +167,7 @@ func renderBodyContent(repo RepositoryIdentity, state IncidentState, failures []
 			return "", nil, fmt.Errorf("issue body references missing overflow archive %q", marker)
 		}
 	}
-	indexedHashes, hasIndex, err := bodyArchiveIndex(existing)
+	index, hasIndex, err := bodyArchiveIndex(existing)
 	if err != nil {
 		return "", nil, err
 	}
@@ -168,14 +175,23 @@ func renderBodyContent(repo RepositoryIdentity, state IncidentState, failures []
 		return "", nil, errors.New("managed issue has archive history but is missing its full-set index")
 	}
 	if hasIndex {
-		availableHashes := make(map[string]bool, len(availableArchives))
-		for marker := range availableArchives {
-			hash := sha256.Sum256([]byte(marker))
-			availableHashes[hex.EncodeToString(hash[:])] = true
-		}
-		for _, hash := range indexedHashes {
-			if !availableHashes[hash] {
-				return "", nil, fmt.Errorf("issue body archive index references missing overflow archive digest %q", hash)
+		if index.Version == 1 {
+			availableHashes := make(map[string]bool, len(availableArchives))
+			for marker := range availableArchives {
+				hash := sha256.Sum256([]byte(marker))
+				availableHashes[hex.EncodeToString(hash[:])] = true
+			}
+			for _, hash := range index.Hashes {
+				if !availableHashes[hash] {
+					return "", nil, fmt.Errorf("issue body archive index references missing overflow archive digest %q", hash)
+				}
+			}
+		} else {
+			if index.Count > len(oldArchives) {
+				return "", nil, fmt.Errorf("issue body archive index references %d overflow archives but only %d are available", index.Count, len(oldArchives))
+			}
+			if got := archiveIndexDigest(oldArchives[:index.Count]); got != index.Digest {
+				return "", nil, errors.New("issue body archive index does not match its preserved overflow archives")
 			}
 		}
 	}
@@ -798,72 +814,87 @@ func archiveIndexMarker(archives []ArchiveComment) string {
 	if len(archives) == 0 {
 		return ""
 	}
-	digests := make([][sha256.Size]byte, 0, len(archives))
-	for _, archive := range archives {
-		hash := sha256.Sum256([]byte(archive.Marker))
-		digests = append(digests, hash)
-	}
-	sort.Slice(digests, func(i, j int) bool {
-		return bytes.Compare(digests[i][:], digests[j][:]) < 0
-	})
-	encoded := make([]byte, 0, len(digests)*sha256.Size)
-	for _, digest := range digests {
-		encoded = append(encoded, digest[:]...)
-	}
-	return fmt.Sprintf("%s count=%d hashes=%s -->", archiveIndexPrefix, len(digests), base64.RawStdEncoding.EncodeToString(encoded))
+	return fmt.Sprintf("%s count=%d sha256=%s -->", archiveIndexPrefix, len(archives), archiveIndexDigest(archives))
 }
 
-func bodyArchiveIndex(body string) ([]string, bool, error) {
+func archiveIndexDigest(archives []ArchiveComment) string {
+	hash := sha256.New()
+	for _, archive := range archives {
+		markerHash := sha256.Sum256([]byte(archive.Marker))
+		_, _ = hash.Write(markerHash[:])
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func bodyArchiveIndex(body string) (archiveIndex, bool, error) {
 	start := strings.Index(body, managedStart)
 	if start < 0 {
-		return nil, false, nil
+		return archiveIndex{}, false, nil
 	}
 	contentStart := start + len(managedStart)
 	end := strings.Index(body[contentStart:], managedEnd)
 	if end < 0 {
-		return nil, false, nil
+		return archiveIndex{}, false, nil
 	}
 	managed := body[contentStart : contentStart+end]
-	var encoded string
-	var count int
+	var result archiveIndex
 	found := false
 	for _, line := range strings.Split(managed, "\n") {
-		if !strings.Contains(line, archiveIndexPrefix) {
+		prefix, version := "", 0
+		if strings.Contains(line, archiveIndexPrefix) {
+			prefix, version = archiveIndexPrefix, 2
+		} else if strings.Contains(line, legacyArchiveIndexPrefix) {
+			prefix, version = legacyArchiveIndexPrefix, 1
+		} else {
 			continue
 		}
-		if found || !strings.HasPrefix(line, archiveIndexPrefix) || !strings.HasSuffix(line, " -->") {
-			return nil, false, errors.New("managed body contains a malformed or duplicate archive index")
+		if found || !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, " -->") {
+			return archiveIndex{}, false, errors.New("managed body contains a malformed or duplicate archive index")
 		}
 		found = true
-		fields := strings.Fields(strings.TrimSuffix(strings.TrimPrefix(line, archiveIndexPrefix), " -->"))
-		if len(fields) != 2 || !strings.HasPrefix(fields[0], "count=") || !strings.HasPrefix(fields[1], "hashes=") {
-			return nil, false, errors.New("managed body contains a malformed archive index")
+		fields := strings.Fields(strings.TrimSuffix(strings.TrimPrefix(line, prefix), " -->"))
+		if len(fields) != 2 || !strings.HasPrefix(fields[0], "count=") {
+			return archiveIndex{}, false, errors.New("managed body contains a malformed archive index")
 		}
 		var err error
-		count, err = strconv.Atoi(strings.TrimPrefix(fields[0], "count="))
-		if err != nil || count <= 0 || count > MaxIssueBodyBytes {
-			return nil, false, errors.New("managed body contains an invalid archive index count")
+		result.Count, err = strconv.Atoi(strings.TrimPrefix(fields[0], "count="))
+		if err != nil || result.Count <= 0 || result.Count > MaxIssueBodyBytes {
+			return archiveIndex{}, false, errors.New("managed body contains an invalid archive index count")
 		}
-		encoded = strings.TrimPrefix(fields[1], "hashes=")
+		result.Version = version
+		if version == 2 {
+			if !strings.HasPrefix(fields[1], "sha256=") {
+				return archiveIndex{}, false, errors.New("managed body contains an invalid archive index digest")
+			}
+			result.Digest = strings.TrimPrefix(fields[1], "sha256=")
+			decoded, err := hex.DecodeString(result.Digest)
+			if err != nil || len(decoded) != sha256.Size {
+				return archiveIndex{}, false, errors.New("managed body contains an invalid archive index digest")
+			}
+			continue
+		}
+		if !strings.HasPrefix(fields[1], "hashes=") {
+			return archiveIndex{}, false, errors.New("managed body contains a malformed archive index")
+		}
+		encoded := strings.TrimPrefix(fields[1], "hashes=")
+		decoded, err := base64.RawStdEncoding.DecodeString(encoded)
+		if err != nil || len(decoded) != result.Count*sha256.Size {
+			return archiveIndex{}, false, errors.New("managed body contains an invalid archive index digest list")
+		}
+		seen := make(map[string]bool, result.Count)
+		for i := 0; i < len(decoded); i += sha256.Size {
+			hash := hex.EncodeToString(decoded[i : i+sha256.Size])
+			if seen[hash] {
+				return archiveIndex{}, false, errors.New("managed body contains a duplicate archive index digest")
+			}
+			seen[hash] = true
+			result.Hashes = append(result.Hashes, hash)
+		}
 	}
 	if !found {
-		return nil, false, nil
+		return archiveIndex{}, false, nil
 	}
-	decoded, err := base64.RawStdEncoding.DecodeString(encoded)
-	if err != nil || len(decoded) != count*sha256.Size {
-		return nil, false, errors.New("managed body contains an invalid archive index digest list")
-	}
-	hashes := make([]string, 0, count)
-	seen := make(map[string]bool, count)
-	for i := 0; i < len(decoded); i += sha256.Size {
-		hash := hex.EncodeToString(decoded[i : i+sha256.Size])
-		if seen[hash] {
-			return nil, false, errors.New("managed body contains a duplicate archive index digest")
-		}
-		seen[hash] = true
-		hashes = append(hashes, hash)
-	}
-	return hashes, true, nil
+	return result, true, nil
 }
 
 func encodedFailureLines(attempts []RunAttempt) string {
