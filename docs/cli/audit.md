@@ -118,6 +118,15 @@ not prove direct membership, so they are recorded as `unknown`. Run
 `octostate audit pull` to refresh the snapshot from current API evidence.
 Snapshot readers that validate a fixed schema must accept the new field.
 
+The [#371 research report](https://github.com/orang-gaboets/octostate/issues/371)
+distinguishes documented semantics from live observations. GitHub documents
+`inherited: false` as direct and `inherited: true` as inherited, but does not
+specify how omitted or null values should be interpreted. The authorized
+sandbox exposed no teams, so no live team-member response shapes or overlapping
+direct/inherited memberships were observed. Because those response shapes are
+undocumented and unobserved, this implementation conservatively treats
+missing/null values and role-only fallback rows as unknown.
+
 ## `octostate audit diff`
 
 Diff desired state against the stored snapshot.
