@@ -689,18 +689,14 @@ func (c *watcherClient) listManagedIssues(ctx context.Context) ([]watcher.IssueS
 		if issue == nil || issue.IsPullRequest() {
 			continue
 		}
-		// Public users can spoof watcher titles or body markers in this repo.
-		// Only inspect candidates authored by the app; malformed app-owned
-		// incidents still fail closed below.
+		// The dedicated watcher App owns incidents in this repository. Public
+		// users can spoof their identity, but removing it from an App issue must
+		// not make that issue disappear from reconciliation.
 		if issue.GetUser() == nil || issue.GetUser().GetLogin() != c.appLogin {
 			continue
 		}
-		candidate := watcherCandidate(issue)
-		if !candidate {
-			continue
-		}
 		if !strings.Contains(issue.GetBody(), "<!-- actions-watcher:v1 ") {
-			return nil, fmt.Errorf("issue #%d carries a watcher label but has no identity marker", issue.GetNumber())
+			return nil, fmt.Errorf("App-authored issue #%d has no identity marker", issue.GetNumber())
 		}
 		snapshot, err := c.issueSnapshot(ctx, issue)
 		if err != nil {
@@ -710,23 +706,6 @@ func (c *watcherClient) listManagedIssues(ctx context.Context) ([]watcher.IssueS
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Number < result[j].Number })
 	return result, nil
-}
-
-func watcherCandidate(issue *gh.Issue) bool {
-	if strings.Contains(issue.GetBody(), "<!-- actions-watcher:v1") {
-		return true
-	}
-	for name := range expectedWorkflowPaths {
-		if issue.GetTitle() == "ci(actions): investigate "+name+" workflow failures on main" {
-			return true
-		}
-	}
-	for _, label := range issue.Labels {
-		if label != nil && (label.GetName() == watcher.ManagedLabel || label.GetName() == watcher.FailingLabel || label.GetName() == watcher.RecoveredLabel) {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *watcherClient) issueSnapshot(ctx context.Context, issue *gh.Issue) (watcher.IssueSnapshot, error) {

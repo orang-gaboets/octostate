@@ -1916,6 +1916,25 @@ func TestListManagedIssuesIgnoresPublicIssuesThatSpoofWatcherIdentity(t *testing
 	}
 }
 
+func TestListManagedIssuesRejectsAppAuthoredIssueWithoutIdentityMarker(t *testing.T) {
+	issue := issueJSON(14, "open", "unrelated title", "marker removed", nil)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/api/v3/") != "repos/orang-gaboets/octostate/issues" {
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+			return
+		}
+		writeJSON(w, http.StatusOK, []any{issue})
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
+
+	issues, err := client.listManagedIssues(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no identity marker") {
+		t.Fatalf("listManagedIssues() = %#v, %v; want missing identity marker error", issues, err)
+	}
+}
+
 func TestFindMarkedCommentIgnoresUntrustedMarkerText(t *testing.T) {
 	marker := "<!-- actions-watcher:transition:v1 expected -->"
 	comments := []watcher.CommentSnapshot{{AuthorLogin: "public-user", Body: "quoted marker: " + marker}}
