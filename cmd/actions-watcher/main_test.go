@@ -62,7 +62,7 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := pendingRunEvents(repo, []watcher.IssueSnapshot{
+	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
 		{Number: 7, State: "open", Body: body},
 		{Number: 6, State: "closed", Body: body},
 	})
@@ -235,7 +235,7 @@ func TestPendingRunEventsAcceptsBacklogsAcrossIncidents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := pendingRunEvents(repo, []watcher.IssueSnapshot{
+	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
 		{Number: 7, State: "open", Body: firstBody},
 		{Number: 8, State: "open", Body: secondBody},
 	})
@@ -565,6 +565,161 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	}
 	if !reflect.DeepEqual(writes, []string{"patch", "comment"}) {
 		t.Fatalf("write order = %v, want checkpoint patch before comment", writes)
+	}
+}
+
+func TestApplyPlanPersistsNewRunBeforeCheckpointArchiveWrite(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	first := testFailureAttempt(100, 100, started)
+	second := testFailureAttempt(101, 101, started.Add(time.Hour))
+	state := watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{first, second}, Latest: second,
+	}
+	body, _, err := watcher.RenderBody(repo, state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := body + strings.Repeat("x", watcher.MaxIssueBodyBytes-len(body)-1)
+	checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(candidate, repo, []int64{9000}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpointArchives) == 0 {
+		t.Fatal("fixture did not require checkpoint-time archiving")
+	}
+	body = candidate
+
+	issue := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: body, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
+	}
+	apiIssue := issueSnapshotJSON(issue)
+	comments := make([]any, 0)
+	nextCommentID := int64(500)
+	failArchive := true
+	var writes []string
+	attempts := map[int64]watcher.RunAttempt{100: first, 101: second}
+	runJSON := func(attempt watcher.RunAttempt) map[string]any {
+		value := runAttemptFixture(repo.ID, attempt.RunID, attempt.Attempt, attempt.Conclusion)
+		value["run_number"] = attempt.RunNumber
+		value["run_started_at"] = attempt.StartedAt.Format(time.RFC3339)
+		value["updated_at"] = attempt.CompletedAt.Format(time.RFC3339)
+		value["head_sha"] = attempt.HeadSHA
+		value["html_url"] = attempt.HTMLURL
+		return value
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/") && strings.HasSuffix(path, "/jobs"):
+			parts := strings.Split(path, "/")
+			runID, _ := strconv.ParseInt(parts[5], 10, 64)
+			attempt := attempts[runID]
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": attempt.FailedJobs[0], "conclusion": "failure"}}})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/"):
+			parts := strings.Split(path, "/")
+			runID, _ := strconv.ParseInt(parts[5], 10, 64)
+			writeJSON(w, http.StatusOK, runJSON(attempts[runID]))
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			var request struct {
+				Body string `json:"body"`
+			}
+			if decodeErr := json.NewDecoder(r.Body).Decode(&request); decodeErr != nil {
+				t.Errorf("decode comment request: %v", decodeErr)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid comment"})
+				return
+			}
+			if strings.Contains(request.Body, "actions-watcher:archive:v1") {
+				writes = append(writes, "archive-comment")
+				if failArchive {
+					writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "injected archive failure"})
+					return
+				}
+			} else {
+				writes = append(writes, "checkpoint-comment")
+			}
+			comments = append(comments, map[string]any{
+				"id": nextCommentID, "body": request.Body,
+				"user": map[string]any{"login": expectedAppSlug + "[bot]"},
+			})
+			nextCommentID++
+			writeJSON(w, http.StatusCreated, comments[len(comments)-1])
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/comments/"):
+			commentID, _ := strconv.ParseInt(strings.TrimPrefix(path, "repos/orang-gaboets/octostate/issues/comments/"), 10, 64)
+			for i, raw := range comments {
+				comment, _ := raw.(map[string]any)
+				id, _ := comment["id"].(int64)
+				if id == commentID {
+					comments = append(comments[:i], comments[i+1:]...)
+					break
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if decodeErr := json.NewDecoder(r.Body).Decode(&request); decodeErr != nil {
+				t.Errorf("decode issue patch: %v", decodeErr)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid issue patch"})
+				return
+			}
+			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
+			writeJSON(w, http.StatusOK, apiIssue)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, repo)
+	change := watcher.IssueChange{
+		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
+		Title: "incident", Body: checkpointBody, CurrentStatus: watcher.StatusFailing,
+		PendingRunIDs: []int64{9000},
+	}
+	err = client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{issue})
+	if err == nil || !strings.Contains(err.Error(), "injected archive failure") {
+		t.Fatalf("applyPlan() error = %v, want injected archive failure", err)
+	}
+	if !reflect.DeepEqual(writes, []string{"checkpoint-comment", "archive-comment"}) {
+		t.Fatalf("write order = %v, want checkpoint comment before archive comment", writes)
+	}
+	current, err := client.getIssueSnapshot(context.Background(), issue.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{current})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []triggerEvent{{RunID: 9000, WorkflowName: "CI", IssueNumber: 7}}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
+	}
+	failArchive = false
+	if err := client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{current}); err != nil {
+		t.Fatalf("applyPlan() retry after checkpoint archive failure: %v", err)
+	}
+	current, err = client.getIssueSnapshot(context.Background(), issue.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Body != checkpointBody {
+		t.Fatal("successful retry did not persist checkpointed body")
+	}
+	for _, comment := range current.Comments {
+		if strings.Contains(comment.Body, pendingCheckpointPrefix) {
+			t.Fatalf("successful retry left transient checkpoint comment: %q", comment.Body)
+		}
 	}
 }
 
@@ -931,7 +1086,7 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	pendingEvents, err := pendingRunEvents(watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}, []watcher.IssueSnapshot{{State: "open", Body: pendingBody}})
+	pendingEvents, err := pendingRunEvents(watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{{State: "open", Body: pendingBody}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -828,7 +828,13 @@ func (c *watcherClient) requireLabels(ctx context.Context, plan watcher.Plan) er
 }
 
 func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) error {
-	if err := c.verifyArchiveAttempts(ctx, plan); err != nil {
+	preflight := watcher.Plan{Changes: make([]watcher.IssueChange, 0, len(plan.Changes))}
+	for _, change := range plan.Changes {
+		if change.Action == watcher.ActionUpdate && len(change.PendingRunIDs) == 0 {
+			preflight.Changes = append(preflight.Changes, change)
+		}
+	}
+	if err := c.verifyArchiveAttempts(ctx, preflight); err != nil {
 		return err
 	}
 	expected := append([]watcher.IssueSnapshot(nil), initial...)
@@ -914,6 +920,26 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				if err != nil {
 					return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
 				}
+				pendingInBody := make(map[int64]bool, len(state.PendingRunIDs))
+				for _, runID := range state.PendingRunIDs {
+					pendingInBody[runID] = true
+				}
+				newPendingRunIDs := make([]int64, 0, len(change.PendingRunIDs))
+				for _, runID := range change.PendingRunIDs {
+					if !pendingInBody[runID] {
+						newPendingRunIDs = append(newPendingRunIDs, runID)
+					}
+				}
+				if len(checkpointArchives) > 0 && len(newPendingRunIDs) > 0 {
+					marker, err := pendingCheckpointMarker(state.WorkflowID, newPendingRunIDs)
+					if err != nil {
+						return fmt.Errorf("mark pending runs for issue #%d: %w", current.Number, err)
+					}
+					current, err = c.ensureMarkedComment(ctx, current, marker, marker)
+					if err != nil {
+						return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
+					}
+				}
 				if err := c.verifyCheckpointArchives(ctx, change.Archives, checkpointArchives); err != nil {
 					return fmt.Errorf("verify checkpoint archives for issue #%d: %w", current.Number, err)
 				}
@@ -925,6 +951,15 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				current, err = c.patchIssue(ctx, current, checkpoint)
 				if err != nil {
 					return fmt.Errorf("checkpoint issue #%d: %w", change.IssueNumber, err)
+				}
+				current, err = c.removePendingCheckpointComments(ctx, current, state.WorkflowID)
+				if err != nil {
+					return fmt.Errorf("clear pending-run checkpoint for issue #%d: %w", change.IssueNumber, err)
+				}
+			}
+			if len(change.PendingRunIDs) > 0 {
+				if err := c.verifyArchiveAttempts(ctx, watcher.Plan{Changes: []watcher.IssueChange{change}}); err != nil {
+					return err
 				}
 			}
 			current, err = c.ensureArchiveComments(ctx, current, change.Archives)
@@ -1231,6 +1266,58 @@ func (c *watcherClient) ensureTransitionComments(ctx context.Context, initial wa
 		}
 	}
 	return current, nil
+}
+
+func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, expected watcher.IssueSnapshot, workflowID int64) (watcher.IssueSnapshot, error) {
+	current := expected
+	for {
+		index := -1
+		for i, comment := range current.Comments {
+			if comment.AuthorLogin != c.appLogin {
+				continue
+			}
+			id, _, found, err := parsePendingCheckpoint(comment.Body)
+			if err != nil {
+				return watcher.IssueSnapshot{}, err
+			}
+			if found && id != workflowID {
+				return watcher.IssueSnapshot{}, fmt.Errorf("pending-run checkpoint identifies workflow ID %d, want %d", id, workflowID)
+			}
+			if found {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			return current, nil
+		}
+
+		fresh, err := c.getIssueSnapshot(ctx, current.Number)
+		if err != nil {
+			return watcher.IssueSnapshot{}, fmt.Errorf("preflight pending-run checkpoint removal: %w", err)
+		}
+		if !sameIssueSnapshot(current, fresh) {
+			return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d changed before pending-run checkpoint removal", current.Number)
+		}
+		comment := current.Comments[index]
+		_, writeErr := c.client.Issues.DeleteComment(ctx, c.repo.Owner, c.repo.Name, comment.ID)
+		readback, readErr := c.getIssueSnapshot(ctx, current.Number)
+		if readErr != nil {
+			if writeErr != nil {
+				return watcher.IssueSnapshot{}, fmt.Errorf("checkpoint removal outcome is uncertain (%v), and readback failed: %w", writeErr, readErr)
+			}
+			return watcher.IssueSnapshot{}, fmt.Errorf("read back pending-run checkpoint removal: %w", readErr)
+		}
+		want := current
+		want.Comments = append(append([]watcher.CommentSnapshot(nil), current.Comments[:index]...), current.Comments[index+1:]...)
+		if !sameIssueSnapshot(want, readback) {
+			if writeErr != nil {
+				return watcher.IssueSnapshot{}, fmt.Errorf("checkpoint removal outcome is uncertain (%w); desired state was not observed", writeErr)
+			}
+			return watcher.IssueSnapshot{}, fmt.Errorf("pending-run checkpoint removal readback mismatch on issue #%d", current.Number)
+		}
+		current = readback
+	}
 }
 
 func (c *watcherClient) ensureMarkedComment(ctx context.Context, expected watcher.IssueSnapshot, marker, body string) (watcher.IssueSnapshot, error) {

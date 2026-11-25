@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,9 +19,10 @@ import (
 )
 
 const (
-	expectedRepository = "orang-gaboets/octostate"
-	expectedAppSlug    = "orang-gaboets-actions-watcher"
-	lookbackWindow     = 7 * 24 * time.Hour
+	expectedRepository      = "orang-gaboets/octostate"
+	expectedAppSlug         = "orang-gaboets-actions-watcher"
+	lookbackWindow          = 7 * 24 * time.Hour
+	pendingCheckpointPrefix = "<!-- actions-watcher:pending:v1 "
 )
 
 type commandConfig struct {
@@ -80,7 +82,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := client.verifyOpenIncidentCursors(ctx, issues); err != nil {
 		return fmt.Errorf("verify watcher incident state: %w", err)
 	}
-	triggerEvents, err := pendingRunEvents(cfg.Repository, issues)
+	triggerEvents, err := pendingRunEvents(cfg.Repository, client.appLogin, issues)
 	if err != nil {
 		return fmt.Errorf("read pending workflow runs: %w", err)
 	}
@@ -151,9 +153,25 @@ func mergeArchiveRefreshes(attempts, refreshed []watcher.RunAttempt) []watcher.R
 	return result
 }
 
-func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
+func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
 	eventsByID := make(map[int64]triggerEvent)
 	maxPendingRunEvents := len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
+	addRunID := func(runID int64, workflowName string, issueNumber int) error {
+		if previous, exists := eventsByID[runID]; exists {
+			if previous.WorkflowName != workflowName {
+				return fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous.WorkflowName, workflowName)
+			}
+			if previous.IssueNumber != issueNumber {
+				return fmt.Errorf("pending workflow run %d is stored on multiple open incidents", runID)
+			}
+			return nil
+		}
+		eventsByID[runID] = triggerEvent{RunID: runID, WorkflowName: workflowName, IssueNumber: issueNumber}
+		if len(eventsByID) > maxPendingRunEvents {
+			return fmt.Errorf("managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
+		}
+		return nil
+	}
 	for _, issue := range issues {
 		if issue.State != "open" {
 			continue
@@ -163,17 +181,28 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSna
 			return nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
 		}
 		for _, runID := range state.PendingRunIDs {
-			if previous, exists := eventsByID[runID]; exists {
-				if previous.WorkflowName != state.WorkflowName {
-					return nil, fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous.WorkflowName, state.WorkflowName)
-				}
-				if previous.IssueNumber != issue.Number {
-					return nil, fmt.Errorf("pending workflow run %d is stored on multiple open incidents", runID)
-				}
+			if err := addRunID(runID, state.WorkflowName, issue.Number); err != nil {
+				return nil, err
 			}
-			eventsByID[runID] = triggerEvent{RunID: runID, WorkflowName: state.WorkflowName, IssueNumber: issue.Number}
-			if len(eventsByID) > maxPendingRunEvents {
-				return nil, fmt.Errorf("managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
+		}
+		for _, comment := range issue.Comments {
+			if comment.AuthorLogin != appLogin {
+				continue
+			}
+			workflowID, runIDs, found, err := parsePendingCheckpoint(comment.Body)
+			if err != nil {
+				return nil, fmt.Errorf("issue #%d has an invalid pending-run checkpoint: %w", issue.Number, err)
+			}
+			if !found {
+				continue
+			}
+			if workflowID != state.WorkflowID {
+				return nil, fmt.Errorf("issue #%d pending-run checkpoint identifies workflow ID %d, want %d", issue.Number, workflowID, state.WorkflowID)
+			}
+			for _, runID := range runIDs {
+				if err := addRunID(runID, state.WorkflowName, issue.Number); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -187,6 +216,62 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSna
 		events = append(events, eventsByID[runID])
 	}
 	return events, nil
+}
+
+func pendingCheckpointMarker(workflowID int64, runIDs []int64) (string, error) {
+	if workflowID <= 0 || len(runIDs) == 0 {
+		return "", errors.New("pending-run checkpoint identity is incomplete")
+	}
+	ids := append([]int64(nil), runIDs...)
+	for _, runID := range ids {
+		if runID <= 0 {
+			return "", errors.New("pending-run checkpoint IDs must be positive")
+		}
+	}
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	if len(ids) > watcher.MaxPendingRunIDs {
+		return "", fmt.Errorf("pending-run checkpoint exceeds %d IDs", watcher.MaxPendingRunIDs)
+	}
+	values := make([]string, len(ids))
+	for i, runID := range ids {
+		values[i] = strconv.FormatInt(runID, 10)
+	}
+	return fmt.Sprintf("%sworkflow_id=%d run_ids=%s -->", pendingCheckpointPrefix, workflowID, strings.Join(values, ",")), nil
+}
+
+func parsePendingCheckpoint(body string) (int64, []int64, bool, error) {
+	if !strings.Contains(body, pendingCheckpointPrefix) {
+		return 0, nil, false, nil
+	}
+	if strings.Count(body, pendingCheckpointPrefix) != 1 || !strings.HasPrefix(body, pendingCheckpointPrefix) || !strings.HasSuffix(body, " -->") {
+		return 0, nil, false, errors.New("marker is malformed")
+	}
+	fields := strings.Fields(strings.TrimSuffix(strings.TrimPrefix(body, pendingCheckpointPrefix), " -->"))
+	if len(fields) != 2 || !strings.HasPrefix(fields[0], "workflow_id=") || !strings.HasPrefix(fields[1], "run_ids=") {
+		return 0, nil, false, errors.New("marker fields are malformed")
+	}
+	workflowID, err := strconv.ParseInt(strings.TrimPrefix(fields[0], "workflow_id="), 10, 64)
+	if err != nil || workflowID <= 0 {
+		return 0, nil, false, errors.New("marker workflow ID is invalid")
+	}
+	rawIDs := strings.TrimPrefix(fields[1], "run_ids=")
+	if rawIDs == "" {
+		return 0, nil, false, errors.New("marker run IDs are empty")
+	}
+	parts := strings.Split(rawIDs, ",")
+	if len(parts) > watcher.MaxPendingRunIDs {
+		return 0, nil, false, fmt.Errorf("marker exceeds %d run IDs", watcher.MaxPendingRunIDs)
+	}
+	runIDs := make([]int64, len(parts))
+	for i, part := range parts {
+		runID, parseErr := strconv.ParseInt(part, 10, 64)
+		if parseErr != nil || runID <= 0 || (i > 0 && runID <= runIDs[i-1]) {
+			return 0, nil, false, errors.New("marker run IDs are invalid or unordered")
+		}
+		runIDs[i] = runID
+	}
+	return workflowID, runIDs, true, nil
 }
 
 func readConfig(getenv func(string) string, now time.Time) (commandConfig, error) {
