@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -48,6 +49,84 @@ func TestReadConfigRequiresTrustedRepositoryAndDedicatedApp(t *testing.T) {
 			"GITHUB_REPOSITORY": expectedRepository, "GITHUB_REF": "refs/heads/main",
 			"ACTIONS_WATCHER_TOKEN": "installation-token", "ACTIONS_WATCHER_APP_SLUG": expectedAppSlug,
 		}[key]
+	}
+}
+
+func TestRunRejectsForgedPersistedLatestAttempt(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	priorFailure := testFailureAttempt(100, 100, now.Add(-time.Hour))
+	forgedLatest := testFailureAttempt(999, 999, now.Add(time.Hour))
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{priorFailure}, Latest: forgedLatest,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var cursorCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "installation/repositories":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "repositories": []any{map[string]any{"id": repo.ID, "full_name": expectedRepository}}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/workflows":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 7, "workflows": workflowFixtures()})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/") && strings.HasSuffix(path, "/runs"):
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "workflow_runs": []any{}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/999/attempts/1":
+			cursorCalls.Add(1)
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "workflow run attempt not found"})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues":
+			writeJSON(w, http.StatusOK, []any{issueJSON(7, "open", "incident", body, []string{watcher.ManagedLabel, watcher.FailingLabel})})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, []any{})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	eventPath := t.TempDir() + "/event.json"
+	if err := os.WriteFile(eventPath, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"GITHUB_REPOSITORY": expectedRepository, "GITHUB_REPOSITORY_ID": "99", "GITHUB_EVENT_NAME": "schedule",
+		"GITHUB_EVENT_PATH": eventPath, "GITHUB_REF": "refs/heads/main", "GITHUB_API_URL": server.URL,
+		"ACTIONS_WATCHER_TOKEN": "installation-token", "ACTIONS_WATCHER_APP_SLUG": expectedAppSlug,
+		"ACTIONS_WATCHER_ACTIVATED_AT": "2026-11-24T00:00:00Z",
+	}
+	var stdout bytes.Buffer
+	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return now })
+	if err == nil || !strings.Contains(err.Error(), "verify persisted latest attempt") {
+		t.Fatalf("run() error = %v, want persisted latest attempt verification failure", err)
+	}
+	if cursorCalls.Load() != 1 || stdout.Len() != 0 {
+		t.Fatalf("cursor calls/stdout = %d/%q, want one verification request and no success output", cursorCalls.Load(), stdout.String())
+	}
+}
+
+func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
+	const repoID = 99
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		if r.Method != http.MethodGet || path != "repos/orang-gaboets/octostate/actions/runs/101/attempts/1" {
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+			return
+		}
+		writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, 1, "failure"))
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	started := time.Date(2026, 11, 25, 10, 1, 0, 0, time.UTC)
+	expected := testFailureAttempt(101, 101, started)
+	expected.CompletedAt = started.Add(30 * time.Second)
+	if err := client.verifyPersistedAttempt(context.Background(), expected); err != nil {
+		t.Fatalf("verifyPersistedAttempt() error = %v", err)
 	}
 }
 

@@ -127,6 +127,13 @@ delivery outages, disabled Actions, API or credential outages, and GitHub
 retention can also exceed coverage. The watcher does not claim complete
 monitoring beyond the available run history.
 
+Before using an open incident's latest attempt as its ordering cursor, the
+watcher fetches that exact run attempt from GitHub and checks the persisted
+metadata against the API response. Missing or mismatched metadata stops the
+reconciliation rather than trusting editable issue content. If GitHub has
+expired the stored attempt, a maintainer should review and manually close the
+stale incident; later failures will then start a new linked incident.
+
 The issue title follows the form
 `ci(actions): investigate <workflow> workflow failures on main`. The body has
 one machine-readable repository/workflow identity marker and a managed region

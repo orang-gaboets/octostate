@@ -332,33 +332,24 @@ func RenderBodyState(body string, repo RepositoryIdentity, workflowID int64, wor
 	return state, nil
 }
 
+// RenderManagedBodyState decodes a managed body after reading its workflow identity marker.
+func RenderManagedBodyState(body string, repo RepositoryIdentity) (IncidentState, error) {
+	workflowID, workflowName, err := managedIssueIdentity(body, repo)
+	if err != nil {
+		return IncidentState{}, err
+	}
+	if !IsMonitoredWorkflow(workflowName) {
+		return IncidentState{}, fmt.Errorf("managed issue identifies an unmonitored workflow %q", workflowName)
+	}
+	return RenderBodyState(body, repo, workflowID, workflowName)
+}
+
 func managedBody(body string, repo RepositoryIdentity, workflowID int64, workflowName string) (string, error) {
-	markerLine := ""
-	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(line, "<!-- actions-watcher:v1 ") {
-			if markerLine != "" {
-				return "", errors.New("managed issue has duplicate identity markers")
-			}
-			markerLine = line
-		}
-	}
-	match := identityMarkerPattern.FindStringSubmatch(strings.TrimSpace(markerLine))
-	if match == nil {
-		return "", errors.New("managed issue identity marker is missing or malformed")
-	}
-	gotRepositoryID, err := strconv.ParseInt(match[1], 10, 64)
+	gotWorkflowID, gotWorkflowName, err := managedIssueIdentity(body, repo)
 	if err != nil {
-		return "", errors.New("managed issue repository identity is invalid")
+		return "", err
 	}
-	gotWorkflowID, err := strconv.ParseInt(match[2], 10, 64)
-	if err != nil {
-		return "", errors.New("managed issue workflow identity is invalid")
-	}
-	gotWorkflowName, err := strconv.Unquote(match[3])
-	if err != nil {
-		return "", errors.New("managed issue workflow name is invalid")
-	}
-	if gotRepositoryID != repo.ID || gotWorkflowID != workflowID || gotWorkflowName != workflowName {
+	if gotWorkflowID != workflowID || gotWorkflowName != workflowName {
 		return "", errors.New("managed issue identity does not match the target repository and workflow")
 	}
 	if strings.Count(body, managedStart) != 1 || strings.Count(body, managedEnd) != 1 {
@@ -370,6 +361,38 @@ func managedBody(body string, repo RepositoryIdentity, workflowID int64, workflo
 		return "", errors.New("managed issue body markers are out of order")
 	}
 	return body[start+len(managedStart) : end], nil
+}
+
+func managedIssueIdentity(body string, repo RepositoryIdentity) (int64, string, error) {
+	markerLine := ""
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "<!-- actions-watcher:v1 ") {
+			if markerLine != "" {
+				return 0, "", errors.New("managed issue has duplicate identity markers")
+			}
+			markerLine = line
+		}
+	}
+	match := identityMarkerPattern.FindStringSubmatch(strings.TrimSpace(markerLine))
+	if match == nil {
+		return 0, "", errors.New("managed issue identity marker is missing or malformed")
+	}
+	gotRepositoryID, err := strconv.ParseInt(match[1], 10, 64)
+	if err != nil {
+		return 0, "", errors.New("managed issue repository identity is invalid")
+	}
+	gotWorkflowID, err := strconv.ParseInt(match[2], 10, 64)
+	if err != nil || gotWorkflowID <= 0 {
+		return 0, "", errors.New("managed issue workflow identity is invalid")
+	}
+	gotWorkflowName, err := strconv.Unquote(match[3])
+	if err != nil {
+		return 0, "", errors.New("managed issue workflow name is invalid")
+	}
+	if gotRepositoryID != repo.ID || repo.ID <= 0 {
+		return 0, "", errors.New("managed issue identity does not match the target repository")
+	}
+	return gotWorkflowID, gotWorkflowName, nil
 }
 
 func validatePersistedState(state IncidentState, repo RepositoryIdentity, workflowID int64, workflowName string, failures []RunAttempt) error {

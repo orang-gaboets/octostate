@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -207,30 +206,9 @@ func indexManagedIssues(repo RepositoryIdentity, appLogin string, issues []Issue
 		if !strings.Contains(issue.Body, "<!-- actions-watcher:v1 ") {
 			continue
 		}
-		markerLine := ""
-		for _, line := range strings.Split(issue.Body, "\n") {
-			if strings.HasPrefix(line, "<!-- actions-watcher:v1 ") {
-				if markerLine != "" {
-					return nil, fmt.Errorf("issue #%d has duplicate identity markers", issue.Number)
-				}
-				markerLine = strings.TrimSpace(line)
-			}
-		}
-		match := identityMarkerPattern.FindStringSubmatch(markerLine)
-		if match == nil {
-			return nil, fmt.Errorf("issue #%d has a malformed watcher identity marker", issue.Number)
-		}
-		repositoryID, err := parseMarkerID(match[1])
-		if err != nil || repositoryID != repo.ID {
-			return nil, fmt.Errorf("issue #%d belongs to an unexpected repository identity", issue.Number)
-		}
-		workflowID, err := parseMarkerID(match[2])
-		if err != nil || workflowID <= 0 {
-			return nil, fmt.Errorf("issue #%d has an invalid workflow identity", issue.Number)
-		}
-		workflowName, err := strconvUnquote(match[3])
+		workflowID, workflowName, err := managedIssueIdentity(issue.Body, repo)
 		if err != nil {
-			return nil, fmt.Errorf("issue #%d has an invalid workflow name", issue.Number)
+			return nil, fmt.Errorf("issue #%d has an invalid watcher identity: %w", issue.Number, err)
 		}
 		if _, ok := monitoredWorkflowNames[workflowName]; !ok {
 			return nil, fmt.Errorf("issue #%d identifies an unmonitored workflow %q", issue.Number, workflowName)
@@ -670,14 +648,4 @@ func transitionKey(status IncidentStatus, attempt RunAttempt) string {
 	value := string(status) + ":" + attemptKey(attempt)
 	hash := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(hash[:])
-}
-
-func parseMarkerID(value string) (int64, error) {
-	var result int64
-	_, err := fmt.Sscan(value, &result)
-	return result, err
-}
-
-func strconvUnquote(value string) (string, error) {
-	return strconv.Unquote(value)
 }

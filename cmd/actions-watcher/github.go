@@ -397,14 +397,64 @@ func (c *watcherClient) listRunsInRange(ctx context.Context, workflowID int64, s
 }
 
 func validateWorkflowRunIdentity(run *gh.WorkflowRun, repo watcher.RepositoryIdentity, workflow *gh.Workflow) error {
+	return validateWorkflowRunIdentityFields(run, repo, workflow.GetID(), workflow.GetName())
+}
+
+func validateWorkflowRunIdentityFields(run *gh.WorkflowRun, repo watcher.RepositoryIdentity, workflowID int64, workflowName string) error {
 	if run.GetID() <= 0 {
 		return errors.New("workflow run is missing a positive run ID")
 	}
-	if run.GetWorkflowID() != workflow.GetID() || run.GetName() != workflow.GetName() || workflowPath(run.GetPath()) != expectedWorkflowPaths[workflow.GetName()] {
-		return fmt.Errorf("API workflow ID, name, or path does not match %q", workflow.GetName())
+	if run.GetWorkflowID() != workflowID || run.GetName() != workflowName || workflowPath(run.GetPath()) != expectedWorkflowPaths[workflowName] {
+		return fmt.Errorf("API workflow ID, name, or path does not match %q", workflowName)
 	}
 	if run.Repository == nil || run.Repository.GetID() != repo.ID {
 		return fmt.Errorf("run repository does not match repository ID %d", repo.ID)
+	}
+	return nil
+}
+
+func (c *watcherClient) verifyOpenIncidentCursors(ctx context.Context, issues []watcher.IssueSnapshot) error {
+	for _, issue := range issues {
+		if issue.State != "open" {
+			continue
+		}
+		state, err := watcher.RenderManagedBodyState(issue.Body, c.repo)
+		if err != nil {
+			return fmt.Errorf("read latest attempt from issue #%d: %w", issue.Number, err)
+		}
+		if err := c.verifyPersistedAttempt(ctx, state.Latest); err != nil {
+			return fmt.Errorf("verify persisted latest attempt for issue #%d: %w", issue.Number, err)
+		}
+	}
+	return nil
+}
+
+func (c *watcherClient) verifyPersistedAttempt(ctx context.Context, expected watcher.RunAttempt) error {
+	run, _, err := c.client.Actions.GetWorkflowRunAttempt(ctx, c.repo.Owner, c.repo.Name, expected.RunID, expected.Attempt, nil)
+	if err != nil {
+		return err
+	}
+	if run == nil {
+		return errors.New("workflow API returned an empty attempt")
+	}
+	if err := validateWorkflowRunIdentityFields(run, c.repo, expected.WorkflowID, expected.WorkflowName); err != nil {
+		return err
+	}
+	eligible, err := eligibleWorkflowRun(run, c.repo)
+	if err != nil {
+		return err
+	}
+	if !eligible {
+		return errors.New("persisted latest attempt is not eligible")
+	}
+	started := run.RunStartedAt.GetTime()
+	completed := run.UpdatedAt.GetTime()
+	if started == nil || completed == nil || run.GetStatus() != "completed" ||
+		run.GetID() != expected.RunID || run.GetRunNumber() != expected.RunNumber || run.GetRunAttempt() != expected.Attempt ||
+		run.GetEvent() != expected.Event || run.GetHeadBranch() != expected.HeadBranch || run.GetConclusion() != expected.Conclusion ||
+		run.GetHeadSHA() != expected.HeadSHA || run.GetHTMLURL() != expected.HTMLURL ||
+		!started.Equal(expected.StartedAt) || !completed.Equal(expected.CompletedAt) {
+		return errors.New("workflow API metadata does not match the persisted latest attempt")
 	}
 	return nil
 }

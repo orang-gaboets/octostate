@@ -75,6 +75,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err != nil {
 		return fmt.Errorf("read watcher incidents: %w", err)
 	}
+	if err := client.verifyOpenIncidentCursors(ctx, issues); err != nil {
+		return fmt.Errorf("verify watcher incident state: %w", err)
+	}
 	plan, err := watcher.Reconcile(cfg.Repository, client.appLogin, attempts, issues, cfg.ReconcileAt)
 	if err != nil {
 		return fmt.Errorf("plan incident reconciliation: %w", err)
