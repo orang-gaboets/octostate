@@ -38,6 +38,11 @@ mutations = {
   "workflow_run branch filter" => [workflow.sub("    branches:\n      - main\n", ""), source],
   "workflow_run source event filter" => [workflow.sub("workflow_run.event))", "workflow_run.event) || true)"), source],
   "cancellation policy" => [workflow.sub("cancel-in-progress: false", "cancel-in-progress: true"), source],
+  "reconcile runner" => [workflow.sub("    runs-on: ubuntu-latest", "    runs-on: self-hosted"), source],
+  "reconcile matrix fan-out" => [workflow.sub(
+    "  reconcile:\n",
+    "  reconcile:\n    strategy:\n      matrix:\n        shard: [one, two]\n"
+  ), source],
   "checkout ref" => [workflow.sub("ref: main", 'ref: "${{ github.ref }}"'), source],
   "checkout action revision" => [workflow.sub("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), source],
   "checkout repository override" => [workflow.sub("          ref: main", "          ref: main\n          repository: attacker/evil"), source],
