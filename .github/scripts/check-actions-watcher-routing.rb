@@ -87,6 +87,7 @@ delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
 require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900" && !delay.key?("env"), "main push reconciliation must run only the reviewed 15-minute delay")
 command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
 require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
+require_check(command.fetch("env").fetch("ACTIONS_WATCHER_ACTIVATED_AT") == "${{ steps.activation.outputs.activated-at }}", "watcher must use the trusted activation timestamp")
 require_check(command.fetch("env").fetch("ACTIONS_WATCHER_APP_SLUG") == "${{ steps.app-token.outputs.app-slug }}", "workflow must pass the verified App slug to the command")
 require_check(command.fetch("env").fetch("ACTIONS_WATCHER_TOKEN") == "${{ steps.app-token.outputs.token }}", "only the reconciliation command may receive the scoped App token")
 require_check(command.fetch("env").fetch("GITHUB_API_URL") == "${{ github.api_url }}", "watcher must use GitHub's trusted API URL")
