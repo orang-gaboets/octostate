@@ -89,6 +89,7 @@ command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
 require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
 require_check(command.fetch("env").fetch("ACTIONS_WATCHER_APP_SLUG") == "${{ steps.app-token.outputs.app-slug }}", "workflow must pass the verified App slug to the command")
 require_check(command.fetch("env").fetch("ACTIONS_WATCHER_TOKEN") == "${{ steps.app-token.outputs.token }}", "only the reconciliation command may receive the scoped App token")
+require_check(command.fetch("env").fetch("GITHUB_API_URL") == "${{ github.api_url }}", "watcher must use GitHub's trusted API URL")
 
 uses = File.read(workflow_path).scan(/^\s*uses:\s*([^\s#]+)/).flatten
 require_check(uses.all? { |reference| reference.match?(/^[^@]+@[0-9a-f]{40}$/) }, "every third-party Action must be pinned to a full commit SHA")
