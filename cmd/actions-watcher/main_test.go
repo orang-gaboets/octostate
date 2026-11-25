@@ -172,6 +172,31 @@ func TestVerifyOpenIncidentCursorRejectsTamperedLatestFailureJobs(t *testing.T) 
 	}
 }
 
+func TestListFailedJobsDeduplicatesRepeatedNames(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		if path != "repos/orang-gaboets/octostate/actions/runs/101/attempts/1/jobs" {
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"total_count": 2, "jobs": []any{
+			map[string]any{"name": "test", "conclusion": "failure"},
+			map[string]any{"name": "test", "conclusion": "failure"},
+		}})
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
+	jobs, available, err := client.listFailedJobs(context.Background(), 101, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !available || !reflect.DeepEqual(jobs, []string{"test"}) {
+		t.Fatalf("listFailedJobs() = (%v, %t), want ([test], true)", jobs, available)
+	}
+}
+
 func TestVerifyPersistedFailureMatchesRunAndJobMetadata(t *testing.T) {
 	const repoID = 99
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

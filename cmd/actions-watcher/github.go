@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -588,7 +589,7 @@ func (c *watcherClient) listFailedJobs(ctx context.Context, runID int64, attempt
 		page = next - 1
 	}
 	sort.Strings(names)
-	return names, true, nil
+	return slices.Compact(names), true, nil
 }
 
 func isRunFailure(conclusion string) bool {
