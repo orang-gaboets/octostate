@@ -77,7 +77,8 @@ func (opt *Options) Validate() error {
 // situations: destructive drift Octostate intentionally declines to reconcile,
 // and a desired create or update that planning determined cannot execute. Use
 // UnfulfilledDesiredActions to tell them apart, or
-// Options.RequireExecutableDesiredActions to fail on the second kind.
+// Options.RequireExecutableDesiredActions to fail on the second kind and on
+// desired memberships with unknown actual origin.
 type Result struct {
 	Organization              string              `json:"organization"`
 	PlanSummary               gitopsplan.Summary  `json:"plan_summary"`
