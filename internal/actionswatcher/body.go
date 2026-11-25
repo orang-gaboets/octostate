@@ -247,10 +247,14 @@ func replaceManagedRegion(repo RepositoryIdentity, state IncidentState, existing
 		return prefix, "", "", nil
 	}
 	identityLines := make([]string, 0, 1)
+	identityStarts := make([]int, 0, 1)
+	lineStart := 0
 	for _, line := range strings.Split(existing, "\n") {
 		if strings.HasPrefix(line, "<!-- actions-watcher:v1 ") {
 			identityLines = append(identityLines, line)
+			identityStarts = append(identityStarts, lineStart)
 		}
+		lineStart += len(line) + 1
 	}
 	if len(identityLines) != 1 {
 		return "", "", "", fmt.Errorf("managed issue must contain exactly one versioned identity marker; found %d", len(identityLines))
@@ -282,7 +286,7 @@ func replaceManagedRegion(repo RepositoryIdentity, state IncidentState, existing
 	if start < 0 || end < start+len(managedStart) {
 		return "", "", "", errors.New("managed issue markers are out of order")
 	}
-	identityStart := strings.Index(existing, identityLines[0])
+	identityStart := identityStarts[0]
 	if identityStart >= start && identityStart < end+len(managedEnd) {
 		return "", "", "", errors.New("managed issue identity marker must remain outside the replaceable body region")
 	}

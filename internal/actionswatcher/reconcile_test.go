@@ -355,7 +355,8 @@ func TestRenderBodyPreservesHumanTextAndRejectsMalformedMarkers(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := identityMarker(testRepository(), 100, "CI")
-	movedIdentity := strings.Replace(validBody, identity+"\n\n"+managedStart, managedStart+"\n"+identity, 1)
+	quotedBody := "For reference, " + identity + "\n" + validBody
+	movedIdentity := strings.Replace(quotedBody, identity+"\n\n"+managedStart, managedStart+"\n"+identity, 1)
 	if _, _, err := RenderBody(testRepository(), state, movedIdentity, nil); err == nil {
 		t.Fatal("RenderBody accepted an identity marker inside the replaceable managed region")
 	}
