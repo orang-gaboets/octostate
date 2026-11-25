@@ -116,11 +116,29 @@ func applyPlanSummary(plan *gitopsplan.Report, unresolved []state.TeamMember) gi
 	if plan == nil {
 		return gitopsplan.Summary{}
 	}
-	report := gitopsplan.Report{
-		Organization:              plan.Organization,
-		Actions:                   append([]gitopsplan.Action(nil), plan.Actions...),
-		UnresolvedTeamMemberships: append([]state.TeamMember(nil), unresolved...),
+	summary := gitopsplan.Summary{
+		HasChanges:            len(plan.Actions) > 0,
+		HasUnresolved:         len(unresolved) > 0,
+		UnresolvedMemberships: len(unresolved),
+		Actions:               len(plan.Actions),
 	}
-	report.Normalize()
-	return report.Summary
+	for _, action := range plan.Actions {
+		if action.Executable {
+			summary.ExecutableActions++
+		} else {
+			summary.NonExecutableActions++
+		}
+
+		switch action.Operation {
+		case gitopsplan.ActionOperationCreate:
+			summary.CreateActions++
+		case gitopsplan.ActionOperationUpdate:
+			summary.UpdateActions++
+		case gitopsplan.ActionOperationDelete:
+			summary.DeleteActions++
+		case gitopsplan.ActionOperationRemove:
+			summary.RemoveActions++
+		}
+	}
+	return summary
 }
