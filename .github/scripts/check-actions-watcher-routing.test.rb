@@ -39,6 +39,10 @@ mutations = {
   "workflow_run source event filter" => [workflow.sub("workflow_run.event))", "workflow_run.event) || true)"), source],
   "cancellation policy" => [workflow.sub("cancel-in-progress: false", "cancel-in-progress: true"), source],
   "reconcile runner" => [workflow.sub("    runs-on: ubuntu-latest", "    runs-on: self-hosted"), source],
+  "reconcile custom container" => [workflow.sub(
+    "    runs-on: ubuntu-latest\n",
+    "    runs-on: ubuntu-latest\n    container:\n      image: attacker/watcher:latest\n"
+  ), source],
   "reconcile matrix fan-out" => [workflow.sub(
     "  reconcile:\n",
     "  reconcile:\n    strategy:\n      matrix:\n        shard: [one, two]\n"

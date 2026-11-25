@@ -66,6 +66,7 @@ require_check(workflow.fetch("permissions") == { "contents" => "read" }, "workfl
 require_check(jobs.keys == ["reconcile"], "only the reconcile job should remain")
 require_check(job.fetch("if") == "github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || contains(fromJSON('[\"push\",\"schedule\",\"workflow_dispatch\"]'), github.event.workflow_run.event))", "reconciliation must run only from main and eligible workflow_run source events")
 require_check(job["runs-on"] == "ubuntu-latest", "reconcile job must use the reviewed GitHub-hosted runner")
+require_check(!job.key?("container"), "reconcile job must not run in a custom container")
 require_check(!job.key?("strategy"), "reconcile job must not define a strategy; matrix fan-out can duplicate incident writers")
 require_check(job.fetch("permissions") == { "contents" => "read" }, "job token must retain read-only contents permission")
 
