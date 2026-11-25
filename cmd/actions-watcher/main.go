@@ -202,6 +202,9 @@ type triggerEvent struct {
 
 func readTriggerEvent(eventName, eventPath string) (triggerEvent, error) {
 	var trigger triggerEvent
+	if eventName != "workflow_run" {
+		return trigger, nil
+	}
 	file, err := os.Open(eventPath)
 	if err != nil {
 		return trigger, fmt.Errorf("read GITHUB_EVENT_PATH: %w", err)
@@ -221,19 +224,17 @@ func readTriggerEvent(eventName, eventPath string) (triggerEvent, error) {
 	if closeErr != nil {
 		return trigger, fmt.Errorf("close GITHUB_EVENT_PATH: %w", closeErr)
 	}
-	if eventName == "workflow_run" {
-		if payload.Action != "completed" {
-			return trigger, fmt.Errorf("workflow_run action must be completed, got %q", payload.Action)
-		}
-		if !watcher.IsMonitoredWorkflow(payload.WorkflowRun.Name) {
-			return trigger, fmt.Errorf("workflow_run event is for an unmonitored workflow %q", payload.WorkflowRun.Name)
-		}
-		if payload.WorkflowRun.ID <= 0 {
-			return trigger, errors.New("workflow_run event is missing a positive run ID")
-		}
-		trigger.RunID = payload.WorkflowRun.ID
-		trigger.WorkflowName = payload.WorkflowRun.Name
+	if payload.Action != "completed" {
+		return trigger, fmt.Errorf("workflow_run action must be completed, got %q", payload.Action)
 	}
+	if !watcher.IsMonitoredWorkflow(payload.WorkflowRun.Name) {
+		return trigger, fmt.Errorf("workflow_run event is for an unmonitored workflow %q", payload.WorkflowRun.Name)
+	}
+	if payload.WorkflowRun.ID <= 0 {
+		return trigger, errors.New("workflow_run event is missing a positive run ID")
+	}
+	trigger.RunID = payload.WorkflowRun.ID
+	trigger.WorkflowName = payload.WorkflowRun.Name
 	return trigger, nil
 }
 

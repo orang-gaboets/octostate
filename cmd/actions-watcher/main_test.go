@@ -446,6 +446,20 @@ func TestReadTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.T) {
 	}
 }
 
+func TestReadTriggerEventDoesNotParsePushPayload(t *testing.T) {
+	path := t.TempDir() + "/event.json"
+	if err := os.WriteFile(path, []byte(strings.Repeat("x", (1<<20)+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trigger, err := readTriggerEvent("push", path)
+	if err != nil {
+		t.Fatalf("readTriggerEvent() error = %v, want push payload to be ignored", err)
+	}
+	if trigger != (triggerEvent{}) {
+		t.Fatalf("readTriggerEvent() = %#v, want empty trigger", trigger)
+	}
+}
+
 func TestResultForEmitsStableMachineSummary(t *testing.T) {
 	plan := watcher.Plan{Changes: []watcher.IssueChange{{
 		Action: watcher.ActionCreate, WorkflowName: "CI", PreviousIssueNumber: 49,
