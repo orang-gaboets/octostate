@@ -229,21 +229,24 @@ func indexManagedIssues(repo RepositoryIdentity, appLogin string, issues []Issue
 			return nil, fmt.Errorf("issue #%d has invalid managed body: %w", issue.Number, err)
 		}
 		key := workflowKey{id: workflowID, name: workflowName}
+		trustedComments := make([]CommentSnapshot, 0, len(issue.Comments))
 		for _, comment := range issue.Comments {
+			if comment.AuthorLogin != appLogin {
+				continue
+			}
 			if strings.Contains(comment.Body, archiveMarkerPrefix) || strings.Contains(comment.Body, transitionMarkerPrefix) {
-				if comment.AuthorLogin != appLogin {
-					return nil, fmt.Errorf("issue #%d has a watcher marker written by an unexpected author", issue.Number)
-				}
 				if strings.Contains(comment.Body, transitionMarkerPrefix) {
 					if _, err := parseTransitionMarker(comment.Body); err != nil {
 						return nil, fmt.Errorf("issue #%d has an invalid transition comment: %w", issue.Number, err)
 					}
 				}
 			}
+			trustedComments = append(trustedComments, comment)
 		}
-		if _, _, err := parseArchives(issue.Comments, workflowID); err != nil {
+		if _, _, err := parseArchives(trustedComments, workflowID); err != nil {
 			return nil, fmt.Errorf("issue #%d has invalid archive comments: %w", issue.Number, err)
 		}
+		issue.Comments = trustedComments
 		managed[key] = append(managed[key], issue)
 	}
 	return managed, nil

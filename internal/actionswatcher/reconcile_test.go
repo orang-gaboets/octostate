@@ -134,6 +134,37 @@ func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *
 	}
 }
 
+func TestReconcileIgnoresUntrustedWatcherCommentMarkers(t *testing.T) {
+	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	failure := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Hour), "https://example.test/failure")
+	recovery := attempt(2, 1, "CI", "schedule", "main", "success", closedAt, "https://example.test/recovery")
+	state := IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusRecovered,
+		Failures: []RunAttempt{failure}, Latest: recovery, Recovery: &recovery,
+	}
+	body, _, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := IssueSnapshot{
+		Number: 52, State: "open", AuthorLogin: "actions-watcher[bot]", Title: incidentTitle("CI"), Body: body,
+		Labels: []string{ManagedLabel, RecoveredLabel},
+		Comments: []CommentSnapshot{
+			{ID: 1, AuthorLogin: "public-user", Body: "quoted: " + archiveMarkerPrefix},
+			{ID: 2, AuthorLogin: "public-user", Body: transitionMarkerPrefix + transitionKey(StatusFailing, attempt(3, 1, "CI", "push", "main", "failure", closedAt.Add(time.Hour), "https://example.test/new-failure")) + " -->"},
+		},
+	}
+	newFailure := attempt(3, 1, "CI", "push", "main", "failure", closedAt.Add(time.Hour), "https://example.test/new-failure")
+	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{newFailure}, []IssueSnapshot{issue}, closedAt.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("Reconcile() rejected untrusted comment markers: %v", err)
+	}
+	change := onlyChange(t, plan)
+	if change.CurrentStatus != StatusFailing || len(change.Comments) != 1 {
+		t.Fatalf("change = %#v, want failing status and one App-authored transition", change)
+	}
+}
+
 func TestReconcilePostClosureInitialBodyRetainsPreviousIssueNumber(t *testing.T) {
 	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)

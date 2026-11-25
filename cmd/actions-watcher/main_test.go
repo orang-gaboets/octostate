@@ -1113,6 +1113,19 @@ func TestListManagedIssuesIgnoresPublicIssuesThatSpoofWatcherIdentity(t *testing
 	}
 }
 
+func TestFindMarkedCommentIgnoresUntrustedMarkerText(t *testing.T) {
+	marker := "<!-- actions-watcher:transition:v1 expected -->"
+	comments := []watcher.CommentSnapshot{{AuthorLogin: "public-user", Body: "quoted marker: " + marker}}
+
+	found, err := findMarkedComment(comments, marker, "expected body", expectedAppSlug+"[bot]")
+	if err != nil {
+		t.Fatalf("findMarkedComment() rejected an untrusted marker mention: %v", err)
+	}
+	if found {
+		t.Fatal("findMarkedComment() treated untrusted marker text as an App comment")
+	}
+}
+
 //nolint:gocyclo // keeps the create, comment, and final readback sequence in one HTTP fixture.
 func TestCreateIncidentWritesTransitionCommentsBeforeFinalBody(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}

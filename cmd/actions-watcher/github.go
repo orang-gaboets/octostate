@@ -1129,12 +1129,15 @@ func exactlyOneNewComment(before, after []watcher.CommentSnapshot, marker string
 func findMarkedComment(comments []watcher.CommentSnapshot, marker, body, appLogin string) (bool, error) {
 	count := 0
 	for _, comment := range comments {
+		if comment.AuthorLogin != appLogin {
+			continue
+		}
 		if !strings.Contains(comment.Body, marker) {
 			continue
 		}
 		count++
-		if comment.AuthorLogin != appLogin || comment.Body != body {
-			return false, errors.New("existing watcher comment marker has conflicting authorship or content")
+		if comment.Body != body {
+			return false, errors.New("existing watcher comment marker has conflicting content")
 		}
 	}
 	if count > 1 {
