@@ -24,6 +24,7 @@ def require_check(condition, message)
   abort "FAIL: #{message}" unless condition
 end
 
+require_check(!workflow.key?("env") && !job.key?("env"), "workflow and reconcile job must not define inherited environment variables")
 require_check(triggers.keys.sort == %w[push schedule workflow_run], "only push, schedule, and workflow_run triggers are allowed")
 require_check(triggers.fetch("push") == { "branches" => ["main"] }, "push reconciliation must be restricted to main")
 require_check(triggers.fetch("schedule") == [{ "cron" => "23 * * * *" }], "hourly reconciliation schedule changed")
@@ -82,27 +83,24 @@ activation_script = <<~'SCRIPT'.strip
   fi
   echo "activated-at=$activated_at" >> "$GITHUB_OUTPUT"
 SCRIPT
-require_check(!activation.nil? && activation.fetch("run").strip == activation_script && activation.fetch("shell") == "bash" && !activation.key?("env"), "activation step must run only the reviewed trusted-main script")
+require_check(!activation.nil? && activation.fetch("run").strip == activation_script && activation.fetch("shell") == "bash", "activation step must run only the reviewed trusted-main script")
 delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
-require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900" && !delay.key?("env"), "main push reconciliation must run only the reviewed 15-minute delay")
+require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900", "main push reconciliation must run only the reviewed 15-minute delay")
 command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
 require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
+require_check(steps.reject { |step| step.equal?(command) }.none? { |step| step.key?("env") }, "only the reconciliation command may define step environment variables")
 command_env = command.fetch("env")
-require_check(command_env.keys.sort == %w[
-  ACTIONS_WATCHER_ACTIVATED_AT
-  ACTIONS_WATCHER_APP_SLUG
-  ACTIONS_WATCHER_TOKEN
-  GITHUB_API_URL
-  GITHUB_EVENT_NAME
-  GITHUB_EVENT_PATH
-  GITHUB_REF
-  GITHUB_REPOSITORY
-  GITHUB_REPOSITORY_ID
-].sort, "reconciliation command environment must contain only reviewed variables")
-require_check(command_env.fetch("ACTIONS_WATCHER_ACTIVATED_AT") == "${{ steps.activation.outputs.activated-at }}", "watcher must use the trusted activation timestamp")
-require_check(command_env.fetch("ACTIONS_WATCHER_APP_SLUG") == "${{ steps.app-token.outputs.app-slug }}", "workflow must pass the verified App slug to the command")
-require_check(command_env.fetch("ACTIONS_WATCHER_TOKEN") == "${{ steps.app-token.outputs.token }}", "only the reconciliation command may receive the scoped App token")
-require_check(command_env.fetch("GITHUB_API_URL") == "${{ github.api_url }}", "watcher must use GitHub's trusted API URL")
+require_check(command_env == {
+  "ACTIONS_WATCHER_ACTIVATED_AT" => "${{ steps.activation.outputs.activated-at }}",
+  "ACTIONS_WATCHER_APP_SLUG" => "${{ steps.app-token.outputs.app-slug }}",
+  "ACTIONS_WATCHER_TOKEN" => "${{ steps.app-token.outputs.token }}",
+  "GITHUB_API_URL" => "${{ github.api_url }}",
+  "GITHUB_EVENT_NAME" => "${{ github.event_name }}",
+  "GITHUB_EVENT_PATH" => "${{ github.event_path }}",
+  "GITHUB_REF" => "${{ github.ref }}",
+  "GITHUB_REPOSITORY" => "${{ github.repository }}",
+  "GITHUB_REPOSITORY_ID" => "${{ github.repository_id }}"
+}, "reconciliation command environment must match the reviewed values exactly")
 
 uses = File.read(workflow_path).scan(/^\s*uses:\s*([^\s#]+)/).flatten
 require_check(uses.all? { |reference| reference.match?(/^[^@]+@[0-9a-f]{40}$/) }, "every third-party Action must be pinned to a full commit SHA")
