@@ -331,7 +331,7 @@ func (collector *attemptCollector) processRun(ctx context.Context, workflow *gh.
 	if err != nil {
 		return fmt.Errorf("validate source repository for run %d: %w", row.GetID(), err)
 	}
-	if !eligible || row.GetStatus() != "completed" || (!isRunFailure(row.GetConclusion()) && row.GetConclusion() != "success") {
+	if !eligible || row.GetStatus() != "completed" {
 		return nil
 	}
 	attempts, err := collector.client.readRunAttempts(ctx, workflow, row)

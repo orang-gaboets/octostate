@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	gh "github.com/google/go-github/v88/github"
 	watcher "github.com/orang-gaboets/octostate/internal/actionswatcher"
 )
 
@@ -209,6 +210,61 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	}
 	if attempts[3].RunID != 103 || attempts[3].Conclusion != "failure" {
 		t.Fatalf("the triggering run outside the created-time window was not fetched: %#v", attempts[3])
+	}
+}
+
+func TestCollectAttemptsRetainsEarlierFailureWhenLatestAttemptIsCancelled(t *testing.T) {
+	const repoID = 99
+	var attemptCalls atomic.Int32
+	var jobCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/101/attempts/") && !strings.HasSuffix(path, "/jobs"):
+			attemptCalls.Add(1)
+			attemptNumber, err := strconv.Atoi(strings.TrimPrefix(path, "repos/orang-gaboets/octostate/actions/runs/101/attempts/"))
+			if err != nil {
+				t.Errorf("parse attempt number from %q: %v", path, err)
+				return
+			}
+			conclusion := "failure"
+			if attemptNumber == 2 {
+				conclusion = "cancelled"
+			}
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, attemptNumber, conclusion))
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/actions/runs/101/attempts/1/jobs"):
+			jobCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "jobs": []any{}})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	workflow := &gh.Workflow{ID: gh.Ptr(int64(1)), Name: gh.Ptr("CI"), Path: gh.Ptr(expectedWorkflowPaths["CI"])}
+	row := runFixture(repoID, 101, 2, "cancelled")
+	rowJSON, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed gh.WorkflowRun
+	if err := json.Unmarshal(rowJSON, &listed); err != nil {
+		t.Fatal(err)
+	}
+	collector := attemptCollector{
+		client: client, activatedAt: time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC),
+		seen: make(map[string]watcher.RunAttempt), seenRunNames: make(map[int64]string),
+	}
+	if err := collector.processRun(context.Background(), workflow, &listed); err != nil {
+		t.Fatal(err)
+	}
+	if attemptCalls.Load() != 2 || jobCalls.Load() != 1 {
+		t.Fatalf("attempt/job API calls = %d/%d, want 2/1", attemptCalls.Load(), jobCalls.Load())
+	}
+	if len(collector.result) != 1 || collector.result[0].RunID != 101 || collector.result[0].Attempt != 1 || collector.result[0].Conclusion != "failure" {
+		t.Fatalf("collected attempts = %#v, want the earlier failed attempt only", collector.result)
 	}
 }
 
