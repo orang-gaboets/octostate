@@ -352,6 +352,21 @@ func TestReconcileIsNoopAfterCreatedIncidentIsReadBack(t *testing.T) {
 	}
 }
 
+func TestReconcileRestoresIncidentTitleAfterTitleOnlyEdit(t *testing.T) {
+	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
+	issue := managedIssue(t, 101, "open", time.Time{}, "actions-watcher[bot]", "CI", 100)
+	issue.Title = "manually renamed incident"
+
+	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", nil, []IssueSnapshot{issue}, started.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := onlyChange(t, plan)
+	if change.Action != ActionUpdate || change.Title != incidentTitle("CI") {
+		t.Fatalf("title-only drift change = %#v, want an update restoring the managed title", change)
+	}
+}
+
 func TestReconcileRejectsConflictingAttemptAndWorkflowIdentity(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
 	first := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")

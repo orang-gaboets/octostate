@@ -418,7 +418,7 @@ func updateOpenIncident(repo RepositoryIdentity, key workflowKey, source []RunAt
 		FailureCount: len(state.Failures), AddLabels: addLabels, RemoveLabels: removeLabels,
 		Comments: comments, Archives: newArchives,
 	}
-	if body != issue.Body || len(addLabels) != 0 || len(removeLabels) != 0 || len(comments) != 0 || len(newArchives) != 0 {
+	if change.Title != issue.Title || body != issue.Body || len(addLabels) != 0 || len(removeLabels) != 0 || len(comments) != 0 || len(newArchives) != 0 {
 		change.Action = ActionUpdate
 	}
 	return change, nil
