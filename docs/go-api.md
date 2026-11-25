@@ -240,6 +240,24 @@ member rows. `ListDirectTeamMembersBySlugWithRoles` now returns
 `github.ErrValidationFailed` if any returned row has unknown origin; callers
 that need all evidence should use `ListTeamMembersBySlugWithOrigin`.
 
+This exception is source-incompatible: consumers that name the removed
+`TeamMemberWithInheritance` or `TeamMemberInheritanceLister` types, or call
+`ListTeamMembersBySlugWithInheritance`, must migrate those references. A custom
+service that still has the old method but does not name the removed interface
+can continue to satisfy the base service interface; the old method is no longer
+discovered. Octostate will use its role-aware or role-filtered fallback and
+mark those rows `unknown`. As a result, `ListDirectTeamMembersBySlugWithRoles`
+will return `github.ErrValidationFailed` instead of treating the rows as
+confirmed direct memberships. Implement `TeamMemberOriginLister` and return
+explicit origin evidence when the service can provide it.
+
+A bounded search of the available GitHub code-search index for accessible
+`orang-gaboets` repositories' default-branch code found no references to the
+removed type, interface, or method. This did not establish that there are no
+downstream consumers: the search does not cover external repositories, forks,
+unindexed repositories, non-default branches or tags, or vendored and
+downloaded copies of the module.
+
 `state.TeamMember` now has an `Origin` field. Its zero value and snapshots that
 omit the field normalize to `unknown`. Snapshot writers emit the field; strict
 external snapshot readers must accept it. No snapshot migration layer is
