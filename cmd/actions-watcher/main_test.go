@@ -1088,6 +1088,31 @@ func TestListManagedIssuesPaginatesIssuesAndIssueComments(t *testing.T) {
 	}
 }
 
+func TestListManagedIssuesIgnoresPublicIssuesThatSpoofWatcherIdentity(t *testing.T) {
+	spoofedTitle := issueJSON(12, "open", "ci(actions): investigate CI workflow failures on main", "not managed", nil)
+	spoofedTitle["user"] = map[string]any{"login": "public-user"}
+	spoofedBody := issueJSON(13, "closed", "unrelated issue", "<!-- actions-watcher:v1", nil)
+	spoofedBody["user"] = map[string]any{"login": "public-user"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || strings.TrimPrefix(r.URL.Path, "/api/v3/") != "repos/orang-gaboets/octostate/issues" {
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+			return
+		}
+		writeJSON(w, http.StatusOK, []any{spoofedTitle, spoofedBody})
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
+
+	issues, err := client.listManagedIssues(context.Background())
+	if err != nil {
+		t.Fatalf("listManagedIssues() rejected untrusted spoof issues: %v", err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("listManagedIssues() returned %d untrusted issues, want none", len(issues))
+	}
+}
+
 //nolint:gocyclo // keeps the create, comment, and final readback sequence in one HTTP fixture.
 func TestCreateIncidentWritesTransitionCommentsBeforeFinalBody(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}

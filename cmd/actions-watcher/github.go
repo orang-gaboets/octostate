@@ -655,6 +655,12 @@ func (c *watcherClient) listManagedIssues(ctx context.Context) ([]watcher.IssueS
 		if issue == nil || issue.IsPullRequest() {
 			continue
 		}
+		// Public users can spoof watcher titles or body markers in this repo.
+		// Only inspect candidates authored by the app; malformed app-owned
+		// incidents still fail closed below.
+		if issue.GetUser() == nil || issue.GetUser().GetLogin() != c.appLogin {
+			continue
+		}
 		candidate := watcherCandidate(issue)
 		if !candidate {
 			continue
