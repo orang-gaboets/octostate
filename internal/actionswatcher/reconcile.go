@@ -142,6 +142,27 @@ func reconcileWorkflow(repo RepositoryIdentity, key workflowKey, source []RunAtt
 		return IssueChange{}, err
 	}
 	if open != nil {
+		state, err := RenderBodyState(open.Body, repo, key.id, key.name)
+		if err != nil {
+			return IssueChange{}, err
+		}
+		if state.PreviousIssueNumber > 0 {
+			foundPrevious := false
+			for _, previous := range closed {
+				if previous.Number != state.PreviousIssueNumber {
+					continue
+				}
+				if previous.ClosedAt == nil {
+					return IssueChange{}, fmt.Errorf("previous issue #%d is missing its closure timestamp", previous.Number)
+				}
+				source = attemptsAfterClosure(source, *previous.ClosedAt)
+				foundPrevious = true
+				break
+			}
+			if !foundPrevious {
+				return IssueChange{}, fmt.Errorf("previous issue #%d for open incident #%d is missing", state.PreviousIssueNumber, open.Number)
+			}
+		}
 		return updateOpenIncident(repo, key, source, *open)
 	}
 	if len(closed) > 0 {
@@ -283,13 +304,17 @@ func createPostClosureIncident(repo RepositoryIdentity, key workflowKey, source 
 	if closed.ClosedAt == nil {
 		return IssueChange{}, errors.New("previous issue is missing its closure timestamp")
 	}
+	return createIncident(repo, key, attemptsAfterClosure(source, *closed.ClosedAt), closed.Number)
+}
+
+func attemptsAfterClosure(source []RunAttempt, closedAt time.Time) []RunAttempt {
 	postClosure := make([]RunAttempt, 0, len(source))
 	for _, attempt := range source {
-		if attempt.StartedAt.After(*closed.ClosedAt) {
+		if attempt.StartedAt.After(closedAt) {
 			postClosure = append(postClosure, attempt)
 		}
 	}
-	return createIncident(repo, key, postClosure, closed.Number)
+	return postClosure
 }
 
 func createIncident(repo RepositoryIdentity, key workflowKey, attempts []RunAttempt, previousIssue int) (IssueChange, error) {

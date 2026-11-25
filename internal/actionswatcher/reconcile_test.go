@@ -187,6 +187,39 @@ func TestReconcilePostClosureInitialBodyRetainsPreviousIssueNumber(t *testing.T)
 	}
 }
 
+func TestReconcileKeepsPreClosureFailuresOutOfSuccessorHistory(t *testing.T) {
+	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)
+	before := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Minute), "https://example.test/before")
+	after := attempt(2, 2, "CI", "push", "main", "failure", closedAt.Add(time.Minute), "https://example.test/after")
+	when := closedAt.Add(time.Hour)
+
+	created, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{before, after}, []IssueSnapshot{closed}, when)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newIssue := onlyChange(t, created)
+	successor := IssueSnapshot{
+		Number: 52, State: "open", AuthorLogin: "actions-watcher[bot]", Title: newIssue.Title, Body: newIssue.Body,
+		Labels: []string{ManagedLabel, FailingLabel},
+	}
+
+	updated, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{before, after}, []IssueSnapshot{closed, successor}, when.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Changes) != 0 {
+		t.Fatalf("repeat sweep changed successor history: %#v", updated.Changes)
+	}
+	state, err := RenderBodyState(successor.Body, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Failures[0].RunID != 2 || len(state.Failures) != 1 {
+		t.Fatalf("successor history = %#v, want only the post-closure failure", state.Failures)
+	}
+}
+
 func TestReconcileManualReopenResumesExistingIncident(t *testing.T) {
 	previouslyClosed := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	issue := managedIssue(t, 71, "open", previouslyClosed, "actions-watcher[bot]", "CI", 100)
