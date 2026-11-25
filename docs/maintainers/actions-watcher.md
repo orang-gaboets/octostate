@@ -143,7 +143,7 @@ in the issue body are structurally checked and must not be later than the
 verified cursor, but they are not individually fetched from GitHub on every
 hourly run. A repository collaborator who edits those machine markers can
 change older body history and its count. Archive comments are App-authored and
-checksum-checked. Maintainers should not edit machine markers; full
+checksum-checked. Maintainers should not edit machine markers.
 Before moving body-resident records into a new archive comment, the watcher
 verifies each run attempt and its available failed-job metadata against the
 Actions API. Missing, expired, or mismatched records stop the update. While a
