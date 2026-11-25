@@ -50,13 +50,17 @@ require_check(checkout.fetch("with").fetch("ref") == "main", "checkout must use 
 require_check(checkout.fetch("with").fetch("fetch-depth") == 0, "checkout must fetch full history for activation time")
 require_check(checkout.fetch("with").fetch("persist-credentials") == false, "checkout credentials must not persist")
 
-app_token = steps.find { |step| step["uses"].to_s.start_with?("actions/create-github-app-token@") }
-require_check(!app_token.nil?, "scoped GitHub App token step is missing")
+app_tokens = steps.select { |step| step["uses"].to_s.start_with?("actions/create-github-app-token@") }
+require_check(app_tokens.length == 1, "workflow must contain exactly one scoped GitHub App token step")
+app_token = app_tokens.first
 app_inputs = app_token.fetch("with")
 require_check(app_inputs.fetch("owner") == "orang-gaboets" && app_inputs.fetch("repositories") == "octostate", "App token must be scoped to orang-gaboets/octostate")
-require_check(app_inputs.fetch("permission-actions") == "read", "App token must request Actions read only")
-require_check(app_inputs.fetch("permission-issues") == "write", "App token must request Issues write")
-require_check(app_inputs.fetch("permission-metadata") == "read", "App token must request Metadata read")
+permissions = app_inputs.select { |name, _value| name.start_with?("permission-") }
+require_check(permissions == {
+  "permission-actions" => "read",
+  "permission-issues" => "write",
+  "permission-metadata" => "read"
+}, "App token must request only Actions read, Issues write, and Metadata read")
 
 activation = steps.find { |step| step["name"] == "Derive watcher activation time" }
 require_check(!activation.nil? && activation.fetch("run").include?("git log --first-parent --diff-filter=A"), "activation time must come from first-parent workflow addition")

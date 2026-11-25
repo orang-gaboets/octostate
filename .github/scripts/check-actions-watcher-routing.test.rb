@@ -38,6 +38,11 @@ mutations = {
   "cancellation policy" => [workflow.sub("cancel-in-progress: false", "cancel-in-progress: true"), source],
   "checkout ref" => [workflow.sub("ref: main", 'ref: "${{ github.ref }}"'), source],
   "token permission" => [workflow.sub("permission-issues: write", "permission-issues: read"), source],
+  "extra token permission" => [workflow.sub("permission-metadata: read", "permission-metadata: read\n          permission-contents: write"), source],
+  "duplicate token step" => [workflow.sub(
+    "      - name: Derive watcher activation time",
+    "      - name: Extra token\n        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510\n        with:\n          permission-contents: write\n\n      - name: Derive watcher activation time"
+  ), source],
   "failure conclusion policy" => [workflow, source.sub('conclusion == "timed_out"', 'conclusion == "cancelled"')],
   "triggering run readback" => [workflow, source.sub("GetWorkflowRunByID", "GetWorkflowRun")]
 }
