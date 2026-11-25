@@ -240,23 +240,35 @@ member rows. `ListDirectTeamMembersBySlugWithRoles` now returns
 `github.ErrValidationFailed` if any returned row has unknown origin; callers
 that need all evidence should use `ListTeamMembersBySlugWithOrigin`.
 
-This exception is source-incompatible: consumers that name the removed
-`TeamMemberWithInheritance` or `TeamMemberInheritanceLister` types, or call
-`ListTeamMembersBySlugWithInheritance`, must migrate those references. A custom
-service that still has the old method but does not name the removed interface
-can continue to satisfy the base service interface; the old method is no longer
-discovered. Octostate will use its role-aware or role-filtered fallback and
-mark those rows `unknown`. As a result, `ListDirectTeamMembersBySlugWithRoles`
-will return `github.ErrValidationFailed` instead of treating the rows as
-confirmed direct memberships. Implement `TeamMemberOriginLister` and return
-explicit origin evidence when the service can provide it.
+There are two distinct compatibility cases:
 
-A bounded search of the available GitHub code-search index for accessible
-`orang-gaboets` repositories' default-branch code found no references to the
-removed type, interface, or method. This did not establish that there are no
-downstream consumers: the search does not cover external repositories, forks,
-unindexed repositories, non-default branches or tags, or vendored and
-downloaded copies of the module.
+- A Go consumer that refers to the removed `TeamMemberWithInheritance` type,
+  `TeamMemberInheritanceLister` interface, or
+  `ListTeamMembersBySlugWithInheritance` method must update its source to use
+  the new API. Implementations of the old optional interface are in this
+  source-incompatible case because their method signature uses the removed
+  result type.
+- A service that implements only the base `teams.Service` interface remains
+  source-compatible; origin reporting is a separate optional capability. If
+  it does not implement `TeamMemberOriginLister`, Octostate uses its
+  role-aware or role-filtered fallback and marks those rows `unknown`. A
+  similarly named method does not provide origin unless its full signature
+  implements `TeamMemberOriginLister`. Consequently,
+  `ListDirectTeamMembersBySlugWithRoles` returns `github.ErrValidationFailed`
+  when such a fallback returns unknown rows. Implement `TeamMemberOriginLister`
+  and return explicit origin evidence when the service can provide it.
+
+The bounded GitHub code-search pass queried the removed type, interface, and
+method names in accessible `orang-gaboets` repositories. Each query returned
+zero matches with `incomplete_results: true`, and the repository search
+metadata reported `orang-gaboets/octostate` as not indexed for code search.
+These results are inconclusive and are not evidence that no downstream
+consumers exist; the search did not establish coverage of private or external
+repositories, forks, unindexed repositories, non-default branches or tags, or
+vendored and downloaded module copies. The separate control repository is a
+known CLI consumer pinned to v1.2.0 as of 2026-11-26. That confirms CLI use, not
+consumption of Octostate's Go API; the search did not verify code in that
+repository.
 
 `state.TeamMember` now has an `Origin` field. Its zero value and snapshots that
 omit the field normalize to `unknown`. Snapshot writers emit the field; strict
