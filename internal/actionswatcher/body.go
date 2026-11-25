@@ -164,6 +164,9 @@ func renderBodyContent(repo RepositoryIdentity, state IncidentState, failures []
 	if err != nil {
 		return "", nil, err
 	}
+	if !hasIndex && (len(references) > 0 || bodyHasArchiveSummary(existing)) {
+		return "", nil, errors.New("managed issue has archive history but is missing its full-set index")
+	}
 	if hasIndex {
 		availableHashes := make(map[string]bool, len(availableArchives))
 		for marker := range availableArchives {
@@ -755,6 +758,25 @@ func bodyArchiveReferences(body string) ([]string, error) {
 	}
 	sort.Strings(markers)
 	return markers, nil
+}
+
+func bodyHasArchiveSummary(body string) bool {
+	start := strings.Index(body, managedStart)
+	if start < 0 {
+		return false
+	}
+	contentStart := start + len(managedStart)
+	end := strings.Index(body[contentStart:], managedEnd)
+	if end < 0 {
+		return false
+	}
+	managed := body[contentStart : contentStart+end]
+	for _, line := range strings.Split(managed, "\n") {
+		if strings.HasPrefix(line, "- Preserved overflow evidence in ") && strings.Contains(line, " archive comments;") {
+			return true
+		}
+	}
+	return false
 }
 
 func archiveIndexMarker(archives []ArchiveComment) string {

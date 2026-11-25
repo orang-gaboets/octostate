@@ -702,6 +702,19 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	if _, _, err := RenderBody(testRepository(), state, body, comments[1:]); err == nil {
 		t.Fatal("RenderBody silently accepted a missing archive that was not listed in the issue body")
 	}
+
+	withoutIndex := body
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, archiveIndexPrefix) {
+			withoutIndex = strings.Replace(body, line+"\n", "", 1)
+			break
+		}
+	}
+	stateWithoutOldest := state
+	stateWithoutOldest.Failures = append([]RunAttempt(nil), state.Failures[1:]...)
+	if _, _, err := RenderBody(testRepository(), stateWithoutOldest, withoutIndex, comments[1:]); err == nil {
+		t.Fatal("RenderBody accepted archived history without its full-set index")
+	}
 }
 
 func TestRenderBodyEscapesUntrustedJobNamesAndRemainsValidUTF8(t *testing.T) {
