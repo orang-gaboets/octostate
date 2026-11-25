@@ -180,9 +180,11 @@ func rateRetryDelay(header http.Header, now time.Time, attempt int) (time.Durati
 		}
 		return 0, false
 	}
-	if raw := strings.TrimSpace(header.Get("X-RateLimit-Reset")); raw != "" {
-		if reset, err := strconv.ParseInt(raw, 10, 64); err == nil {
-			return max(time.Duration(0), time.Unix(reset, 0).Sub(now)), true
+	if header.Get("X-RateLimit-Remaining") == "0" {
+		if raw := strings.TrimSpace(header.Get("X-RateLimit-Reset")); raw != "" {
+			if reset, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				return max(time.Duration(0), time.Unix(reset, 0).Sub(now)), true
+			}
 		}
 	}
 	return time.Minute << attempt, true
