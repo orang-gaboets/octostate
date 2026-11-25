@@ -59,7 +59,7 @@ func TestRunRejectsForgedPersistedLatestAttempt(t *testing.T) {
 	forgedLatest := testFailureAttempt(999, 999, now.Add(time.Hour))
 	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
 		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
-		Failures: []watcher.RunAttempt{priorFailure}, Latest: forgedLatest,
+		Failures: []watcher.RunAttempt{priorFailure, forgedLatest}, Latest: forgedLatest,
 	}, "", nil)
 	if err != nil {
 		t.Fatal(err)

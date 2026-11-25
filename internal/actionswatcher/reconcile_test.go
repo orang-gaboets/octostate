@@ -374,6 +374,23 @@ func TestRenderBodyStateRejectsFailureLaterThanLatestCursor(t *testing.T) {
 	}
 }
 
+func TestRenderBodyStateRejectsFailingCursorMissingFromHistory(t *testing.T) {
+	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	first := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")
+	latest := attempt(2, 2, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/latest")
+	body, _, err := RenderBody(testRepository(), IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
+		Failures: []RunAttempt{first, latest}, Latest: latest,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = strings.Replace(body, renderFailureLine(latest)+"\n", "", 1)
+	if _, err := RenderBodyState(body, testRepository(), 100, "CI"); err == nil {
+		t.Fatal("RenderBodyState accepted a failing cursor missing from failure history")
+	}
+}
+
 func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
