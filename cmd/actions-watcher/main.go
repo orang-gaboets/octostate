@@ -123,6 +123,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 			return fmt.Errorf("apply incident reconciliation: %w", err)
 		}
 	}
+	if err := client.completeClosedPendingRuns(ctx, issues, triggerEvents, unavailableRuns); err != nil {
+		return fmt.Errorf("complete closed-incident checkpoints: %w", err)
+	}
 	result := resultFor(attemptCount, plan, unavailableRuns...)
 	if err := json.NewEncoder(stdout).Encode(result); err != nil {
 		return fmt.Errorf("write reconciliation result: %w", err)
@@ -154,6 +157,27 @@ func mergeArchiveRefreshes(attempts, refreshed []watcher.RunAttempt) []watcher.R
 }
 
 func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
+	type workflowKey struct {
+		id   int64
+		name string
+	}
+	type issueState struct {
+		issue watcher.IssueSnapshot
+		state watcher.IncidentState
+	}
+	byWorkflow := make(map[workflowKey][]issueState)
+	for _, issue := range issues {
+		if issue.State != "open" && issue.State != "closed" {
+			return nil, fmt.Errorf("issue #%d has unknown state %q", issue.Number, issue.State)
+		}
+		state, err := watcher.RenderManagedBodyState(issue.Body, repo)
+		if err != nil {
+			return nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
+		}
+		key := workflowKey{id: state.WorkflowID, name: state.WorkflowName}
+		byWorkflow[key] = append(byWorkflow[key], issueState{issue: issue, state: state})
+	}
+
 	eventsByID := make(map[int64]triggerEvent)
 	maxPendingRunEvents := len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
 	addRunID := func(runID int64, workflowName string, issueNumber int) error {
@@ -172,35 +196,64 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 		}
 		return nil
 	}
-	for _, issue := range issues {
-		if issue.State != "open" {
+	keys := make([]workflowKey, 0, len(byWorkflow))
+	for key := range byWorkflow {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].name != keys[j].name {
+			return keys[i].name < keys[j].name
+		}
+		return keys[i].id < keys[j].id
+	})
+	for _, key := range keys {
+		incidents := byWorkflow[key]
+		var active *issueState
+		for i := range incidents {
+			candidate := &incidents[i]
+			if candidate.issue.State == "open" {
+				if active != nil {
+					return nil, fmt.Errorf("workflow %q has multiple open watcher incidents", candidate.state.WorkflowName)
+				}
+				active = candidate
+			}
+		}
+		if active == nil {
+			for i := range incidents {
+				candidate := &incidents[i]
+				if candidate.issue.ClosedAt == nil {
+					return nil, fmt.Errorf("closed issue #%d is missing its closure timestamp", candidate.issue.Number)
+				}
+				if active == nil || candidate.issue.ClosedAt.After(*active.issue.ClosedAt) ||
+					(candidate.issue.ClosedAt.Equal(*active.issue.ClosedAt) && candidate.issue.Number > active.issue.Number) {
+					active = candidate
+				}
+			}
+		}
+		if active == nil {
 			continue
 		}
-		state, err := watcher.RenderManagedBodyState(issue.Body, repo)
-		if err != nil {
-			return nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
-		}
-		for _, runID := range state.PendingRunIDs {
-			if err := addRunID(runID, state.WorkflowName, issue.Number); err != nil {
+		for _, runID := range active.state.PendingRunIDs {
+			if err := addRunID(runID, active.state.WorkflowName, active.issue.Number); err != nil {
 				return nil, err
 			}
 		}
-		for _, comment := range issue.Comments {
+		for _, comment := range active.issue.Comments {
 			if comment.AuthorLogin != appLogin {
 				continue
 			}
 			workflowID, runIDs, found, err := parsePendingCheckpoint(comment.Body)
 			if err != nil {
-				return nil, fmt.Errorf("issue #%d has an invalid pending-run checkpoint: %w", issue.Number, err)
+				return nil, fmt.Errorf("issue #%d has an invalid pending-run checkpoint: %w", active.issue.Number, err)
 			}
 			if !found {
 				continue
 			}
-			if workflowID != state.WorkflowID {
-				return nil, fmt.Errorf("issue #%d pending-run checkpoint identifies workflow ID %d, want %d", issue.Number, workflowID, state.WorkflowID)
+			if workflowID != active.state.WorkflowID {
+				return nil, fmt.Errorf("issue #%d pending-run checkpoint identifies workflow ID %d, want %d", active.issue.Number, workflowID, active.state.WorkflowID)
 			}
 			for _, runID := range runIDs {
-				if err := addRunID(runID, state.WorkflowName, issue.Number); err != nil {
+				if err := addRunID(runID, active.state.WorkflowName, active.issue.Number); err != nil {
 					return nil, err
 				}
 			}
@@ -412,11 +465,8 @@ func recordRunEvents(plan *watcher.Plan, events []triggerEvent, unavailable []un
 			if missing.Event.WorkflowName != change.WorkflowName || (missing.Event.IssueNumber != 0 && missing.Event.IssueNumber != change.IssueNumber) {
 				continue
 			}
-			marker := fmt.Sprintf("<!-- actions-watcher:unavailable:v1 workflow_id=%d run_id=%d status=%d -->", change.WorkflowID, missing.Event.RunID, missing.StatusCode)
-			comment := watcher.ManagedComment{
-				Marker: marker,
-				Body:   fmt.Sprintf("%s\nWorkflow run ID %d is unavailable because GitHub returned HTTP %d. Its attempt evidence could not be retrieved; this does not indicate a successful run.", marker, missing.Event.RunID, missing.StatusCode),
-			}
+			comment := unavailableRunComment(change.WorkflowID, missing)
+			marker := comment.Marker
 			found := false
 			for _, existing := range change.Comments {
 				if existing.Marker != marker {
@@ -434,4 +484,12 @@ func recordRunEvents(plan *watcher.Plan, events []triggerEvent, unavailable []un
 		}
 	}
 	return nil
+}
+
+func unavailableRunComment(workflowID int64, missing unavailableRun) watcher.ManagedComment {
+	marker := fmt.Sprintf("<!-- actions-watcher:unavailable:v1 workflow_id=%d run_id=%d status=%d -->", workflowID, missing.Event.RunID, missing.StatusCode)
+	return watcher.ManagedComment{
+		Marker: marker,
+		Body:   fmt.Sprintf("%s\nWorkflow run ID %d is unavailable because GitHub returned HTTP %d. Its attempt evidence could not be retrieved; this does not indicate a successful run.", marker, missing.Event.RunID, missing.StatusCode),
+	}
 }

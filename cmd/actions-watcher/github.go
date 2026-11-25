@@ -982,6 +982,126 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 	return nil
 }
 
+func (c *watcherClient) completeClosedPendingRuns(ctx context.Context, initial []watcher.IssueSnapshot, events []triggerEvent, unavailable []unavailableRun) error {
+	pendingByIssue := make(map[int]map[int64]triggerEvent)
+	for _, event := range events {
+		if event.IssueNumber <= 0 {
+			continue
+		}
+		issue, ok := findIssue(initial, event.IssueNumber)
+		if !ok || issue.State != "closed" {
+			continue
+		}
+		if pendingByIssue[issue.Number] == nil {
+			pendingByIssue[issue.Number] = make(map[int64]triggerEvent)
+		}
+		if previous, exists := pendingByIssue[issue.Number][event.RunID]; exists && previous.WorkflowName != event.WorkflowName {
+			return fmt.Errorf("closed issue #%d has pending run %d for conflicting workflows", issue.Number, event.RunID)
+		}
+		pendingByIssue[issue.Number][event.RunID] = event
+	}
+	if len(pendingByIssue) == 0 {
+		return nil
+	}
+	unavailableByID := make(map[int64]unavailableRun, len(unavailable))
+	for _, missing := range unavailable {
+		unavailableByID[missing.Event.RunID] = missing
+	}
+	issueNumbers := make([]int, 0, len(pendingByIssue))
+	for issueNumber := range pendingByIssue {
+		issueNumbers = append(issueNumbers, issueNumber)
+	}
+	sort.Ints(issueNumbers)
+	for _, issueNumber := range issueNumbers {
+		current, _ := findIssue(initial, issueNumber)
+		state, err := watcher.RenderManagedBodyState(current.Body, c.repo)
+		if err != nil {
+			return fmt.Errorf("read pending runs from closed issue #%d: %w", issueNumber, err)
+		}
+		runIDs := make([]int64, 0, len(pendingByIssue[issueNumber]))
+		for runID, event := range pendingByIssue[issueNumber] {
+			if event.WorkflowName != state.WorkflowName {
+				return fmt.Errorf("closed issue #%d pending run %d identifies workflow %q, want %q", issueNumber, runID, event.WorkflowName, state.WorkflowName)
+			}
+			runIDs = append(runIDs, runID)
+		}
+		sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
+		for _, runID := range runIDs {
+			missing, ok := unavailableByID[runID]
+			if !ok {
+				continue
+			}
+			comment := unavailableRunComment(state.WorkflowID, missing)
+			current, err = c.ensureMarkedComment(ctx, current, comment.Marker, comment.Body)
+			if err != nil {
+				return fmt.Errorf("record unavailable run %d on closed issue #%d: %w", runID, issueNumber, err)
+			}
+		}
+
+		completed := make(map[int64]bool, len(runIDs))
+		for _, runID := range runIDs {
+			completed[runID] = true
+		}
+		remaining := make([]int64, 0, len(state.PendingRunIDs))
+		for _, runID := range state.PendingRunIDs {
+			if !completed[runID] {
+				remaining = append(remaining, runID)
+			}
+		}
+		state.PendingRunIDs = remaining
+		body, archives, err := watcher.RenderBody(c.repo, state, current.Body, watcherAuthoredComments(current.Comments, c.appLogin))
+		if err != nil {
+			return fmt.Errorf("clear pending runs from closed issue #%d: %w", issueNumber, err)
+		}
+		if len(archives) > 0 {
+			return fmt.Errorf("clearing pending runs unexpectedly required archiving issue #%d", issueNumber)
+		}
+		current, err = c.patchClosedIssueBody(ctx, current, body)
+		if err != nil {
+			return fmt.Errorf("clear pending runs from closed issue #%d: %w", issueNumber, err)
+		}
+		current, err = c.removePendingCheckpointComments(ctx, current, state.WorkflowID)
+		if err != nil {
+			return fmt.Errorf("clear pending-run checkpoint from closed issue #%d: %w", issueNumber, err)
+		}
+	}
+	return nil
+}
+
+func (c *watcherClient) patchClosedIssueBody(ctx context.Context, current watcher.IssueSnapshot, body string) (watcher.IssueSnapshot, error) {
+	if current.State != "closed" {
+		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d is no longer closed", current.Number)
+	}
+	if current.Body == body {
+		return current, nil
+	}
+	fresh, err := c.getIssueSnapshot(ctx, current.Number)
+	if err != nil {
+		return watcher.IssueSnapshot{}, fmt.Errorf("preflight closed issue body update: %w", err)
+	}
+	if !sameIssueSnapshot(current, fresh) {
+		return watcher.IssueSnapshot{}, fmt.Errorf("closed issue #%d changed during reconciliation", current.Number)
+	}
+	request := &gh.IssueRequest{Body: &body}
+	_, _, writeErr := c.client.Issues.Edit(ctx, c.repo.Owner, c.repo.Name, current.Number, request)
+	readback, readErr := c.getIssueSnapshot(ctx, current.Number)
+	if readErr != nil {
+		if writeErr != nil {
+			return watcher.IssueSnapshot{}, fmt.Errorf("closed issue update outcome is uncertain (%v), and readback failed: %w", writeErr, readErr)
+		}
+		return watcher.IssueSnapshot{}, fmt.Errorf("read back closed issue body update: %w", readErr)
+	}
+	want := current
+	want.Body = body
+	if !sameIssueSnapshot(want, readback) {
+		if writeErr != nil {
+			return watcher.IssueSnapshot{}, fmt.Errorf("closed issue update outcome is uncertain (%w); desired state was not observed", writeErr)
+		}
+		return watcher.IssueSnapshot{}, fmt.Errorf("closed issue body update readback mismatch on issue #%d", current.Number)
+	}
+	return readback, nil
+}
+
 func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) ([]watcher.RunAttempt, error) {
 	byKey := make(map[string]watcher.RunAttempt)
 	keys := make([]string, 0)

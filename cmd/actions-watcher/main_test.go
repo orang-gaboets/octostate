@@ -75,6 +75,207 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	}
 }
 
+func TestPendingRunEventsUsesClosedIncidentBacklogUntilSuccessorOpens(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(100, 100, closedAt.Add(-time.Hour))
+	makeBody := func(pending []int64, previous int) string {
+		t.Helper()
+		body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+			WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+			PreviousIssueNumber: previous, Failures: []watcher.RunAttempt{failure}, Latest: failure,
+			PendingRunIDs: pending,
+		}, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	olderClosedAt := closedAt.Add(-time.Hour)
+	older := watcher.IssueSnapshot{Number: 6, State: "closed", ClosedAt: &olderClosedAt, Body: makeBody([]int64{101}, 0)}
+	latestClosed := watcher.IssueSnapshot{Number: 7, State: "closed", ClosedAt: &closedAt, Body: makeBody([]int64{102}, 0)}
+
+	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []triggerEvent{{RunID: 102, WorkflowName: "CI", IssueNumber: 7}}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("pendingRunEvents() without open successor = %#v, want %#v", events, want)
+	}
+
+	successor := watcher.IssueSnapshot{
+		Number: 8, State: "open", Body: makeBody([]int64{103}, 7),
+	}
+	events, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed, successor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 8}}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("pendingRunEvents() with open successor = %#v, want %#v", events, want)
+	}
+}
+
+func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	previousFailure := testFailureAttempt(100, 100, closedAt.Add(-time.Hour))
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{previousFailure}, Latest: previousFailure,
+		PendingRunIDs: []int64{901, 902},
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldIssue := issueJSON(7, "closed", "ci(actions): investigate CI workflow failures on main", body, []string{watcher.ManagedLabel, watcher.FailingLabel})
+	oldIssue["closed_at"] = closedAt.Format(time.RFC3339)
+	issues := map[int]map[string]any{7: oldIssue}
+	comments := map[int][]any{7: {}}
+	nextIssueNumber := 7
+	started := closedAt.Add(5 * time.Minute)
+	newRun := runFixture(repo.ID, 901, 1, "failure")
+	newRun["run_started_at"] = started.Format(time.RFC3339)
+	newRun["updated_at"] = started.Add(time.Minute).Format(time.RFC3339)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "installation/repositories":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "repositories": []any{map[string]any{"id": repo.ID, "full_name": expectedRepository}}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/workflows":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 7, "workflows": workflowFixtures()})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/") && strings.HasSuffix(path, "/runs"):
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "workflow_runs": []any{}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/901":
+			writeJSON(w, http.StatusOK, newRun)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/902":
+			writeJSON(w, http.StatusGone, map[string]any{"message": "run evidence has expired"})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/901/attempts/1":
+			attempt := runAttemptFixture(repo.ID, 901, 1, "failure")
+			attempt["run_number"] = 901
+			attempt["run_started_at"] = started.Format(time.RFC3339)
+			attempt["updated_at"] = started.Add(time.Minute).Format(time.RFC3339)
+			writeJSON(w, http.StatusOK, attempt)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/901/attempts/1/jobs":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": "test", "conclusion": "failure"}}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/labels":
+			writeJSON(w, http.StatusOK, labelObjects([]string{watcher.ManagedLabel, watcher.FailingLabel, watcher.RecoveredLabel}))
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues":
+			listed := make([]any, 0, len(issues))
+			for number := 1; number <= nextIssueNumber; number++ {
+				if issue, ok := issues[number]; ok {
+					listed = append(listed, issue)
+				}
+			}
+			writeJSON(w, http.StatusOK, listed)
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/") && strings.HasSuffix(path, "/comments"):
+			parts := strings.Split(path, "/")
+			number, _ := strconv.Atoi(parts[4])
+			writeJSON(w, http.StatusOK, comments[number])
+		case r.Method == http.MethodPost && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/") && strings.HasSuffix(path, "/comments"):
+			parts := strings.Split(path, "/")
+			number, _ := strconv.Atoi(parts[4])
+			var request struct {
+				Body string `json:"body"`
+			}
+			if decodeErr := json.NewDecoder(r.Body).Decode(&request); decodeErr != nil {
+				t.Errorf("decode comment creation: %v", decodeErr)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid comment"})
+				return
+			}
+			comment := map[string]any{"id": 1, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"}}
+			comments[number] = append(comments[number], comment)
+			writeJSON(w, http.StatusCreated, comment)
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/"):
+			parts := strings.Split(path, "/")
+			number, _ := strconv.Atoi(parts[4])
+			if issue, ok := issues[number]; ok {
+				writeJSON(w, http.StatusOK, issue)
+			} else {
+				writeJSON(w, http.StatusNotFound, map[string]any{"message": "unknown issue"})
+			}
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues":
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if decodeErr := json.NewDecoder(r.Body).Decode(&request); decodeErr != nil {
+				t.Errorf("decode issue creation: %v", decodeErr)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid issue"})
+				return
+			}
+			nextIssueNumber++
+			issues[nextIssueNumber] = issueJSON(nextIssueNumber, "open", request.Title, request.Body, request.Labels)
+			comments[nextIssueNumber] = []any{}
+			writeJSON(w, http.StatusCreated, issues[nextIssueNumber])
+		case r.Method == http.MethodPatch && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/"):
+			parts := strings.Split(path, "/")
+			number, _ := strconv.Atoi(parts[4])
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if decodeErr := json.NewDecoder(r.Body).Decode(&request); decodeErr != nil {
+				t.Errorf("decode issue update: %v", decodeErr)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid issue update"})
+				return
+			}
+			issue := issues[number]
+			if request.Title != "" {
+				issue["title"] = request.Title
+			}
+			if request.Body != "" {
+				issue["body"] = request.Body
+			}
+			if request.Labels != nil {
+				issue["labels"] = labelObjects(request.Labels)
+			}
+			writeJSON(w, http.StatusOK, issue)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	eventPath := t.TempDir() + "/event.json"
+	if err := os.WriteFile(eventPath, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"GITHUB_REPOSITORY": expectedRepository, "GITHUB_REPOSITORY_ID": "99", "GITHUB_EVENT_NAME": "schedule",
+		"GITHUB_EVENT_PATH": eventPath, "GITHUB_REF": "refs/heads/main", "GITHUB_API_URL": server.URL,
+		"ACTIONS_WATCHER_TOKEN": "installation-token", "ACTIONS_WATCHER_APP_SLUG": expectedAppSlug,
+		"ACTIONS_WATCHER_ACTIVATED_AT": "2026-11-24T00:00:00Z",
+	}
+	var stdout bytes.Buffer
+	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return started.Add(time.Hour) })
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if nextIssueNumber != 8 {
+		t.Fatalf("created successor issues = %d, want one successor", nextIssueNumber-7)
+	}
+	state, err := watcher.RenderManagedBodyState(issues[7]["body"].(string), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.PendingRunIDs) != 0 {
+		t.Fatalf("closed issue retained pending run IDs %v", state.PendingRunIDs)
+	}
+	if len(comments[7]) != 1 || !strings.Contains(comments[7][0].(map[string]any)["body"].(string), "actions-watcher:unavailable:v1 workflow_id=1 run_id=902 status=410") {
+		t.Fatalf("closed issue unavailable-run comments = %#v, want a visible HTTP 410 marker", comments[7])
+	}
+	if issues[7]["state"] != "closed" {
+		t.Fatalf("closed incident state = %v, want closed", issues[7]["state"])
+	}
+	if newIssueState, err := watcher.RenderManagedBodyState(issues[8]["body"].(string), repo); err != nil || newIssueState.PreviousIssueNumber != 7 {
+		t.Fatalf("successor state = %#v, err=%v; want previous issue #7", newIssueState, err)
+	}
+}
+
 func TestRecordRunEventsPersistsUnavailableRunAndKeepsOtherCheckpoints(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
