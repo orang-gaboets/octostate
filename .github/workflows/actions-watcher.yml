@@ -1,0 +1,91 @@
+name: Actions Watcher
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - CodeQL Security
+      - Go vulnerability monitoring
+      - Go toolchain remediation
+      - Release Please
+      - Contributor showcase
+      - Trusted Live Integration
+    types:
+      - completed
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "23 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: actions-watcher-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: actions-watcher
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Create scoped watcher installation token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.ACTIONS_WATCHER_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_WATCHER_PRIVATE_KEY }}
+          owner: orang-gaboets
+          repositories: octostate
+          permission-actions: read
+          permission-issues: write
+          permission-metadata: read
+
+      - name: Derive watcher activation time
+        id: activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          activated_at="$(git log --first-parent --diff-filter=A --format=%cI -1 -- .github/workflows/actions-watcher.yml)"
+          if [[ -z "$activated_at" ]]; then
+            echo 'Unable to find the first-parent commit that added the watcher workflow.' >&2
+            exit 1
+          fi
+          echo "activated-at=$activated_at" >> "$GITHUB_OUTPUT"
+
+      - name: Delay push reconciliation
+        if: github.event_name == 'push'
+        shell: bash
+        run: sleep 900
+
+      - name: Reconcile workflow incidents
+        env:
+          ACTIONS_WATCHER_ACTIVATED_AT: ${{ steps.activation.outputs.activated-at }}
+          ACTIONS_WATCHER_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          ACTIONS_WATCHER_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+        run: go run ./cmd/actions-watcher

@@ -117,6 +117,8 @@ type IssueChange struct {
 	PreviousIssueNumber int
 	Title               string
 	Body                string
+	InitialBody         string
+	InitialLabels       []string
 	CurrentStatus       IncidentStatus
 	FailureCount        int
 	AddLabels           []string

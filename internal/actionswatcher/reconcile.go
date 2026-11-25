@@ -23,6 +23,13 @@ var monitoredWorkflowNames = map[string]struct{}{
 	"Trusted Live Integration":    {},
 }
 
+// IsMonitoredWorkflow reports whether a workflow is part of the fixed
+// repository-level watcher allowlist.
+func IsMonitoredWorkflow(name string) bool {
+	_, ok := monitoredWorkflowNames[name]
+	return ok
+}
+
 type workflowKey struct {
 	id   int64
 	name string
@@ -334,6 +341,15 @@ func createIncident(repo RepositoryIdentity, key workflowKey, attempts []RunAtte
 	if len(attempts) > 0 {
 		firstFailure := failures[0]
 		initial := IncidentState{WorkflowID: key.id, WorkflowName: key.name, Status: StatusFailing, Failures: []RunAttempt{firstFailure}, Latest: firstFailure}
+		initialBody, _, err := RenderBody(repo, initial, "", nil)
+		if err != nil {
+			return IssueChange{}, err
+		}
+		initialLabels := []string{ManagedLabel, FailingLabel}
+		if initialBody != body || state.Status != StatusFailing {
+			change.InitialBody = initialBody
+			change.InitialLabels = initialLabels
+		}
 		change.Comments = transitionComments(initial, state, attempts, nil)
 	}
 	return change, nil

@@ -1,0 +1,74 @@
+#!/usr/bin/env ruby
+
+require "yaml"
+
+workflow_path = ENV.fetch("ACTIONS_WATCHER_WORKFLOW_PATH", ".github/workflows/actions-watcher.yml")
+source_path = ENV.fetch("ACTIONS_WATCHER_SOURCE_PATH", "cmd/actions-watcher/github.go")
+workflow = YAML.safe_load(File.read(workflow_path), aliases: true)
+source = File.read(source_path)
+triggers = workflow["on"] || workflow[true]
+jobs = workflow.fetch("jobs")
+job = jobs.fetch("reconcile")
+
+EXPECTED_WORKFLOWS = [
+  "CI",
+  "CodeQL Security",
+  "Go vulnerability monitoring",
+  "Go toolchain remediation",
+  "Release Please",
+  "Contributor showcase",
+  "Trusted Live Integration"
+].freeze
+
+def require_check(condition, message)
+  abort "FAIL: #{message}" unless condition
+end
+
+require_check(triggers.keys.sort == %w[push schedule workflow_run], "only push, schedule, and workflow_run triggers are allowed")
+require_check(triggers.fetch("push") == { "branches" => ["main"] }, "push reconciliation must be restricted to main")
+require_check(triggers.fetch("schedule") == [{ "cron" => "23 * * * *" }], "hourly reconciliation schedule changed")
+workflow_run = triggers.fetch("workflow_run")
+require_check(workflow_run.fetch("types") == ["completed"], "workflow_run must run only for completed source runs")
+require_check(workflow_run.fetch("workflows") == EXPECTED_WORKFLOWS, "workflow_run allowlist changed")
+require_check(workflow.fetch("permissions") == { "contents" => "read" }, "workflow permissions must remain read-only")
+require_check(jobs.keys == ["reconcile"], "only the reconcile job should remain")
+require_check(job.fetch("if") == "github.ref == 'refs/heads/main'", "reconciliation must run only from main")
+require_check(job.fetch("permissions") == { "contents" => "read" }, "job token must retain read-only contents permission")
+
+concurrency = workflow.fetch("concurrency")
+require_check(concurrency.fetch("group") == 'actions-watcher-${{ github.repository }}', "watcher runs must serialize per repository")
+require_check(concurrency.fetch("cancel-in-progress") == false, "running watcher jobs must not be cancelled")
+
+environment = job.fetch("environment")
+require_check(environment.fetch("name") == "actions-watcher", "watcher must use its protected environment")
+require_check(environment.fetch("deployment") == false, "watcher environment must not create deployment records")
+
+steps = job.fetch("steps")
+checkout = steps.find { |step| step["uses"].to_s.start_with?("actions/checkout@") }
+require_check(!checkout.nil?, "trusted checkout step is missing")
+require_check(checkout.fetch("with").fetch("ref") == "main", "checkout must use trusted main")
+require_check(checkout.fetch("with").fetch("fetch-depth") == 0, "checkout must fetch full history for activation time")
+require_check(checkout.fetch("with").fetch("persist-credentials") == false, "checkout credentials must not persist")
+
+app_token = steps.find { |step| step["uses"].to_s.start_with?("actions/create-github-app-token@") }
+require_check(!app_token.nil?, "scoped GitHub App token step is missing")
+app_inputs = app_token.fetch("with")
+require_check(app_inputs.fetch("owner") == "orang-gaboets" && app_inputs.fetch("repositories") == "octostate", "App token must be scoped to orang-gaboets/octostate")
+require_check(app_inputs.fetch("permission-actions") == "read", "App token must request Actions read only")
+require_check(app_inputs.fetch("permission-issues") == "write", "App token must request Issues write")
+require_check(app_inputs.fetch("permission-metadata") == "read", "App token must request Metadata read")
+
+activation = steps.find { |step| step["name"] == "Derive watcher activation time" }
+require_check(!activation.nil? && activation.fetch("run").include?("git log --first-parent --diff-filter=A"), "activation time must come from first-parent workflow addition")
+delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
+require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("run").include?("sleep 900"), "main push reconciliation must be delayed by 15 minutes")
+command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
+require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
+require_check(command.fetch("env").fetch("ACTIONS_WATCHER_APP_SLUG") == "${{ steps.app-token.outputs.app-slug }}", "workflow must pass the verified App slug to the command")
+
+uses = File.read(workflow_path).scan(/^\s*uses:\s*([^\s#]+)/).flatten
+require_check(uses.all? { |reference| reference.match?(/^[^@]+@[0-9a-f]{40}$/) }, "every third-party Action must be pinned to a full commit SHA")
+require_check(source.include?('return conclusion == "failure" || conclusion == "timed_out" || conclusion == "startup_failure"'), "failure conclusion policy changed")
+require_check(source.include?('conclusion != "success"'), "only a successful attempt may be treated as recovery")
+
+puts "actions watcher workflow routing checks passed"
