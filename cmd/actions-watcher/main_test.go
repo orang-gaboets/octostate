@@ -512,7 +512,7 @@ func TestVerifyPersistedFailureMatchesRunAndJobMetadata(t *testing.T) {
 	}
 }
 
-func TestVerifyPersistedFailureAllowsUnavailableJobsToResolve(t *testing.T) {
+func TestVerifyPersistedLatestFailureAllowsUnavailableJobsToResolve(t *testing.T) {
 	const repoID = 99
 	var jobCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -522,7 +522,7 @@ func TestVerifyPersistedFailureAllowsUnavailableJobsToResolve(t *testing.T) {
 			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, 1, "failure"))
 		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1/jobs":
 			if jobCalls.Add(1) == 1 {
-				writeJSON(w, http.StatusGone, map[string]any{"message": "job data temporarily unavailable"})
+				writeJSON(w, http.StatusGone, map[string]any{"message": "job data expired"})
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": "test", "conclusion": "failure"}}})
@@ -539,10 +539,14 @@ func TestVerifyPersistedFailureAllowsUnavailableJobsToResolve(t *testing.T) {
 	expected.CompletedAt = started.Add(30 * time.Second)
 	expected.JobDataAvailable = false
 	expected.FailedJobs = nil
-	for i := 0; i < 2; i++ {
-		if err := client.verifyPersistedFailure(context.Background(), expected); err != nil {
-			t.Fatalf("verifyPersistedFailure() call %d error = %v", i+1, err)
-		}
+	if err := client.verifyPersistedFailure(context.Background(), expected); err != nil {
+		t.Fatalf("verifyPersistedFailure() with unavailable API data error = %v", err)
+	}
+	if err := client.verifyPersistedFailure(context.Background(), expected); err == nil || !strings.Contains(err.Error(), "job metadata") {
+		t.Fatalf("verifyPersistedFailure() accepted unresolved data that is now available: %v", err)
+	}
+	if err := client.verifyPersistedLatestFailure(context.Background(), expected); err != nil {
+		t.Fatalf("verifyPersistedLatestFailure() with later-available data error = %v", err)
 	}
 
 	forgedUnavailable := expected

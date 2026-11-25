@@ -467,7 +467,7 @@ func (c *watcherClient) verifyOpenIncidentCursors(ctx context.Context, issues []
 		}
 		var verifyErr error
 		if isRunFailure(state.Latest.Conclusion) {
-			verifyErr = c.verifyPersistedFailure(ctx, state.Latest)
+			verifyErr = c.verifyPersistedLatestFailure(ctx, state.Latest)
 		} else {
 			verifyErr = c.verifyPersistedAttempt(ctx, state.Latest)
 		}
@@ -509,8 +509,16 @@ func (c *watcherClient) verifyPersistedAttempt(ctx context.Context, expected wat
 }
 
 func (c *watcherClient) verifyPersistedFailure(ctx context.Context, expected watcher.RunAttempt) error {
+	return c.verifyFailureMetadata(ctx, expected, false)
+}
+
+func (c *watcherClient) verifyPersistedLatestFailure(ctx context.Context, expected watcher.RunAttempt) error {
+	return c.verifyFailureMetadata(ctx, expected, true)
+}
+
+func (c *watcherClient) verifyFailureMetadata(ctx context.Context, expected watcher.RunAttempt, allowUnavailableRecovery bool) error {
 	if !isRunFailure(expected.Conclusion) {
-		return errors.New("archive contains a non-failure attempt")
+		return errors.New("persisted failure record contains a non-failure attempt")
 	}
 	if !expected.JobDataAvailable && len(expected.FailedJobs) != 0 {
 		return errors.New("workflow API job metadata does not match the persisted failure")
@@ -522,7 +530,7 @@ func (c *watcherClient) verifyPersistedFailure(ctx context.Context, expected wat
 	if err != nil {
 		return err
 	}
-	if !expected.JobDataAvailable {
+	if allowUnavailableRecovery && !expected.JobDataAvailable {
 		// A checkpoint can record an unavailable failed-job read. If a later
 		// read finds jobs for the same verified attempt, reconciliation can
 		// enrich the persisted failure record with that evidence.
@@ -530,7 +538,7 @@ func (c *watcherClient) verifyPersistedFailure(ctx context.Context, expected wat
 	}
 	expectedJobs := append([]string(nil), expected.FailedJobs...)
 	sort.Strings(expectedJobs)
-	if !available || !reflect.DeepEqual(failedJobs, expectedJobs) {
+	if available != expected.JobDataAvailable || !reflect.DeepEqual(failedJobs, expectedJobs) {
 		return errors.New("workflow API job metadata does not match the persisted failure")
 	}
 	return nil
