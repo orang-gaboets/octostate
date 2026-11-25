@@ -62,14 +62,15 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closedAt := time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)
 	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
 		{Number: 7, State: "open", Body: body},
-		{Number: 6, State: "closed", Body: body},
+		{Number: 6, State: "closed", ClosedAt: &closedAt, Body: body},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 7}, {RunID: 104, WorkflowName: "CI", IssueNumber: 7}}
+	want := []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 6}, {RunID: 104, WorkflowName: "CI", IssueNumber: 6}}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
 	}
@@ -105,13 +106,16 @@ func TestPendingRunEventsUsesClosedIncidentBacklogUntilSuccessorOpens(t *testing
 	}
 
 	successor := watcher.IssueSnapshot{
-		Number: 8, State: "open", Body: makeBody([]int64{103}, 7),
+		Number: 8, State: "open", Body: makeBody([]int64{102, 103}, 7),
 	}
 	events, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed, successor})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 8}}
+	want = []triggerEvent{
+		{RunID: 102, WorkflowName: "CI", IssueNumber: 7},
+		{RunID: 103, WorkflowName: "CI", IssueNumber: 8},
+	}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() with open successor = %#v, want %#v", events, want)
 	}
@@ -134,6 +138,7 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	issues := map[int]map[string]any{7: oldIssue}
 	comments := map[int][]any{7: {}}
 	nextIssueNumber := 7
+	failUnavailableCommentWrite := true
 	started := closedAt.Add(5 * time.Minute)
 	newRun := runFixture(repo.ID, 901, 1, "failure")
 	newRun["run_started_at"] = started.Format(time.RFC3339)
@@ -176,6 +181,10 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 		case r.Method == http.MethodPost && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/") && strings.HasSuffix(path, "/comments"):
 			parts := strings.Split(path, "/")
 			number, _ := strconv.Atoi(parts[4])
+			if number == 7 && failUnavailableCommentWrite {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "temporary comment write failure"})
+				return
+			}
 			var request struct {
 				Body string `json:"body"`
 			}
@@ -252,8 +261,17 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return started.Add(time.Hour) })
+	if err == nil || !strings.Contains(err.Error(), "complete closed-incident checkpoints") {
+		t.Fatalf("first run() error = %v, want closed-incident checkpoint write failure", err)
+	}
+	if nextIssueNumber != 8 {
+		t.Fatalf("created successor issues after first run = %d, want one successor", nextIssueNumber-7)
+	}
+	failUnavailableCommentWrite = false
+	stdout.Reset()
+	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return started.Add(time.Hour) })
 	if err != nil {
-		t.Fatalf("run() error = %v", err)
+		t.Fatalf("retry run() error = %v", err)
 	}
 	if nextIssueNumber != 8 {
 		t.Fatalf("created successor issues = %d, want one successor", nextIssueNumber-7)

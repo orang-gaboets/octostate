@@ -179,14 +179,14 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	}
 
 	eventsByID := make(map[int64]triggerEvent)
-	maxPendingRunEvents := len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
+	maxPendingRunEvents := 2 * len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
 	addRunID := func(runID int64, workflowName string, issueNumber int) error {
 		if previous, exists := eventsByID[runID]; exists {
 			if previous.WorkflowName != workflowName {
 				return fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous.WorkflowName, workflowName)
 			}
 			if previous.IssueNumber != issueNumber {
-				return fmt.Errorf("pending workflow run %d is stored on multiple open incidents", runID)
+				return fmt.Errorf("pending workflow run %d is stored on multiple incidents", runID)
 			}
 			return nil
 		}
@@ -195,6 +195,42 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 			return fmt.Errorf("managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
 		}
 		return nil
+	}
+	addIssuePendingRuns := func(source issueState, skip map[int64]bool) (map[int64]bool, error) {
+		seen := make(map[int64]bool)
+		add := func(runID int64) error {
+			seen[runID] = true
+			if skip[runID] {
+				return nil
+			}
+			return addRunID(runID, source.state.WorkflowName, source.issue.Number)
+		}
+		for _, runID := range source.state.PendingRunIDs {
+			if err := add(runID); err != nil {
+				return nil, err
+			}
+		}
+		for _, comment := range source.issue.Comments {
+			if comment.AuthorLogin != appLogin {
+				continue
+			}
+			workflowID, runIDs, found, err := parsePendingCheckpoint(comment.Body)
+			if err != nil {
+				return nil, fmt.Errorf("issue #%d has an invalid pending-run checkpoint: %w", source.issue.Number, err)
+			}
+			if !found {
+				continue
+			}
+			if workflowID != source.state.WorkflowID {
+				return nil, fmt.Errorf("issue #%d pending-run checkpoint identifies workflow ID %d, want %d", source.issue.Number, workflowID, source.state.WorkflowID)
+			}
+			for _, runID := range runIDs {
+				if err := add(runID); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return seen, nil
 	}
 	keys := make([]workflowKey, 0, len(byWorkflow))
 	for key := range byWorkflow {
@@ -208,54 +244,38 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	})
 	for _, key := range keys {
 		incidents := byWorkflow[key]
-		var active *issueState
+		var open, latestClosed *issueState
 		for i := range incidents {
 			candidate := &incidents[i]
 			if candidate.issue.State == "open" {
-				if active != nil {
+				if open != nil {
 					return nil, fmt.Errorf("workflow %q has multiple open watcher incidents", candidate.state.WorkflowName)
 				}
-				active = candidate
+				open = candidate
+				continue
+			}
+			if candidate.issue.ClosedAt == nil {
+				return nil, fmt.Errorf("closed issue #%d is missing its closure timestamp", candidate.issue.Number)
+			}
+			if latestClosed == nil || candidate.issue.ClosedAt.After(*latestClosed.issue.ClosedAt) ||
+				(candidate.issue.ClosedAt.Equal(*latestClosed.issue.ClosedAt) && candidate.issue.Number > latestClosed.issue.Number) {
+				latestClosed = candidate
 			}
 		}
-		if active == nil {
-			for i := range incidents {
-				candidate := &incidents[i]
-				if candidate.issue.ClosedAt == nil {
-					return nil, fmt.Errorf("closed issue #%d is missing its closure timestamp", candidate.issue.Number)
-				}
-				if active == nil || candidate.issue.ClosedAt.After(*active.issue.ClosedAt) ||
-					(candidate.issue.ClosedAt.Equal(*active.issue.ClosedAt) && candidate.issue.Number > active.issue.Number) {
-					active = candidate
-				}
-			}
-		}
-		if active == nil {
+		if open == nil && latestClosed == nil {
 			continue
 		}
-		for _, runID := range active.state.PendingRunIDs {
-			if err := addRunID(runID, active.state.WorkflowName, active.issue.Number); err != nil {
+		var closedPending map[int64]bool
+		if latestClosed != nil {
+			var err error
+			closedPending, err = addIssuePendingRuns(*latestClosed, nil)
+			if err != nil {
 				return nil, err
 			}
 		}
-		for _, comment := range active.issue.Comments {
-			if comment.AuthorLogin != appLogin {
-				continue
-			}
-			workflowID, runIDs, found, err := parsePendingCheckpoint(comment.Body)
-			if err != nil {
-				return nil, fmt.Errorf("issue #%d has an invalid pending-run checkpoint: %w", active.issue.Number, err)
-			}
-			if !found {
-				continue
-			}
-			if workflowID != active.state.WorkflowID {
-				return nil, fmt.Errorf("issue #%d pending-run checkpoint identifies workflow ID %d, want %d", active.issue.Number, workflowID, active.state.WorkflowID)
-			}
-			for _, runID := range runIDs {
-				if err := addRunID(runID, active.state.WorkflowName, active.issue.Number); err != nil {
-					return nil, err
-				}
+		if open != nil {
+			if _, err := addIssuePendingRuns(*open, closedPending); err != nil {
+				return nil, err
 			}
 		}
 	}
