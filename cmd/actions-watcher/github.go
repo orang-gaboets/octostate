@@ -161,9 +161,13 @@ func retryableRateResponse(resp *http.Response) bool {
 
 func rateRetryDelay(header http.Header, now time.Time, attempt int) (time.Duration, bool) {
 	if raw := strings.TrimSpace(header.Get("Retry-After")); raw != "" {
-		if seconds, err := strconv.Atoi(raw); err == nil {
+		if seconds, err := strconv.ParseInt(raw, 10, 64); err == nil {
 			if seconds < 0 {
 				return 0, false
+			}
+			maxSeconds := int64((1<<63 - 1) / int64(time.Second))
+			if seconds > maxSeconds {
+				return time.Duration(1<<63 - 1), true
 			}
 			return time.Duration(seconds) * time.Second, true
 		}

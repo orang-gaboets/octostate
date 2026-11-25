@@ -587,6 +587,15 @@ func TestRateLimitTransportStopsWhenRetryHeaderExceedsBound(t *testing.T) {
 	}
 }
 
+func TestRateRetryDelayDoesNotOverflowForLargeRetryAfter(t *testing.T) {
+	header := make(http.Header)
+	header.Set("Retry-After", "9223372036854775807")
+	delay, ok := rateRetryDelay(header, time.Unix(0, 0), 0)
+	if !ok || delay <= maxRateWait {
+		t.Fatalf("rateRetryDelay() = (%s, %t), want a delay larger than %s", delay, ok, maxRateWait)
+	}
+}
+
 func TestPatchIssueReadsBackAmbiguousMutationWithoutRetry(t *testing.T) {
 	issue := issueJSON(7, "open", "old title", "old body", []string{watcher.ManagedLabel, watcher.FailingLabel, "keep-me"})
 	var patchCalls atomic.Int32
