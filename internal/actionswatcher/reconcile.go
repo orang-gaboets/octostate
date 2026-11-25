@@ -429,9 +429,6 @@ func stateFromAttempts(key workflowKey, previous *IncidentState, attempts []RunA
 		if attempt.Conclusion == "success" {
 			_, ok := latestFailureBefore(state.Failures, attempt)
 			if ok {
-				if state.Status != StatusRecovered {
-					state.Recovery = cloneAttemptPointer(&attempt)
-				}
 				state.Status = StatusRecovered
 				state.Recovery = cloneAttemptPointer(&attempt)
 				state.Latest = attempt
