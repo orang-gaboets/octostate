@@ -646,6 +646,17 @@ func renderRunLink(attempt RunAttempt) string {
 	if err != nil || urlValue.Scheme != "https" || urlValue.Host == "" || urlValue.User != nil {
 		return "run URL unavailable"
 	}
+	path := strings.TrimRight(urlValue.Path, "/")
+	if index := strings.LastIndex(path, "/attempts/"); index >= 0 {
+		priorAttempt := path[index+len("/attempts/"):]
+		if priorAttempt != "" && !strings.Contains(priorAttempt, "/") {
+			if _, err := strconv.Atoi(priorAttempt); err == nil {
+				path = path[:index]
+			}
+		}
+	}
+	urlValue.Path = path + fmt.Sprintf("/attempts/%d", attempt.Attempt)
+	urlValue.RawPath = ""
 	label := fmt.Sprintf("run ID %d, attempt %d", attempt.RunID, attempt.Attempt)
 	return "[" + label + "](" + strings.ReplaceAll(strings.ReplaceAll(urlValue.String(), "(", "%28"), ")", "%29") + ")"
 }

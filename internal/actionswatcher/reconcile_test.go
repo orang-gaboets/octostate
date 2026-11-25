@@ -327,6 +327,32 @@ func TestRenderBodyStateRejectsRecoveryThatDiffersFromLatest(t *testing.T) {
 	}
 }
 
+func TestRenderBodyLinksRerunsToTheirSpecificAttempts(t *testing.T) {
+	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	runURL := "https://github.com/org/repo/actions/runs/42"
+	first := attempt(42, 42, "CI", "push", "main", "failure", started, runURL)
+	second := first
+	second.Attempt = 2
+	second.StartedAt = started.Add(time.Hour)
+	second.CompletedAt = second.StartedAt.Add(time.Minute)
+	state := IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
+		Failures: []RunAttempt{first, second}, Latest: second,
+	}
+	body, _, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"[run ID 42, attempt 1](" + runURL + "/attempts/1)",
+		"[run ID 42, attempt 2](" + runURL + "/attempts/2)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("managed body does not contain attempt-specific link %q", want)
+		}
+	}
+}
+
 func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
