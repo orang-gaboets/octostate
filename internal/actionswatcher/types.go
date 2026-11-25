@@ -104,8 +104,9 @@ type ManagedComment struct {
 
 // ArchiveComment preserves overflowed failure history in a marked comment.
 type ArchiveComment struct {
-	Marker string
-	Body   string
+	Marker   string
+	Body     string
+	Attempts []RunAttempt
 }
 
 // IssueChange describes a single create or update in a reconciliation plan.

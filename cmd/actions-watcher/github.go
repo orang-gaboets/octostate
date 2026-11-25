@@ -445,7 +445,7 @@ func (c *watcherClient) verifyPersistedAttempt(ctx context.Context, expected wat
 		return err
 	}
 	if !eligible {
-		return errors.New("persisted latest attempt is not eligible")
+		return errors.New("persisted attempt is not eligible")
 	}
 	started := run.RunStartedAt.GetTime()
 	completed := run.UpdatedAt.GetTime()
@@ -454,7 +454,26 @@ func (c *watcherClient) verifyPersistedAttempt(ctx context.Context, expected wat
 		run.GetEvent() != expected.Event || run.GetHeadBranch() != expected.HeadBranch || run.GetConclusion() != expected.Conclusion ||
 		run.GetHeadSHA() != expected.HeadSHA || run.GetHTMLURL() != expected.HTMLURL ||
 		!started.Equal(expected.StartedAt) || !completed.Equal(expected.CompletedAt) {
-		return errors.New("workflow API metadata does not match the persisted latest attempt")
+		return errors.New("workflow API metadata does not match the persisted attempt")
+	}
+	return nil
+}
+
+func (c *watcherClient) verifyPersistedFailure(ctx context.Context, expected watcher.RunAttempt) error {
+	if !isRunFailure(expected.Conclusion) {
+		return errors.New("archive contains a non-failure attempt")
+	}
+	if err := c.verifyPersistedAttempt(ctx, expected); err != nil {
+		return err
+	}
+	failedJobs, available, err := c.listFailedJobs(ctx, expected.RunID, expected.Attempt)
+	if err != nil {
+		return err
+	}
+	expectedJobs := append([]string(nil), expected.FailedJobs...)
+	sort.Strings(expectedJobs)
+	if available != expected.JobDataAvailable || !reflect.DeepEqual(failedJobs, expectedJobs) {
+		return errors.New("workflow API job metadata does not match the persisted failure")
 	}
 	return nil
 }
@@ -737,6 +756,9 @@ func (c *watcherClient) requireLabels(ctx context.Context, plan watcher.Plan) er
 }
 
 func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) error {
+	if err := c.verifyArchiveAttempts(ctx, plan); err != nil {
+		return err
+	}
 	expected := append([]watcher.IssueSnapshot(nil), initial...)
 	for _, change := range plan.Changes {
 		switch change.Action {
@@ -796,6 +818,25 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 			expected = replaceIssue(expected, updated)
 		default:
 			return fmt.Errorf("unsupported planned action %q", change.Action)
+		}
+	}
+	return nil
+}
+
+func (c *watcherClient) verifyArchiveAttempts(ctx context.Context, plan watcher.Plan) error {
+	for _, change := range plan.Changes {
+		if change.Action != watcher.ActionUpdate {
+			continue
+		}
+		for _, archive := range change.Archives {
+			if len(archive.Attempts) == 0 {
+				return fmt.Errorf("issue #%d has an archive with no verifiable failure attempts", change.IssueNumber)
+			}
+			for _, attempt := range archive.Attempts {
+				if err := c.verifyPersistedFailure(ctx, attempt); err != nil {
+					return fmt.Errorf("verify failure run %d attempt %d before archiving issue #%d: %w", attempt.RunID, attempt.Attempt, change.IssueNumber, err)
+				}
+			}
 		}
 	}
 	return nil

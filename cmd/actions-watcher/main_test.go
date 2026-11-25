@@ -130,6 +130,73 @@ func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
 	}
 }
 
+func TestVerifyPersistedFailureMatchesRunAndJobMetadata(t *testing.T) {
+	const repoID = 99
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch path {
+		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1":
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, 1, "failure"))
+		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1/jobs":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": "test", "conclusion": "failure"}}})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	started := time.Date(2026, 11, 25, 10, 1, 0, 0, time.UTC)
+	expected := testFailureAttempt(101, 101, started)
+	expected.CompletedAt = started.Add(30 * time.Second)
+	if err := client.verifyPersistedFailure(context.Background(), expected); err != nil {
+		t.Fatalf("verifyPersistedFailure() error = %v", err)
+	}
+
+	tampered := expected
+	tampered.FailedJobs = []string{"forged job"}
+	if err := client.verifyPersistedFailure(context.Background(), tampered); err == nil || !strings.Contains(err.Error(), "job metadata") {
+		t.Fatalf("verifyPersistedFailure() error = %v, want job metadata mismatch", err)
+	}
+}
+
+func TestApplyPlanRejectsUnverifiedArchiveBeforeMutation(t *testing.T) {
+	const repoID = 99
+	var attemptCalls atomic.Int32
+	var mutationCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		if path == "repos/orang-gaboets/octostate/actions/runs/999/attempts/1" {
+			attemptCalls.Add(1)
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 999, 1, "success"))
+			return
+		}
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch {
+			mutationCalls.Add(1)
+		}
+		t.Errorf("unexpected API request before archive verification: %s %s", r.Method, r.URL.String())
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	started := time.Date(2026, 11, 25, 10, 1, 0, 0, time.UTC)
+	forged := testFailureAttempt(999, 999, started)
+	forged.CompletedAt = started.Add(30 * time.Second)
+	plan := watcher.Plan{Changes: []watcher.IssueChange{{
+		Action: watcher.ActionUpdate, IssueNumber: 7,
+		Archives: []watcher.ArchiveComment{{Attempts: []watcher.RunAttempt{forged}}},
+	}}}
+	err := client.applyPlan(context.Background(), plan, []watcher.IssueSnapshot{{Number: 7, State: "open"}})
+	if err == nil || !strings.Contains(err.Error(), "before archiving issue #7") {
+		t.Fatalf("applyPlan() error = %v, want archive verification failure", err)
+	}
+	if attemptCalls.Load() != 1 || mutationCalls.Load() != 0 {
+		t.Fatalf("attempt/mutation API calls = %d/%d, want 1/0", attemptCalls.Load(), mutationCalls.Load())
+	}
+}
+
 func TestValidateTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.T) {
 	path := t.TempDir() + "/event.json"
 	for _, tc := range []struct {

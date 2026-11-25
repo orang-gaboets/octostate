@@ -413,6 +413,9 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 		if !strings.Contains(archive.Marker, "<!-- actions-watcher:archive:v1") || !strings.Contains(archive.Body, "<!-- actions-watcher:failure:v1") {
 			t.Fatalf("archive comment lacks machine markers: %#v", archive)
 		}
+		if len(archive.Attempts) == 0 {
+			t.Fatalf("archive comment omitted attempts for API verification: %#v", archive)
+		}
 		archiveSnapshots = append(archiveSnapshots, CommentSnapshot{AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
 	}
 	secondBody, secondArchives, err := RenderBody(testRepository(), state, body, archiveSnapshots)

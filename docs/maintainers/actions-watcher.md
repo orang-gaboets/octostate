@@ -140,9 +140,13 @@ verified cursor, but they are not individually fetched from GitHub on every
 hourly run. A repository collaborator who edits those machine markers can
 change older body history and its count. Archive comments are App-authored and
 checksum-checked. Maintainers should not edit machine markers; full
-authentication of body-resident history needs a separate durable integrity
-design because GitHub has no batch lookup for attempts and old attempts can
-expire.
+Before moving body-resident records into a new archive comment, the watcher
+verifies each run attempt and its available failed-job metadata against the
+Actions API. Missing, expired, or mismatched records stop the update. While a
+record remains in the editable issue body, a repository collaborator can still
+change it and its count; full authentication of all body-resident history needs
+a separate durable integrity design because GitHub has no batch lookup for
+attempts and old attempts can expire.
 
 The issue title follows the form
 `ci(actions): investigate <workflow> workflow failures on main`. The body has

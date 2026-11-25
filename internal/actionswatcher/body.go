@@ -480,7 +480,7 @@ func parseArchives(comments []CommentSnapshot, workflowID int64) ([]ArchiveComme
 		if fields[1] != wantRange {
 			return nil, nil, errors.New("archive comment range does not match its failure records")
 		}
-		archives = append(archives, ArchiveComment{Marker: marker, Body: comment.Body})
+		archives = append(archives, ArchiveComment{Marker: marker, Body: comment.Body, Attempts: attempts})
 		for _, attempt := range attempts {
 			key := attemptKey(attempt)
 			if keys[key] {
@@ -530,7 +530,11 @@ func makeArchive(workflowID int64, attempts []RunAttempt) (ArchiveComment, error
 	content := encodedFailureLines(attempts)
 	hash := sha256.Sum256([]byte(content))
 	marker := fmt.Sprintf("<!-- actions-watcher:archive:v1 workflow_id=%d range=%s..%s count=%d sha256=%s -->", workflowID, attemptKey(attempts[0]), attemptKey(attempts[len(attempts)-1]), len(attempts), hex.EncodeToString(hash[:]))
-	return ArchiveComment{Marker: marker, Body: marker + "\n" + content}, nil
+	archivedAttempts := make([]RunAttempt, len(attempts))
+	for i, attempt := range attempts {
+		archivedAttempts[i] = cloneAttempt(attempt)
+	}
+	return ArchiveComment{Marker: marker, Body: marker + "\n" + content, Attempts: archivedAttempts}, nil
 }
 
 func parseFailureMarkers(text string) ([]RunAttempt, error) {
