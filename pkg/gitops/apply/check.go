@@ -66,14 +66,11 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 		return nil, err
 	}
 	opt.Desired = config.NormalizeDesiredState(opt.Desired)
-	if err := requireExecutableDesiredActions(opt); err != nil {
+	unresolvedTeamMemberships, err := requireExecutableDesiredActions(opt)
+	if err != nil {
 		return nil, err
 	}
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
-		return nil, err
-	}
-	unresolvedTeamMemberships, err := unresolvedActualTeamMemberships(opt.Actual)
-	if err != nil {
 		return nil, err
 	}
 

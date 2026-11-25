@@ -45,22 +45,25 @@ func UnfulfilledDesiredActions(actions []gitopsplan.Action) []gitopsplan.Action 
 	return unfulfilled
 }
 
-// requireExecutableDesiredActions validates membership-origin safety and fails
-// when the caller asked for every desired mutation to be executable but that
-// condition cannot be established.
-func requireExecutableDesiredActions(opt Options) error {
+// requireExecutableDesiredActions validates membership-origin safety, returns
+// unresolved actual memberships for the result, and fails when the caller
+// asked for every desired mutation to be executable but that condition cannot
+// be established.
+func requireExecutableDesiredActions(opt Options) ([]state.TeamMember, error) {
 	if opt.Actual == nil || opt.Plan == nil {
-		return nil
+		return []state.TeamMember{}, nil
 	}
 
 	actualMembers, err := state.CanonicalTeamMembers(opt.Actual.TeamMembers)
 	if err != nil {
-		return fmt.Errorf("validate actual team memberships: %w", err)
+		return nil, fmt.Errorf("validate actual team memberships: %w", err)
 	}
-	unknownMembers := make(map[string]state.TeamMember)
+	unknownMembers := make(map[string]struct{})
+	unresolved := make([]state.TeamMember, 0)
 	for _, member := range actualMembers {
 		if member.Origin == github.TeamMembershipOriginUnknown {
-			unknownMembers[resourceid.TeamMemberKey(member.TeamSlug, member.Username)] = member
+			unknownMembers[resourceid.TeamMemberKey(member.TeamSlug, member.Username)] = struct{}{}
+			unresolved = append(unresolved, member)
 		}
 	}
 
@@ -74,12 +77,12 @@ func requireExecutableDesiredActions(opt Options) error {
 		}
 		key := resourceid.TeamMemberKey(strings.TrimSpace(teamSlug), strings.TrimSpace(username))
 		if _, ok := unknownMembers[key]; ok {
-			return fmt.Errorf("plan action %s targets unresolved team membership %s: %w", action.Operation, action.ResourceID, ErrUnresolvedTeamMembership)
+			return nil, fmt.Errorf("plan action %s targets unresolved team membership %s: %w", action.Operation, action.ResourceID, ErrUnresolvedTeamMembership)
 		}
 	}
 
 	if !opt.RequireExecutableDesiredActions {
-		return nil
+		return unresolved, nil
 	}
 
 	unfulfilled := UnfulfilledDesiredActions(opt.Plan.Actions)
@@ -93,7 +96,7 @@ func requireExecutableDesiredActions(opt Options) error {
 		}
 	}
 	if len(unfulfilled) == 0 && len(unresolvedDesired) == 0 {
-		return nil
+		return unresolved, nil
 	}
 
 	details := make([]string, 0, len(unfulfilled)+len(unresolvedDesired))
@@ -105,25 +108,8 @@ func requireExecutableDesiredActions(opt Options) error {
 		details = append(details, fmt.Sprintf("team membership %s has unknown origin", membershipID))
 	}
 
-	return fmt.Errorf("%w: %d desired action(s) are not executable and %d desired membership(s) are unresolved:\n- %s",
+	return nil, fmt.Errorf("%w: %d desired action(s) are not executable and %d desired membership(s) are unresolved:\n- %s",
 		ErrUnfulfilledDesiredAction, len(unfulfilled), len(unresolvedDesired), strings.Join(details, "\n- "))
-}
-
-func unresolvedActualTeamMemberships(actual *state.OrganizationState) ([]state.TeamMember, error) {
-	if actual == nil {
-		return []state.TeamMember{}, nil
-	}
-	canonical, err := state.CanonicalTeamMembers(actual.TeamMembers)
-	if err != nil {
-		return nil, fmt.Errorf("validate actual team memberships: %w", err)
-	}
-	unresolved := make([]state.TeamMember, 0)
-	for _, member := range canonical {
-		if member.Origin == github.TeamMembershipOriginUnknown {
-			unresolved = append(unresolved, member)
-		}
-	}
-	return unresolved, nil
 }
 
 func applyPlanSummary(plan *gitopsplan.Report, unresolved []state.TeamMember) gitopsplan.Summary {

@@ -16,6 +16,7 @@ func TestCheckAndExecuteRequireExecutableForUnresolvedDesiredMembership(t *testi
 	desired := config.OrganizationConfig{
 		Organization: "org-a",
 		Members:      []config.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Repositories: []config.RepositorySpec{{Owner: "org-a", Name: "application", Visibility: "private"}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -40,10 +41,24 @@ func TestCheckAndExecuteRequireExecutableForUnresolvedDesiredMembership(t *testi
 		{name: "execute", run: func(options Options) error { _, err := Execute(context.Background(), options); return err }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			options := testApplyOptions(desired, actual, planWith())
+			writes := 0
+			options := testApplyOptions(desired, actual, planWith(gitopsplan.Action{
+				ResourceType: gitopsplan.ActionResourceTypeRepository,
+				Operation:    gitopsplan.ActionOperationCreate,
+				ResourceID:   repositoryResourceID("org-a", "application"),
+				Executable:   true,
+			}), withRepoService(&testRepoService{
+				createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+					writes++
+					return &gh.Repository{}, nil, nil
+				},
+			}))
 			options.RequireExecutableDesiredActions = true
 			if err := test.run(options); !errors.Is(err, ErrUnfulfilledDesiredAction) {
 				t.Fatalf("error = %v, want ErrUnfulfilledDesiredAction for actionless unresolved membership", err)
+			}
+			if writes != 0 {
+				t.Fatalf("repository writes = %d, want 0 after unresolved desired membership", writes)
 			}
 		})
 	}
@@ -53,6 +68,7 @@ func TestReviewedCheckAndExecuteRequireExecutableForUnresolvedDesiredMembership(
 	desired := config.OrganizationConfig{
 		Organization: "org-a",
 		Members:      []config.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Repositories: []config.RepositorySpec{{Owner: "org-a", Name: "application", Visibility: "private"}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -72,7 +88,14 @@ func TestReviewedCheckAndExecuteRequireExecutableForUnresolvedDesiredMembership(
 			TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown,
 		}},
 	}
+	writes := 0
 	options := reviewedTestOptions(desired, actual, identity)
+	options.RepositoryService = &testRepoService{
+		createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			writes++
+			return &gh.Repository{}, nil, nil
+		},
+	}
 	options.RequireExecutableDesiredActions = true
 
 	if _, err := CheckReviewed(context.Background(), options); !errors.Is(err, ErrUnfulfilledDesiredAction) {
@@ -81,12 +104,16 @@ func TestReviewedCheckAndExecuteRequireExecutableForUnresolvedDesiredMembership(
 	if _, err := ExecuteReviewed(context.Background(), options); !errors.Is(err, ErrUnfulfilledDesiredAction) {
 		t.Fatalf("ExecuteReviewed error = %v, want ErrUnfulfilledDesiredAction", err)
 	}
+	if writes != 0 {
+		t.Fatalf("reviewed repository writes = %d, want 0 after unresolved desired membership", writes)
+	}
 }
 
 func TestCallerSuppliedTeamMembershipActionForUnknownOriginFailsBeforeWrites(t *testing.T) {
 	desired := config.OrganizationConfig{
 		Organization: "org-a",
 		Members:      []config.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Repositories: []config.RepositorySpec{{Owner: "org-a", Name: "application", Visibility: "private"}},
 		Teams: []config.TeamSpec{{
 			Slug:    "platform",
 			Name:    "Platform",
@@ -102,16 +129,33 @@ func TestCallerSuppliedTeamMembershipActionForUnknownOriginFailsBeforeWrites(t *
 			TeamSlug: "PLATFORM", Username: "ALICE", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown,
 		}},
 	}
-	plan := planWith(gitopsplan.Action{
-		ResourceType: gitopsplan.ActionResourceTypeTeamMember,
-		Operation:    gitopsplan.ActionOperationCreate,
-		ResourceID:   "Platform/Alice",
-		Executable:   true,
-	})
-	writes := 0
-	options := testApplyOptions(desired, actual, plan, withTeamService(&testTeamService{
+	plan := planWith(
+		gitopsplan.Action{
+			ResourceType: gitopsplan.ActionResourceTypeTeamMember,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   "Platform/Alice",
+			Executable:   true,
+		},
+		gitopsplan.Action{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   repositoryResourceID("org-a", "application"),
+			Executable:   true,
+		},
+	)
+	if len(plan.Actions) < 2 || plan.Actions[0].ResourceType != gitopsplan.ActionResourceTypeRepository || plan.Actions[1].ResourceType != gitopsplan.ActionResourceTypeTeamMember {
+		t.Fatalf("plan order = %#v, want repository mutation before offending membership action", plan.Actions)
+	}
+	teamWrites := 0
+	repositoryWrites := 0
+	options := testApplyOptions(desired, actual, plan, withRepoService(&testRepoService{
+		createFunc: func(context.Context, string, *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			repositoryWrites++
+			return &gh.Repository{}, nil, nil
+		},
+	}), withTeamService(&testTeamService{
 		addTeamMembershipBySlugFunc: func(context.Context, string, string, string, *gh.TeamAddTeamMembershipOptions) (*gh.Membership, *gh.Response, error) {
-			writes++
+			teamWrites++
 			return &gh.Membership{}, nil, nil
 		},
 	}))
@@ -122,8 +166,8 @@ func TestCallerSuppliedTeamMembershipActionForUnknownOriginFailsBeforeWrites(t *
 	if _, err := Execute(context.Background(), options); !errors.Is(err, ErrUnresolvedTeamMembership) {
 		t.Fatalf("Execute error = %v, want ErrUnresolvedTeamMembership", err)
 	}
-	if writes != 0 {
-		t.Fatalf("team membership writes = %d, want 0", writes)
+	if repositoryWrites != 0 || teamWrites != 0 {
+		t.Fatalf("writes before unresolved membership rejection = repository:%d team-membership:%d, want 0", repositoryWrites, teamWrites)
 	}
 }
 
