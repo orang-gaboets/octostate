@@ -89,6 +89,11 @@ func validateLatestIncidentState(state IncidentState, failures []RunAttempt) err
 	if state.Latest.WorkflowID != state.WorkflowID || state.Latest.WorkflowName != state.WorkflowName {
 		return errors.New("latest attempt does not match the incident workflow")
 	}
+	for _, failure := range failures {
+		if attemptLess(state.Latest, failure) {
+			return errors.New("failure history contains an attempt later than the latest status")
+		}
+	}
 	if state.Latest.Conclusion != "success" && !isFailure(state.Latest.Conclusion) {
 		return errors.New("latest attempt has an unsupported conclusion")
 	}
@@ -406,6 +411,11 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 	}
 	if state.Latest.WorkflowID != workflowID || state.Latest.WorkflowName != workflowName || !validPersistedRunAttempt(state.Latest) {
 		return errors.New("managed state contains an invalid or mismatched latest attempt")
+	}
+	for _, failure := range failures {
+		if attemptLess(state.Latest, failure) {
+			return errors.New("failure history contains an attempt later than the latest status")
+		}
 	}
 	if state.Status == StatusFailing && !isFailure(state.Latest.Conclusion) {
 		return errors.New("managed failing status does not match its latest attempt")

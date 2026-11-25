@@ -353,10 +353,32 @@ func TestRenderBodyLinksRerunsToTheirSpecificAttempts(t *testing.T) {
 	}
 }
 
+func TestRenderBodyStateRejectsFailureLaterThanLatestCursor(t *testing.T) {
+	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
+	latest := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/latest")
+	body, _, err := RenderBody(testRepository(), IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
+		Failures: []RunAttempt{latest}, Latest: latest,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := attempt(999, 999, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/forged")
+	end := strings.Index(body, managedEnd)
+	if end < 0 {
+		t.Fatal("rendered body is missing managed end marker")
+	}
+	body = body[:end] + renderFailureLine(forged) + "\n" + body[end:]
+	if _, err := RenderBodyState(body, testRepository(), 100, "CI"); err == nil {
+		t.Fatal("RenderBodyState accepted failure evidence later than the persisted latest cursor")
+	}
+}
+
 func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
-		state.Failures = append(state.Failures, attempt(int64(i), 1, "CI", "push", "main", "failure", time.Date(2026, 11, 1, 0, i%60, 0, 0, time.UTC), "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
+		started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Minute)
+		state.Failures = append(state.Failures, attempt(int64(i), 1, "CI", "push", "main", "failure", started, "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
 	}
 	state.Latest = state.Failures[len(state.Failures)-1]
 	body, archives, err := RenderBody(testRepository(), state, "", nil)

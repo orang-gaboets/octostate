@@ -134,6 +134,16 @@ reconciliation rather than trusting editable issue content. If GitHub has
 expired the stored attempt, a maintainer should review and manually close the
 stale incident; later failures will then start a new linked incident.
 
+That API verification covers the latest ordering cursor. Failure records kept
+in the issue body are structurally checked and must not be later than the
+verified cursor, but they are not individually fetched from GitHub on every
+hourly run. A repository collaborator who edits those machine markers can
+change older body history and its count. Archive comments are App-authored and
+checksum-checked. Maintainers should not edit machine markers; full
+authentication of body-resident history needs a separate durable integrity
+design because GitHub has no batch lookup for attempts and old attempts can
+expire.
+
 The issue title follows the form
 `ci(actions): investigate <workflow> workflow failures on main`. The body has
 one machine-readable repository/workflow identity marker and a managed region
