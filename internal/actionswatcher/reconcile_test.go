@@ -523,44 +523,6 @@ func TestRenderBodyStatePersistsPendingRunIDs(t *testing.T) {
 	}
 }
 
-func TestSetPendingRunIDsPreservesBodyAndCanClearCursor(t *testing.T) {
-	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
-	existing := "investigation notes\n" + identityMarker(testRepository(), 100, "CI") + "\n" + managedStart + "\nold managed content\n" + managedEnd + "\n\nclosing notes"
-	body, _, err := RenderBody(testRepository(), IncidentState{
-		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
-		Failures: []RunAttempt{failure}, Latest: failure,
-	}, existing, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkpoint, err := SetPendingRunIDs(body, testRepository(), 100, "CI", []int64{303})
-	if err != nil {
-		t.Fatal(err)
-	}
-	state, err := RenderBodyState(checkpoint, testRepository(), 100, "CI")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(state.PendingRunIDs, []int64{303}) {
-		t.Fatalf("checkpoint PendingRunIDs = %v, want [303]", state.PendingRunIDs)
-	}
-	if !strings.HasPrefix(checkpoint, "investigation notes\n") || !strings.HasSuffix(checkpoint, "\n\nclosing notes") || !strings.Contains(checkpoint, renderFailureLine(failure)) {
-		t.Fatal("checkpoint changed human text or failure history")
-	}
-	cleared, err := SetPendingRunIDs(checkpoint, testRepository(), 100, "CI", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clearedState, err := RenderBodyState(cleared, testRepository(), 100, "CI")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(clearedState.PendingRunIDs) != 0 {
-		t.Fatalf("cleared PendingRunIDs = %v, want none", clearedState.PendingRunIDs)
-	}
-}
-
 func TestReconcileClearsConsumedPendingRunIDs(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
 	failure := attempt(100, 100, "CI", "push", "main", "failure", started, "https://example.test/failure")

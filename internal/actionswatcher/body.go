@@ -412,46 +412,6 @@ func RenderManagedBodyState(body string, repo RepositoryIdentity) (IncidentState
 	return RenderBodyState(body, repo, workflowID, workflowName)
 }
 
-// SetPendingRunIDs updates the retry cursor in a managed body without changing
-// its human-readable history or any other managed body content.
-func SetPendingRunIDs(body string, repo RepositoryIdentity, workflowID int64, workflowName string, runIDs []int64) (string, error) {
-	state, err := RenderBodyState(body, repo, workflowID, workflowName)
-	if err != nil {
-		return "", err
-	}
-	state.PendingRunIDs, err = normalizePendingRunIDs(runIDs)
-	if err != nil {
-		return "", err
-	}
-	managedStartIndex := strings.Index(body, managedStart)
-	if managedStartIndex < 0 {
-		return "", errors.New("managed body markers are missing")
-	}
-	managedContentStart := managedStartIndex + len(managedStart)
-	managedEndOffset := strings.Index(body[managedContentStart:], managedEnd)
-	if managedEndOffset < 0 {
-		return "", errors.New("managed body markers are missing")
-	}
-	managedEndIndex := managedContentStart + managedEndOffset
-	markerOffset := strings.Index(body[managedContentStart:managedEndIndex], stateMarkerPrefix)
-	if markerOffset < 0 {
-		return "", errors.New("managed state marker is missing")
-	}
-	markerIndex := managedContentStart + markerOffset
-	lineStart := strings.LastIndex(body[:markerIndex], "\n") + 1
-	lineEnd := strings.IndexByte(body[markerIndex:], '\n')
-	if lineEnd < 0 {
-		lineEnd = len(body)
-	} else {
-		lineEnd += markerIndex
-	}
-	updated := body[:lineStart] + stateMarker(state) + body[lineEnd:]
-	if len(updated) > MaxIssueBodyBytes {
-		return "", fmt.Errorf("issue body exceeds %d bytes after updating pending runs", MaxIssueBodyBytes)
-	}
-	return updated, nil
-}
-
 // RenderCheckpointBody stores pending run IDs and archives visible failure
 // history when needed to keep the issue body within GitHub's size limit.
 // archiveComments must contain only comments authored by the watcher App.
