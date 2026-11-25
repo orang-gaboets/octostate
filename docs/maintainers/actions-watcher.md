@@ -137,12 +137,14 @@ monitoring beyond the available run history.
 
 Before using an open incident's latest attempt as its ordering cursor, the
 watcher fetches that exact run attempt from GitHub and checks the persisted
-metadata against the API response. For a failed latest attempt, it also checks
-the persisted failed-job names and availability against the Actions API. Missing
-or mismatched metadata stops the reconciliation rather than trusting editable
-issue content. If GitHub has expired the stored attempt, a maintainer should
-review and manually close the stale incident; later failures will then start a
-new linked incident.
+metadata against the API response. For a failed latest attempt with available
+job data, it also checks the persisted failed-job names against the Actions
+API. A checkpoint recorded while job data was unavailable remains valid if
+GitHub later exposes those jobs; a subsequent scan enriches the managed failure
+record when it sees that attempt again. Other missing or mismatched metadata
+stops reconciliation rather than trusting editable issue content. If GitHub
+has expired the stored attempt, a maintainer should review and manually close
+the stale incident; later failures will then start a new linked incident.
 
 That API verification covers the latest ordering cursor. Failure records kept
 in the issue body are structurally checked and must not be later than the

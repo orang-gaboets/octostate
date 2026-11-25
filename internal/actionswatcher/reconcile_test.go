@@ -367,6 +367,43 @@ func TestReconcileRestoresIncidentTitleAfterTitleOnlyEdit(t *testing.T) {
 	}
 }
 
+func TestReconcileEnrichesCheckpointedFailureWhenJobsBecomeAvailable(t *testing.T) {
+	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
+	checkpointed := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/run/1")
+	checkpointed.JobDataAvailable = false
+	checkpointed.FailedJobs = nil
+	body, _, err := RenderBody(testRepository(), IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
+		Failures: []RunAttempt{checkpointed}, Latest: checkpointed,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := IssueSnapshot{
+		Number: 101, State: "open", AuthorLogin: "actions-watcher[bot]", Title: incidentTitle("CI"), Body: body,
+		Labels: []string{ManagedLabel, FailingLabel},
+	}
+	enriched := checkpointed
+	enriched.JobDataAvailable = true
+	enriched.FailedJobs = []string{"test-linux"}
+
+	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{enriched}, []IssueSnapshot{issue}, started.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	change := onlyChange(t, plan)
+	if change.Action != ActionUpdate || !strings.Contains(change.Body, "Failed jobs: `test-linux`") {
+		t.Fatalf("enriched checkpoint change = %#v, want updated available job metadata", change)
+	}
+	state, err := RenderBodyState(change.Body, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Latest.JobDataAvailable || len(state.Latest.FailedJobs) != 1 || state.Latest.FailedJobs[0] != "test-linux" || !sameAttempt(state.Latest, state.Failures[0]) {
+		t.Fatalf("latest/failure state was not enriched consistently: latest=%#v failures=%#v", state.Latest, state.Failures)
+	}
+}
+
 func TestReconcileRejectsConflictingAttemptAndWorkflowIdentity(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
 	first := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")

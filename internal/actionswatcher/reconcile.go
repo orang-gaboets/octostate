@@ -479,6 +479,14 @@ func stateFromAttempts(key workflowKey, previous *IncidentState, attempts []RunA
 	if state.Status == "" && len(state.Failures) > 0 {
 		state.Status = StatusFailing
 	}
+	if isFailure(state.Latest.Conclusion) {
+		for _, failure := range state.Failures {
+			if attemptKey(failure) == attemptKey(state.Latest) {
+				state.Latest = cloneAttempt(failure)
+				break
+			}
+		}
+	}
 	return state, nil
 }
 
@@ -540,9 +548,11 @@ func mergeFailures(groups ...[]RunAttempt) ([]RunAttempt, error) {
 			}
 			key := attemptKey(attempt)
 			if previous, ok := byKey[key]; ok {
-				if !sameAttempt(previous, attempt) {
+				merged, ok := mergeFailureJobData(previous, attempt)
+				if !ok {
 					return nil, fmt.Errorf("history has conflicting duplicate attempt %s", key)
 				}
+				byKey[key] = merged
 				continue
 			}
 			byKey[key] = attempt
@@ -554,6 +564,33 @@ func mergeFailures(groups ...[]RunAttempt) ([]RunAttempt, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return attemptLess(result[i], result[j]) })
 	return result, nil
+}
+
+func mergeFailureJobData(previous, incoming RunAttempt) (RunAttempt, bool) {
+	if sameAttempt(previous, incoming) {
+		return previous, true
+	}
+	if !sameAttemptExceptJobData(previous, incoming) ||
+		(!previous.JobDataAvailable && len(previous.FailedJobs) != 0) ||
+		(!incoming.JobDataAvailable && len(incoming.FailedJobs) != 0) {
+		return RunAttempt{}, false
+	}
+	switch {
+	case !previous.JobDataAvailable && incoming.JobDataAvailable:
+		return incoming, true
+	case previous.JobDataAvailable && !incoming.JobDataAvailable:
+		// Keep evidence already captured when a later read cannot retrieve it.
+		return previous, true
+	default:
+		return RunAttempt{}, false
+	}
+}
+
+func sameAttemptExceptJobData(left, right RunAttempt) bool {
+	left, right = cloneAttempt(left), cloneAttempt(right)
+	left.FailedJobs, right.FailedJobs = nil, nil
+	left.JobDataAvailable, right.JobDataAvailable = false, false
+	return sameAttempt(left, right)
 }
 
 func uniqueFailures(attempts []RunAttempt) ([]RunAttempt, error) {

@@ -512,6 +512,46 @@ func TestVerifyPersistedFailureMatchesRunAndJobMetadata(t *testing.T) {
 	}
 }
 
+func TestVerifyPersistedFailureAllowsUnavailableJobsToResolve(t *testing.T) {
+	const repoID = 99
+	var jobCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch path {
+		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1":
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, 1, "failure"))
+		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1/jobs":
+			if jobCalls.Add(1) == 1 {
+				writeJSON(w, http.StatusGone, map[string]any{"message": "job data temporarily unavailable"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": "test", "conclusion": "failure"}}})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	started := time.Date(2026, 11, 25, 10, 1, 0, 0, time.UTC)
+	expected := testFailureAttempt(101, 101, started)
+	expected.CompletedAt = started.Add(30 * time.Second)
+	expected.JobDataAvailable = false
+	expected.FailedJobs = nil
+	for i := 0; i < 2; i++ {
+		if err := client.verifyPersistedFailure(context.Background(), expected); err != nil {
+			t.Fatalf("verifyPersistedFailure() call %d error = %v", i+1, err)
+		}
+	}
+
+	forgedUnavailable := expected
+	forgedUnavailable.FailedJobs = []string{"forged job"}
+	if err := client.verifyPersistedFailure(context.Background(), forgedUnavailable); err == nil || !strings.Contains(err.Error(), "job metadata") {
+		t.Fatalf("verifyPersistedFailure() accepted unavailable record with job names: %v", err)
+	}
+}
+
 func TestApplyPlanRejectsUnverifiedArchiveBeforeMutation(t *testing.T) {
 	const repoID = 99
 	var attemptCalls atomic.Int32
