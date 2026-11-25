@@ -167,8 +167,9 @@ remain human-owned. The body records UTC timestamps, every distinct failure's
 run URL, SHA, run and attempt number, and available failed job names. Missing
 job data is identified as unavailable. Raw logs and sensitive data are never
 copied. If the body reaches the size limit, older failure records move into
-immutable, marked issue comments and the body links those archive ranges; the
-watcher fails closed if an archive reference cannot be verified.
+immutable, marked issue comments. The body links the latest archive comments
+and stores a compact digest index for the full archive set; the watcher fails
+closed if a referenced or indexed archive is missing.
 
 Recovery changes the body and status label and adds a marked transition
 comment. A later failure while the issue remains open returns it to failing and

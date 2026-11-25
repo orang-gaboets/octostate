@@ -618,6 +618,13 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	if len(references) != 20 {
 		t.Fatalf("body contains %d archive references, want 20", len(references))
 	}
+	indexed, hasIndex, err := bodyArchiveIndex(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasIndex || len(indexed) != archiveCount {
+		t.Fatalf("body archive index contains %d entries (present=%t), want %d", len(indexed), hasIndex, archiveCount)
+	}
 
 	secondBody, secondArchives, err := RenderBody(testRepository(), state, body, comments)
 	if err != nil {
@@ -625,6 +632,10 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	}
 	if secondBody != body || len(secondArchives) != 0 {
 		t.Fatalf("archive rendering was not idempotent: body_same=%t new_archives=%d", secondBody == body, len(secondArchives))
+	}
+
+	if _, _, err := RenderBody(testRepository(), state, body, comments[1:]); err == nil {
+		t.Fatal("RenderBody silently accepted a missing archive that was not listed in the issue body")
 	}
 }
 
