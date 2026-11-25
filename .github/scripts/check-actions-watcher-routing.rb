@@ -70,5 +70,6 @@ uses = File.read(workflow_path).scan(/^\s*uses:\s*([^\s#]+)/).flatten
 require_check(uses.all? { |reference| reference.match?(/^[^@]+@[0-9a-f]{40}$/) }, "every third-party Action must be pinned to a full commit SHA")
 require_check(source.include?('return conclusion == "failure" || conclusion == "timed_out" || conclusion == "startup_failure"'), "failure conclusion policy changed")
 require_check(source.include?('conclusion != "success"'), "only a successful attempt may be treated as recovery")
+require_check(source.include?("GetWorkflowRunByID"), "workflow_run triggers must re-fetch their triggering run by ID")
 
 puts "actions watcher workflow routing checks passed"

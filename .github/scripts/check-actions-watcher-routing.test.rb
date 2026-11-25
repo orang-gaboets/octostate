@@ -38,7 +38,8 @@ mutations = {
   "cancellation policy" => [workflow.sub("cancel-in-progress: false", "cancel-in-progress: true"), source],
   "checkout ref" => [workflow.sub("ref: main", 'ref: "${{ github.ref }}"'), source],
   "token permission" => [workflow.sub("permission-issues: write", "permission-issues: read"), source],
-  "failure conclusion policy" => [workflow, source.sub('conclusion == "timed_out"', 'conclusion == "cancelled"')]
+  "failure conclusion policy" => [workflow, source.sub('conclusion == "timed_out"', 'conclusion == "cancelled"')],
+  "triggering run readback" => [workflow, source.sub("GetWorkflowRunByID", "GetWorkflowRun")]
 }
 
 mutations.each do |name, (mutated_workflow, mutated_source)|

@@ -98,10 +98,13 @@ in a reviewed change.
 The watcher runs on each completed allowlisted `workflow_run`, 15 minutes
 after a push to `main`, and hourly. Every run performs a full authoritative
 reconciliation instead of trusting the triggering event payload for issue
-state. Repository-wide concurrency serializes active runs without cancelling
-one that has started. GitHub may replace an older pending run in the same
-concurrency group; the next hourly reconciliation recovers any missed event
-that remains within the API lookback.
+state. For a `workflow_run` trigger, it also re-fetches the event's run ID
+directly from GitHub, so a delivered rerun can be reconciled even when its
+original run was created before the seven-day lookback. Repository-wide
+concurrency serializes active runs without cancelling one that has started.
+GitHub may replace an older pending run in the same concurrency group; the
+next hourly reconciliation recovers any missed event that remains within the
+API lookback.
 
 The command reads all pages of workflow, run, issue, label, and comment data.
 It partitions an oversized run query when GitHub's workflow-run endpoint
@@ -119,10 +122,10 @@ time filter. Attempts that started before the first-parent commit that adds
 `.github/workflows/actions-watcher.yml` are ignored. This avoids importing old
 incidents at activation. GitHub's created-time filter does not move when an
 old run is rerun, so a rerun of a run created more than seven days ago can be
-missed if its `workflow_run` event is also lost. Event delivery outages,
-disabled Actions, API or credential outages, and GitHub retention can also
-exceed coverage. The watcher does not claim complete monitoring beyond the
-available run history.
+missed by the hourly sweep if its `workflow_run` event is also lost. Event
+delivery outages, disabled Actions, API or credential outages, and GitHub
+retention can also exceed coverage. The watcher does not claim complete
+monitoring beyond the available run history.
 
 The issue title follows the form
 `ci(actions): investigate <workflow> workflow failures on main`. The body has

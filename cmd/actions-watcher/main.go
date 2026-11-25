@@ -23,15 +23,17 @@ const (
 )
 
 type commandConfig struct {
-	Repository  watcher.RepositoryIdentity
-	EventName   string
-	EventPath   string
-	EventRef    string
-	APIURL      string
-	Token       string
-	AppSlug     string
-	ActivatedAt time.Time
-	ReconcileAt time.Time
+	Repository          watcher.RepositoryIdentity
+	EventName           string
+	EventPath           string
+	EventRef            string
+	TriggerRunID        int64
+	TriggerWorkflowName string
+	APIURL              string
+	Token               string
+	AppSlug             string
+	ActivatedAt         time.Time
+	ReconcileAt         time.Time
 }
 
 type commandResult struct {
@@ -65,7 +67,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err != nil {
 		return err
 	}
-	attempts, err := client.collectAttempts(ctx, cfg.ActivatedAt, cfg.ReconcileAt)
+	attempts, err := client.collectAttempts(ctx, cfg.ActivatedAt, cfg.ReconcileAt, cfg.TriggerRunID, cfg.TriggerWorkflowName)
 	if err != nil {
 		return fmt.Errorf("collect workflow attempts: %w", err)
 	}
@@ -114,7 +116,8 @@ func readConfig(getenv func(string) string, now time.Time) (commandConfig, error
 	if eventPath == "" {
 		return cfg, errors.New("GITHUB_EVENT_PATH is required")
 	}
-	if err := validateTriggerEvent(eventName, eventPath); err != nil {
+	trigger, err := readTriggerEvent(eventName, eventPath)
+	if err != nil {
 		return cfg, err
 	}
 	apiURL := strings.TrimSpace(getenv("GITHUB_API_URL"))
@@ -139,38 +142,56 @@ func readConfig(getenv func(string) string, now time.Time) (commandConfig, error
 	return commandConfig{
 		Repository: watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"},
 		EventName:  eventName, EventPath: eventPath, EventRef: eventRef,
+		TriggerRunID: trigger.RunID, TriggerWorkflowName: trigger.WorkflowName,
 		APIURL: apiURL, Token: token, AppSlug: appSlug, ActivatedAt: activated.UTC(), ReconcileAt: now.UTC(),
 	}, nil
 }
 
+type triggerEvent struct {
+	RunID        int64
+	WorkflowName string
+}
+
 func validateTriggerEvent(eventName, eventPath string) error {
+	_, err := readTriggerEvent(eventName, eventPath)
+	return err
+}
+
+func readTriggerEvent(eventName, eventPath string) (triggerEvent, error) {
+	var trigger triggerEvent
 	file, err := os.Open(eventPath)
 	if err != nil {
-		return fmt.Errorf("read GITHUB_EVENT_PATH: %w", err)
+		return trigger, fmt.Errorf("read GITHUB_EVENT_PATH: %w", err)
 	}
 	var payload struct {
 		Action      string `json:"action"`
 		WorkflowRun struct {
+			ID   int64  `json:"id"`
 			Name string `json:"name"`
 		} `json:"workflow_run"`
 	}
 	decodeErr := json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&payload)
 	closeErr := file.Close()
 	if decodeErr != nil {
-		return fmt.Errorf("decode GITHUB_EVENT_PATH: %w", decodeErr)
+		return trigger, fmt.Errorf("decode GITHUB_EVENT_PATH: %w", decodeErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close GITHUB_EVENT_PATH: %w", closeErr)
+		return trigger, fmt.Errorf("close GITHUB_EVENT_PATH: %w", closeErr)
 	}
 	if eventName == "workflow_run" {
 		if payload.Action != "completed" {
-			return fmt.Errorf("workflow_run action must be completed, got %q", payload.Action)
+			return trigger, fmt.Errorf("workflow_run action must be completed, got %q", payload.Action)
 		}
 		if !watcher.IsMonitoredWorkflow(payload.WorkflowRun.Name) {
-			return fmt.Errorf("workflow_run event is for an unmonitored workflow %q", payload.WorkflowRun.Name)
+			return trigger, fmt.Errorf("workflow_run event is for an unmonitored workflow %q", payload.WorkflowRun.Name)
 		}
+		if payload.WorkflowRun.ID <= 0 {
+			return trigger, errors.New("workflow_run event is missing a positive run ID")
+		}
+		trigger.RunID = payload.WorkflowRun.ID
+		trigger.WorkflowName = payload.WorkflowRun.Name
 	}
-	return nil
+	return trigger, nil
 }
 
 func resultFor(attemptCount int, plan watcher.Plan) commandResult {

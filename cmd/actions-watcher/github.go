@@ -243,9 +243,20 @@ func workflowPath(raw string) string {
 	return path
 }
 
-func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now time.Time) ([]watcher.RunAttempt, error) {
+type attemptCollector struct {
+	client       *watcherClient
+	activatedAt  time.Time
+	seen         map[string]watcher.RunAttempt
+	seenRunNames map[int64]string
+	result       []watcher.RunAttempt
+}
+
+func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now time.Time, triggerRunID int64, triggerWorkflowName string) ([]watcher.RunAttempt, error) {
 	if activatedAt.IsZero() || activatedAt.After(now) {
 		return nil, errors.New("watcher activation time is missing or in the future")
+	}
+	if triggerRunID < 0 || (triggerRunID == 0 && triggerWorkflowName != "") || (triggerRunID > 0 && !watcher.IsMonitoredWorkflow(triggerWorkflowName)) {
+		return nil, errors.New("workflow_run trigger identity is incomplete or unmonitored")
 	}
 	if err := c.verifyInstallationScope(ctx); err != nil {
 		return nil, err
@@ -254,12 +265,17 @@ func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now ti
 	if err != nil {
 		return nil, err
 	}
-	cutoff := now.Add(-lookbackWindow)
-	if !cutoff.Before(now) {
-		return nil, nil
+	collector := attemptCollector{
+		client: c, activatedAt: activatedAt,
+		seen: make(map[string]watcher.RunAttempt), seenRunNames: make(map[int64]string),
 	}
-	var result []watcher.RunAttempt
-	seen := make(map[string]watcher.RunAttempt)
+	if err := collector.collect(ctx, workflows, now.Add(-lookbackWindow), now, triggerRunID, triggerWorkflowName); err != nil {
+		return nil, err
+	}
+	return collector.result, nil
+}
+
+func (collector *attemptCollector) collect(ctx context.Context, workflows map[string]*gh.Workflow, start, end time.Time, triggerRunID int64, triggerWorkflowName string) error {
 	names := make([]string, 0, len(workflows))
 	for name := range workflows {
 		names = append(names, name)
@@ -267,51 +283,79 @@ func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now ti
 	sort.Strings(names)
 	for _, name := range names {
 		workflow := workflows[name]
-		rows, err := c.listRunsInRange(ctx, workflow.GetID(), cutoff, now)
+		rows, err := collector.client.listRunsInRange(ctx, workflow.GetID(), start, end)
 		if err != nil {
-			return nil, fmt.Errorf("list runs for workflow %q: %w", name, err)
+			return fmt.Errorf("list runs for workflow %q: %w", name, err)
 		}
 		for _, row := range rows {
 			if row == nil {
 				continue
 			}
-			if err := validateWorkflowRunIdentity(row, c.repo, workflow); err != nil {
-				return nil, fmt.Errorf("validate workflow run for %q: %w", name, err)
-			}
-			eligible, err := eligibleWorkflowRun(row, c.repo)
-			if err != nil {
-				return nil, fmt.Errorf("validate source repository for run %d: %w", row.GetID(), err)
-			}
-			if !eligible {
+			if row.GetID() == triggerRunID {
+				if name != triggerWorkflowName {
+					return fmt.Errorf("workflow_run payload names %q but the run list associates run %d with %q", triggerWorkflowName, triggerRunID, name)
+				}
 				continue
 			}
-			if row.GetStatus() != "completed" || (!isRunFailure(row.GetConclusion()) && row.GetConclusion() != "success") {
-				continue
-			}
-			attempts, err := c.readRunAttempts(ctx, workflow, row)
-			if err != nil {
-				return nil, fmt.Errorf("read attempts for run %d: %w", row.GetID(), err)
-			}
-			for _, attempt := range attempts {
-				if attempt.StartedAt.Before(activatedAt) {
-					continue
-				}
-				key := fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)
-				if old, exists := seen[key]; exists {
-					if !reflect.DeepEqual(old, attempt) {
-						return nil, fmt.Errorf("API returned conflicting duplicate attempt %s", key)
-					}
-					continue
-				}
-				seen[key] = attempt
-				result = append(result, attempt)
-				if len(result) > maxAttemptHistory {
-					return nil, fmt.Errorf("lookback returned more than %d workflow attempts; refusing incomplete history", maxAttemptHistory)
-				}
+			if err := collector.processRun(ctx, workflow, row); err != nil {
+				return err
 			}
 		}
 	}
-	return result, nil
+	if triggerRunID == 0 {
+		return nil
+	}
+	workflow := workflows[triggerWorkflowName]
+	run, _, err := collector.client.client.Actions.GetWorkflowRunByID(ctx, collector.client.repo.Owner, collector.client.repo.Name, triggerRunID)
+	if err != nil {
+		return fmt.Errorf("re-fetch triggering workflow run %d: %w", triggerRunID, err)
+	}
+	if run == nil || run.GetID() != triggerRunID {
+		return fmt.Errorf("triggering workflow run %d returned a conflicting identity", triggerRunID)
+	}
+	return collector.processRun(ctx, workflow, run)
+}
+
+func (collector *attemptCollector) processRun(ctx context.Context, workflow *gh.Workflow, row *gh.WorkflowRun) error {
+	if row == nil {
+		return nil
+	}
+	if previous, exists := collector.seenRunNames[row.GetID()]; exists && previous != workflow.GetName() {
+		return fmt.Errorf("run ID %d is associated with conflicting workflows %q and %q", row.GetID(), previous, workflow.GetName())
+	}
+	collector.seenRunNames[row.GetID()] = workflow.GetName()
+	if err := validateWorkflowRunIdentity(row, collector.client.repo, workflow); err != nil {
+		return fmt.Errorf("validate workflow run for %q: %w", workflow.GetName(), err)
+	}
+	eligible, err := eligibleWorkflowRun(row, collector.client.repo)
+	if err != nil {
+		return fmt.Errorf("validate source repository for run %d: %w", row.GetID(), err)
+	}
+	if !eligible || row.GetStatus() != "completed" || (!isRunFailure(row.GetConclusion()) && row.GetConclusion() != "success") {
+		return nil
+	}
+	attempts, err := collector.client.readRunAttempts(ctx, workflow, row)
+	if err != nil {
+		return fmt.Errorf("read attempts for run %d: %w", row.GetID(), err)
+	}
+	for _, attempt := range attempts {
+		if attempt.StartedAt.Before(collector.activatedAt) {
+			continue
+		}
+		key := fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)
+		if old, exists := collector.seen[key]; exists {
+			if !reflect.DeepEqual(old, attempt) {
+				return fmt.Errorf("API returned conflicting duplicate attempt %s", key)
+			}
+			continue
+		}
+		collector.seen[key] = attempt
+		collector.result = append(collector.result, attempt)
+		if len(collector.result) > maxAttemptHistory {
+			return fmt.Errorf("lookback returned more than %d workflow attempts; refusing incomplete history", maxAttemptHistory)
+		}
+	}
+	return nil
 }
 
 func (c *watcherClient) listRunsInRange(ctx context.Context, workflowID int64, start, end time.Time) ([]*gh.WorkflowRun, error) {
@@ -356,6 +400,9 @@ func (c *watcherClient) listRunsInRange(ctx context.Context, workflowID int64, s
 }
 
 func validateWorkflowRunIdentity(run *gh.WorkflowRun, repo watcher.RepositoryIdentity, workflow *gh.Workflow) error {
+	if run.GetID() <= 0 {
+		return errors.New("workflow run is missing a positive run ID")
+	}
 	if run.GetWorkflowID() != workflow.GetID() || run.GetName() != workflow.GetName() || workflowPath(run.GetPath()) != expectedWorkflowPaths[workflow.GetName()] {
 		return fmt.Errorf("API workflow ID, name, or path does not match %q", workflow.GetName())
 	}

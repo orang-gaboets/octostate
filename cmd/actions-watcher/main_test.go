@@ -57,9 +57,10 @@ func TestValidateTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.
 		payload string
 		wantErr bool
 	}{
-		{name: "completed allowlisted", payload: `{"action":"completed","workflow_run":{"name":"CI"}}`},
-		{name: "wrong action", payload: `{"action":"requested","workflow_run":{"name":"CI"}}`, wantErr: true},
-		{name: "unknown workflow", payload: `{"action":"completed","workflow_run":{"name":"Untrusted"}}`, wantErr: true},
+		{name: "completed allowlisted", payload: `{"action":"completed","workflow_run":{"id":123,"name":"CI"}}`},
+		{name: "wrong action", payload: `{"action":"requested","workflow_run":{"id":123,"name":"CI"}}`, wantErr: true},
+		{name: "unknown workflow", payload: `{"action":"completed","workflow_run":{"id":123,"name":"Untrusted"}}`, wantErr: true},
+		{name: "missing run ID", payload: `{"action":"completed","workflow_run":{"name":"CI"}}`, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.payload), 0o600); err != nil {
@@ -95,9 +96,16 @@ func TestResultForEmitsStableMachineSummary(t *testing.T) {
 	}
 }
 
-func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing.T) {
-	const repoID = 99
-	var workflowPageCalls, runPageCalls, attemptCalls, jobCalls atomic.Int32
+type collectorCallCounts struct {
+	workflowPages atomic.Int32
+	runPages      atomic.Int32
+	attempts      atomic.Int32
+	jobs          atomic.Int32
+}
+
+func newPagedCollectorServer(t *testing.T, repoID int64) (*httptest.Server, *collectorCallCounts) {
+	t.Helper()
+	calls := &collectorCallCounts{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
 			t.Errorf("Authorization = %q, want installation bearer token", got)
@@ -107,58 +115,88 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 		case path == "installation/repositories":
 			writeJSON(w, 200, map[string]any{"total_count": 1, "repositories": []any{map[string]any{"id": repoID, "full_name": expectedRepository}}})
 		case path == "repos/orang-gaboets/octostate/actions/workflows":
-			workflowPageCalls.Add(1)
-			workflows := workflowFixtures()
-			if r.URL.Query().Get("page") == "1" {
-				w.Header().Set("Link", `</api/v3/repos/orang-gaboets/octostate/actions/workflows?per_page=100&page=2>; rel="next"`)
-				writeJSON(w, 200, map[string]any{"total_count": 7, "workflows": workflows[:6]})
-			} else {
-				writeJSON(w, 200, map[string]any{"total_count": 7, "workflows": workflows[6:]})
-			}
+			serveWorkflowPage(calls, w, r)
 		case strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/") && strings.HasSuffix(path, "/runs"):
-			id := strings.TrimSuffix(strings.TrimPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/"), "/runs")
-			if id != "1" {
-				writeJSON(w, 200, map[string]any{"total_count": 0, "workflow_runs": []any{}})
-				return
-			}
-			runPageCalls.Add(1)
-			if r.URL.Query().Get("page") == "1" {
-				w.Header().Set("Link", `</api/v3/repos/orang-gaboets/octostate/actions/workflows/1/runs?per_page=100&page=2>; rel="next"`)
-				writeJSON(w, 200, map[string]any{"total_count": 2, "workflow_runs": []any{runFixture(repoID, 101, 2, "failure")}})
-			} else {
-				writeJSON(w, 200, map[string]any{"total_count": 2, "workflow_runs": []any{runFixture(repoID, 102, 1, "failure")}})
-			}
+			serveRunPage(calls, repoID, w, r, path)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/103":
+			serveTriggerRun(repoID, w)
 		case strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/") && !strings.HasSuffix(path, "/jobs"):
-			attemptCalls.Add(1)
-			parts := strings.Split(path, "/")
-			runID, _ := strconv.ParseInt(parts[5], 10, 64)
-			attemptNumber, _ := strconv.Atoi(parts[7])
-			writeJSON(w, 200, runAttemptFixture(repoID, runID, attemptNumber, "failure"))
+			serveRunAttempt(calls, repoID, w, path)
 		case strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.HasSuffix(path, "/jobs"):
-			jobCalls.Add(1)
-			if strings.Contains(path, "/102/attempts/1/jobs") {
-				writeJSON(w, http.StatusNotFound, map[string]any{"message": "job data expired"})
-				return
-			}
-			writeJSON(w, 200, map[string]any{"total_count": 0, "jobs": []any{}})
+			serveJobs(calls, w, path)
 		default:
 			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
 			writeJSON(w, 404, map[string]any{"message": "unexpected route"})
 		}
 	}))
+	return server, calls
+}
+
+func serveWorkflowPage(calls *collectorCallCounts, w http.ResponseWriter, r *http.Request) {
+	calls.workflowPages.Add(1)
+	workflows := workflowFixtures()
+	if r.URL.Query().Get("page") == "1" {
+		w.Header().Set("Link", `</api/v3/repos/orang-gaboets/octostate/actions/workflows?per_page=100&page=2>; rel="next"`)
+		writeJSON(w, 200, map[string]any{"total_count": 7, "workflows": workflows[:6]})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"total_count": 7, "workflows": workflows[6:]})
+}
+
+func serveRunPage(calls *collectorCallCounts, repoID int64, w http.ResponseWriter, r *http.Request, path string) {
+	id := strings.TrimSuffix(strings.TrimPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/"), "/runs")
+	if id != "1" {
+		writeJSON(w, 200, map[string]any{"total_count": 0, "workflow_runs": []any{}})
+		return
+	}
+	calls.runPages.Add(1)
+	if r.URL.Query().Get("page") == "1" {
+		w.Header().Set("Link", `</api/v3/repos/orang-gaboets/octostate/actions/workflows/1/runs?per_page=100&page=2>; rel="next"`)
+		writeJSON(w, 200, map[string]any{"total_count": 2, "workflow_runs": []any{runFixture(repoID, 101, 2, "failure")}})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"total_count": 2, "workflow_runs": []any{runFixture(repoID, 102, 1, "failure")}})
+}
+
+func serveTriggerRun(repoID int64, w http.ResponseWriter) {
+	oldRun := runFixture(repoID, 103, 1, "failure")
+	oldRun["created_at"] = "2020-01-01T00:00:00Z"
+	writeJSON(w, http.StatusOK, oldRun)
+}
+
+func serveRunAttempt(calls *collectorCallCounts, repoID int64, w http.ResponseWriter, path string) {
+	calls.attempts.Add(1)
+	parts := strings.Split(path, "/")
+	runID, _ := strconv.ParseInt(parts[5], 10, 64)
+	attemptNumber, _ := strconv.Atoi(parts[7])
+	writeJSON(w, 200, runAttemptFixture(repoID, runID, attemptNumber, "failure"))
+}
+
+func serveJobs(calls *collectorCallCounts, w http.ResponseWriter, path string) {
+	calls.jobs.Add(1)
+	if strings.Contains(path, "/102/attempts/1/jobs") {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "job data expired"})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"total_count": 0, "jobs": []any{}})
+}
+
+func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing.T) {
+	const repoID = 99
+	server, calls := newPagedCollectorServer(t, repoID)
 	defer server.Close()
 	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
 	activatedAt := time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
-	attempts, err := client.collectAttempts(context.Background(), activatedAt, now)
+	attempts, err := client.collectAttempts(context.Background(), activatedAt, now, 103, "CI")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workflowPageCalls.Load() != 2 || runPageCalls.Load() != 2 || attemptCalls.Load() != 3 || jobCalls.Load() != 3 {
-		t.Fatalf("API page/attempt/job calls = %d/%d/%d/%d, want 2/2/3/3", workflowPageCalls.Load(), runPageCalls.Load(), attemptCalls.Load(), jobCalls.Load())
+	if calls.workflowPages.Load() != 2 || calls.runPages.Load() != 2 || calls.attempts.Load() != 4 || calls.jobs.Load() != 4 {
+		t.Fatalf("API page/attempt/job calls = %d/%d/%d/%d, want 2/2/4/4", calls.workflowPages.Load(), calls.runPages.Load(), calls.attempts.Load(), calls.jobs.Load())
 	}
-	if len(attempts) != 3 {
-		t.Fatalf("collected %d attempts, want three distinct attempts", len(attempts))
+	if len(attempts) != 4 {
+		t.Fatalf("collected %d attempts, want four distinct attempts including the old event run", len(attempts))
 	}
 	if attempts[0].RunID != 101 || attempts[0].Attempt != 1 || !attempts[0].JobDataAvailable || len(attempts[0].FailedJobs) != 0 {
 		t.Fatalf("first attempt did not preserve known-empty job data: %#v", attempts[0])
@@ -168,6 +206,9 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	}
 	if attempts[2].RunID != 102 || attempts[2].JobDataAvailable {
 		t.Fatalf("unavailable job data was conflated with a known-empty result: %#v", attempts[2])
+	}
+	if attempts[3].RunID != 103 || attempts[3].Conclusion != "failure" {
+		t.Fatalf("the triggering run outside the created-time window was not fetched: %#v", attempts[3])
 	}
 }
 
@@ -187,7 +228,7 @@ func TestCollectAttemptsRejectsInstallationScopeAndAuthorizationFailures(t *test
 			}))
 			defer server.Close()
 			client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
-			_, err := client.collectAttempts(context.Background(), time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC))
+			_, err := client.collectAttempts(context.Background(), time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC), 0, "")
 			if err == nil || !strings.Contains(err.Error(), tc.wantPhrase) {
 				t.Fatalf("collectAttempts() error = %v, want phrase %q", err, tc.wantPhrase)
 			}
