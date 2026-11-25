@@ -486,11 +486,18 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 	if state.PreviousIssueNumber < 0 || repo.ID <= 0 {
 		return errors.New("managed state contains an invalid repository or previous issue identity")
 	}
-	if len(state.PendingRunIDs) > maxPendingRunIDs {
+	if err := validatePendingRunIDs(state.PendingRunIDs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validatePendingRunIDs(runIDs []int64) error {
+	if len(runIDs) > maxPendingRunIDs {
 		return errors.New("managed state contains too many pending workflow runs")
 	}
-	for i, runID := range state.PendingRunIDs {
-		if runID <= 0 || (i > 0 && state.PendingRunIDs[i-1] >= runID) {
+	for i, runID := range runIDs {
+		if runID <= 0 || (i > 0 && runIDs[i-1] >= runID) {
 			return errors.New("managed state contains invalid or duplicate pending workflow run IDs")
 		}
 	}
