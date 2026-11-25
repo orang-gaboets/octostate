@@ -204,14 +204,19 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
 	first := testFailureAttempt(100, 100, started)
+	pendingIDs := make([]int64, 50)
+	for i := range pendingIDs {
+		pendingIDs[i] = int64(200 + i)
+	}
 	oldBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
 		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
-		Failures: []watcher.RunAttempt{first}, Latest: first, PendingRunIDs: []int64{102},
+		Failures: []watcher.RunAttempt{first}, Latest: first, PendingRunIDs: pendingIDs,
 	}, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	second := testFailureAttempt(101, 101, started.Add(time.Hour))
+	triggerRunID := int64(10000)
 	targetBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
 		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
 		Failures: []watcher.RunAttempt{first, second}, Latest: second,
@@ -257,7 +262,7 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	change := watcher.IssueChange{
 		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
 		Title: "incident", Body: targetBody, CurrentStatus: watcher.StatusFailing,
-		PendingRunIDs: []int64{103},
+		PendingRunIDs: append(append([]int64(nil), pendingIDs...), triggerRunID),
 		Comments:      []watcher.ManagedComment{{Marker: "<!-- actions-watcher:transition:v1 test -->", Body: "transition"}},
 	}
 	err = client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{initialIssue})
@@ -268,8 +273,12 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(state.PendingRunIDs, []int64{102, 103}) {
-		t.Fatalf("persisted PendingRunIDs = %v, want [102 103]", state.PendingRunIDs)
+	wantPendingIDs := append(append([]int64(nil), pendingIDs...), triggerRunID)
+	if !reflect.DeepEqual(state.PendingRunIDs, wantPendingIDs) {
+		t.Fatalf("persisted PendingRunIDs = %v, want %v", state.PendingRunIDs, wantPendingIDs)
+	}
+	if got := len(apiIssue["body"].(string)); got > watcher.MaxIssueBodyBytes {
+		t.Fatalf("checkpoint body is %d bytes, exceeds %d", got, watcher.MaxIssueBodyBytes)
 	}
 	if !reflect.DeepEqual(writes, []string{"patch", "comment"}) {
 		t.Fatalf("write order = %v, want checkpoint patch before comment", writes)

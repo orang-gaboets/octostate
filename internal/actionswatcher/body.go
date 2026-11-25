@@ -24,7 +24,7 @@ const (
 	transitionMarkerPrefix = "<!-- actions-watcher:transition:v1 "
 	archiveChunkFailures   = 25
 	// MaxPendingRunIDs bounds the retry cursor stored in one incident body.
-	MaxPendingRunIDs = 50
+	MaxPendingRunIDs = 1000
 )
 
 var identityMarkerPattern = regexp.MustCompile(`^<!-- actions-watcher:v1 repo_id=([0-9]+) workflow_id=([0-9]+) workflow_name=("(?:[^"\\]|\\.)*") -->$`)
