@@ -600,6 +600,35 @@ func TestRateLimitTransportHonorsRetryAfterAndBoundsRetriesToGET(t *testing.T) {
 	}
 }
 
+func TestRateLimitTransportReturnsSuccessfulResponseAtQuotaBoundary(t *testing.T) {
+	var calls atomic.Int32
+	var waits []time.Duration
+	transport := &rateLimitTransport{
+		base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls.Add(1)
+			header := make(http.Header)
+			header.Set("X-RateLimit-Remaining", "0")
+			header.Set("X-RateLimit-Reset", "130")
+			return &http.Response{StatusCode: http.StatusOK, Header: header, Body: io.NopCloser(strings.NewReader("valid response")), Request: req}, nil
+		}),
+		wait: func(_ context.Context, delay time.Duration) error { waits = append(waits, delay); return nil },
+		now:  func() time.Time { return time.Unix(100, 0) }, maxRetries: 3, maxWait: time.Minute,
+	}
+	request, _ := http.NewRequest(http.MethodGet, "https://api.github.com/test", nil)
+	response, err := transport.RoundTrip(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 || len(waits) != 0 || string(body) != "valid response" {
+		t.Fatalf("successful response calls/waits/body = %d/%v/%q, want 1/[]/valid response", calls.Load(), waits, body)
+	}
+}
+
 func TestRateLimitTransportWaitsAtLeastOneMinuteWithoutRetryHeaders(t *testing.T) {
 	var calls atomic.Int32
 	var waits []time.Duration

@@ -147,11 +147,14 @@ func retryableRateResponse(resp *http.Response) bool {
 	if resp == nil || resp.Body == nil {
 		return false
 	}
-	if resp.StatusCode == http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "" || resp.Header.Get("X-RateLimit-Remaining") == "0" {
+	if resp.StatusCode == http.StatusTooManyRequests {
 		return true
 	}
 	if resp.StatusCode != http.StatusForbidden {
 		return false
+	}
+	if resp.Header.Get("Retry-After") != "" || resp.Header.Get("X-RateLimit-Remaining") == "0" {
+		return true
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
