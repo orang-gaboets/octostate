@@ -318,7 +318,7 @@ func createIncident(repo RepositoryIdentity, key workflowKey, attempts []RunAtte
 	}
 	if len(attempts) > 0 {
 		firstFailure := failures[0]
-		initial := IncidentState{WorkflowID: key.id, WorkflowName: key.name, Status: StatusFailing, Failures: []RunAttempt{firstFailure}, Latest: firstFailure}
+		initial := IncidentState{WorkflowID: key.id, WorkflowName: key.name, Status: StatusFailing, PreviousIssueNumber: previousIssue, Failures: []RunAttempt{firstFailure}, Latest: firstFailure}
 		initialBody, _, err := RenderBody(repo, initial, "", nil)
 		if err != nil {
 			return IssueChange{}, err

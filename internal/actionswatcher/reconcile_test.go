@@ -108,6 +108,28 @@ func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *
 	}
 }
 
+func TestReconcilePostClosureInitialBodyRetainsPreviousIssueNumber(t *testing.T) {
+	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)
+	failure := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(time.Minute), "https://example.test/failure")
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", closedAt.Add(2*time.Minute), "https://example.test/recovery")
+	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, recovery}, []IssueSnapshot{closed}, closedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := onlyChange(t, plan)
+	if change.InitialBody == "" {
+		t.Fatal("expected staged initial body for the recovered incident")
+	}
+	initial, err := RenderBodyState(change.InitialBody, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.PreviousIssueNumber != 51 {
+		t.Fatalf("initial PreviousIssueNumber = %d, want 51", initial.PreviousIssueNumber)
+	}
+}
+
 func TestReconcileManualReopenResumesExistingIncident(t *testing.T) {
 	previouslyClosed := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	issue := managedIssue(t, 71, "open", previouslyClosed, "actions-watcher[bot]", "CI", 100)
