@@ -334,14 +334,11 @@ func (collector *attemptCollector) processRun(ctx context.Context, workflow *gh.
 	if !eligible || row.GetStatus() != "completed" {
 		return nil
 	}
-	attempts, err := collector.client.readRunAttempts(ctx, workflow, row)
+	attempts, err := collector.client.readRunAttempts(ctx, workflow, row, collector.activatedAt)
 	if err != nil {
 		return fmt.Errorf("read attempts for run %d: %w", row.GetID(), err)
 	}
 	for _, attempt := range attempts {
-		if attempt.StartedAt.Before(collector.activatedAt) {
-			continue
-		}
 		key := fmt.Sprintf("%d/%d/%d", attempt.WorkflowID, attempt.RunID, attempt.Attempt)
 		if old, exists := collector.seen[key]; exists {
 			if !reflect.DeepEqual(old, attempt) {
@@ -425,7 +422,7 @@ func eligibleWorkflowRun(run *gh.WorkflowRun, repo watcher.RepositoryIdentity) (
 	return true, nil
 }
 
-func (c *watcherClient) readRunAttempts(ctx context.Context, workflow *gh.Workflow, listed *gh.WorkflowRun) ([]watcher.RunAttempt, error) {
+func (c *watcherClient) readRunAttempts(ctx context.Context, workflow *gh.Workflow, listed *gh.WorkflowRun, activatedAt time.Time) ([]watcher.RunAttempt, error) {
 	latest := listed.GetRunAttempt()
 	if latest < 1 || latest > 1000 {
 		return nil, fmt.Errorf("invalid latest run attempt %d", latest)
@@ -454,8 +451,14 @@ func (c *watcherClient) readRunAttempts(ctx context.Context, workflow *gh.Workfl
 			continue
 		}
 		started := run.RunStartedAt.GetTime()
+		if started == nil || started.IsZero() {
+			return nil, fmt.Errorf("attempt %d is missing valid run start or completion timestamps", attemptNumber)
+		}
+		if started.Before(activatedAt) {
+			continue
+		}
 		completed := run.UpdatedAt.GetTime()
-		if started == nil || started.IsZero() || completed == nil || completed.IsZero() || completed.Before(*started) {
+		if completed == nil || completed.IsZero() || completed.Before(*started) {
 			return nil, fmt.Errorf("attempt %d is missing valid run start or completion timestamps", attemptNumber)
 		}
 		failedJobs := []string(nil)

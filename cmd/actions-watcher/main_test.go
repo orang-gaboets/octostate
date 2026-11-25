@@ -268,6 +268,60 @@ func TestCollectAttemptsRetainsEarlierFailureWhenLatestAttemptIsCancelled(t *tes
 	}
 }
 
+func TestCollectAttemptsSkipsJobLookupBeforeActivation(t *testing.T) {
+	const repoID = 99
+	var oldJobCalls atomic.Int32
+	var newJobCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/101/attempts/") && !strings.HasSuffix(path, "/jobs"):
+			attemptNumber, err := strconv.Atoi(strings.TrimPrefix(path, "repos/orang-gaboets/octostate/actions/runs/101/attempts/"))
+			if err != nil {
+				t.Errorf("parse attempt number from %q: %v", path, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, attemptNumber, "failure"))
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/actions/runs/101/attempts/1/jobs"):
+			oldJobCalls.Add(1)
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "old job data unavailable"})
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/actions/runs/101/attempts/2/jobs"):
+			newJobCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "jobs": []any{}})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	workflow := &gh.Workflow{ID: gh.Ptr(int64(1)), Name: gh.Ptr("CI"), Path: gh.Ptr(expectedWorkflowPaths["CI"])}
+	row := runFixture(repoID, 101, 2, "failure")
+	rowJSON, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed gh.WorkflowRun
+	if err := json.Unmarshal(rowJSON, &listed); err != nil {
+		t.Fatal(err)
+	}
+	activation := time.Date(2026, 11, 25, 10, 1, 30, 0, time.UTC)
+	collector := attemptCollector{
+		client: client, activatedAt: activation,
+		seen: make(map[string]watcher.RunAttempt), seenRunNames: make(map[int64]string),
+	}
+	if err := collector.processRun(context.Background(), workflow, &listed); err != nil {
+		t.Fatal(err)
+	}
+	if oldJobCalls.Load() != 0 || newJobCalls.Load() != 1 {
+		t.Fatalf("old/new job API calls = %d/%d, want 0/1", oldJobCalls.Load(), newJobCalls.Load())
+	}
+	if len(collector.result) != 1 || collector.result[0].Attempt != 2 {
+		t.Fatalf("collected attempts = %#v, want the post-activation attempt only", collector.result)
+	}
+}
+
 func TestCollectAttemptsRejectsInstallationScopeAndAuthorizationFailures(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
