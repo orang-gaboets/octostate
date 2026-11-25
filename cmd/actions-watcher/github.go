@@ -92,13 +92,9 @@ func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}
-	parsed := netParseIP(host)
+	parsed := net.ParseIP(host)
 	return parsed != nil && parsed.IsLoopback()
 }
-
-// netParseIP is kept as a small wrapper so API URL validation remains testable
-// without making callers depend on a particular URL host spelling.
-func netParseIP(host string) net.IP { return net.ParseIP(host) }
 
 func waitContext(ctx context.Context, delay time.Duration) error {
 	timer := time.NewTimer(delay)
