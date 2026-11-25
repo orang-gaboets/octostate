@@ -366,7 +366,6 @@ func updateOpenIncident(repo RepositoryIdentity, key workflowKey, source []RunAt
 	if err != nil {
 		return IssueChange{}, err
 	}
-	previous.Status = normalizeIssueStatus(previous.Status, issue.Labels)
 	oldState := previous
 	oldFailures := append([]RunAttempt(nil), previous.Failures...)
 	archives, _, err := parseArchives(issue.Comments, key.id)
@@ -658,16 +657,6 @@ func containsLabel(labels []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func normalizeIssueStatus(status IncidentStatus, labels []string) IncidentStatus {
-	if status == StatusFailing || status == StatusRecovered {
-		return status
-	}
-	if containsLabel(labels, RecoveredLabel) {
-		return StatusRecovered
-	}
-	return StatusFailing
 }
 
 func transitionKey(status IncidentStatus, attempt RunAttempt) string {
