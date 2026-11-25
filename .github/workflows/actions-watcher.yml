@@ -48,18 +48,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Create scoped watcher installation token
-        id: app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ vars.ACTIONS_WATCHER_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_WATCHER_PRIVATE_KEY }}
-          owner: orang-gaboets
-          repositories: octostate
-          permission-actions: read
-          permission-issues: write
-          permission-metadata: read
-
       - name: Derive watcher activation time
         id: activation
         shell: bash
@@ -76,6 +64,18 @@ jobs:
         if: github.event_name == 'push'
         shell: bash
         run: sleep 900
+
+      - name: Create scoped watcher installation token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.ACTIONS_WATCHER_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_WATCHER_PRIVATE_KEY }}
+          owner: orang-gaboets
+          repositories: octostate
+          permission-actions: read
+          permission-issues: write
+          permission-metadata: read
 
       - name: Reconcile workflow incidents
         env:

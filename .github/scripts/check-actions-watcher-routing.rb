@@ -47,9 +47,9 @@ steps = job.fetch("steps")
 expected_step_names = [
   "Checkout trusted main",
   "Set up Go",
-  "Create scoped watcher installation token",
   "Derive watcher activation time",
   "Delay push reconciliation",
+  "Create scoped watcher installation token",
   "Reconcile workflow incidents"
 ]
 require_check(steps.map { |step| step["name"] } == expected_step_names, "workflow steps must match the reviewed token-safe sequence")
@@ -72,12 +72,22 @@ require_check(permissions == {
 }, "App token must request only Actions read, Issues write, and Metadata read")
 
 activation = steps.find { |step| step["name"] == "Derive watcher activation time" }
-require_check(!activation.nil? && activation.fetch("run").include?("git log --first-parent --diff-filter=A"), "activation time must come from first-parent workflow addition")
+activation_script = <<~'SCRIPT'.strip
+  set -euo pipefail
+  activated_at="$(git log --first-parent --diff-filter=A --format=%cI -1 -- .github/workflows/actions-watcher.yml)"
+  if [[ -z "$activated_at" ]]; then
+    echo 'Unable to find the first-parent commit that added the watcher workflow.' >&2
+    exit 1
+  fi
+  echo "activated-at=$activated_at" >> "$GITHUB_OUTPUT"
+SCRIPT
+require_check(!activation.nil? && activation.fetch("run").strip == activation_script && activation.fetch("shell") == "bash" && !activation.key?("env"), "activation step must run only the reviewed trusted-main script")
 delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
-require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("run").include?("sleep 900"), "main push reconciliation must be delayed by 15 minutes")
+require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900" && !delay.key?("env"), "main push reconciliation must run only the reviewed 15-minute delay")
 command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
 require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
 require_check(command.fetch("env").fetch("ACTIONS_WATCHER_APP_SLUG") == "${{ steps.app-token.outputs.app-slug }}", "workflow must pass the verified App slug to the command")
+require_check(command.fetch("env").fetch("ACTIONS_WATCHER_TOKEN") == "${{ steps.app-token.outputs.token }}", "only the reconciliation command may receive the scoped App token")
 
 uses = File.read(workflow_path).scan(/^\s*uses:\s*([^\s#]+)/).flatten
 require_check(uses.all? { |reference| reference.match?(/^[^@]+@[0-9a-f]{40}$/) }, "every third-party Action must be pinned to a full commit SHA")

