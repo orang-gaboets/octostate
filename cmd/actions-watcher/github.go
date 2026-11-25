@@ -44,7 +44,6 @@ type watcherClient struct {
 	client   *gh.Client
 	repo     watcher.RepositoryIdentity
 	appLogin string
-	now      func() time.Time
 }
 
 func newWatcherClient(ctx context.Context, token, apiURL string, repo watcher.RepositoryIdentity, appSlug string) (*watcherClient, error) {
@@ -72,7 +71,7 @@ func newWatcherClient(ctx context.Context, token, apiURL string, repo watcher.Re
 	if err != nil {
 		return nil, fmt.Errorf("configure GitHub API URL: %w", err)
 	}
-	return &watcherClient{client: client, repo: repo, appLogin: appSlug + "[bot]", now: time.Now}, nil
+	return &watcherClient{client: client, repo: repo, appLogin: appSlug + "[bot]"}, nil
 }
 
 func normalizeAPIURL(raw string) (string, error) {

@@ -363,7 +363,7 @@ func TestApplyPlanRejectsUnverifiedArchiveBeforeMutation(t *testing.T) {
 	}
 }
 
-func TestValidateTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.T) {
+func TestReadTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.T) {
 	path := t.TempDir() + "/event.json"
 	for _, tc := range []struct {
 		name    string
@@ -379,9 +379,12 @@ func TestValidateTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.
 			if err := os.WriteFile(path, []byte(tc.payload), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			err := validateTriggerEvent("workflow_run", path)
+			trigger, err := readTriggerEvent("workflow_run", path)
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("validateTriggerEvent() error = %v, wantErr=%v", err, tc.wantErr)
+				t.Fatalf("readTriggerEvent() error = %v, wantErr=%v", err, tc.wantErr)
+			}
+			if !tc.wantErr && (trigger.RunID != 123 || trigger.WorkflowName != "CI") {
+				t.Fatalf("readTriggerEvent() = %#v, want run 123 for CI", trigger)
 			}
 		})
 	}
@@ -1160,7 +1163,6 @@ func testWatcherClient(t *testing.T, apiURL string, repo watcher.RepositoryIdent
 	if err != nil {
 		t.Fatal(err)
 	}
-	client.now = func() time.Time { return time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC) }
 	return client
 }
 

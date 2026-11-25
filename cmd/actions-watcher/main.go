@@ -26,9 +26,6 @@ const (
 
 type commandConfig struct {
 	Repository          watcher.RepositoryIdentity
-	EventName           string
-	EventPath           string
-	EventRef            string
 	TriggerRunID        int64
 	TriggerWorkflowName string
 	APIURL              string
@@ -192,8 +189,7 @@ func readConfig(getenv func(string) string, now time.Time) (commandConfig, error
 		return cfg, errors.New("reconciliation time is unavailable")
 	}
 	return commandConfig{
-		Repository: watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"},
-		EventName:  eventName, EventPath: eventPath, EventRef: eventRef,
+		Repository:   watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"},
 		TriggerRunID: trigger.RunID, TriggerWorkflowName: trigger.WorkflowName,
 		APIURL: apiURL, Token: token, AppSlug: appSlug, ActivatedAt: activated.UTC(), ReconcileAt: now.UTC(),
 	}, nil
@@ -202,11 +198,6 @@ func readConfig(getenv func(string) string, now time.Time) (commandConfig, error
 type triggerEvent struct {
 	RunID        int64
 	WorkflowName string
-}
-
-func validateTriggerEvent(eventName, eventPath string) error {
-	_, err := readTriggerEvent(eventName, eventPath)
-	return err
 }
 
 func readTriggerEvent(eventName, eventPath string) (triggerEvent, error) {
