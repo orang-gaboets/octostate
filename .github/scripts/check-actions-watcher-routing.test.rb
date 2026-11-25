@@ -35,6 +35,8 @@ abort "baseline workflow failed: #{stdout}#{stderr}" unless status.success?
 
 mutations = {
   "workflow allowlist" => [workflow.sub("  - Go vulnerability monitoring\n", ""), source],
+  "workflow_run branch filter" => [workflow.sub("    branches:\n      - main\n", ""), source],
+  "workflow_run source event filter" => [workflow.sub("workflow_run.event))", "workflow_run.event) || true)"), source],
   "cancellation policy" => [workflow.sub("cancel-in-progress: false", "cancel-in-progress: true"), source],
   "checkout ref" => [workflow.sub("ref: main", 'ref: "${{ github.ref }}"'), source],
   "token permission" => [workflow.sub("permission-issues: write", "permission-issues: read"), source],

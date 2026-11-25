@@ -28,11 +28,12 @@ require_check(triggers.keys.sort == %w[push schedule workflow_run], "only push, 
 require_check(triggers.fetch("push") == { "branches" => ["main"] }, "push reconciliation must be restricted to main")
 require_check(triggers.fetch("schedule") == [{ "cron" => "23 * * * *" }], "hourly reconciliation schedule changed")
 workflow_run = triggers.fetch("workflow_run")
+require_check(workflow_run["branches"] == ["main"], "workflow_run reconciliation must be restricted to main source branches")
 require_check(workflow_run.fetch("types") == ["completed"], "workflow_run must run only for completed source runs")
 require_check(workflow_run.fetch("workflows") == EXPECTED_WORKFLOWS, "workflow_run allowlist changed")
 require_check(workflow.fetch("permissions") == { "contents" => "read" }, "workflow permissions must remain read-only")
 require_check(jobs.keys == ["reconcile"], "only the reconcile job should remain")
-require_check(job.fetch("if") == "github.ref == 'refs/heads/main'", "reconciliation must run only from main")
+require_check(job.fetch("if") == "github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || contains(fromJSON('[\"push\",\"schedule\",\"workflow_dispatch\"]'), github.event.workflow_run.event))", "reconciliation must run only from main and eligible workflow_run source events")
 require_check(job.fetch("permissions") == { "contents" => "read" }, "job token must retain read-only contents permission")
 
 concurrency = workflow.fetch("concurrency")

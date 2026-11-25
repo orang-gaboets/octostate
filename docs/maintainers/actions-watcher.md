@@ -95,8 +95,10 @@ in a reviewed change.
 
 ## Reconciliation and incident lifecycle
 
-The watcher runs on each completed allowlisted `workflow_run`, 15 minutes
-after a push to `main`, and hourly. Every run performs a full authoritative
+The watcher runs on each completed allowlisted `workflow_run` whose source
+event is `push`, `schedule`, or `workflow_dispatch` on `main`, 15 minutes after
+a push to `main`, and hourly. Pull request source runs are filtered before the
+reconciliation job starts. Every run performs a full authoritative
 reconciliation instead of trusting the triggering event payload for issue
 state. For a `workflow_run` trigger, it also re-fetches the event's run ID
 directly from GitHub, so a delivered rerun can be reconciled even when its
