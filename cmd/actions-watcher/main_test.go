@@ -69,9 +69,138 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []triggerEvent{{RunID: 103, WorkflowName: "CI"}, {RunID: 104, WorkflowName: "CI"}}
+	want := []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 7}, {RunID: 104, WorkflowName: "CI", IssueNumber: 7}}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
+	}
+}
+
+func TestRecordRunEventsPersistsUnavailableRunAndKeepsOtherCheckpoints(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(100, 100, started)
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: []int64{901},
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherFailure := testFailureAttempt(902, 902, started.Add(time.Hour))
+	otherFailure.WorkflowID, otherFailure.WorkflowName = 2, "CodeQL Security"
+	plan, err := watcher.Reconcile(repo, expectedAppSlug+"[bot]", []watcher.RunAttempt{otherFailure}, []watcher.IssueSnapshot{{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident", Body: body,
+		Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
+	}}, started.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if len(plan.Changes) != 2 {
+		t.Fatalf("Reconcile() changes = %#v, want CI update and CodeQL create", plan.Changes)
+	}
+	events := []triggerEvent{
+		{RunID: 901, WorkflowName: "CI", IssueNumber: 7},
+		{RunID: 902, WorkflowName: "CodeQL Security"},
+	}
+	unavailable := []unavailableRun{{Event: events[0], StatusCode: http.StatusGone}}
+	if err := recordRunEvents(&plan, events, unavailable); err != nil {
+		t.Fatalf("recordRunEvents() error = %v", err)
+	}
+	var ciChange, codeqlChange *watcher.IssueChange
+	for i := range plan.Changes {
+		switch plan.Changes[i].WorkflowName {
+		case "CI":
+			ciChange = &plan.Changes[i]
+		case "CodeQL Security":
+			codeqlChange = &plan.Changes[i]
+		}
+	}
+	if ciChange == nil || codeqlChange == nil {
+		t.Fatalf("plan omitted a workflow change: %#v", plan.Changes)
+	}
+	ciState, err := watcher.RenderBodyState(ciChange.Body, repo, 1, "CI")
+	if err != nil || len(ciState.PendingRunIDs) != 0 {
+		t.Fatalf("CI plan retained pending run: state=%#v err=%v", ciState, err)
+	}
+	if len(ciChange.PendingRunIDs) != 0 || len(ciChange.Comments) != 1 {
+		t.Fatalf("CI change pending/comments = %v/%#v, want no pending ID and one unavailable marker", ciChange.PendingRunIDs, ciChange.Comments)
+	}
+	if comment := ciChange.Comments[0]; !strings.Contains(comment.Marker, "run_id=901 status=410") || !strings.Contains(comment.Body, "does not indicate a successful run") {
+		t.Fatalf("unavailable marker comment = %#v", comment)
+	}
+	if got := codeqlChange.PendingRunIDs; !reflect.DeepEqual(got, []int64{902}) {
+		t.Fatalf("CodeQL pending run IDs = %v, want [902]", got)
+	}
+	result, err := json.Marshal(resultFor(1, plan, unavailable...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(result), `"unavailable_runs":[{"workflow":"CI","issue":7,"run_id":901,"status_code":410}]`) {
+		t.Fatalf("result omitted unavailable run: %s", result)
+	}
+}
+
+func TestCollectAttemptsRecordsGoneRunAndContinuesOtherWorkflow(t *testing.T) {
+	const repoID = 99
+	var missingCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/") && strings.HasSuffix(path, "/runs"):
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "workflow_runs": []any{}})
+		case path == "repos/orang-gaboets/octostate/actions/runs/901":
+			missingCalls.Add(1)
+			writeJSON(w, http.StatusGone, map[string]any{"message": "workflow run expired"})
+		case path == "repos/orang-gaboets/octostate/actions/runs/902":
+			run := runFixture(repoID, 902, 1, "failure")
+			run["name"], run["workflow_id"], run["path"] = "CodeQL Security", 2, expectedWorkflowPaths["CodeQL Security"]+"@main"
+			writeJSON(w, http.StatusOK, run)
+		case path == "repos/orang-gaboets/octostate/actions/runs/902/attempts/1":
+			attempt := runAttemptFixture(repoID, 902, 1, "failure")
+			attempt["name"], attempt["workflow_id"], attempt["path"] = "CodeQL Security", 2, expectedWorkflowPaths["CodeQL Security"]+"@main"
+			writeJSON(w, http.StatusOK, attempt)
+		case path == "repos/orang-gaboets/octostate/actions/runs/902/attempts/1/jobs":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "jobs": []any{}})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
+	collector := attemptCollector{
+		client: client, activatedAt: time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC),
+		seen: make(map[string]watcher.RunAttempt), seenRunNames: make(map[int64]string),
+	}
+	workflows := map[string]*gh.Workflow{
+		"CI":              {ID: gh.Ptr(int64(1)), Name: gh.Ptr("CI"), Path: gh.Ptr(expectedWorkflowPaths["CI"])},
+		"CodeQL Security": {ID: gh.Ptr(int64(2)), Name: gh.Ptr("CodeQL Security"), Path: gh.Ptr(expectedWorkflowPaths["CodeQL Security"])},
+	}
+	events := map[int64]triggerEvent{
+		901: {RunID: 901, WorkflowName: "CI", IssueNumber: 7},
+		902: {RunID: 902, WorkflowName: "CodeQL Security"},
+	}
+	if err := collector.collect(context.Background(), workflows, time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC), events); err != nil {
+		t.Fatalf("collect() error = %v, want other workflow collection to continue", err)
+	}
+	if missingCalls.Load() != 1 || len(collector.unavailable) != 1 || collector.unavailable[0].Event.RunID != 901 || collector.unavailable[0].StatusCode != http.StatusGone || collector.unavailable[0].Event.IssueNumber != 7 {
+		t.Fatalf("missing run calls/unavailable = %d/%#v", missingCalls.Load(), collector.unavailable)
+	}
+	if len(collector.result) != 1 || collector.result[0].RunID != 902 || collector.result[0].WorkflowName != "CodeQL Security" {
+		t.Fatalf("collected attempts = %#v, want CodeQL run 902 despite CI run 901 being gone", collector.result)
+	}
+}
+
+func TestUnavailableWorkflowRunStatus(t *testing.T) {
+	for status, want := range map[int]bool{
+		http.StatusNotFound:            true,
+		http.StatusGone:                true,
+		http.StatusForbidden:           false,
+		http.StatusInternalServerError: false,
+	} {
+		if got := unavailableWorkflowRunStatus(status); got != want {
+			t.Errorf("unavailableWorkflowRunStatus(%d) = %t, want %t", status, got, want)
+		}
 	}
 }
 
@@ -116,8 +245,8 @@ func TestPendingRunEventsAcceptsBacklogsAcrossIncidents(t *testing.T) {
 	if len(events) != 51 {
 		t.Fatalf("pendingRunEvents() returned %d events, want 51", len(events))
 	}
-	if events[0] != (triggerEvent{RunID: 1000, WorkflowName: "CI"}) || events[25] != (triggerEvent{RunID: 1025, WorkflowName: "CI"}) ||
-		events[26] != (triggerEvent{RunID: 2000, WorkflowName: "CodeQL Security"}) || events[50] != (triggerEvent{RunID: 2024, WorkflowName: "CodeQL Security"}) {
+	if events[0] != (triggerEvent{RunID: 1000, WorkflowName: "CI", IssueNumber: 7}) || events[25] != (triggerEvent{RunID: 1025, WorkflowName: "CI", IssueNumber: 7}) ||
+		events[26] != (triggerEvent{RunID: 2000, WorkflowName: "CodeQL Security", IssueNumber: 8}) || events[50] != (triggerEvent{RunID: 2024, WorkflowName: "CodeQL Security", IssueNumber: 8}) {
 		t.Fatalf("pendingRunEvents() returned unexpected boundaries: first=%#v last=%#v", events[0], events[len(events)-1])
 	}
 }
@@ -574,7 +703,7 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
 	activatedAt := time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
-	attempts, err := client.collectAttempts(context.Background(), activatedAt, now, []triggerEvent{{RunID: 103, WorkflowName: "CI"}})
+	attempts, _, err := client.collectAttempts(context.Background(), activatedAt, now, []triggerEvent{{RunID: 103, WorkflowName: "CI"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,7 +737,7 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	pendingAttempts, err := client.collectAttempts(context.Background(), activatedAt, now, pendingEvents)
+	pendingAttempts, _, err := client.collectAttempts(context.Background(), activatedAt, now, pendingEvents)
 	if err != nil {
 		t.Fatalf("collectAttempts() with a persisted pending run: %v", err)
 	}
@@ -799,7 +928,7 @@ func TestCollectAttemptsRejectsInstallationScopeAndAuthorizationFailures(t *test
 			}))
 			defer server.Close()
 			client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
-			_, err := client.collectAttempts(context.Background(), time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC), nil)
+			_, _, err := client.collectAttempts(context.Background(), time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC), nil)
 			if err == nil || !strings.Contains(err.Error(), tc.wantPhrase) {
 				t.Fatalf("collectAttempts() error = %v, want phrase %q", err, tc.wantPhrase)
 			}

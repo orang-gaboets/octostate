@@ -35,9 +35,10 @@ type commandConfig struct {
 }
 
 type commandResult struct {
-	Repository string         `json:"repository"`
-	Attempts   int            `json:"attempts"`
-	Changes    []resultChange `json:"changes"`
+	Repository      string                 `json:"repository"`
+	Attempts        int                    `json:"attempts"`
+	Changes         []resultChange         `json:"changes"`
+	UnavailableRuns []resultUnavailableRun `json:"unavailable_runs,omitempty"`
 }
 
 type resultChange struct {
@@ -47,6 +48,13 @@ type resultChange struct {
 	Previous int                    `json:"previous_issue,omitempty"`
 	Status   watcher.IncidentStatus `json:"status"`
 	Failures int                    `json:"failures"`
+}
+
+type resultUnavailableRun struct {
+	Workflow   string `json:"workflow"`
+	Issue      int    `json:"issue,omitempty"`
+	RunID      int64  `json:"run_id"`
+	StatusCode int    `json:"status_code"`
 }
 
 func main() {
@@ -79,7 +87,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if cfg.TriggerRunID > 0 {
 		triggerEvents = append(triggerEvents, triggerEvent{RunID: cfg.TriggerRunID, WorkflowName: cfg.TriggerWorkflowName})
 	}
-	attempts, err := client.collectAttempts(ctx, cfg.ActivatedAt, cfg.ReconcileAt, triggerEvents)
+	attempts, unavailableRuns, err := client.collectAttempts(ctx, cfg.ActivatedAt, cfg.ReconcileAt, triggerEvents)
 	if err != nil {
 		return fmt.Errorf("collect workflow attempts: %w", err)
 	}
@@ -87,15 +95,10 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err != nil {
 		return fmt.Errorf("plan incident reconciliation: %w", err)
 	}
+	if err := recordRunEvents(&plan, triggerEvents, unavailableRuns); err != nil {
+		return fmt.Errorf("record workflow run events: %w", err)
+	}
 	if len(plan.Changes) > 0 {
-		for i := range plan.Changes {
-			change := &plan.Changes[i]
-			for _, event := range triggerEvents {
-				if event.WorkflowName == change.WorkflowName {
-					change.PendingRunIDs = append(change.PendingRunIDs, event.RunID)
-				}
-			}
-		}
 		if err := client.requireLabels(ctx, plan); err != nil {
 			return err
 		}
@@ -103,7 +106,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 			return fmt.Errorf("apply incident reconciliation: %w", err)
 		}
 	}
-	result := resultFor(len(attempts), plan)
+	result := resultFor(len(attempts), plan, unavailableRuns...)
 	if err := json.NewEncoder(stdout).Encode(result); err != nil {
 		return fmt.Errorf("write reconciliation result: %w", err)
 	}
@@ -111,7 +114,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 }
 
 func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
-	eventsByID := make(map[int64]string)
+	eventsByID := make(map[int64]triggerEvent)
 	maxPendingRunEvents := len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
 	for _, issue := range issues {
 		if issue.State != "open" {
@@ -122,10 +125,15 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSna
 			return nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
 		}
 		for _, runID := range state.PendingRunIDs {
-			if previous, exists := eventsByID[runID]; exists && previous != state.WorkflowName {
-				return nil, fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous, state.WorkflowName)
+			if previous, exists := eventsByID[runID]; exists {
+				if previous.WorkflowName != state.WorkflowName {
+					return nil, fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous.WorkflowName, state.WorkflowName)
+				}
+				if previous.IssueNumber != issue.Number {
+					return nil, fmt.Errorf("pending workflow run %d is stored on multiple open incidents", runID)
+				}
 			}
-			eventsByID[runID] = state.WorkflowName
+			eventsByID[runID] = triggerEvent{RunID: runID, WorkflowName: state.WorkflowName, IssueNumber: issue.Number}
 			if len(eventsByID) > maxPendingRunEvents {
 				return nil, fmt.Errorf("managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
 			}
@@ -138,7 +146,7 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSna
 	sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
 	events := make([]triggerEvent, 0, len(runIDs))
 	for _, runID := range runIDs {
-		events = append(events, triggerEvent{RunID: runID, WorkflowName: eventsByID[runID]})
+		events = append(events, eventsByID[runID])
 	}
 	return events, nil
 }
@@ -198,6 +206,12 @@ func readConfig(getenv func(string) string, now time.Time) (commandConfig, error
 type triggerEvent struct {
 	RunID        int64
 	WorkflowName string
+	IssueNumber  int
+}
+
+type unavailableRun struct {
+	Event      triggerEvent
+	StatusCode int
 }
 
 func readTriggerEvent(eventName, eventPath string) (triggerEvent, error) {
@@ -238,7 +252,7 @@ func readTriggerEvent(eventName, eventPath string) (triggerEvent, error) {
 	return trigger, nil
 }
 
-func resultFor(attemptCount int, plan watcher.Plan) commandResult {
+func resultFor(attemptCount int, plan watcher.Plan, unavailable ...unavailableRun) commandResult {
 	result := commandResult{
 		Repository: expectedRepository,
 		Attempts:   attemptCount,
@@ -250,5 +264,51 @@ func resultFor(attemptCount int, plan watcher.Plan) commandResult {
 			Previous: change.PreviousIssueNumber, Status: change.CurrentStatus, Failures: change.FailureCount,
 		})
 	}
+	for _, missing := range unavailable {
+		result.UnavailableRuns = append(result.UnavailableRuns, resultUnavailableRun{
+			Workflow: missing.Event.WorkflowName, Issue: missing.Event.IssueNumber,
+			RunID: missing.Event.RunID, StatusCode: missing.StatusCode,
+		})
+	}
 	return result
+}
+
+func recordRunEvents(plan *watcher.Plan, events []triggerEvent, unavailable []unavailableRun) error {
+	unavailableIDs := make(map[int64]bool, len(unavailable))
+	for _, missing := range unavailable {
+		unavailableIDs[missing.Event.RunID] = true
+	}
+	for i := range plan.Changes {
+		change := &plan.Changes[i]
+		for _, event := range events {
+			if event.WorkflowName == change.WorkflowName && !unavailableIDs[event.RunID] {
+				change.PendingRunIDs = append(change.PendingRunIDs, event.RunID)
+			}
+		}
+		for _, missing := range unavailable {
+			if missing.Event.WorkflowName != change.WorkflowName || (missing.Event.IssueNumber != 0 && missing.Event.IssueNumber != change.IssueNumber) {
+				continue
+			}
+			marker := fmt.Sprintf("<!-- actions-watcher:unavailable:v1 workflow_id=%d run_id=%d status=%d -->", change.WorkflowID, missing.Event.RunID, missing.StatusCode)
+			comment := watcher.ManagedComment{
+				Marker: marker,
+				Body:   fmt.Sprintf("%s\nWorkflow run ID %d is unavailable because GitHub returned HTTP %d. Its attempt evidence could not be retrieved; this does not indicate a successful run.", marker, missing.Event.RunID, missing.StatusCode),
+			}
+			found := false
+			for _, existing := range change.Comments {
+				if existing.Marker != marker {
+					continue
+				}
+				if existing.Body != comment.Body {
+					return fmt.Errorf("unavailable run marker for run %d has conflicting content", missing.Event.RunID)
+				}
+				found = true
+				break
+			}
+			if !found {
+				change.Comments = append(change.Comments, comment)
+			}
+		}
+	}
+	return nil
 }

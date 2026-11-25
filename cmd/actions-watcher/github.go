@@ -259,40 +259,51 @@ type attemptCollector struct {
 	seen         map[string]watcher.RunAttempt
 	seenRunNames map[int64]string
 	result       []watcher.RunAttempt
+	unavailable  []unavailableRun
 }
 
-func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now time.Time, triggerEvents []triggerEvent) ([]watcher.RunAttempt, error) {
+func unavailableWorkflowRunStatus(statusCode int) bool {
+	return statusCode == http.StatusNotFound || statusCode == http.StatusGone
+}
+
+func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now time.Time, triggerEvents []triggerEvent) ([]watcher.RunAttempt, []unavailableRun, error) {
 	if activatedAt.IsZero() || activatedAt.After(now) {
-		return nil, errors.New("watcher activation time is missing or in the future")
+		return nil, nil, errors.New("watcher activation time is missing or in the future")
 	}
-	eventsByID := make(map[int64]string, len(triggerEvents))
+	eventsByID := make(map[int64]triggerEvent, len(triggerEvents))
 	for _, event := range triggerEvents {
 		if event.RunID <= 0 || !watcher.IsMonitoredWorkflow(event.WorkflowName) {
-			return nil, errors.New("workflow_run trigger identity is incomplete or unmonitored")
+			return nil, nil, errors.New("workflow_run trigger identity is incomplete or unmonitored")
 		}
-		if previous, exists := eventsByID[event.RunID]; exists && previous != event.WorkflowName {
-			return nil, fmt.Errorf("workflow run %d is pending for conflicting workflows %q and %q", event.RunID, previous, event.WorkflowName)
+		if previous, exists := eventsByID[event.RunID]; exists {
+			if previous.WorkflowName != event.WorkflowName {
+				return nil, nil, fmt.Errorf("workflow run %d is pending for conflicting workflows %q and %q", event.RunID, previous.WorkflowName, event.WorkflowName)
+			}
+			if previous.IssueNumber == 0 && event.IssueNumber != 0 {
+				eventsByID[event.RunID] = event
+			}
+		} else {
+			eventsByID[event.RunID] = event
 		}
-		eventsByID[event.RunID] = event.WorkflowName
 	}
 	if err := c.verifyInstallationScope(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	workflows, err := c.listWorkflows(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	collector := attemptCollector{
 		client: c, activatedAt: activatedAt,
 		seen: make(map[string]watcher.RunAttempt), seenRunNames: make(map[int64]string),
 	}
 	if err := collector.collect(ctx, workflows, now.Add(-lookbackWindow), now, eventsByID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return collector.result, nil
+	return collector.result, collector.unavailable, nil
 }
 
-func (collector *attemptCollector) collect(ctx context.Context, workflows map[string]*gh.Workflow, start, end time.Time, eventsByID map[int64]string) error {
+func (collector *attemptCollector) collect(ctx context.Context, workflows map[string]*gh.Workflow, start, end time.Time, eventsByID map[int64]triggerEvent) error {
 	names := make([]string, 0, len(workflows))
 	for name := range workflows {
 		names = append(names, name)
@@ -308,9 +319,9 @@ func (collector *attemptCollector) collect(ctx context.Context, workflows map[st
 			if row == nil {
 				continue
 			}
-			if pendingWorkflow, pending := eventsByID[row.GetID()]; pending {
-				if name != pendingWorkflow {
-					return fmt.Errorf("pending workflow run %d names %q but the run list associates it with %q", row.GetID(), pendingWorkflow, name)
+			if pendingEvent, pending := eventsByID[row.GetID()]; pending {
+				if name != pendingEvent.WorkflowName {
+					return fmt.Errorf("pending workflow run %d names %q but the run list associates it with %q", row.GetID(), pendingEvent.WorkflowName, name)
 				}
 				continue
 			}
@@ -325,13 +336,17 @@ func (collector *attemptCollector) collect(ctx context.Context, workflows map[st
 	}
 	sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
 	for _, runID := range runIDs {
-		workflowName := eventsByID[runID]
-		workflow := workflows[workflowName]
+		event := eventsByID[runID]
+		workflow := workflows[event.WorkflowName]
 		if workflow == nil {
-			return fmt.Errorf("pending workflow run %d identifies an unavailable workflow %q", runID, workflowName)
+			return fmt.Errorf("pending workflow run %d identifies an unavailable workflow %q", runID, event.WorkflowName)
 		}
-		run, _, err := collector.client.client.Actions.GetWorkflowRunByID(ctx, collector.client.repo.Owner, collector.client.repo.Name, runID)
+		run, response, err := collector.client.client.Actions.GetWorkflowRunByID(ctx, collector.client.repo.Owner, collector.client.repo.Name, runID)
 		if err != nil {
+			if response != nil && response.Response != nil && unavailableWorkflowRunStatus(response.StatusCode) {
+				collector.unavailable = append(collector.unavailable, unavailableRun{Event: event, StatusCode: response.StatusCode})
+				continue
+			}
 			return fmt.Errorf("re-fetch pending workflow run %d: %w", runID, err)
 		}
 		if run == nil || run.GetID() != runID {
