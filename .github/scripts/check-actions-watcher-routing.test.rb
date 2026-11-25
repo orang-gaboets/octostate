@@ -42,6 +42,7 @@ mutations = {
   "token permission" => [workflow.sub("permission-issues: write", "permission-issues: read"), source],
   "extra token permission" => [workflow.sub("permission-metadata: read", "permission-metadata: read\n          permission-contents: write"), source],
   "API URL override" => [workflow.sub("GITHUB_API_URL: ${{ github.api_url }}", "GITHUB_API_URL: https://attacker.example"), source],
+  "extra reconciliation secret" => [workflow.sub("GITHUB_API_URL: ${{ github.api_url }}", "GITHUB_API_URL: ${{ github.api_url }}\n          EXTRA_SECRET: ${{ secrets.EXTRA_SECRET }}"), source],
   "activation timestamp wiring" => [workflow.sub("ACTIONS_WATCHER_ACTIVATED_AT: ${{ steps.activation.outputs.activated-at }}", "ACTIONS_WATCHER_ACTIVATED_AT: '2000-01-01T00:00:00Z'"), source],
   "extra token-consuming step" => [workflow.sub(
     "      - name: Derive watcher activation time",
