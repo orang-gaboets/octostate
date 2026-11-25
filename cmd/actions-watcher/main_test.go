@@ -333,6 +333,34 @@ func TestRateLimitTransportHonorsRetryAfterAndBoundsRetriesToGET(t *testing.T) {
 	}
 }
 
+func TestRateLimitTransportWaitsAtLeastOneMinuteWithoutRetryHeaders(t *testing.T) {
+	var calls atomic.Int32
+	var waits []time.Duration
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		call := calls.Add(1)
+		status := http.StatusOK
+		body := "{}"
+		if call == 1 {
+			status = http.StatusForbidden
+			body = `{"message":"You have exceeded a secondary rate limit"}`
+		}
+		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})
+	transport := &rateLimitTransport{
+		base: base, now: func() time.Time { return time.Unix(100, 0) }, maxRetries: 3, maxWait: time.Minute,
+		wait: func(_ context.Context, delay time.Duration) error { waits = append(waits, delay); return nil },
+	}
+	request, _ := http.NewRequest(http.MethodGet, "https://api.github.com/test", nil)
+	response, err := transport.RoundTrip(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if calls.Load() != 2 || !reflect.DeepEqual(waits, []time.Duration{time.Minute}) {
+		t.Fatalf("GET calls/waits = %d/%v, want 2/[1m]", calls.Load(), waits)
+	}
+}
+
 func TestRateLimitTransportStopsWhenRetryHeaderExceedsBound(t *testing.T) {
 	var calls atomic.Int32
 	transport := &rateLimitTransport{

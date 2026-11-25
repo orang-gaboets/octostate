@@ -177,7 +177,7 @@ func rateRetryDelay(header http.Header, now time.Time, attempt int) (time.Durati
 			return max(time.Duration(0), time.Unix(reset, 0).Sub(now)), true
 		}
 	}
-	return time.Second << attempt, true
+	return time.Minute << attempt, true
 }
 
 func (c *watcherClient) verifyInstallationScope(ctx context.Context) error {
