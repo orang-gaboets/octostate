@@ -234,12 +234,18 @@ func TestSyncFromLiveConfigCmdUnknownTeamMembershipFailsWithoutWriting(t *testin
 			configDir := filepath.Join(t.TempDir(), "config")
 			configPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
 			before := []byte("organization: acme\nmembers: []\ninvites: []\nrepositories: []\nteams: []\n")
+			var beforeInfo os.FileInfo
 			if mode == syncFromLiveModeAdopt {
 				if err := os.MkdirAll(configDir, 0o755); err != nil {
 					t.Fatalf("create config directory: %v", err)
 				}
 				if err := os.WriteFile(configPath, before, 0o644); err != nil {
 					t.Fatalf("seed existing config: %v", err)
+				}
+				var err error
+				beforeInfo, err = os.Stat(configPath)
+				if err != nil {
+					t.Fatalf("stat existing adopt config: %v", err)
 				}
 			}
 
@@ -287,6 +293,16 @@ func TestSyncFromLiveConfigCmdUnknownTeamMembershipFailsWithoutWriting(t *testin
 					t.Fatalf("bootstrap config directory stat error = %v, want no directory", err)
 				}
 				return
+			}
+			afterInfo, err := os.Stat(configPath)
+			if err != nil {
+				t.Fatalf("stat existing adopt config after failure: %v", err)
+			}
+			if !os.SameFile(beforeInfo, afterInfo) {
+				t.Fatal("adopt replaced the existing config file")
+			}
+			if !beforeInfo.ModTime().Equal(afterInfo.ModTime()) {
+				t.Fatalf("adopt modified the existing config timestamp: before %v, after %v", beforeInfo.ModTime(), afterInfo.ModTime())
 			}
 			if got, err := os.ReadFile(configPath); err != nil {
 				t.Fatalf("read existing adopt config: %v", err)
