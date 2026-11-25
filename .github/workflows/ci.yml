@@ -187,6 +187,12 @@ jobs:
       - name: Test Go toolchain remediation workflow routing
         run: ruby .github/scripts/check-go-toolchain-remediation-routing.rb
 
+      - name: Test Actions watcher workflow routing
+        run: ruby .github/scripts/check-actions-watcher-routing.rb
+
+      - name: Test Actions watcher routing checker
+        run: ruby .github/scripts/check-actions-watcher-routing.test.rb
+
       - name: Test trusted-main verification
         run: bash .github/scripts/verify-trusted-main.test.sh
 

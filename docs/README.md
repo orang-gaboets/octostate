@@ -52,6 +52,8 @@ documentation.
 ## Developing or maintaining Octostate
 
 - [Development](maintainers/development.md) — local setup, checks, and testing.
+- [Actions Watcher](maintainers/actions-watcher.md) — dedicated App setup,
+  monitored workflows, incident lifecycle, operating limits, and recovery.
 - [Code scanning and Code Quality](maintainers/code-scanning.md) — how
   repository-managed CodeQL security scanning and GitHub-managed Code Quality
   analysis differ, and how to triage a failure in each.
