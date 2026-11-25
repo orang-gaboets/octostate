@@ -55,6 +55,7 @@ def require_check(condition, message)
 end
 
 require_check(!workflow.key?("env") && !job.key?("env"), "workflow and reconcile job must not define inherited environment variables")
+require_check(!workflow.key?("defaults") && !job.key?("defaults"), "workflow and reconcile job must not override approved run defaults")
 require_check(triggers.keys.sort == %w[push schedule workflow_run], "only push, schedule, and workflow_run triggers are allowed")
 require_check(triggers.fetch("push") == { "branches" => ["main"] }, "push reconciliation must be restricted to main")
 require_check(triggers.fetch("schedule") == [{ "cron" => "23 * * * *" }], "hourly reconciliation schedule changed")
@@ -115,7 +116,7 @@ require_check(!activation.nil? && activation.fetch("run").strip == activation_sc
 delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
 require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900", "main push reconciliation must run only the reviewed 15-minute delay")
 command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
-require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
+require_check(!command.nil? && command.keys.sort == %w[env name run] && command.fetch("run") == "go run ./cmd/actions-watcher", "watcher command step must use only the reviewed root command, without execution overrides")
 require_check(!command["continue-on-error"], "reconciliation command must fail the job on error")
 require_check(steps.reject { |step| step.equal?(command) }.none? { |step| step.key?("env") }, "only the reconciliation command may define step environment variables")
 command_env = command.fetch("env")
