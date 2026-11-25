@@ -670,8 +670,8 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 	late := attempt(1000, 1000, "CI", "push", "main", "failure", started, "https://example.test/late-attempt/"+strings.Repeat("y", 5000))
 	state.Failures = append(state.Failures, late)
 	comments := make([]CommentSnapshot, 0, len(archives))
-	for _, archive := range archives {
-		comments = append(comments, CommentSnapshot{AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
+	for i, archive := range archives {
+		comments = append(comments, CommentSnapshot{ID: int64(i + 1), AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
 	}
 
 	updated, newArchives, err := RenderBody(testRepository(), state, body, comments)
@@ -681,8 +681,9 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 	if len(newArchives) == 0 {
 		t.Fatal("late failure did not force a new archive")
 	}
-	for _, archive := range newArchives {
-		comments = append(comments, CommentSnapshot{AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
+	nextCommentID := int64(len(comments) + 1)
+	for i, archive := range newArchives {
+		comments = append(comments, CommentSnapshot{ID: nextCommentID + int64(i), AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
 	}
 	readback, duplicateArchives, err := RenderBody(testRepository(), state, updated, comments)
 	if err != nil {
@@ -690,6 +691,13 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 	}
 	if readback != updated || len(duplicateArchives) != 0 {
 		t.Fatalf("late archive readback was not stable: body_same=%t new_archives=%d", readback == updated, len(duplicateArchives))
+	}
+	partialReadback, recoveredArchives, err := RenderBody(testRepository(), state, body, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() recovery after archive comment write: %v", err)
+	}
+	if partialReadback != updated || len(recoveredArchives) != 0 {
+		t.Fatalf("partial archive write was not recoverable: body_same=%t new_archives=%d", partialReadback == updated, len(recoveredArchives))
 	}
 }
 

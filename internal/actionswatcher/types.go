@@ -105,9 +105,11 @@ type ManagedComment struct {
 
 // ArchiveComment preserves overflowed failure history in a marked comment.
 type ArchiveComment struct {
-	Marker   string
-	Body     string
-	Attempts []RunAttempt
+	// CommentID is GitHub's creation-order ID; zero until the archive is posted.
+	CommentID int64
+	Marker    string
+	Body      string
+	Attempts  []RunAttempt
 }
 
 // IssueChange describes a single create or update in a reconciliation plan.

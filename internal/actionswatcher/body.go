@@ -628,7 +628,7 @@ func parseArchives(comments []CommentSnapshot, workflowID int64) ([]ArchiveComme
 		if fields[1] != wantRange {
 			return nil, nil, errors.New("archive comment range does not match its failure records")
 		}
-		archives = append(archives, ArchiveComment{Marker: marker, Body: comment.Body, Attempts: attempts})
+		archives = append(archives, ArchiveComment{CommentID: comment.ID, Marker: marker, Body: comment.Body, Attempts: attempts})
 		for _, attempt := range attempts {
 			key := attemptKey(attempt)
 			if keys[key] {
@@ -642,7 +642,15 @@ func parseArchives(comments []CommentSnapshot, workflowID int64) ([]ArchiveComme
 }
 
 func sortArchives(archives []ArchiveComment) {
+	// Keep posted archives before planned ones so a failed body write preserves the old index prefix.
 	sort.Slice(archives, func(i, j int) bool {
+		leftID, rightID := archives[i].CommentID, archives[j].CommentID
+		if leftID != 0 && rightID != 0 && leftID != rightID {
+			return leftID < rightID
+		}
+		if (leftID == 0) != (rightID == 0) {
+			return leftID != 0
+		}
 		left, right := archives[i].Attempts, archives[j].Attempts
 		if len(left) > 0 && len(right) > 0 && !left[0].StartedAt.Equal(right[0].StartedAt) {
 			return attemptLess(left[0], right[0])
