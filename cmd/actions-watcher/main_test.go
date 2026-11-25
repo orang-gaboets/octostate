@@ -130,6 +130,48 @@ func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
 	}
 }
 
+func TestVerifyOpenIncidentCursorRejectsTamperedLatestFailureJobs(t *testing.T) {
+	const repoID = 99
+	var attemptCalls atomic.Int32
+	var jobCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch path {
+		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1":
+			attemptCalls.Add(1)
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 101, 1, "failure"))
+		case "repos/orang-gaboets/octostate/actions/runs/101/attempts/1/jobs":
+			jobCalls.Add(1)
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "jobs": []any{map[string]any{"name": "test", "conclusion": "failure"}}})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	repo := watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}
+	client := testWatcherClient(t, server.URL, repo)
+	started := time.Date(2026, 11, 25, 10, 1, 0, 0, time.UTC)
+	latest := testFailureAttempt(101, 101, started)
+	latest.CompletedAt = started.Add(30 * time.Second)
+	latest.FailedJobs = []string{"forged job"}
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{latest}, Latest: latest,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.verifyOpenIncidentCursors(context.Background(), []watcher.IssueSnapshot{{Number: 7, State: "open", Body: body}})
+	if err == nil || !strings.Contains(err.Error(), "job metadata") {
+		t.Fatalf("verifyOpenIncidentCursors() error = %v, want persisted job metadata mismatch", err)
+	}
+	if attemptCalls.Load() != 1 || jobCalls.Load() != 1 {
+		t.Fatalf("attempt/job API calls = %d/%d, want 1/1", attemptCalls.Load(), jobCalls.Load())
+	}
+}
+
 func TestVerifyPersistedFailureMatchesRunAndJobMetadata(t *testing.T) {
 	const repoID = 99
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

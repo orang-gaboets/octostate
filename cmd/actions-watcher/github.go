@@ -427,8 +427,14 @@ func (c *watcherClient) verifyOpenIncidentCursors(ctx context.Context, issues []
 		if err != nil {
 			return fmt.Errorf("read latest attempt from issue #%d: %w", issue.Number, err)
 		}
-		if err := c.verifyPersistedAttempt(ctx, state.Latest); err != nil {
-			return fmt.Errorf("verify persisted latest attempt for issue #%d: %w", issue.Number, err)
+		var verifyErr error
+		if isRunFailure(state.Latest.Conclusion) {
+			verifyErr = c.verifyPersistedFailure(ctx, state.Latest)
+		} else {
+			verifyErr = c.verifyPersistedAttempt(ctx, state.Latest)
+		}
+		if verifyErr != nil {
+			return fmt.Errorf("verify persisted latest attempt for issue #%d: %w", issue.Number, verifyErr)
 		}
 	}
 	return nil
