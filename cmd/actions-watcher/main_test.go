@@ -75,6 +75,53 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	}
 }
 
+func TestPendingRunEventsAcceptsBacklogsAcrossIncidents(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(100, 100, started)
+	firstIDs := make([]int64, 26)
+	for i := range firstIDs {
+		firstIDs[i] = int64(1000 + i)
+	}
+	firstBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: firstIDs,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	secondFailure := failure
+	secondFailure.WorkflowID = 2
+	secondFailure.WorkflowName = "CodeQL Security"
+	secondIDs := make([]int64, 25)
+	for i := range secondIDs {
+		secondIDs[i] = int64(2000 + i)
+	}
+	secondBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 2, WorkflowName: "CodeQL Security", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{secondFailure}, Latest: secondFailure, PendingRunIDs: secondIDs,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := pendingRunEvents(repo, []watcher.IssueSnapshot{
+		{Number: 7, State: "open", Body: firstBody},
+		{Number: 8, State: "open", Body: secondBody},
+	})
+	if err != nil {
+		t.Fatalf("pendingRunEvents() error = %v, want valid cross-incident backlog", err)
+	}
+	if len(events) != 51 {
+		t.Fatalf("pendingRunEvents() returned %d events, want 51", len(events))
+	}
+	if events[0] != (triggerEvent{RunID: 1000, WorkflowName: "CI"}) || events[25] != (triggerEvent{RunID: 1025, WorkflowName: "CI"}) ||
+		events[26] != (triggerEvent{RunID: 2000, WorkflowName: "CodeQL Security"}) || events[50] != (triggerEvent{RunID: 2024, WorkflowName: "CodeQL Security"}) {
+		t.Fatalf("pendingRunEvents() returned unexpected boundaries: first=%#v last=%#v", events[0], events[len(events)-1])
+	}
+}
+
 func TestRunRejectsForgedPersistedLatestAttempt(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)

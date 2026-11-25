@@ -23,7 +23,8 @@ const (
 	archiveMarkerPrefix    = "<!-- actions-watcher:archive:v1 "
 	transitionMarkerPrefix = "<!-- actions-watcher:transition:v1 "
 	archiveChunkFailures   = 25
-	maxPendingRunIDs       = 50
+	// MaxPendingRunIDs bounds the retry cursor stored in one incident body.
+	MaxPendingRunIDs = 50
 )
 
 var identityMarkerPattern = regexp.MustCompile(`^<!-- actions-watcher:v1 repo_id=([0-9]+) workflow_id=([0-9]+) workflow_name=("(?:[^"\\]|\\.)*") -->$`)
@@ -493,7 +494,7 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 }
 
 func validatePendingRunIDs(runIDs []int64) error {
-	if len(runIDs) > maxPendingRunIDs {
+	if len(runIDs) > MaxPendingRunIDs {
 		return errors.New("managed state contains too many pending workflow runs")
 	}
 	for i, runID := range runIDs {
@@ -513,8 +514,8 @@ func normalizePendingRunIDs(runIDs []int64) ([]int64, error) {
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	ids = slices.Compact(ids)
-	if len(ids) > maxPendingRunIDs {
-		return nil, fmt.Errorf("pending workflow run IDs exceed the limit of %d", maxPendingRunIDs)
+	if len(ids) > MaxPendingRunIDs {
+		return nil, fmt.Errorf("pending workflow run IDs exceed the limit of %d", MaxPendingRunIDs)
 	}
 	return ids, nil
 }

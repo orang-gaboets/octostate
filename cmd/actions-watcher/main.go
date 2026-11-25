@@ -18,10 +18,9 @@ import (
 )
 
 const (
-	expectedRepository  = "orang-gaboets/octostate"
-	expectedAppSlug     = "orang-gaboets-actions-watcher"
-	lookbackWindow      = 7 * 24 * time.Hour
-	maxPendingRunEvents = 50
+	expectedRepository = "orang-gaboets/octostate"
+	expectedAppSlug    = "orang-gaboets-actions-watcher"
+	lookbackWindow     = 7 * 24 * time.Hour
 )
 
 type commandConfig struct {
@@ -113,6 +112,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 
 func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
 	eventsByID := make(map[int64]string)
+	maxPendingRunEvents := len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
 	for _, issue := range issues {
 		if issue.State != "open" {
 			continue
