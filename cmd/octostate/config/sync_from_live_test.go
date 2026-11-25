@@ -227,8 +227,18 @@ func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 }
 
 func TestSyncFromLiveConfigCmdUnknownTeamMembershipFailsWithoutWriting(t *testing.T) {
-	for _, mode := range []string{syncFromLiveModeBootstrap, syncFromLiveModeAdopt} {
-		t.Run(mode, func(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		mode  string
+		write bool
+	}{
+		{name: "bootstrap/stdout", mode: syncFromLiveModeBootstrap},
+		{name: "bootstrap/write", mode: syncFromLiveModeBootstrap, write: true},
+		{name: "adopt/stdout", mode: syncFromLiveModeAdopt},
+		{name: "adopt/write", mode: syncFromLiveModeAdopt, write: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mode := test.mode
 			restoreSyncFromLiveHooks(t)
 
 			configDir := filepath.Join(t.TempDir(), "config")
@@ -269,13 +279,16 @@ func TestSyncFromLiveConfigCmdUnknownTeamMembershipFailsWithoutWriting(t *testin
 			var errBuf bytes.Buffer
 			cmd.SetOut(&out)
 			cmd.SetErr(&errBuf)
-			cmd.SetArgs([]string{
+			args := []string{
 				"--mode", mode,
 				"--org", "acme",
 				"--config-dir", configDir,
 				"--token", "secret-token",
-				"--write",
-			})
+			}
+			if test.write {
+				args = append(args, "--write")
+			}
+			cmd.SetArgs(args)
 
 			err := cmd.Execute()
 			if err == nil || !strings.Contains(err.Error(), "team membership origin is unknown") {
