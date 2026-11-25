@@ -91,6 +91,7 @@ type IncidentState struct {
 	WorkflowName        string
 	Status              IncidentStatus
 	PreviousIssueNumber int
+	PendingRunIDs       []int64 // Delivered runs to re-fetch before clearing a partial-write checkpoint.
 	Failures            []RunAttempt
 	Latest              RunAttempt
 	Recovery            *RunAttempt
@@ -126,6 +127,7 @@ type IssueChange struct {
 	RemoveLabels        []string
 	Comments            []ManagedComment
 	Archives            []ArchiveComment
+	PendingRunIDs       []int64 // Transient run IDs that applyPlan must persist before side effects.
 }
 
 // Plan is the deterministic set of issue mutations derived from snapshots.

@@ -260,12 +260,19 @@ type attemptCollector struct {
 	result       []watcher.RunAttempt
 }
 
-func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now time.Time, triggerRunID int64, triggerWorkflowName string) ([]watcher.RunAttempt, error) {
+func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now time.Time, triggerEvents []triggerEvent) ([]watcher.RunAttempt, error) {
 	if activatedAt.IsZero() || activatedAt.After(now) {
 		return nil, errors.New("watcher activation time is missing or in the future")
 	}
-	if triggerRunID < 0 || (triggerRunID == 0 && triggerWorkflowName != "") || (triggerRunID > 0 && !watcher.IsMonitoredWorkflow(triggerWorkflowName)) {
-		return nil, errors.New("workflow_run trigger identity is incomplete or unmonitored")
+	eventsByID := make(map[int64]string, len(triggerEvents))
+	for _, event := range triggerEvents {
+		if event.RunID <= 0 || !watcher.IsMonitoredWorkflow(event.WorkflowName) {
+			return nil, errors.New("workflow_run trigger identity is incomplete or unmonitored")
+		}
+		if previous, exists := eventsByID[event.RunID]; exists && previous != event.WorkflowName {
+			return nil, fmt.Errorf("workflow run %d is pending for conflicting workflows %q and %q", event.RunID, previous, event.WorkflowName)
+		}
+		eventsByID[event.RunID] = event.WorkflowName
 	}
 	if err := c.verifyInstallationScope(ctx); err != nil {
 		return nil, err
@@ -278,13 +285,13 @@ func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now ti
 		client: c, activatedAt: activatedAt,
 		seen: make(map[string]watcher.RunAttempt), seenRunNames: make(map[int64]string),
 	}
-	if err := collector.collect(ctx, workflows, now.Add(-lookbackWindow), now, triggerRunID, triggerWorkflowName); err != nil {
+	if err := collector.collect(ctx, workflows, now.Add(-lookbackWindow), now, eventsByID); err != nil {
 		return nil, err
 	}
 	return collector.result, nil
 }
 
-func (collector *attemptCollector) collect(ctx context.Context, workflows map[string]*gh.Workflow, start, end time.Time, triggerRunID int64, triggerWorkflowName string) error {
+func (collector *attemptCollector) collect(ctx context.Context, workflows map[string]*gh.Workflow, start, end time.Time, eventsByID map[int64]string) error {
 	names := make([]string, 0, len(workflows))
 	for name := range workflows {
 		names = append(names, name)
@@ -300,9 +307,9 @@ func (collector *attemptCollector) collect(ctx context.Context, workflows map[st
 			if row == nil {
 				continue
 			}
-			if row.GetID() == triggerRunID {
-				if name != triggerWorkflowName {
-					return fmt.Errorf("workflow_run payload names %q but the run list associates run %d with %q", triggerWorkflowName, triggerRunID, name)
+			if pendingWorkflow, pending := eventsByID[row.GetID()]; pending {
+				if name != pendingWorkflow {
+					return fmt.Errorf("pending workflow run %d names %q but the run list associates it with %q", row.GetID(), pendingWorkflow, name)
 				}
 				continue
 			}
@@ -311,18 +318,29 @@ func (collector *attemptCollector) collect(ctx context.Context, workflows map[st
 			}
 		}
 	}
-	if triggerRunID == 0 {
-		return nil
+	runIDs := make([]int64, 0, len(eventsByID))
+	for runID := range eventsByID {
+		runIDs = append(runIDs, runID)
 	}
-	workflow := workflows[triggerWorkflowName]
-	run, _, err := collector.client.client.Actions.GetWorkflowRunByID(ctx, collector.client.repo.Owner, collector.client.repo.Name, triggerRunID)
-	if err != nil {
-		return fmt.Errorf("re-fetch triggering workflow run %d: %w", triggerRunID, err)
+	sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
+	for _, runID := range runIDs {
+		workflowName := eventsByID[runID]
+		workflow := workflows[workflowName]
+		if workflow == nil {
+			return fmt.Errorf("pending workflow run %d identifies an unavailable workflow %q", runID, workflowName)
+		}
+		run, _, err := collector.client.client.Actions.GetWorkflowRunByID(ctx, collector.client.repo.Owner, collector.client.repo.Name, runID)
+		if err != nil {
+			return fmt.Errorf("re-fetch pending workflow run %d: %w", runID, err)
+		}
+		if run == nil || run.GetID() != runID {
+			return fmt.Errorf("pending workflow run %d returned a conflicting identity", runID)
+		}
+		if err := collector.processRun(ctx, workflow, run); err != nil {
+			return err
+		}
 	}
-	if run == nil || run.GetID() != triggerRunID {
-		return fmt.Errorf("triggering workflow run %d returned a conflicting identity", triggerRunID)
-	}
-	return collector.processRun(ctx, workflow, run)
+	return nil
 }
 
 func (collector *attemptCollector) processRun(ctx context.Context, workflow *gh.Workflow, row *gh.WorkflowRun) error {
@@ -778,11 +796,28 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 	for _, change := range plan.Changes {
 		switch change.Action {
 		case watcher.ActionCreate:
-			created, err := c.createIncident(ctx, change, expected)
+			createChange := change
+			staged := change.InitialBody != ""
+			if len(change.PendingRunIDs) > 0 {
+				checkpointBase := change.Body
+				if change.InitialBody != "" {
+					checkpointBase = change.InitialBody
+				}
+				checkpointBody, err := watcher.SetPendingRunIDs(checkpointBase, c.repo, change.WorkflowID, change.WorkflowName, change.PendingRunIDs)
+				if err != nil {
+					return fmt.Errorf("checkpoint pending runs for %q: %w", change.WorkflowName, err)
+				}
+				createChange.InitialBody = checkpointBody
+				if change.InitialBody == "" {
+					createChange.InitialLabels = append([]string(nil), change.AddLabels...)
+				}
+				staged = true
+			}
+			created, err := c.createIncident(ctx, createChange, expected)
 			if err != nil {
 				return err
 			}
-			if change.InitialBody != "" {
+			if staged {
 				created, err = c.ensureArchiveComments(ctx, created, change.Archives)
 				if err != nil {
 					return fmt.Errorf("issue #%d: %w", created.Number, err)
@@ -817,6 +852,22 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 			}
 			if !sameIssueSnapshot(original, current) {
 				return fmt.Errorf("issue #%d changed during reconciliation; refusing to overwrite a concurrent edit", change.IssueNumber)
+			}
+			state, err := watcher.RenderManagedBodyState(current.Body, c.repo)
+			if err != nil {
+				return fmt.Errorf("read pending run state from issue #%d: %w", current.Number, err)
+			}
+			pendingRunIDs := append(append([]int64(nil), state.PendingRunIDs...), change.PendingRunIDs...)
+			if len(pendingRunIDs) > 0 {
+				checkpointBody, err := watcher.SetPendingRunIDs(current.Body, c.repo, change.WorkflowID, change.WorkflowName, pendingRunIDs)
+				if err != nil {
+					return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
+				}
+				checkpoint := watcher.IssueChange{Title: current.Title, Body: checkpointBody}
+				current, err = c.patchIssue(ctx, current, checkpoint)
+				if err != nil {
+					return fmt.Errorf("checkpoint issue #%d: %w", change.IssueNumber, err)
+				}
 			}
 			current, err = c.ensureArchiveComments(ctx, current, change.Archives)
 			if err != nil {

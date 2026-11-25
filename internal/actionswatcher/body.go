@@ -10,6 +10,7 @@ import (
 	"html"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ const (
 	archiveMarkerPrefix    = "<!-- actions-watcher:archive:v1 "
 	transitionMarkerPrefix = "<!-- actions-watcher:transition:v1 "
 	archiveChunkFailures   = 25
+	maxPendingRunIDs       = 50
 )
 
 var identityMarkerPattern = regexp.MustCompile(`^<!-- actions-watcher:v1 repo_id=([0-9]+) workflow_id=([0-9]+) workflow_name=("(?:[^"\\]|\\.)*") -->$`)
@@ -31,6 +33,7 @@ type persistedState struct {
 	Latest              RunAttempt     `json:"latest"`
 	Recovery            *RunAttempt    `json:"recovery,omitempty"`
 	PreviousIssueNumber int            `json:"previous_issue_number,omitempty"`
+	PendingRunIDs       []int64        `json:"pending_run_ids,omitempty"`
 }
 
 func identityMarker(repo RepositoryIdentity, workflowID int64, workflowName string) string {
@@ -71,6 +74,10 @@ func validateIncidentState(repo RepositoryIdentity, state IncidentState) (Incide
 		return IncidentState{}, nil, errors.New("incident history must contain at least one failure")
 	}
 	state.Failures = failures
+	state.PendingRunIDs, err = normalizePendingRunIDs(state.PendingRunIDs)
+	if err != nil {
+		return IncidentState{}, nil, err
+	}
 	state.Latest = cloneAttempt(state.Latest)
 	if state.Latest.WorkflowID == 0 {
 		state.Latest = failures[len(failures)-1]
@@ -349,6 +356,46 @@ func RenderManagedBodyState(body string, repo RepositoryIdentity) (IncidentState
 	return RenderBodyState(body, repo, workflowID, workflowName)
 }
 
+// SetPendingRunIDs updates the retry cursor in a managed body without changing
+// its human-readable history or any other managed body content.
+func SetPendingRunIDs(body string, repo RepositoryIdentity, workflowID int64, workflowName string, runIDs []int64) (string, error) {
+	state, err := RenderBodyState(body, repo, workflowID, workflowName)
+	if err != nil {
+		return "", err
+	}
+	state.PendingRunIDs, err = normalizePendingRunIDs(runIDs)
+	if err != nil {
+		return "", err
+	}
+	managedStartIndex := strings.Index(body, managedStart)
+	if managedStartIndex < 0 {
+		return "", errors.New("managed body markers are missing")
+	}
+	managedContentStart := managedStartIndex + len(managedStart)
+	managedEndOffset := strings.Index(body[managedContentStart:], managedEnd)
+	if managedEndOffset < 0 {
+		return "", errors.New("managed body markers are missing")
+	}
+	managedEndIndex := managedContentStart + managedEndOffset
+	markerOffset := strings.Index(body[managedContentStart:managedEndIndex], stateMarkerPrefix)
+	if markerOffset < 0 {
+		return "", errors.New("managed state marker is missing")
+	}
+	markerIndex := managedContentStart + markerOffset
+	lineStart := strings.LastIndex(body[:markerIndex], "\n") + 1
+	lineEnd := strings.IndexByte(body[markerIndex:], '\n')
+	if lineEnd < 0 {
+		lineEnd = len(body)
+	} else {
+		lineEnd += markerIndex
+	}
+	updated := body[:lineStart] + stateMarker(state) + body[lineEnd:]
+	if len(updated) > MaxIssueBodyBytes {
+		return "", fmt.Errorf("issue body exceeds %d bytes after updating pending runs", MaxIssueBodyBytes)
+	}
+	return updated, nil
+}
+
 func managedBody(body string, repo RepositoryIdentity, workflowID int64, workflowName string) (string, error) {
 	gotWorkflowID, gotWorkflowName, err := managedIssueIdentity(body, repo)
 	if err != nil {
@@ -439,7 +486,30 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 	if state.PreviousIssueNumber < 0 || repo.ID <= 0 {
 		return errors.New("managed state contains an invalid repository or previous issue identity")
 	}
+	if len(state.PendingRunIDs) > maxPendingRunIDs {
+		return errors.New("managed state contains too many pending workflow runs")
+	}
+	for i, runID := range state.PendingRunIDs {
+		if runID <= 0 || (i > 0 && state.PendingRunIDs[i-1] >= runID) {
+			return errors.New("managed state contains invalid or duplicate pending workflow run IDs")
+		}
+	}
 	return nil
+}
+
+func normalizePendingRunIDs(runIDs []int64) ([]int64, error) {
+	ids := append([]int64(nil), runIDs...)
+	for _, runID := range ids {
+		if runID <= 0 {
+			return nil, errors.New("pending workflow run IDs must be positive")
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	ids = slices.Compact(ids)
+	if len(ids) > maxPendingRunIDs {
+		return nil, fmt.Errorf("pending workflow run IDs exceed the limit of %d", maxPendingRunIDs)
+	}
+	return ids, nil
 }
 
 func validPersistedRunAttempt(attempt RunAttempt) bool {
@@ -593,6 +663,7 @@ func parseStateMarker(text string) (IncidentState, error) {
 			return value, errors.New("managed state marker payload is invalid")
 		}
 		value.Status, value.Latest, value.Recovery, value.PreviousIssueNumber = saved.Status, saved.Latest, saved.Recovery, saved.PreviousIssueNumber
+		value.PendingRunIDs = saved.PendingRunIDs
 	}
 	if !found || (value.Status != StatusFailing && value.Status != StatusRecovered) {
 		return value, errors.New("managed state marker is missing or invalid")
@@ -601,7 +672,10 @@ func parseStateMarker(text string) (IncidentState, error) {
 }
 
 func stateMarker(state IncidentState) string {
-	payload, _ := json.Marshal(persistedState{Status: state.Status, Latest: state.Latest, Recovery: state.Recovery, PreviousIssueNumber: state.PreviousIssueNumber})
+	payload, _ := json.Marshal(persistedState{
+		Status: state.Status, Latest: state.Latest, Recovery: state.Recovery,
+		PreviousIssueNumber: state.PreviousIssueNumber, PendingRunIDs: state.PendingRunIDs,
+	})
 	return stateMarkerPrefix + base64.RawURLEncoding.EncodeToString(payload) + " -->"
 }
 

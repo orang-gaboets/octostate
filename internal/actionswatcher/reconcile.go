@@ -378,6 +378,7 @@ func updateOpenIncident(repo RepositoryIdentity, key workflowKey, source []RunAt
 	if len(state.Failures) == 0 {
 		state.Failures = oldFailures
 	}
+	state.PendingRunIDs = nil
 	body, newArchives, err := RenderBody(repo, state, issue.Body, issue.Comments)
 	if err != nil {
 		return IssueChange{}, err

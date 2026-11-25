@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,9 +18,10 @@ import (
 )
 
 const (
-	expectedRepository = "orang-gaboets/octostate"
-	expectedAppSlug    = "orang-gaboets-actions-watcher"
-	lookbackWindow     = 7 * 24 * time.Hour
+	expectedRepository  = "orang-gaboets/octostate"
+	expectedAppSlug     = "orang-gaboets-actions-watcher"
+	lookbackWindow      = 7 * 24 * time.Hour
+	maxPendingRunEvents = 50
 )
 
 type commandConfig struct {
@@ -67,10 +69,6 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err != nil {
 		return err
 	}
-	attempts, err := client.collectAttempts(ctx, cfg.ActivatedAt, cfg.ReconcileAt, cfg.TriggerRunID, cfg.TriggerWorkflowName)
-	if err != nil {
-		return fmt.Errorf("collect workflow attempts: %w", err)
-	}
 	issues, err := client.listManagedIssues(ctx)
 	if err != nil {
 		return fmt.Errorf("read watcher incidents: %w", err)
@@ -78,11 +76,30 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := client.verifyOpenIncidentCursors(ctx, issues); err != nil {
 		return fmt.Errorf("verify watcher incident state: %w", err)
 	}
+	triggerEvents, err := pendingRunEvents(cfg.Repository, issues)
+	if err != nil {
+		return fmt.Errorf("read pending workflow runs: %w", err)
+	}
+	if cfg.TriggerRunID > 0 {
+		triggerEvents = append(triggerEvents, triggerEvent{RunID: cfg.TriggerRunID, WorkflowName: cfg.TriggerWorkflowName})
+	}
+	attempts, err := client.collectAttempts(ctx, cfg.ActivatedAt, cfg.ReconcileAt, triggerEvents)
+	if err != nil {
+		return fmt.Errorf("collect workflow attempts: %w", err)
+	}
 	plan, err := watcher.Reconcile(cfg.Repository, client.appLogin, attempts, issues, cfg.ReconcileAt)
 	if err != nil {
 		return fmt.Errorf("plan incident reconciliation: %w", err)
 	}
 	if len(plan.Changes) > 0 {
+		for i := range plan.Changes {
+			change := &plan.Changes[i]
+			for _, event := range triggerEvents {
+				if event.WorkflowName == change.WorkflowName {
+					change.PendingRunIDs = append(change.PendingRunIDs, event.RunID)
+				}
+			}
+		}
 		if err := client.requireLabels(ctx, plan); err != nil {
 			return err
 		}
@@ -95,6 +112,38 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 		return fmt.Errorf("write reconciliation result: %w", err)
 	}
 	return nil
+}
+
+func pendingRunEvents(repo watcher.RepositoryIdentity, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
+	eventsByID := make(map[int64]string)
+	for _, issue := range issues {
+		if issue.State != "open" {
+			continue
+		}
+		state, err := watcher.RenderManagedBodyState(issue.Body, repo)
+		if err != nil {
+			return nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
+		}
+		for _, runID := range state.PendingRunIDs {
+			if previous, exists := eventsByID[runID]; exists && previous != state.WorkflowName {
+				return nil, fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous, state.WorkflowName)
+			}
+			eventsByID[runID] = state.WorkflowName
+			if len(eventsByID) > maxPendingRunEvents {
+				return nil, fmt.Errorf("managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
+			}
+		}
+	}
+	runIDs := make([]int64, 0, len(eventsByID))
+	for runID := range eventsByID {
+		runIDs = append(runIDs, runID)
+	}
+	sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
+	events := make([]triggerEvent, 0, len(runIDs))
+	for _, runID := range runIDs {
+		events = append(events, triggerEvent{RunID: runID, WorkflowName: eventsByID[runID]})
+	}
+	return events, nil
 }
 
 func readConfig(getenv func(string) string, now time.Time) (commandConfig, error) {

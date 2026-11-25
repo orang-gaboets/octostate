@@ -108,6 +108,12 @@ GitHub may replace an older pending run in the same concurrency group; the
 next hourly reconciliation recovers any missed event that remains within the
 API lookback.
 
+Before applying a change associated with a delivered run, the watcher records
+that run ID in the open incident's managed state. If a comment or issue update
+then fails partway through, the next reconciliation fetches the pending run
+IDs directly from GitHub, including runs older than the lookback. A successful
+update clears those IDs from the managed state.
+
 The command reads all pages of workflow, run, issue, label, and comment data.
 It partitions an oversized run query when GitHub's workflow-run endpoint
 reports more than its result cap. It reads each attempt separately and reads

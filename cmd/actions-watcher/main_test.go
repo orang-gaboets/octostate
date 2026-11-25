@@ -52,6 +52,29 @@ func TestReadConfigRequiresTrustedRepositoryAndDedicatedApp(t *testing.T) {
 	}
 }
 
+func TestPendingRunEventsReadsManagedState(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	failure := testFailureAttempt(100, 100, time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC))
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: []int64{103, 104},
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := pendingRunEvents(repo, []watcher.IssueSnapshot{
+		{Number: 7, State: "open", Body: body},
+		{Number: 6, State: "closed", Body: body},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []triggerEvent{{RunID: 103, WorkflowName: "CI"}, {RunID: 104, WorkflowName: "CI"}}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
+	}
+}
+
 func TestRunRejectsForgedPersistedLatestAttempt(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
@@ -127,6 +150,82 @@ func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
 	expected.CompletedAt = started.Add(30 * time.Second)
 	if err := client.verifyPersistedAttempt(context.Background(), expected); err != nil {
 		t.Fatalf("verifyPersistedAttempt() error = %v", err)
+	}
+}
+
+func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	first := testFailureAttempt(100, 100, started)
+	oldBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{first}, Latest: first, PendingRunIDs: []int64{102},
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := testFailureAttempt(101, 101, started.Add(time.Hour))
+	targetBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{first, second}, Latest: second,
+	}, oldBody, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialIssue := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: oldBody, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
+	}
+	apiIssue := issueSnapshotJSON(initialIssue)
+	var writes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, []any{})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			writes = append(writes, "patch")
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode issue patch: %v", err)
+			}
+			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writes = append(writes, "comment")
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "injected comment failure"})
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, repo)
+	change := watcher.IssueChange{
+		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
+		Title: "incident", Body: targetBody, CurrentStatus: watcher.StatusFailing,
+		PendingRunIDs: []int64{103},
+		Comments:      []watcher.ManagedComment{{Marker: "<!-- actions-watcher:transition:v1 test -->", Body: "transition"}},
+	}
+	err = client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{initialIssue})
+	if err == nil || !strings.Contains(err.Error(), "injected comment failure") {
+		t.Fatalf("applyPlan() error = %v, want injected comment failure", err)
+	}
+	state, err := watcher.RenderBodyState(apiIssue["body"].(string), repo, 1, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(state.PendingRunIDs, []int64{102, 103}) {
+		t.Fatalf("persisted PendingRunIDs = %v, want [102 103]", state.PendingRunIDs)
+	}
+	if !reflect.DeepEqual(writes, []string{"patch", "comment"}) {
+		t.Fatalf("write order = %v, want checkpoint patch before comment", writes)
 	}
 }
 
@@ -402,7 +501,7 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"})
 	activatedAt := time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
-	attempts, err := client.collectAttempts(context.Background(), activatedAt, now, 103, "CI")
+	attempts, err := client.collectAttempts(context.Background(), activatedAt, now, []triggerEvent{{RunID: 103, WorkflowName: "CI"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,6 +522,25 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	}
 	if attempts[3].RunID != 103 || attempts[3].Conclusion != "failure" {
 		t.Fatalf("the triggering run outside the created-time window was not fetched: %#v", attempts[3])
+	}
+	pendingBody, _, err := watcher.RenderBody(watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{testFailureAttempt(101, 101, now.Add(-time.Hour))},
+		Latest:   testFailureAttempt(101, 101, now.Add(-time.Hour)), PendingRunIDs: []int64{103},
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pendingEvents, err := pendingRunEvents(watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}, []watcher.IssueSnapshot{{State: "open", Body: pendingBody}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pendingAttempts, err := client.collectAttempts(context.Background(), activatedAt, now, pendingEvents)
+	if err != nil {
+		t.Fatalf("collectAttempts() with a persisted pending run: %v", err)
+	}
+	if len(pendingAttempts) != 4 || pendingAttempts[3].RunID != 103 {
+		t.Fatalf("persisted pending run was not fetched outside the created-time window: %#v", pendingAttempts)
 	}
 }
 
@@ -551,7 +669,7 @@ func TestCollectAttemptsRejectsInstallationScopeAndAuthorizationFailures(t *test
 			}))
 			defer server.Close()
 			client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
-			_, err := client.collectAttempts(context.Background(), time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC), 0, "")
+			_, err := client.collectAttempts(context.Background(), time.Date(2026, 11, 24, 0, 0, 0, 0, time.UTC), time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC), nil)
 			if err == nil || !strings.Contains(err.Error(), tc.wantPhrase) {
 				t.Fatalf("collectAttempts() error = %v, want phrase %q", err, tc.wantPhrase)
 			}
@@ -939,6 +1057,8 @@ func TestCreateIncidentWritesTransitionCommentsBeforeFinalBody(t *testing.T) {
 		t.Fatalf("create change lacks staged initial body and transitions: %#v", plan.Changes)
 	}
 	change := plan.Changes[0]
+	change.PendingRunIDs = []int64{103}
+	plan.Changes[0] = change
 	apiIssue := map[int]map[string]any{50: issueSnapshotJSON(closedIssue)}
 	comments := map[int][]any{50: []any{}}
 	var nextNumber = 50
@@ -965,8 +1085,9 @@ func TestCreateIncidentWritesTransitionCommentsBeforeFinalBody(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Errorf("decode create issue: %v", err)
 			}
-			if request.Body != change.InitialBody || request.Body == change.Body {
-				t.Errorf("create body = initial? %v final? %v", request.Body == change.InitialBody, request.Body == change.Body)
+			initialState, stateErr := watcher.RenderBodyState(request.Body, repo, change.WorkflowID, change.WorkflowName)
+			if request.Body == change.Body || stateErr != nil || !reflect.DeepEqual(initialState.PendingRunIDs, []int64{103}) {
+				t.Errorf("create body did not persist staged state and pending run ID: state=%#v err=%v", initialState, stateErr)
 			}
 			nextNumber++
 			apiIssue[nextNumber] = issueJSON(nextNumber, "open", request.Title, request.Body, request.Labels)
@@ -1023,6 +1144,10 @@ func TestCreateIncidentWritesTransitionCommentsBeforeFinalBody(t *testing.T) {
 	created := apiIssue[51]
 	if created["body"] != change.Body {
 		t.Fatal("created incident did not reach final body")
+	}
+	finalState, err := watcher.RenderBodyState(created["body"].(string), repo, change.WorkflowID, change.WorkflowName)
+	if err != nil || len(finalState.PendingRunIDs) != 0 {
+		t.Fatalf("final created body retained pending runs: state=%#v err=%v", finalState, err)
 	}
 	if !sameLabels(issueLabels(created), []string{watcher.ManagedLabel, watcher.FailingLabel}) {
 		t.Fatalf("final created labels = %#v", issueLabels(created))
