@@ -44,6 +44,15 @@ require_check(environment.fetch("name") == "actions-watcher", "watcher must use 
 require_check(environment.fetch("deployment") == false, "watcher environment must not create deployment records")
 
 steps = job.fetch("steps")
+expected_step_names = [
+  "Checkout trusted main",
+  "Set up Go",
+  "Create scoped watcher installation token",
+  "Derive watcher activation time",
+  "Delay push reconciliation",
+  "Reconcile workflow incidents"
+]
+require_check(steps.map { |step| step["name"] } == expected_step_names, "workflow steps must match the reviewed token-safe sequence")
 checkout = steps.find { |step| step["uses"].to_s.start_with?("actions/checkout@") }
 require_check(!checkout.nil?, "trusted checkout step is missing")
 require_check(checkout.fetch("with").fetch("ref") == "main", "checkout must use trusted main")
