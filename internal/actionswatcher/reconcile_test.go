@@ -576,6 +576,49 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 	}
 }
 
+func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
+	const archiveCount = 1000
+	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
+	comments := make([]CommentSnapshot, 0, archiveCount)
+	for i := range archiveCount {
+		failure := attempt(int64(i+1), i+1, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "https://example.test/run")
+		state.Failures = append(state.Failures, failure)
+		archive, err := makeArchive(state.WorkflowID, []RunAttempt{failure})
+		if err != nil {
+			t.Fatal(err)
+		}
+		comments = append(comments, CommentSnapshot{Body: archive.Body})
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+
+	body, newArchives, err := RenderBody(testRepository(), state, "", comments)
+	if err != nil {
+		t.Fatalf("RenderBody() with %d existing archives: %v", archiveCount, err)
+	}
+	if len(newArchives) != 0 {
+		t.Fatalf("RenderBody() created %d duplicate archives", len(newArchives))
+	}
+	if len(body) > MaxIssueBodyBytes {
+		t.Fatalf("rendered body is %d bytes, exceeds %d", len(body), MaxIssueBodyBytes)
+	}
+	references, err := bodyArchiveReferences(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(references) != 20 {
+		t.Fatalf("body contains %d archive references, want 20", len(references))
+	}
+
+	secondBody, secondArchives, err := RenderBody(testRepository(), state, body, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() on archived body: %v", err)
+	}
+	if secondBody != body || len(secondArchives) != 0 {
+		t.Fatalf("archive rendering was not idempotent: body_same=%t new_archives=%d", secondBody == body, len(secondArchives))
+	}
+}
+
 func TestRenderBodyEscapesUntrustedJobNamesAndRemainsValidUTF8(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
 	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/1")

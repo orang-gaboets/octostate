@@ -23,6 +23,7 @@ const (
 	archiveMarkerPrefix    = "<!-- actions-watcher:archive:v1 "
 	transitionMarkerPrefix = "<!-- actions-watcher:transition:v1 "
 	archiveChunkFailures   = 25
+	archiveReferenceLimit  = 20
 	// MaxPendingRunIDs bounds the retry cursor stored in one incident body.
 	MaxPendingRunIDs = 1000
 )
@@ -303,11 +304,17 @@ func renderManaged(repo RepositoryIdentity, state IncidentState, failures []RunA
 	b.WriteString(stateMarker(state))
 	b.WriteString("\n\n## Failure history\n\n")
 	archived := make(map[string]bool)
+	firstArchiveReference := max(0, len(archives)-archiveReferenceLimit)
+	if len(archives) > 0 {
+		fmt.Fprintf(&b, "- Preserved overflow evidence in %d archive comments; %d references are listed below.\n", len(archives), len(archives)-firstArchiveReference)
+	}
 	for _, archive := range archives {
 		keys, _ := parseFailureMarkers(archive.Body)
 		for _, attempt := range keys {
 			archived[attemptKey(attempt)] = true
 		}
+	}
+	for _, archive := range archives[firstArchiveReference:] {
 		b.WriteString("- Preserved overflow evidence in archive ")
 		b.WriteString("`" + archive.Marker + "`\n")
 	}
