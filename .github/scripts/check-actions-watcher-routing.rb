@@ -68,6 +68,7 @@ require_check(job.fetch("if") == "github.ref == 'refs/heads/main' && (github.eve
 require_check(job["runs-on"] == "ubuntu-latest", "reconcile job must use the reviewed GitHub-hosted runner")
 require_check(!job.key?("container"), "reconcile job must not run in a custom container")
 require_check(!job.key?("strategy"), "reconcile job must not define a strategy; matrix fan-out can duplicate incident writers")
+require_check(!job["continue-on-error"], "reconcile job must report watcher failures")
 require_check(job.fetch("permissions") == { "contents" => "read" }, "job token must retain read-only contents permission")
 
 concurrency = workflow.fetch("concurrency")
@@ -115,6 +116,7 @@ delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
 require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900", "main push reconciliation must run only the reviewed 15-minute delay")
 command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
 require_check(!command.nil? && command.fetch("run") == "go run ./cmd/actions-watcher", "workflow must invoke the watcher command")
+require_check(!command["continue-on-error"], "reconciliation command must fail the job on error")
 require_check(steps.reject { |step| step.equal?(command) }.none? { |step| step.key?("env") }, "only the reconciliation command may define step environment variables")
 command_env = command.fetch("env")
 require_check(command_env == {
