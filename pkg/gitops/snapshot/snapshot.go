@@ -478,6 +478,11 @@ func normalizeActualSnapshot(snapshot *ActualSnapshot) error {
 		TeamMembers:               append([]state.TeamMember{}, snapshot.TeamMembers...),
 		TeamRepositoryPermissions: append([]state.TeamRepositoryPermission{}, snapshot.TeamRepositoryPermissions...),
 	}
+	teamMembers, err := state.CanonicalTeamMembers(actual.TeamMembers)
+	if err != nil {
+		return fmt.Errorf("normalize actual team memberships: %w", err)
+	}
+	actual.TeamMembers = teamMembers
 	actual.Normalize()
 	if err := validateOrganizationMemberRoles(actual.Members); err != nil {
 		return err

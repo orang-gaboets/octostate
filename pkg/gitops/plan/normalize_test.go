@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -58,7 +59,7 @@ func liveState() *state.OrganizationState {
 		Teams: []state.Team{{
 			Slug: "platform", Name: "Platform", Description: "Platform team", Privacy: "closed",
 		}},
-		TeamMembers: []state.TeamMember{{TeamSlug: "platform", Username: "alice", Role: "maintainer"}},
+		TeamMembers: []state.TeamMember{{TeamSlug: "platform", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginDirect}},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
 			TeamSlug: "platform", Owner: "orang-gaboets", Name: "service", Permission: "push",
 		}},

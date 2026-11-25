@@ -14,7 +14,7 @@ var errRunaway = errors.New("pagination did not stop")
 
 // stuckPager always reports page 2 as next, so the second read repeats a
 // page. A correct loop stops there; a loop that trusts NextPage runs until
-// the runaway guard trips. It implements the optional role and inheritance
+// the runaway guard trips. It implements the optional role and origin
 // listers so every team pagination loop is reachable.
 type stuckPager struct {
 	Service
@@ -49,9 +49,9 @@ func (s *stuckPager) ListTeamMembersBySlugWithRoles(context.Context, string, str
 	return []TeamMember{{Username: "alice", Role: TeamMemberRoleMember}}, resp, err
 }
 
-func (s *stuckPager) ListTeamMembersBySlugWithInheritance(context.Context, string, string, *gh.ListOptions) ([]TeamMemberWithInheritance, *gh.Response, error) {
+func (s *stuckPager) ListTeamMembersBySlugWithOrigin(context.Context, string, string, *gh.ListOptions) ([]TeamMemberWithOrigin, *gh.Response, error) {
 	resp, err := s.next()
-	return []TeamMemberWithInheritance{{Username: "alice", Role: TeamMemberRoleMember}}, resp, err
+	return []TeamMemberWithOrigin{{Username: "alice", Role: TeamMemberRoleMember}}, resp, err
 }
 
 func TestListFunctionsRejectNonAdvancingPagination(t *testing.T) {

@@ -841,6 +841,9 @@ func (e *snapshotJSONEmitter) teamMemberArray(values []state.TeamMember) error {
 		if err := e.stringField("role", value.Role); err != nil {
 			return err
 		}
+		if err := e.stringField("origin", string(value.Origin)); err != nil {
+			return err
+		}
 		if err := e.endObject(); err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
@@ -43,7 +44,7 @@ func paddedSnapshot() *snapshot.ActualSnapshot {
 			Owner: "orang-gaboets", Name: "service", Visibility: "private", Topics: []string{"go"},
 		}},
 		Teams:       []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
-		TeamMembers: []state.TeamMember{{TeamSlug: "platform", Username: "alice", Role: "maintainer"}},
+		TeamMembers: []state.TeamMember{{TeamSlug: "platform", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginDirect}},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{{
 			TeamSlug: "platform", Owner: "orang-gaboets", Name: "service", Permission: "push",
 		}},

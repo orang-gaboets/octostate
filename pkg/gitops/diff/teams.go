@@ -3,6 +3,7 @@ package diff
 import (
 	"fmt"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -98,7 +99,10 @@ func (b builder) planTeamMembers() []Action {
 			key := teamMemberKey(team.Slug, member.Username)
 			desiredMembers[key] = member
 			actualMember, ok := actualMembers[key]
-			if !ok {
+			if ok && actualMember.Origin == githubpkg.TeamMembershipOriginUnknown {
+				continue
+			}
+			if !ok || actualMember.Origin == githubpkg.TeamMembershipOriginInherited {
 				_, organizationMemberExists := availableOrganizationMembers[organizationMemberKey(member.Username)]
 				executable := organizationMemberExists
 				message := fmt.Sprintf("add team membership %s", teamMemberID(team.Slug, member.Username))
@@ -137,6 +141,9 @@ func (b builder) planTeamMembers() []Action {
 	}
 
 	for _, member := range b.actual.TeamMembers {
+		if member.Origin != githubpkg.TeamMembershipOriginDirect {
+			continue
+		}
 		key := teamMemberKey(member.TeamSlug, member.Username)
 		if _, ok := desiredMembers[key]; ok {
 			continue

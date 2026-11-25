@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -13,7 +14,7 @@ func TestBootstrapTeamMembersGroupsByNormalizedSlug(t *testing.T) {
 
 	got, err := bootstrapTeamMembers(
 		[]state.Team{{Slug: "platform"}},
-		[]state.TeamMember{{TeamSlug: " Platform ", Username: " alice ", Role: " maintainer "}},
+		[]state.TeamMember{{TeamSlug: " Platform ", Username: " alice ", Role: " maintainer ", Origin: githubpkg.TeamMembershipOriginDirect}},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -38,7 +39,7 @@ func TestBootstrapExcludesInheritedOnlyParentMembership(t *testing.T) {
 			},
 			// The collector omits bob's inherited-only parent membership and keeps
 			// the direct membership on the child team.
-			TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+			TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect}},
 		},
 	})
 	if err != nil {

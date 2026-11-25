@@ -14,25 +14,18 @@ import (
 
 type inheritedTeamServiceStub struct {
 	*teamServiceStub
-	roleMembers      map[string][]githubteams.TeamMember
-	inheritedMembers map[string][]githubteams.TeamMemberWithInheritance
-	listTeamsCalls   atomic.Int64
-	roleMemberCalls  atomic.Int64
-	inheritedCalls   atomic.Int64
-	repositoryCalls  atomic.Int64
+	originMembers   map[string][]githubteams.TeamMemberWithOrigin
+	listTeamsCalls  atomic.Int64
+	originCalls     atomic.Int64
+	repositoryCalls atomic.Int64
 }
 
-func (s *inheritedTeamServiceStub) ListTeamMembersBySlugWithRoles(_ context.Context, _, slug string, _ *gh.ListOptions) ([]githubteams.TeamMember, *gh.Response, error) {
-	s.roleMemberCalls.Add(1)
-	return s.roleMembers[slug], &gh.Response{}, nil
+func (s *inheritedTeamServiceStub) ListTeamMembersBySlugWithOrigin(_ context.Context, _, slug string, _ *gh.ListOptions) ([]githubteams.TeamMemberWithOrigin, *gh.Response, error) {
+	s.originCalls.Add(1)
+	return s.originMembers[slug], &gh.Response{}, nil
 }
 
-func (s *inheritedTeamServiceStub) ListTeamMembersBySlugWithInheritance(_ context.Context, _, slug string, _ *gh.ListOptions) ([]githubteams.TeamMemberWithInheritance, *gh.Response, error) {
-	s.inheritedCalls.Add(1)
-	return s.inheritedMembers[slug], &gh.Response{}, nil
-}
-
-func TestCollectTeamStateKeepsDirectMembershipsOnly(t *testing.T) {
+func TestCollectTeamStateRetainsMembershipOrigin(t *testing.T) {
 	const orgName = "acme"
 	service := &inheritedTeamServiceStub{}
 	service.teamServiceStub = &teamServiceStub{
@@ -48,19 +41,13 @@ func TestCollectTeamStateKeepsDirectMembershipsOnly(t *testing.T) {
 			return nil, &gh.Response{}, nil
 		},
 	}
-	service.roleMembers = map[string][]githubteams.TeamMember{
+	service.originMembers = map[string][]githubteams.TeamMemberWithOrigin{
 		"parent": {
-			{Username: "alice", Role: githubteams.TeamMemberRoleMaintainer},
-			{Username: "bob", Role: githubteams.TeamMemberRoleMember},
+			{Username: "alice", Role: githubteams.TeamMemberRoleMaintainer, Origin: githubpkg.TeamMembershipOriginDirect},
+			{Username: "Bob", Role: githubteams.TeamMemberRoleMember, Origin: githubpkg.TeamMembershipOriginInherited},
+			{Username: " BOB ", Role: githubteams.TeamMemberRoleMember, Origin: githubpkg.TeamMembershipOriginDirect},
 		},
-		"child": {{Username: "bob", Role: githubteams.TeamMemberRoleMember}},
-	}
-	service.inheritedMembers = map[string][]githubteams.TeamMemberWithInheritance{
-		"parent": {
-			{Username: "alice", Role: githubteams.TeamMemberRoleMaintainer, Inherited: false},
-			{Username: "bob", Role: githubteams.TeamMemberRoleMember, Inherited: true},
-		},
-		"child": {{Username: "bob", Role: githubteams.TeamMemberRoleMember, Inherited: false}},
+		"child": {{Username: "bob", Role: githubteams.TeamMemberRoleMember, Origin: githubpkg.TeamMembershipOriginDirect}},
 	}
 
 	_, members, _, err := collectTeamState(context.Background(), CollectOrganizationOptions{
@@ -72,25 +59,23 @@ func TestCollectTeamStateKeepsDirectMembershipsOnly(t *testing.T) {
 	}
 
 	want := []state.TeamMember{
-		{TeamSlug: "parent", Username: "alice", Role: "maintainer"},
-		{TeamSlug: "child", Username: "bob", Role: "member"},
+		{TeamSlug: "child", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+		{TeamSlug: "parent", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginDirect},
+		{TeamSlug: "parent", Username: "BOB", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
 	}
 	if !reflect.DeepEqual(members, want) {
-		t.Fatalf("team members = %#v, want direct memberships %#v", members, want)
+		t.Fatalf("team members = %#v, want canonical origin-aware memberships %#v", members, want)
 	}
 	if got := service.listTeamsCalls.Load(); got != 1 {
 		t.Errorf("ListTeams calls = %d, want 1", got)
 	}
-	if got := service.inheritedCalls.Load(); got != 2 {
-		t.Errorf("inheritance-aware member calls = %d, want 2", got)
-	}
-	if got := service.roleMemberCalls.Load(); got != 0 {
-		t.Errorf("role-only member calls = %d, want 0 when inheritance metadata is available", got)
+	if got := service.originCalls.Load(); got != 2 {
+		t.Errorf("origin-aware member calls = %d, want 2", got)
 	}
 	if got := service.repositoryCalls.Load(); got != 2 {
 		t.Errorf("team repository calls = %d, want 2", got)
 	}
-	totalCalls := service.listTeamsCalls.Load() + service.inheritedCalls.Load() + service.repositoryCalls.Load()
+	totalCalls := service.listTeamsCalls.Load() + service.originCalls.Load() + service.repositoryCalls.Load()
 	if totalCalls != 5 {
 		t.Errorf("team service calls = %d, want 5 (2N+1)", totalCalls)
 	}

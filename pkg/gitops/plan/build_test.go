@@ -147,7 +147,7 @@ func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 				{Slug: "platform", Name: "Platform", Description: "Platform engineering", Privacy: "closed"},
 			},
 			TeamMembers: []state.TeamMember{
-				{TeamSlug: "platform", Username: "alice", Role: "member"},
+				{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
 			},
 			TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 				{TeamSlug: "platform", Owner: "orang-gaboets", Name: "octostate", Permission: "push"},
@@ -170,7 +170,8 @@ func TestBuildNoOpWhenDesiredMatchesActual(t *testing.T) {
 			DeleteActions:        0,
 			RemoveActions:        0,
 		},
-		Actions: []Action{},
+		Actions:                   []Action{},
+		UnresolvedTeamMemberships: []state.TeamMember{},
 	}
 	if !reflect.DeepEqual(report, want) {
 		t.Fatalf("unexpected report:\n got %#v\nwant %#v", report, want)
@@ -448,8 +449,8 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 				{Slug: "platform", Name: "Platform Old", Description: "Old desc", Privacy: "closed"},
 			},
 			TeamMembers: []state.TeamMember{
-				{TeamSlug: "platform", Username: "bob", Role: "member"},
-				{TeamSlug: "platform", Username: "alice", Role: "member"},
+				{TeamSlug: "platform", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+				{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
 			},
 			TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 				{TeamSlug: "platform", Owner: "orang-gaboets", Name: "repo-old", Permission: "pull"},
@@ -494,6 +495,7 @@ func TestBuildPlansDeterministicReconciliationActions(t *testing.T) {
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationUpdate, ResourceID: "platform/orang-gaboets/octostate", Executable: false, Message: "team repository permission platform/orang-gaboets/octostate requires repository orang-gaboets/octostate to be available: repository orang-gaboets/octostate is absent from live and desired state", Changes: []FieldChange{{Field: "permission", From: "push", To: "admin"}}},
 			{ResourceType: ActionResourceTypeTeamRepositoryPermission, Operation: ActionOperationRemove, ResourceID: "platform/orang-gaboets/repo-old", Executable: false, Message: "team repository permission platform/orang-gaboets/repo-old exists in live state but is not declared in desired config", Changes: []FieldChange{}},
 		},
+		UnresolvedTeamMemberships: []state.TeamMember{},
 	}
 	if !reflect.DeepEqual(report, want) {
 		t.Fatalf("unexpected report:\n got %#v\nwant %#v", report, want)

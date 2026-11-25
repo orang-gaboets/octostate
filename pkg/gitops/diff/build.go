@@ -76,15 +76,28 @@ func Build(opt Options) (*Report, error) {
 		}
 	}
 
+	actual := organizationStateFromSnapshot(opt.Snapshot)
+	actual.TeamMembers, err = state.CanonicalTeamMembers(actual.TeamMembers)
+	if err != nil {
+		return nil, fmt.Errorf("normalize snapshot team memberships: %w", err)
+	}
+	unresolvedTeamMemberships := make([]state.TeamMember, 0)
+	for _, member := range actual.TeamMembers {
+		if member.Origin == githubpkg.TeamMembershipOriginUnknown {
+			unresolvedTeamMemberships = append(unresolvedTeamMemberships, member)
+		}
+	}
+
 	builder := builder{
 		desired:                         desired,
-		actual:                          organizationStateFromSnapshot(opt.Snapshot),
+		actual:                          actual,
 		resolvedInviteUserIDsByUsername: resolvedInviteUserIDsByUsername,
 	}
 
 	report := &Report{
-		Organization:     desired.Organization,
-		SnapshotPulledAt: opt.Snapshot.PulledAt.UTC(),
+		Organization:              desired.Organization,
+		SnapshotPulledAt:          opt.Snapshot.PulledAt.UTC(),
+		UnresolvedTeamMemberships: unresolvedTeamMemberships,
 	}
 
 	report.Actions, err = builder.buildActions()

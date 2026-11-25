@@ -136,7 +136,7 @@ func ApplyConfigCmd() *cobra.Command {
 	auth.AddFlags(cmd, &token, &appID, &installationID, &appKeyPath)
 	cmd.Flags().BoolVar(&check, "check", false, "Run apply preflight checks without mutating GitHub")
 	cmd.Flags().BoolVar(&requireExec, "require-executable", false,
-		"Fail when a desired create or update cannot be executed. Unsupported delete/remove drift is still reported without failing")
+		"Fail when a desired create or update cannot be executed, including unresolved team membership origins. Unsupported delete/remove drift is still reported without failing")
 	safety.AddDryRunFlag(cmd, &dryRun)
 
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "Path to the config directory containing organization.yaml")

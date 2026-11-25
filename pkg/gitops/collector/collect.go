@@ -325,7 +325,7 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 		teamSlug := team.Slug
 
 		tasks = append(tasks, func(groupCtx context.Context) error {
-			members, err := teams.ListDirectTeamMembersBySlugWithRoles(groupCtx, teams.ListTeamMembersBySlugWithRolesOptions{
+			members, err := teams.ListTeamMembersBySlugWithOrigin(groupCtx, teams.ListTeamMembersBySlugWithRolesOptions{
 				Service: opt.TeamService,
 				Org:     opt.OrgName,
 				Slug:    teamSlug,
@@ -333,7 +333,7 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 			if err != nil {
 				return err
 			}
-			teamDetails[index].members = teamMembersFromRoleAwareUsers(teamSlug, members)
+			teamDetails[index].members = teamMembersFromOriginUsers(teamSlug, members)
 			return nil
 		})
 
@@ -362,17 +362,22 @@ func collectTeamState(ctx context.Context, opt CollectOrganizationOptions, limit
 		membersState = append(membersState, teamDetails[i].members...)
 		repoPermissionsState = append(repoPermissionsState, teamDetails[i].repositoryPerms...)
 	}
+	membersState, err = state.CanonicalTeamMembers(membersState)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 
 	return teamsState, membersState, repoPermissionsState, nil
 }
 
-func teamMembersFromRoleAwareUsers(teamSlug string, members []teams.TeamMember) []state.TeamMember {
+func teamMembersFromOriginUsers(teamSlug string, members []teams.TeamMemberWithOrigin) []state.TeamMember {
 	result := make([]state.TeamMember, 0, len(members))
 	for _, member := range members {
 		result = append(result, state.TeamMember{
 			TeamSlug: teamSlug,
 			Username: member.Username,
 			Role:     string(member.Role),
+			Origin:   member.Origin,
 		})
 	}
 	return result

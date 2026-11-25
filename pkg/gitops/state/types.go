@@ -3,6 +3,9 @@ package state
 import (
 	"slices"
 	"strings"
+
+	"github.com/orang-gaboets/octostate/internal/teamorigin"
+	"github.com/orang-gaboets/octostate/pkg/github"
 )
 
 // OrganizationState is the normalized actual state for one GitHub organization.
@@ -57,11 +60,13 @@ type Team struct {
 	ParentSlug  string `json:"parent_slug"`
 }
 
-// TeamMember is a current direct team membership.
+// TeamMember is a current team membership with evidence about whether it is
+// direct, inherited, or unknown.
 type TeamMember struct {
-	TeamSlug string `json:"team_slug"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	TeamSlug string                      `json:"team_slug"`
+	Username string                      `json:"username"`
+	Role     string                      `json:"role"`
+	Origin   github.TeamMembershipOrigin `json:"origin"`
 }
 
 // TeamRepositoryPermission is a current team-to-repository permission entry.
@@ -94,6 +99,11 @@ func (s *OrganizationState) Normalize() {
 	if s.TeamMembers == nil {
 		s.TeamMembers = []TeamMember{}
 	}
+	for i := range s.TeamMembers {
+		if s.TeamMembers[i].Origin == "" {
+			s.TeamMembers[i].Origin = github.TeamMembershipOriginUnknown
+		}
+	}
 	if s.TeamRepositoryPermissions == nil {
 		s.TeamRepositoryPermissions = []TeamRepositoryPermission{}
 	}
@@ -118,6 +128,35 @@ func (s *OrganizationState) Normalize() {
 	slices.SortFunc(s.Teams, compareTeams)
 	slices.SortFunc(s.TeamMembers, compareTeamMembers)
 	slices.SortFunc(s.TeamRepositoryPermissions, compareTeamRepositoryPermissions)
+}
+
+// CanonicalTeamMembers resolves case-insensitive duplicate membership keys by
+// origin precedence and returns deterministic rows. Empty origins from legacy
+// state inputs are treated as unknown.
+func CanonicalTeamMembers(values []TeamMember) ([]TeamMember, error) {
+	input := make([]teamorigin.Membership, 0, len(values))
+	for _, member := range values {
+		input = append(input, teamorigin.Membership{
+			TeamSlug: member.TeamSlug,
+			Username: member.Username,
+			Role:     member.Role,
+			Origin:   member.Origin,
+		})
+	}
+	canonical, err := teamorigin.Canonicalize(input)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]TeamMember, 0, len(canonical))
+	for _, member := range canonical {
+		result = append(result, TeamMember{
+			TeamSlug: member.TeamSlug,
+			Username: member.Username,
+			Role:     member.Role,
+			Origin:   member.Origin,
+		})
+	}
+	return result, nil
 }
 
 func compareOrganizationMembers(a, b OrganizationMember) int {
@@ -185,7 +224,10 @@ func compareTeamMembers(a, b TeamMember) int {
 	if diff := compareStrings(a.Username, b.Username); diff != 0 {
 		return diff
 	}
-	return compareStrings(a.Role, b.Role)
+	if diff := compareStrings(a.Role, b.Role); diff != 0 {
+		return diff
+	}
+	return compareStrings(string(a.Origin), string(b.Origin))
 }
 
 func compareTeamRepositoryPermissions(a, b TeamRepositoryPermission) int {

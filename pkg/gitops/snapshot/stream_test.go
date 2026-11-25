@@ -60,7 +60,7 @@ func TestActualSnapshotJSONFieldCoverage(t *testing.T) {
 			"owner", "name", "visibility", "description", "homepage", "topics", "allow_forking", "archived", "is_template",
 		},
 		reflect.TypeOf(state.Team{}):                     {"id", "slug", "name", "description", "privacy", "parent_slug"},
-		reflect.TypeOf(state.TeamMember{}):               {"team_slug", "username", "role"},
+		reflect.TypeOf(state.TeamMember{}):               {"team_slug", "username", "role", "origin"},
 		reflect.TypeOf(state.TeamRepositoryPermission{}): {"team_slug", "owner", "name", "permission"},
 	}
 

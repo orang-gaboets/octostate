@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -197,9 +198,9 @@ func TestBuildAdoptConfigMergesLiveStateWithoutDeletingConfigDeclarations(t *tes
 			},
 		},
 		TeamMembers: []state.TeamMember{
-			{TeamSlug: "platform", Username: "alice", Role: "maintainer"},
-			{TeamSlug: "platform", Username: "bob", Role: "member"},
-			{TeamSlug: "operations", Username: "bob", Role: "member"},
+			{TeamSlug: "platform", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginDirect},
+			{TeamSlug: "platform", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+			{TeamSlug: "operations", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "platform", Name: "octostate", Permission: "admin"},
@@ -259,7 +260,7 @@ func TestBuildAdoptDoesNotAddInheritedOnlyParentMembership(t *testing.T) {
 					},
 					// The direct-only collector state has the child row, not the
 					// inherited-only parent row.
-					TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+					TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect}},
 				},
 			})
 			if err != nil {

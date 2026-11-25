@@ -335,9 +335,9 @@ func TestCollectOrganizationSuccess(t *testing.T) {
 			{ID: 2, Slug: "platform", Name: "Platform", Description: "Platform engineering", Privacy: "closed", ParentSlug: "admins"},
 		},
 		TeamMembers: []state.TeamMember{
-			{TeamSlug: "admins", Username: "alice", Role: "maintainer"},
-			{TeamSlug: "admins", Username: "zed", Role: "member"},
-			{TeamSlug: "platform", Username: "bob", Role: "member"},
+			{TeamSlug: "admins", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginUnknown},
+			{TeamSlug: "admins", Username: "zed", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown},
+			{TeamSlug: "platform", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "admins", Owner: orgName, Name: "repo-admin", Permission: "admin"},
@@ -620,7 +620,7 @@ func TestCollectOrganizationForBootstrapIncludesMembersAndSkipsPendingInvitation
 			{ID: 1, Slug: "platform", Name: "Platform", Description: "Platform engineering", Privacy: "closed", ParentSlug: ""},
 		},
 		TeamMembers: []state.TeamMember{
-			{TeamSlug: "platform", Username: "alice", Role: "member"},
+			{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "platform", Owner: orgName, Name: "octostate", Permission: "push"},

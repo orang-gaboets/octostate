@@ -35,30 +35,30 @@ type roleAwareTeamMemberService struct {
 	requested  []int
 }
 
-type inheritanceAwareTeamMemberService struct {
+type originAwareTeamMemberService struct {
 	Service
-	inheritedPages map[int][]TeamMemberWithInheritance
+	originPages    map[int][]TeamMemberWithOrigin
 	requested      []int
 	roleAwareCalls int
 	pageErrors     map[int]error
 }
 
-func (s *inheritanceAwareTeamMemberService) ListTeamMembersBySlugWithRoles(_ context.Context, _, _ string, _ *gh.ListOptions) ([]TeamMember, *gh.Response, error) {
+func (s *originAwareTeamMemberService) ListTeamMembersBySlugWithRoles(_ context.Context, _, _ string, _ *gh.ListOptions) ([]TeamMember, *gh.Response, error) {
 	s.roleAwareCalls++
 	return []TeamMember{{Username: "fallback", Role: TeamMemberRoleMember}}, &gh.Response{}, nil
 }
 
-func (s *inheritanceAwareTeamMemberService) ListTeamMembersBySlugWithInheritance(_ context.Context, _, _ string, opts *gh.ListOptions) ([]TeamMemberWithInheritance, *gh.Response, error) {
+func (s *originAwareTeamMemberService) ListTeamMembersBySlugWithOrigin(_ context.Context, _, _ string, opts *gh.ListOptions) ([]TeamMemberWithOrigin, *gh.Response, error) {
 	page := opts.Page
 	s.requested = append(s.requested, page)
 	if err := s.pageErrors[page]; err != nil {
 		return nil, nil, err
 	}
 	nextPage := 0
-	if page == 0 && (s.inheritedPages[2] != nil || s.pageErrors[2] != nil) {
+	if page == 0 && (s.originPages[2] != nil || s.pageErrors[2] != nil) {
 		nextPage = 2
 	}
-	return s.inheritedPages[page], &gh.Response{NextPage: nextPage}, nil
+	return s.originPages[page], &gh.Response{NextPage: nextPage}, nil
 }
 
 func TestListTeamMembersWithRolesOptionsValidate(t *testing.T) {
@@ -123,16 +123,16 @@ func TestListTeamMembersWithRolesFallsBackToRoleFilters(t *testing.T) {
 	}
 }
 
-func TestListDirectTeamMembersPrefersInheritanceAwareLister(t *testing.T) {
-	service := &inheritanceAwareTeamMemberService{
-		inheritedPages: map[int][]TeamMemberWithInheritance{
+func TestListDirectTeamMembersPrefersOriginAwareLister(t *testing.T) {
+	service := &originAwareTeamMemberService{
+		originPages: map[int][]TeamMemberWithOrigin{
 			0: {
-				{Username: "alice", Role: TeamMemberRoleMaintainer, Inherited: false},
-				{Username: "bob", Role: TeamMemberRoleMember, Inherited: true},
+				{Username: "alice", Role: TeamMemberRoleMaintainer, Origin: github.TeamMembershipOriginDirect},
+				{Username: "bob", Role: TeamMemberRoleMember, Origin: github.TeamMembershipOriginInherited},
 			},
 			2: {
-				{Username: "bob", Role: TeamMemberRoleMember, Inherited: false},
-				{Username: "carol", Role: TeamMemberRoleMember, Inherited: false},
+				{Username: "bob", Role: TeamMemberRoleMember, Origin: github.TeamMembershipOriginDirect},
+				{Username: "carol", Role: TeamMemberRoleMember, Origin: github.TeamMembershipOriginDirect},
 			},
 		},
 	}
@@ -153,7 +153,7 @@ func TestListDirectTeamMembersPrefersInheritanceAwareLister(t *testing.T) {
 		t.Fatalf("direct members = %#v, want %#v", got, want)
 	}
 	if !reflect.DeepEqual(service.requested, []int{0, 2}) {
-		t.Fatalf("inheritance-aware pages = %#v, want [0 2]", service.requested)
+		t.Fatalf("origin-aware pages = %#v, want [0 2]", service.requested)
 	}
 	if service.roleAwareCalls != 0 {
 		t.Fatalf("role-aware fallback calls = %d, want 0", service.roleAwareCalls)
@@ -169,9 +169,9 @@ func TestListDirectTeamMembersRejectsInvalidRoleEvenOnInheritedRow(t *testing.T)
 		{name: "unsupported", role: TeamMemberRole("owner")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			service := &inheritanceAwareTeamMemberService{
-				inheritedPages: map[int][]TeamMemberWithInheritance{
-					0: {{Username: "bob", Role: test.role, Inherited: true}},
+			service := &originAwareTeamMemberService{
+				originPages: map[int][]TeamMemberWithOrigin{
+					0: {{Username: "bob", Role: test.role, Origin: github.TeamMembershipOriginInherited}},
 				},
 			}
 			got, err := ListDirectTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
@@ -189,9 +189,9 @@ func TestListDirectTeamMembersRejectsInvalidRoleEvenOnInheritedRow(t *testing.T)
 
 func TestListDirectTeamMembersDoesNotReturnPartialResultsOnPageError(t *testing.T) {
 	pageErr := errors.New("second page failed")
-	service := &inheritanceAwareTeamMemberService{
-		inheritedPages: map[int][]TeamMemberWithInheritance{
-			0: {{Username: "alice", Role: TeamMemberRoleMember, Inherited: false}},
+	service := &originAwareTeamMemberService{
+		originPages: map[int][]TeamMemberWithOrigin{
+			0: {{Username: "alice", Role: TeamMemberRoleMember, Origin: github.TeamMembershipOriginDirect}},
 		},
 		pageErrors: map[int]error{2: pageErr},
 	}
@@ -208,7 +208,7 @@ func TestListDirectTeamMembersDoesNotReturnPartialResultsOnPageError(t *testing.
 	}
 }
 
-func TestListDirectTeamMembersUsesRoleAwareFallback(t *testing.T) {
+func TestListDirectTeamMembersRejectsUnknownRoleAwareFallback(t *testing.T) {
 	service := &roleAwareTeamMemberService{
 		pages: map[int][]TeamMember{
 			0: {{Username: "alpha", Role: TeamMemberRoleMember}},
@@ -220,37 +220,29 @@ func TestListDirectTeamMembersUsesRoleAwareFallback(t *testing.T) {
 		Org:     existingTeam.Org,
 		Slug:    existingTeam.Slug,
 	})
-	if err != nil {
-		t.Fatalf("ListDirectTeamMembersBySlugWithRoles returned error: %v", err)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("error = %v, want %v for origin-free rows", err, github.ErrValidationFailed)
 	}
-	want := []TeamMember{
-		{Username: "alpha", Role: TeamMemberRoleMember},
-		{Username: "zulu", Role: TeamMemberRoleMaintainer},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("members = %#v, want %#v", got, want)
+	if got != nil {
+		t.Fatalf("members = %#v, want nil when membership origin is unknown", got)
 	}
 	if !reflect.DeepEqual(service.requested, []int{0, 2}) {
 		t.Fatalf("role-aware pages = %#v, want [0 2]", service.requested)
 	}
 }
 
-func TestListDirectTeamMembersUsesLegacyRoleFilterFallback(t *testing.T) {
+func TestListDirectTeamMembersRejectsUnknownLegacyRoleFilterFallback(t *testing.T) {
 	service := &filteredTeamMemberService{}
 	got, err := ListDirectTeamMembersBySlugWithRoles(context.Background(), ListTeamMembersBySlugWithRolesOptions{
 		Service: service,
 		Org:     existingTeam.Org,
 		Slug:    existingTeam.Slug,
 	})
-	if err != nil {
-		t.Fatalf("ListDirectTeamMembersBySlugWithRoles returned error: %v", err)
+	if !errors.Is(err, github.ErrValidationFailed) {
+		t.Fatalf("error = %v, want %v for origin-free rows", err, github.ErrValidationFailed)
 	}
-	want := []TeamMember{
-		{Username: "member-user", Role: TeamMemberRoleMember},
-		{Username: "maintainer-user", Role: TeamMemberRoleMaintainer},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("members = %#v, want %#v", got, want)
+	if got != nil {
+		t.Fatalf("members = %#v, want nil when membership origin is unknown", got)
 	}
 	if !reflect.DeepEqual(service.roles, []string{"member", "maintainer"}) {
 		t.Fatalf("role filters = %#v, want [member maintainer]", service.roles)

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 )
 
 func TestOrganizationStateNormalizeNilReceiver(t *testing.T) {
@@ -108,8 +110,8 @@ func TestOrganizationStateNormalizeSortsCollections(t *testing.T) {
 	}
 
 	wantTeamMembers := []TeamMember{
-		{TeamSlug: "admins", Username: "alpha", Role: "maintainer"},
-		{TeamSlug: "platform", Username: "zulu", Role: "member"},
+		{TeamSlug: "admins", Username: "alpha", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginUnknown},
+		{TeamSlug: "platform", Username: "zulu", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown},
 	}
 	if !reflect.DeepEqual(actual.TeamMembers, wantTeamMembers) {
 		t.Fatalf("unexpected team members: got %#v want %#v", actual.TeamMembers, wantTeamMembers)

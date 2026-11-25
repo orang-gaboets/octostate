@@ -53,17 +53,30 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 		return nil, err
 	}
 	desired := config.NormalizeDesiredState(opt.Desired)
+	actual := *opt.Actual
+	teamMembers, err := state.CanonicalTeamMembers(opt.Actual.TeamMembers)
+	if err != nil {
+		return nil, fmt.Errorf("normalize actual team memberships: %w", err)
+	}
+	actual.TeamMembers = teamMembers
+	unresolvedTeamMemberships := make([]state.TeamMember, 0)
+	for _, member := range actual.TeamMembers {
+		if member.Origin == githubpkg.TeamMembershipOriginUnknown {
+			unresolvedTeamMemberships = append(unresolvedTeamMemberships, member)
+		}
+	}
 
 	planner := planner{
 		ctx:            ctx,
 		desired:        desired,
-		actual:         opt.Actual,
+		actual:         &actual,
 		userService:    opt.UserService,
 		userLoginsByID: map[int64]string{},
 	}
 
 	report := &Report{
-		Organization: desired.Organization,
+		Organization:              desired.Organization,
+		UnresolvedTeamMemberships: unresolvedTeamMemberships,
 	}
 
 	actions, err := planner.buildActions()

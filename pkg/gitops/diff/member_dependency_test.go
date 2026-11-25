@@ -3,6 +3,7 @@ package diff
 import (
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
@@ -73,7 +74,7 @@ func TestBuildTreatsInheritedOnlyParentMembershipAsAbsent(t *testing.T) {
 					{Slug: "parent", Name: "Parent", Privacy: "closed"},
 					{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
 				},
-				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect}},
 			}
 
 			report, err := Build(Options{Desired: desired, Snapshot: snapshotState})

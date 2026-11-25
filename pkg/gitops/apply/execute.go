@@ -30,11 +30,11 @@ type Options struct {
 	TeamService         teams.Service
 	UserService         ghusers.Service
 
-	// RequireExecutableDesiredActions makes a desired create or update that
-	// planning determined cannot execute a failure rather than a skipped
-	// action. Unsupported destructive drift is unaffected, so a caller can
-	// require its own mutations to be achievable while still tolerating drift
-	// Octostate does not reconcile.
+	// RequireExecutableDesiredActions makes an unfulfillable desired create or
+	// update, or a desired team membership with unknown actual origin, a failure
+	// rather than a skipped action. Unsupported destructive drift is unaffected,
+	// so a caller can require its own mutations to be achievable while still
+	// tolerating drift Octostate does not reconcile.
 	RequireExecutableDesiredActions bool
 }
 
@@ -79,10 +79,11 @@ func (opt *Options) Validate() error {
 // UnfulfilledDesiredActions to tell them apart, or
 // Options.RequireExecutableDesiredActions to fail on the second kind.
 type Result struct {
-	Organization string              `json:"organization"`
-	PlanSummary  gitopsplan.Summary  `json:"plan_summary"`
-	Executed     []gitopsplan.Action `json:"executed_actions"`
-	SkippedDrift []gitopsplan.Action `json:"skipped_actions"`
+	Organization              string              `json:"organization"`
+	PlanSummary               gitopsplan.Summary  `json:"plan_summary"`
+	Executed                  []gitopsplan.Action `json:"executed_actions"`
+	SkippedDrift              []gitopsplan.Action `json:"skipped_actions"`
+	UnresolvedTeamMemberships []state.TeamMember  `json:"unresolved_team_memberships"`
 }
 
 // Normalize initializes nil slices while preserving execution order.
@@ -96,6 +97,12 @@ func (r *Result) Normalize() {
 	if r.SkippedDrift == nil {
 		r.SkippedDrift = []gitopsplan.Action{}
 	}
+	if r.UnresolvedTeamMemberships == nil {
+		r.UnresolvedTeamMemberships = []state.TeamMember{}
+	}
+	unresolved := state.OrganizationState{TeamMembers: r.UnresolvedTeamMemberships}
+	unresolved.Normalize()
+	r.UnresolvedTeamMemberships = unresolved.TeamMembers
 	for i := range r.Executed {
 		r.Executed[i].Normalize()
 	}
@@ -120,6 +127,10 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
 		return nil, err
 	}
+	unresolvedTeamMemberships, err := unresolvedActualTeamMemberships(opt.Actual)
+	if err != nil {
+		return nil, err
+	}
 
 	executor, err := newExecutor(ctx, opt)
 	if err != nil {
@@ -127,8 +138,9 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 	}
 
 	result := &Result{
-		Organization: strings.TrimSpace(opt.Desired.Organization),
-		PlanSummary:  opt.Plan.Summary,
+		Organization:              strings.TrimSpace(opt.Desired.Organization),
+		PlanSummary:               applyPlanSummary(opt.Plan, unresolvedTeamMemberships),
+		UnresolvedTeamMemberships: unresolvedTeamMemberships,
 	}
 
 	for index := 0; index < len(opt.Plan.Actions); {

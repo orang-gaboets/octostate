@@ -258,7 +258,7 @@ func TestGitHubTeamServiceInheritanceAwareListing(t *testing.T) {
 			nextPageURL.RawQuery = nextQuery.Encode()
 			return jsonResponse(r, http.Header{"Link": {fmt.Sprintf(`<%s>; rel="next"`, nextPageURL.String())}}, `[{"login":"alice","role":"member","inherited":false},{"login":"bob","role":"maintainer","inherited":true}]`), nil
 		case "2":
-			return jsonResponse(r, nil, `[{"login":"carol","role":"member","inherited":true}]`), nil
+			return jsonResponse(r, nil, `[{"login":"carol","role":"member","inherited":true},{"login":"dave","role":"member","inherited":null},{"login":"erin","role":"maintainer"}]`), nil
 		default:
 			t.Errorf("unexpected page query %q", page)
 			return jsonResponse(r, nil, "[]"), nil
@@ -267,16 +267,16 @@ func TestGitHubTeamServiceInheritanceAwareListing(t *testing.T) {
 
 	client := newGitHubClientWithTransport(t, transport)
 	service := githubClientWrapper{Client: client}.Teams()
-	lister, ok := service.(teams.TeamMemberInheritanceLister)
+	lister, ok := service.(teams.TeamMemberOriginLister)
 	if !ok {
-		t.Fatal("team service does not implement TeamMemberInheritanceLister")
+		t.Fatal("team service does not implement TeamMemberOriginLister")
 	}
-	var members []teams.TeamMemberWithInheritance
+	var members []teams.TeamMemberWithOrigin
 	listOptions := &gh.ListOptions{PerPage: 100}
 	for {
-		pageMembers, response, err := lister.ListTeamMembersBySlugWithInheritance(context.Background(), "acme", "platform", listOptions)
+		pageMembers, response, err := lister.ListTeamMembersBySlugWithOrigin(context.Background(), "acme", "platform", listOptions)
 		if err != nil {
-			t.Fatalf("ListTeamMembersBySlugWithInheritance returned error: %v", err)
+			t.Fatalf("ListTeamMembersBySlugWithOrigin returned error: %v", err)
 		}
 		members = append(members, pageMembers...)
 		if response == nil || response.NextPage == 0 {
@@ -284,10 +284,12 @@ func TestGitHubTeamServiceInheritanceAwareListing(t *testing.T) {
 		}
 		listOptions.Page = response.NextPage
 	}
-	want := []teams.TeamMemberWithInheritance{
-		{Username: "alice", Role: teams.TeamMemberRoleMember, Inherited: false},
-		{Username: "bob", Role: teams.TeamMemberRoleMaintainer, Inherited: true},
-		{Username: "carol", Role: teams.TeamMemberRoleMember, Inherited: true},
+	want := []teams.TeamMemberWithOrigin{
+		{Username: "alice", Role: teams.TeamMemberRoleMember, Origin: github.TeamMembershipOriginDirect},
+		{Username: "bob", Role: teams.TeamMemberRoleMaintainer, Origin: github.TeamMembershipOriginInherited},
+		{Username: "carol", Role: teams.TeamMemberRoleMember, Origin: github.TeamMembershipOriginInherited},
+		{Username: "dave", Role: teams.TeamMemberRoleMember, Origin: github.TeamMembershipOriginUnknown},
+		{Username: "erin", Role: teams.TeamMemberRoleMaintainer, Origin: github.TeamMembershipOriginUnknown},
 	}
 	if len(members) != len(want) {
 		t.Fatalf("members = %#v, want %#v", members, want)

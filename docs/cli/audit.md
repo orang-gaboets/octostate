@@ -109,12 +109,14 @@ organization member roles, run `octostate audit pull` once before using
 values.
 
 Snapshots written before direct and inherited team membership were
-distinguished may contain inherited-only parent-team rows. The existing
-`team_members` snapshot shape has no provenance field, so those legacy rows
-are deterministically treated as direct memberships and can continue to
-produce removal drift. Run `octostate audit pull` once to refresh the snapshot;
-new snapshots include only direct team memberships. No snapshot format change
-is required.
+distinguished have no `origin` field. Such legacy rows load as `unknown`, are
+reported in `unresolved_team_memberships`, and do not generate membership
+actions. New snapshots include an `origin` field on every `team_members` row:
+`direct`, `inherited`, or `unknown`. GitHub's explicit direct/inherited labels
+are used when present; a missing or null label and role-only fallback reads do
+not prove direct membership, so they are recorded as `unknown`. Run
+`octostate audit pull` to refresh the snapshot from current API evidence.
+Snapshot readers that validate a fixed schema must accept the new field.
 
 ## `octostate audit diff`
 
@@ -128,7 +130,8 @@ octostate audit diff --config-dir ./config --state-dir ./state --fail-on-drift
 Flags:
 - `--config-dir` (required): Path to a directory containing `organization.yaml`
 - `--state-dir` (required): Path to the state directory containing `actual/snapshot.json`
-- `--fail-on-drift`: Exit with code `2` when any drift is detected
+- `--fail-on-drift`: Exit with code `2` when actions or unresolved memberships
+  are reported
 
 Behavior:
 - Loads `<config-dir>/organization.yaml`
@@ -143,16 +146,22 @@ Drift report fields:
 - `snapshot_pulled_at`
 - `summary`
 - `actions`
+- `unresolved_team_memberships`
 
 Drift behavior:
 - Uses the same resource ordering and action schema as `config plan`
 - Reports `create` / `update` drift for desired state that is missing or changed
 - Reports `delete` / `remove` drift for unsupported extra snapshot state
+- Reports unknown-origin membership rows as unresolved and non-actionable
+- Keeps `summary.has_changes` action-only; `summary.has_unresolved` and
+  `summary.unresolved_memberships` separately describe unresolved evidence
 - Does not mutate GitHub state
 
 Exit codes:
-- `0`: no drift, or drift detected without `--fail-on-drift`
-- `2`: drift detected and `--fail-on-drift` is set
+- `0`: no actions or unresolved memberships, or either is reported without
+  `--fail-on-drift`
+- `2`: actions or unresolved memberships are reported and `--fail-on-drift` is
+  set
 - `1`: load/decode/validation/runtime failure
 
 Example offline diff:

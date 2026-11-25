@@ -44,7 +44,7 @@ type githubTeamServiceWrapper struct {
 type teamMemberResponse struct {
 	Login     string `json:"login"`
 	Role      string `json:"role"`
-	Inherited bool   `json:"inherited"`
+	Inherited *bool  `json:"inherited"`
 }
 
 func (s repositoriesServiceWrapper) ListAllTopics(ctx context.Context, owner, repo string) ([]string, *gh.Response, error) {
@@ -67,18 +67,26 @@ func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithRoles(ctx context.Con
 	return members, resp, nil
 }
 
-func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithInheritance(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]teams.TeamMemberWithInheritance, *gh.Response, error) {
+func (s githubTeamServiceWrapper) ListTeamMembersBySlugWithOrigin(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]teams.TeamMemberWithOrigin, *gh.Response, error) {
 	response, resp, err := s.listTeamMembersBySlug(ctx, org, slug, opts)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	members := make([]teams.TeamMemberWithInheritance, 0, len(response))
+	members := make([]teams.TeamMemberWithOrigin, 0, len(response))
 	for _, member := range response {
-		members = append(members, teams.TeamMemberWithInheritance{
-			Username:  member.Login,
-			Role:      teams.TeamMemberRole(member.Role),
-			Inherited: member.Inherited,
+		origin := github.TeamMembershipOriginUnknown
+		if member.Inherited != nil {
+			if *member.Inherited {
+				origin = github.TeamMembershipOriginInherited
+			} else {
+				origin = github.TeamMembershipOriginDirect
+			}
+		}
+		members = append(members, teams.TeamMemberWithOrigin{
+			Username: member.Login,
+			Role:     teams.TeamMemberRole(member.Role),
+			Origin:   origin,
 		})
 	}
 	return members, resp, nil

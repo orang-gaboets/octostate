@@ -6,6 +6,7 @@ import (
 	"time"
 
 	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 type (
@@ -41,10 +42,11 @@ const (
 // Report is the machine-readable output produced by offline GitOps drift
 // detection against a stored actual-state snapshot.
 type Report struct {
-	Organization     string    `json:"organization"`
-	SnapshotPulledAt time.Time `json:"snapshot_pulled_at"`
-	Summary          Summary   `json:"summary"`
-	Actions          []Action  `json:"actions"`
+	Organization              string             `json:"organization"`
+	SnapshotPulledAt          time.Time          `json:"snapshot_pulled_at"`
+	Summary                   Summary            `json:"summary"`
+	Actions                   []Action           `json:"actions"`
+	UnresolvedTeamMemberships []state.TeamMember `json:"unresolved_team_memberships"`
 }
 
 // Normalize initializes nil slices, applies shared action normalization,
@@ -55,14 +57,16 @@ func (r *Report) Normalize() {
 	}
 
 	base := gitopsplan.Report{
-		Organization: strings.TrimSpace(r.Organization),
-		Summary:      r.Summary,
-		Actions:      append([]Action(nil), r.Actions...),
+		Organization:              strings.TrimSpace(r.Organization),
+		Summary:                   r.Summary,
+		Actions:                   append([]Action(nil), r.Actions...),
+		UnresolvedTeamMemberships: append([]state.TeamMember(nil), r.UnresolvedTeamMemberships...),
 	}
 	base.Normalize()
 
 	r.Organization = base.Organization
 	r.Summary = base.Summary
+	r.UnresolvedTeamMemberships = base.UnresolvedTeamMemberships
 	repositoryActions := make([]Action, 0, len(base.Actions))
 	nonRepositoryActions := make([]Action, 0, len(base.Actions))
 	for _, action := range base.Actions {

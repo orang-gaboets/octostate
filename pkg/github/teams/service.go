@@ -7,6 +7,7 @@ import (
 	gh "github.com/google/go-github/v88/github"
 
 	"github.com/orang-gaboets/octostate/internal/pagination"
+	"github.com/orang-gaboets/octostate/internal/teamorigin"
 	"github.com/orang-gaboets/octostate/pkg/github"
 	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 )
@@ -407,37 +408,43 @@ func ListTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersB
 	return allMembers, nil
 }
 
-// ListDirectTeamMembersBySlugWithRoles lists a team's direct members and
-// their roles. When the service exposes inheritance metadata, inherited rows
-// are excluded. Older service implementations retain the role-aware or
-// role-filtered compatibility path and are treated as reporting direct rows.
-func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersBySlugWithRolesOptions) ([]TeamMember, error) {
+// ListTeamMembersBySlugWithOrigin lists a team's members with their roles and
+// origin evidence. Services without explicit origin metadata retain the
+// role-aware or role-filtered fallback, whose rows are marked unknown.
+func ListTeamMembersBySlugWithOrigin(ctx context.Context, option ListTeamMembersBySlugWithRolesOptions) ([]TeamMemberWithOrigin, error) {
 	if err := option.Validate(); err != nil {
 		return nil, err
 	}
 
-	inheritanceLister, ok := option.Service.(TeamMemberInheritanceLister)
+	originLister, ok := option.Service.(TeamMemberOriginLister)
 	if !ok {
-		return ListTeamMembersBySlugWithRoles(ctx, option)
+		members, err := ListTeamMembersBySlugWithRoles(ctx, option)
+		if err != nil {
+			return nil, err
+		}
+		withOrigin := make([]TeamMemberWithOrigin, 0, len(members))
+		for _, member := range members {
+			withOrigin = append(withOrigin, TeamMemberWithOrigin{
+				Username: member.Username,
+				Role:     member.Role,
+				Origin:   github.TeamMembershipOriginUnknown,
+			})
+		}
+		return canonicalTeamMembersWithOrigin(option.Slug, withOrigin)
 	}
 
 	listOptions := &gh.ListOptions{PerPage: 100}
-	var directMembers []TeamMember
+	var allMembers []TeamMemberWithOrigin
 	for {
-		members, resp, err := inheritanceLister.ListTeamMembersBySlugWithInheritance(ctx, option.Org, option.Slug, listOptions)
+		members, resp, err := originLister.ListTeamMembersBySlugWithOrigin(ctx, option.Org, option.Slug, listOptions)
 		if err != nil {
 			return nil, github.WrapError(err, fmt.Sprintf("failed to list members for team %s/%s", option.Org, option.Slug))
 		}
-
 		for _, member := range members {
-			// Validate inherited rows too, so malformed GitHub data still fails closed.
 			if member.Role != TeamMemberRoleMember && member.Role != TeamMemberRoleMaintainer {
 				return nil, invalidTeamMemberRoleError(option.Org, option.Slug, member.Username, member.Role)
 			}
-			if member.Inherited {
-				continue
-			}
-			directMembers = append(directMembers, TeamMember{Username: member.Username, Role: member.Role})
+			allMembers = append(allMembers, member)
 		}
 
 		next, err := pagination.Next(resp, listOptions.Page)
@@ -448,6 +455,57 @@ func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMe
 			break
 		}
 		listOptions.Page = next
+	}
+
+	return canonicalTeamMembersWithOrigin(option.Slug, allMembers)
+}
+
+func canonicalTeamMembersWithOrigin(teamSlug string, members []TeamMemberWithOrigin) ([]TeamMemberWithOrigin, error) {
+	input := make([]teamorigin.Membership, 0, len(members))
+	for _, member := range members {
+		input = append(input, teamorigin.Membership{
+			TeamSlug: teamSlug,
+			Username: member.Username,
+			Role:     string(member.Role),
+			Origin:   member.Origin,
+		})
+	}
+	canonical, err := teamorigin.Canonicalize(input)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]TeamMemberWithOrigin, 0, len(canonical))
+	for _, member := range canonical {
+		result = append(result, TeamMemberWithOrigin{
+			Username: member.Username,
+			Role:     TeamMemberRole(member.Role),
+			Origin:   member.Origin,
+		})
+	}
+	return result, nil
+}
+
+// ListDirectTeamMembersBySlugWithRoles lists a team's direct members and
+// their roles. It returns an error if any listed row has unknown origin,
+// because this helper cannot claim that an origin-free row is direct.
+func ListDirectTeamMembersBySlugWithRoles(ctx context.Context, option ListTeamMembersBySlugWithRolesOptions) ([]TeamMember, error) {
+	members, err := ListTeamMembersBySlugWithOrigin(ctx, option)
+	if err != nil {
+		return nil, err
+	}
+
+	directMembers := make([]TeamMember, 0, len(members))
+	for _, member := range members {
+		switch member.Origin {
+		case github.TeamMembershipOriginDirect:
+			directMembers = append(directMembers, TeamMember{Username: member.Username, Role: member.Role})
+		case github.TeamMembershipOriginInherited:
+			continue
+		case github.TeamMembershipOriginUnknown:
+			return nil, fmt.Errorf("membership origin is unknown for team %s/%s member %q: %w", option.Org, option.Slug, member.Username, github.ErrValidationFailed)
+		default:
+			return nil, fmt.Errorf("membership origin %q is invalid for team %s/%s member %q: %w", member.Origin, option.Org, option.Slug, member.Username, github.ErrValidationFailed)
+		}
 	}
 
 	ghlogging.Debugf(ctx, "listed %d direct members for team %s/%s", len(directMembers), option.Org, option.Slug)

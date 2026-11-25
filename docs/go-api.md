@@ -220,6 +220,36 @@ An exceptional source-incompatible change within `v1` requires an explicit
 maintainer decision, a tracked compatibility rationale, and release notes that
 explain the impact. It is not the normal alternative to a major release.
 
+### Approved exception: team membership origin in #372
+
+Issue [#372](https://github.com/orang-gaboets/octostate/issues/372) approves a
+source-incompatible change to the optional team-member listing API within `v1`.
+The former `TeamMemberWithInheritance` boolean could not distinguish
+`inherited: false` from a missing or null API field, so callers could mistake
+unknown evidence for confirmed direct membership. The replacement uses
+`TeamMemberWithOrigin` and `github.TeamMembershipOrigin` values `direct`,
+`inherited`, and `unknown`.
+
+Consumers implementing the optional team-member listing capability should
+replace `TeamMemberInheritanceLister.ListTeamMembersBySlugWithInheritance`
+with `TeamMemberOriginLister.ListTeamMembersBySlugWithOrigin`. Set origin to
+`direct` only when the API explicitly confirms direct membership, to
+`inherited` when it explicitly confirms inherited membership, and to `unknown`
+when the field is absent, null, or the service only provides role-filtered
+member rows. `ListDirectTeamMembersBySlugWithRoles` now returns
+`github.ErrValidationFailed` if any returned row has unknown origin; callers
+that need all evidence should use `ListTeamMembersBySlugWithOrigin`.
+
+`state.TeamMember` now has an `Origin` field. Its zero value and snapshots that
+omit the field normalize to `unknown`. Snapshot writers emit the field; strict
+external snapshot readers must accept it. No snapshot migration layer is
+provided. Plan, audit diff, and apply outputs add `unresolved_team_memberships`
+and summary fields `has_unresolved` and `unresolved_memberships`.
+`has_changes` remains action-only. Automation using `audit diff
+--fail-on-drift` must treat exit code `2` as either planned action drift or
+unresolved-only membership evidence. See [audit command compatibility notes](cli/audit.md)
+and [config command output](cli/config.md) for the full CLI contract.
+
 ### Existing importable APIs
 
 For an existing `v1` package outside an `internal` directory, an exported
