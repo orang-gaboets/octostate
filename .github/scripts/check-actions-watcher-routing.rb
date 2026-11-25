@@ -20,6 +20,36 @@ EXPECTED_WORKFLOWS = [
   "Trusted Live Integration"
 ].freeze
 
+EXPECTED_CHECKOUT = {
+  "uses" => "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  "with" => {
+    "ref" => "main",
+    "fetch-depth" => 0,
+    "persist-credentials" => false
+  }
+}.freeze
+
+EXPECTED_SETUP_GO = {
+  "uses" => "actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5",
+  "with" => {
+    "go-version-file" => "go.mod",
+    "cache" => true
+  }
+}.freeze
+
+EXPECTED_APP_TOKEN = {
+  "uses" => "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510",
+  "with" => {
+    "app-id" => "${{ vars.ACTIONS_WATCHER_APP_ID }}",
+    "private-key" => "${{ secrets.ACTIONS_WATCHER_PRIVATE_KEY }}",
+    "owner" => "orang-gaboets",
+    "repositories" => "octostate",
+    "permission-actions" => "read",
+    "permission-issues" => "write",
+    "permission-metadata" => "read"
+  }
+}.freeze
+
 def require_check(condition, message)
   abort "FAIL: #{message}" unless condition
 end
@@ -55,23 +85,17 @@ expected_step_names = [
   "Reconcile workflow incidents"
 ]
 require_check(steps.map { |step| step["name"] } == expected_step_names, "workflow steps must match the reviewed token-safe sequence")
-checkout = steps.find { |step| step["uses"].to_s.start_with?("actions/checkout@") }
-require_check(!checkout.nil?, "trusted checkout step is missing")
-require_check(checkout.fetch("with").fetch("ref") == "main", "checkout must use trusted main")
-require_check(checkout.fetch("with").fetch("fetch-depth") == 0, "checkout must fetch full history for activation time")
-require_check(checkout.fetch("with").fetch("persist-credentials") == false, "checkout credentials must not persist")
+checkout = steps.find { |step| step["name"] == "Checkout trusted main" }
+require_check(checkout && checkout["uses"] == EXPECTED_CHECKOUT.fetch("uses"), "checkout action revision changed")
+require_check(checkout.fetch("with") == EXPECTED_CHECKOUT.fetch("with"), "checkout inputs changed")
 
-app_tokens = steps.select { |step| step["uses"].to_s.start_with?("actions/create-github-app-token@") }
-require_check(app_tokens.length == 1, "workflow must contain exactly one scoped GitHub App token step")
-app_token = app_tokens.first
-app_inputs = app_token.fetch("with")
-require_check(app_inputs.fetch("owner") == "orang-gaboets" && app_inputs.fetch("repositories") == "octostate", "App token must be scoped to orang-gaboets/octostate")
-permissions = app_inputs.select { |name, _value| name.start_with?("permission-") }
-require_check(permissions == {
-  "permission-actions" => "read",
-  "permission-issues" => "write",
-  "permission-metadata" => "read"
-}, "App token must request only Actions read, Issues write, and Metadata read")
+setup_go = steps.find { |step| step["name"] == "Set up Go" }
+require_check(setup_go && setup_go["uses"] == EXPECTED_SETUP_GO.fetch("uses"), "setup-go action revision changed")
+require_check(setup_go.fetch("with") == EXPECTED_SETUP_GO.fetch("with"), "setup-go inputs changed")
+
+app_token = steps.find { |step| step["name"] == "Create scoped watcher installation token" }
+require_check(app_token && app_token["uses"] == EXPECTED_APP_TOKEN.fetch("uses"), "App token action revision changed")
+require_check(app_token.fetch("with") == EXPECTED_APP_TOKEN.fetch("with"), "App token inputs changed")
 
 activation = steps.find { |step| step["name"] == "Derive watcher activation time" }
 activation_script = <<~'SCRIPT'.strip
