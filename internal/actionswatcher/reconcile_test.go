@@ -78,6 +78,31 @@ func TestReconcileUsesAttemptStartOrderingAndOnlySuccessRecovers(t *testing.T) {
 	}
 }
 
+func TestReconcileRecoversOnLaterAttemptWithSameStartTime(t *testing.T) {
+	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
+	success := attempt(2, 2, "CI", "push", "main", "success", started, "https://example.test/recovery")
+
+	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, success}, nil, started.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := onlyChange(t, plan)
+	if change.CurrentStatus != StatusRecovered {
+		t.Fatalf("CurrentStatus = %q, want recovered", change.CurrentStatus)
+	}
+	if len(change.Comments) != 1 || !strings.Contains(change.Comments[0].Body, "Observed a successful run after the latest failure") {
+		t.Fatalf("recovery comments = %#v, want one recovery transition", change.Comments)
+	}
+	state, err := RenderBodyState(change.Body, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatalf("RenderBodyState() error = %v", err)
+	}
+	if state.Recovery == nil || !sameAttempt(*state.Recovery, success) {
+		t.Fatalf("persisted recovery = %#v, want the later same-time success", state.Recovery)
+	}
+}
+
 func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *testing.T) {
 	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)

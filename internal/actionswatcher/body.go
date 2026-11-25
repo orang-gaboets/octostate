@@ -113,8 +113,8 @@ func validateLatestIncidentState(state IncidentState, failures []RunAttempt) err
 	if state.Recovery != nil && (state.Recovery.WorkflowID != state.WorkflowID || state.Recovery.WorkflowName != state.WorkflowName || state.Recovery.Conclusion != "success") {
 		return errors.New("recovery attempt does not match the incident workflow")
 	}
-	if state.Status == StatusRecovered && !state.Recovery.StartedAt.After(latestFailureTime(failures)) {
-		return errors.New("recovery attempt did not start after the latest failure")
+	if state.Status == StatusRecovered && !attemptLess(failures[len(failures)-1], *state.Recovery) {
+		return errors.New("recovery attempt does not follow the latest failure")
 	}
 	if state.Status == StatusFailing && state.Recovery != nil {
 		return errors.New("failing incident cannot retain a recovery attempt")
@@ -480,8 +480,8 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 	if state.Recovery != nil && (state.Recovery.WorkflowID != workflowID || state.Recovery.WorkflowName != workflowName || !validPersistedRunAttempt(*state.Recovery) || state.Recovery.Conclusion != "success") {
 		return errors.New("managed recovery attempt is invalid or mismatched")
 	}
-	if state.Status == StatusRecovered && !state.Recovery.StartedAt.After(latestFailureTime(failures)) {
-		return errors.New("managed recovery did not start after the latest failure")
+	if state.Status == StatusRecovered && !attemptLess(failures[len(failures)-1], *state.Recovery) {
+		return errors.New("managed recovery does not follow the latest failure")
 	}
 	if state.PreviousIssueNumber < 0 || repo.ID <= 0 {
 		return errors.New("managed state contains an invalid repository or previous issue identity")
@@ -719,13 +719,6 @@ func bodyArchiveReferences(body string) ([]string, error) {
 	}
 	sort.Strings(markers)
 	return markers, nil
-}
-
-func latestFailureTime(failures []RunAttempt) time.Time {
-	if len(failures) == 0 {
-		return time.Time{}
-	}
-	return failures[len(failures)-1].StartedAt
 }
 
 func encodedFailureLines(attempts []RunAttempt) string {

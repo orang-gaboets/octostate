@@ -427,8 +427,8 @@ func stateFromAttempts(key workflowKey, previous *IncidentState, attempts []RunA
 			continue
 		}
 		if attempt.Conclusion == "success" {
-			latestFailure, ok := latestFailureAt(state.Failures, attempt.StartedAt)
-			if ok && attempt.StartedAt.After(latestFailure.StartedAt) {
+			_, ok := latestFailureBefore(state.Failures, attempt)
+			if ok {
 				if state.Status != StatusRecovered {
 					state.Recovery = cloneAttemptPointer(&attempt)
 				}
@@ -483,8 +483,8 @@ func transitionComments(previous, next IncidentState, incoming []RunAttempt, exi
 		if isFailure(attempt.Conclusion) {
 			newStatus = StatusFailing
 		} else if attempt.Conclusion == "success" {
-			failure, ok := latestFailureAt(next.Failures, attempt.StartedAt)
-			if ok && attempt.StartedAt.After(failure.StartedAt) {
+			_, ok := latestFailureBefore(next.Failures, attempt)
+			if ok {
 				newStatus = StatusRecovered
 			}
 		}
@@ -536,11 +536,11 @@ func uniqueFailures(attempts []RunAttempt) ([]RunAttempt, error) {
 	return mergeFailures(attempts)
 }
 
-func latestFailureAt(failures []RunAttempt, by time.Time) (RunAttempt, bool) {
+func latestFailureBefore(failures []RunAttempt, before RunAttempt) (RunAttempt, bool) {
 	var latest RunAttempt
 	found := false
 	for _, attempt := range failures {
-		if attempt.StartedAt.After(by) {
+		if !attemptLess(attempt, before) {
 			continue
 		}
 		if !found || attemptLess(latest, attempt) {
