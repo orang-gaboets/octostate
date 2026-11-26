@@ -890,8 +890,10 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				return fmt.Errorf("read pending run state from issue #%d: %w", current.Number, err)
 			}
 			pendingRunIDs := append(append([]int64(nil), state.PendingRunIDs...), change.PendingRunIDs...)
+			checkpointed := false
 			if len(pendingRunIDs) > 0 {
-				checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, pendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
+				bodyPendingRunIDs, overflowPendingRunIDs := splitPendingRunIDs(state.PendingRunIDs, change.PendingRunIDs)
+				checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, bodyPendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
 				if err != nil {
 					return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
 				}
@@ -905,14 +907,20 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 						newPendingRunIDs = append(newPendingRunIDs, runID)
 					}
 				}
-				if len(checkpointArchives) > 0 && len(newPendingRunIDs) > 0 {
-					marker, err := pendingCheckpointMarker(state.WorkflowID, newPendingRunIDs)
+				markerRunIDs := overflowPendingRunIDs
+				if len(checkpointArchives) > 0 {
+					markerRunIDs = newPendingRunIDs
+				}
+				if len(markerRunIDs) > 0 {
+					markers, err := pendingCheckpointMarkers(state.WorkflowID, markerRunIDs)
 					if err != nil {
 						return fmt.Errorf("mark pending runs for issue #%d: %w", current.Number, err)
 					}
-					current, err = c.ensureMarkedComment(ctx, current, marker, marker)
-					if err != nil {
-						return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
+					for _, marker := range markers {
+						current, err = c.ensureMarkedComment(ctx, current, marker, marker)
+						if err != nil {
+							return fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
+						}
 					}
 				}
 				if err := c.verifyCheckpointArchives(ctx, change.Archives, checkpointArchives); err != nil {
@@ -927,10 +935,7 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				if err != nil {
 					return fmt.Errorf("checkpoint issue #%d: %w", change.IssueNumber, err)
 				}
-				current, err = c.removePendingCheckpointComments(ctx, current, state.WorkflowID)
-				if err != nil {
-					return fmt.Errorf("clear pending-run checkpoint for issue #%d: %w", change.IssueNumber, err)
-				}
+				checkpointed = true
 			}
 			if len(change.PendingRunIDs) > 0 {
 				if err := c.verifyArchiveAttempts(ctx, watcher.Plan{Changes: []watcher.IssueChange{change}}); err != nil {
@@ -948,6 +953,12 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 			updated, err := c.patchIssue(ctx, current, change)
 			if err != nil {
 				return fmt.Errorf("update issue #%d: %w", change.IssueNumber, err)
+			}
+			if checkpointed {
+				updated, err = c.removePendingCheckpointComments(ctx, updated, state.WorkflowID, nil)
+				if err != nil {
+					return fmt.Errorf("clear pending-run checkpoint for issue #%d: %w", change.IssueNumber, err)
+				}
 			}
 			expected = replaceIssue(expected, updated)
 		default:
@@ -1035,7 +1046,7 @@ func (c *watcherClient) completeClosedPendingRuns(ctx context.Context, initial [
 		if err != nil {
 			return fmt.Errorf("clear pending runs from closed issue #%d: %w", issueNumber, err)
 		}
-		current, err = c.removePendingCheckpointComments(ctx, current, state.WorkflowID)
+		current, err = c.removePendingCheckpointComments(ctx, current, state.WorkflowID, completed)
 		if err != nil {
 			return fmt.Errorf("clear pending-run checkpoint from closed issue #%d: %w", issueNumber, err)
 		}
@@ -1107,7 +1118,7 @@ func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, p
 		if err != nil {
 			return nil, fmt.Errorf("read pending run state from issue #%d: %w", current.Number, err)
 		}
-		pendingRunIDs := append(append([]int64(nil), state.PendingRunIDs...), change.PendingRunIDs...)
+		pendingRunIDs, _ := splitPendingRunIDs(state.PendingRunIDs, change.PendingRunIDs)
 		_, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, pendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
 		if err != nil {
 			return nil, fmt.Errorf("plan checkpoint archives for issue #%d: %w", current.Number, err)
@@ -1363,7 +1374,7 @@ func (c *watcherClient) ensureTransitionComments(ctx context.Context, initial wa
 	return current, nil
 }
 
-func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, expected watcher.IssueSnapshot, workflowID int64) (watcher.IssueSnapshot, error) {
+func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, expected watcher.IssueSnapshot, workflowID int64, completed map[int64]bool) (watcher.IssueSnapshot, error) {
 	current := expected
 	for {
 		index := -1
@@ -1371,7 +1382,7 @@ func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, exp
 			if comment.AuthorLogin != c.appLogin {
 				continue
 			}
-			id, _, found, err := parsePendingCheckpoint(comment.Body)
+			id, runIDs, found, err := parsePendingCheckpoint(comment.Body)
 			if err != nil {
 				return watcher.IssueSnapshot{}, err
 			}
@@ -1379,6 +1390,18 @@ func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, exp
 				return watcher.IssueSnapshot{}, fmt.Errorf("pending-run checkpoint identifies workflow ID %d, want %d", id, workflowID)
 			}
 			if found {
+				if completed != nil {
+					allCompleted := true
+					for _, runID := range runIDs {
+						if !completed[runID] {
+							allCompleted = false
+							break
+						}
+					}
+					if !allCompleted {
+						continue
+					}
+				}
 				index = i
 				break
 			}

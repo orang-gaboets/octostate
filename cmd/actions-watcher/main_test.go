@@ -154,16 +154,16 @@ func TestPendingRunEventsBatchesClosedIncidentsOldestFirst(t *testing.T) {
 	issues := make([]watcher.IssueSnapshot, issueCount+1)
 	for i := range issues {
 		if i == issueCount {
-			pending := make([]int64, watcher.MaxPendingRunIDs)
+			pending := make([]int64, maxPendingRunEvents)
 			for j := range pending {
-				pending[j] = int64(issueCount*watcher.MaxPendingRunIDs + j + 1)
+				pending[j] = int64(issueCount*maxPendingRunEvents + j + 1)
 			}
 			issues[i] = watcher.IssueSnapshot{Number: issueCount + 1, State: "open", Body: makeBody(pending)}
 			continue
 		}
-		pending := make([]int64, watcher.MaxPendingRunIDs)
+		pending := make([]int64, maxPendingRunEvents)
 		for j := range pending {
-			pending[j] = int64(i*watcher.MaxPendingRunIDs + j + 1)
+			pending[j] = int64(i*maxPendingRunEvents + j + 1)
 		}
 		closedAt := started.Add(time.Duration(i+1) * time.Hour)
 		issues[i] = watcher.IssueSnapshot{
@@ -175,12 +175,12 @@ func TestPendingRunEventsBatchesClosedIncidentsOldestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pendingRunEvents() first batch error = %v", err)
 	}
-	const batchLimit = watcher.MaxPendingRunIDs
+	const batchLimit = maxPendingRunEvents
 	if len(events) != batchLimit {
 		t.Fatalf("first batch size = %d, want %d", len(events), batchLimit)
 	}
-	if events[0].RunID != issueCount*watcher.MaxPendingRunIDs+1 || events[0].IssueNumber != issueCount+1 ||
-		events[len(events)-1].RunID != (issueCount+1)*watcher.MaxPendingRunIDs || events[len(events)-1].IssueNumber != issueCount+1 || len(deferred) != 0 {
+	if events[0].RunID != issueCount*maxPendingRunEvents+1 || events[0].IssueNumber != issueCount+1 ||
+		events[len(events)-1].RunID != (issueCount+1)*maxPendingRunEvents || events[len(events)-1].IssueNumber != issueCount+1 || len(deferred) != 0 {
 		t.Fatalf("first batch = first=%#v last=%#v deferred=%d", events[0], events[len(events)-1], len(deferred))
 	}
 	issues[issueCount].Body = makeBody(nil)
@@ -189,8 +189,8 @@ func TestPendingRunEventsBatchesClosedIncidentsOldestFirst(t *testing.T) {
 		if err != nil {
 			t.Fatalf("pendingRunEvents() closed batch %d error = %v", i, err)
 		}
-		if len(events) != watcher.MaxPendingRunIDs || events[0].RunID != int64(i*watcher.MaxPendingRunIDs+1) ||
-			events[len(events)-1].RunID != int64((i+1)*watcher.MaxPendingRunIDs) || events[0].IssueNumber != i+1 || events[len(events)-1].IssueNumber != i+1 || len(deferred) != 0 {
+		if len(events) != maxPendingRunEvents || events[0].RunID != int64(i*maxPendingRunEvents+1) ||
+			events[len(events)-1].RunID != int64((i+1)*maxPendingRunEvents) || events[0].IssueNumber != i+1 || events[len(events)-1].IssueNumber != i+1 || len(deferred) != 0 {
 			t.Fatalf("closed batch %d = first=%#v last=%#v deferred=%d", i, events[0], events[len(events)-1], len(deferred))
 		}
 		issues[i].Body = makeBody(nil)
@@ -218,11 +218,11 @@ func TestPendingRunEventsDefersOpenCheckpointsAndPreservesThemInPlan(t *testing.
 		}
 		return body
 	}
-	ciIDs := make([]int64, watcher.MaxPendingRunIDs)
-	codeQLIDs := make([]int64, watcher.MaxPendingRunIDs)
+	ciIDs := make([]int64, maxPendingRunEvents)
+	codeQLIDs := make([]int64, maxPendingRunEvents)
 	for i := range ciIDs {
 		ciIDs[i] = int64(i + 1)
-		codeQLIDs[i] = int64(watcher.MaxPendingRunIDs + i + 1)
+		codeQLIDs[i] = int64(maxPendingRunEvents + i + 1)
 	}
 	issues := []watcher.IssueSnapshot{
 		{Number: 7, State: "open", Body: makeBody(ciFailure, ciIDs)},
@@ -232,14 +232,14 @@ func TestPendingRunEventsDefersOpenCheckpointsAndPreservesThemInPlan(t *testing.
 	if err != nil {
 		t.Fatalf("pendingRunEvents() error = %v", err)
 	}
-	if len(events) != watcher.MaxPendingRunIDs {
-		t.Fatalf("selected batch has %d events, want %d", len(events), watcher.MaxPendingRunIDs)
+	if len(events) != maxPendingRunEvents {
+		t.Fatalf("selected batch has %d events, want %d", len(events), maxPendingRunEvents)
 	}
 	if events[0].IssueNumber != 7 || events[len(events)-1].IssueNumber != 7 {
 		t.Fatalf("selected batch boundaries = %#v / %#v, want issue #7", events[0], events[len(events)-1])
 	}
-	if len(deferred) != watcher.MaxPendingRunIDs {
-		t.Fatalf("deferred batch has %d events, want %d", len(deferred), watcher.MaxPendingRunIDs)
+	if len(deferred) != maxPendingRunEvents {
+		t.Fatalf("deferred batch has %d events, want %d", len(deferred), maxPendingRunEvents)
 	}
 	if deferred[0].IssueNumber != 8 || deferred[len(deferred)-1].IssueNumber != 8 {
 		t.Fatalf("deferred batch boundaries = %#v / %#v, want issue #8", deferred[0], deferred[len(deferred)-1])
@@ -257,6 +257,55 @@ func TestPendingRunEventsDefersOpenCheckpointsAndPreservesThemInPlan(t *testing.
 	}
 	if !reflect.DeepEqual(state.PendingRunIDs, codeQLIDs) || !reflect.DeepEqual(plan.Changes[0].PendingRunIDs, codeQLIDs) {
 		t.Fatalf("preserved deferred IDs = body:%d checkpoint:%d; want %d each", len(state.PendingRunIDs), len(plan.Changes[0].PendingRunIDs), len(codeQLIDs))
+	}
+}
+
+func TestRemovePendingCheckpointCommentsKeepsUncompletedRunIDs(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	completedMarker, err := pendingCheckpointMarker(1, []int64{101})
+	if err != nil {
+		t.Fatal(err)
+	}
+	remainingMarker, err := pendingCheckpointMarker(1, []int64{102})
+	if err != nil {
+		t.Fatal(err)
+	}
+	comments := []any{
+		map[string]any{"id": 1, "body": completedMarker, "user": map[string]any{"login": expectedAppSlug + "[bot]"}},
+		map[string]any{"id": 2, "body": remainingMarker, "user": map[string]any{"login": expectedAppSlug + "[bot]"}},
+	}
+	expected := watcher.IssueSnapshot{
+		Number: 7, State: "closed", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: "managed body", Comments: []watcher.CommentSnapshot{
+			{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: completedMarker},
+			{ID: 2, AuthorLogin: expectedAppSlug + "[bot]", Body: remainingMarker},
+		},
+	}
+	apiIssue := issueSnapshotJSON(expected)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/1":
+			comments = comments[1:]
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, repo)
+	updated, err := client.removePendingCheckpointComments(context.Background(), expected, 1, map[int64]bool{101: true})
+	if err != nil {
+		t.Fatalf("removePendingCheckpointComments() error = %v", err)
+	}
+	if len(updated.Comments) != 1 || updated.Comments[0].ID != 2 || updated.Comments[0].Body != remainingMarker {
+		t.Fatalf("remaining pending checkpoints = %#v, want only uncompleted run 102", updated.Comments)
 	}
 }
 
@@ -851,7 +900,7 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
 	first := testFailureAttempt(100, 100, started)
-	const fullPendingBatch = 1000
+	const fullPendingBatch = watcher.MaxPendingRunIDs
 	pendingIDs := make([]int64, fullPendingBatch)
 	for i := range pendingIDs {
 		pendingIDs[i] = int64(200 + i)
@@ -878,11 +927,14 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	}
 	apiIssue := issueSnapshotJSON(initialIssue)
 	var writes []string
+	var apiComments []any
+	nextCommentID := 1
+	failTransitionComment := true
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
 		switch {
 		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
-			writeJSON(w, http.StatusOK, []any{})
+			writeJSON(w, http.StatusOK, apiComments)
 		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
 			writeJSON(w, http.StatusOK, apiIssue)
 		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
@@ -898,8 +950,33 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
 			writeJSON(w, http.StatusOK, apiIssue)
 		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
-			writes = append(writes, "comment")
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "injected comment failure"})
+			var request struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode comment request: %v", err)
+			}
+			if strings.HasPrefix(request.Body, pendingCheckpointPrefix) {
+				writes = append(writes, "checkpoint-comment")
+				comment := map[string]any{"id": nextCommentID, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"}}
+				nextCommentID++
+				apiComments = append(apiComments, comment)
+				writeJSON(w, http.StatusCreated, comment)
+				return
+			}
+			writes = append(writes, "transition-comment")
+			if failTransitionComment {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "injected comment failure"})
+				return
+			}
+			comment := map[string]any{"id": nextCommentID, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"}}
+			nextCommentID++
+			apiComments = append(apiComments, comment)
+			writeJSON(w, http.StatusCreated, comment)
+		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/1":
+			writes = append(writes, "delete-checkpoint-comment")
+			apiComments = apiComments[1:]
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
 			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
@@ -907,11 +984,12 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	}))
 	defer server.Close()
 	client := testWatcherClient(t, server.URL, repo)
+	transitionMarker := "<!-- actions-watcher:transition:v1 test -->"
 	change := watcher.IssueChange{
 		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
 		Title: "incident", Body: targetBody, CurrentStatus: watcher.StatusFailing,
 		PendingRunIDs: append(append([]int64(nil), pendingIDs...), triggerRunID),
-		Comments:      []watcher.ManagedComment{{Marker: "<!-- actions-watcher:transition:v1 test -->", Body: "transition"}},
+		Comments:      []watcher.ManagedComment{{Marker: transitionMarker, Body: transitionMarker + "\ntransition"}},
 	}
 	err = client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{initialIssue})
 	if err == nil || !strings.Contains(err.Error(), "injected comment failure") {
@@ -921,15 +999,73 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPendingIDs := append(append([]int64(nil), pendingIDs...), triggerRunID)
-	if !reflect.DeepEqual(state.PendingRunIDs, wantPendingIDs) {
-		t.Fatalf("persisted PendingRunIDs = %v, want %v", state.PendingRunIDs, wantPendingIDs)
+	if !reflect.DeepEqual(state.PendingRunIDs, pendingIDs) {
+		t.Fatalf("persisted PendingRunIDs = %v, want %v", state.PendingRunIDs, pendingIDs)
 	}
 	if got := len(apiIssue["body"].(string)); got > watcher.MaxIssueBodyBytes {
 		t.Fatalf("checkpoint body is %d bytes, exceeds %d", got, watcher.MaxIssueBodyBytes)
 	}
-	if !reflect.DeepEqual(writes, []string{"patch", "comment"}) {
-		t.Fatalf("write order = %v, want checkpoint patch before comment", writes)
+	if len(apiComments) != 1 {
+		t.Fatalf("persisted checkpoint comments = %d, want one", len(apiComments))
+	}
+	comment, _ := apiComments[0].(map[string]any)
+	marker, runIDs, found, err := parsePendingCheckpoint(comment["body"].(string))
+	if err != nil || !found || marker != 1 || !reflect.DeepEqual(runIDs, []int64{triggerRunID}) {
+		t.Fatalf("persisted pending checkpoint = workflow %d, IDs %v, found %t, err %v", marker, runIDs, found, err)
+	}
+	if !reflect.DeepEqual(writes, []string{"checkpoint-comment", "transition-comment"}) {
+		t.Fatalf("write order = %v, want checkpoint marker before transition comment", writes)
+	}
+
+	issueComments := []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: comment["body"].(string)}}
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{{
+		Number: 7, State: "open", Body: apiIssue["body"].(string), Comments: issueComments,
+	}})
+	if err != nil {
+		t.Fatalf("pendingRunEvents() after partial apply = %v", err)
+	}
+	const expectedBatchSize = 1000
+	if len(events) != expectedBatchSize || len(deferred) != 2 || deferred[1].RunID != triggerRunID {
+		t.Fatalf("recovered pending batch = %d selected, deferred %#v; want %d and trigger %d deferred", len(events), deferred, expectedBatchSize, triggerRunID)
+	}
+	deferredChange := change
+	deferredChange.Body = targetBody
+	deferredChange.PendingRunIDs = nil
+	for _, event := range events {
+		deferredChange.PendingRunIDs = append(deferredChange.PendingRunIDs, event.RunID)
+	}
+	retryPlan := watcher.Plan{Changes: []watcher.IssueChange{deferredChange}}
+	if err := preserveDeferredRunEvents(&retryPlan, deferred, []watcher.IssueSnapshot{{
+		Number: 7, State: "open", Body: apiIssue["body"].(string), Comments: issueComments,
+	}}, repo, expectedAppSlug+"[bot]"); err != nil {
+		t.Fatalf("preserveDeferredRunEvents() after partial apply: %v", err)
+	}
+	retryChange := retryPlan.Changes[0]
+	deferredState, err := watcher.RenderBodyState(retryChange.Body, repo, 1, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDeferredIDs := []int64{pendingIDs[len(pendingIDs)-1], triggerRunID}
+	if !reflect.DeepEqual(deferredState.PendingRunIDs, wantDeferredIDs) {
+		t.Fatalf("retry plan pending IDs = %v, want %v", deferredState.PendingRunIDs, wantDeferredIDs)
+	}
+
+	failTransitionComment = false
+	retryIssue := initialIssue
+	retryIssue.Body = apiIssue["body"].(string)
+	retryIssue.Comments = issueComments
+	if err := client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{retryChange}}, []watcher.IssueSnapshot{retryIssue}); err != nil {
+		t.Fatalf("applyPlan() retry: %v", err)
+	}
+	finalState, err := watcher.RenderBodyState(apiIssue["body"].(string), repo, 1, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(finalState.PendingRunIDs, wantDeferredIDs) {
+		t.Fatalf("final PendingRunIDs = %v, want %v", finalState.PendingRunIDs, wantDeferredIDs)
+	}
+	if len(apiComments) != 1 || strings.HasPrefix(apiComments[0].(map[string]any)["body"].(string), pendingCheckpointPrefix) {
+		t.Fatalf("comments after successful retry = %#v, want only the transition comment", apiComments)
 	}
 }
 

@@ -114,7 +114,7 @@ then fails partway through, the next reconciliation fetches the pending run
 IDs directly from GitHub, including runs older than the lookback. A successful
 update clears those IDs from the managed state.
 
-Pending IDs are fetched in batches of at most 1,001 per run. Open incidents are
+Pending IDs are fetched in batches of at most 1,000 per run. Open incidents are
 processed first, followed by the oldest closed incidents; unselected IDs remain
 in their source checkpoint for a later reconciliation.
 

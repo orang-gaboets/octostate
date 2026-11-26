@@ -23,6 +23,7 @@ const (
 	expectedAppSlug         = "orang-gaboets-actions-watcher"
 	lookbackWindow          = 7 * 24 * time.Hour
 	pendingCheckpointPrefix = "<!-- actions-watcher:pending:v1 "
+	maxPendingRunEvents     = 1000
 )
 
 type commandConfig struct {
@@ -185,7 +186,6 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	}
 
 	eventsByID := make(map[int64]triggerEvent)
-	maxPendingRunEvents := watcher.MaxPendingRunIDs
 	addRunID := func(runID int64, workflowName string, issueNumber int) error {
 		if previous, exists := eventsByID[runID]; exists {
 			if previous.WorkflowName != workflowName {
@@ -310,20 +310,17 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 			return nil, nil, err
 		}
 	}
-	// Bound re-fetches to one issue-sized batch, preferring open checkpoints and then older closed incidents.
+	// Bound re-fetches to 1,000 IDs, preferring open checkpoints and then older closed incidents.
 	selectedRunIDs := make(map[int64]bool, maxPendingRunEvents)
 	selectIssues := func(issues []pendingIssue) {
 		for _, issue := range issues {
-			additional := 0
 			for _, runID := range issue.runIDs {
-				if !selectedRunIDs[runID] {
-					additional++
+				if selectedRunIDs[runID] {
+					continue
 				}
-			}
-			if len(selectedRunIDs)+additional > maxPendingRunEvents {
-				continue
-			}
-			for _, runID := range issue.runIDs {
+				if len(selectedRunIDs) == maxPendingRunEvents {
+					return
+				}
 				selectedRunIDs[runID] = true
 			}
 		}
@@ -363,6 +360,26 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 		events = append(events, eventsByID[runID])
 	}
 	return events, deferred, nil
+}
+
+func splitPendingRunIDs(bodyIDs, additionalIDs []int64) ([]int64, []int64) {
+	seen := make(map[int64]bool, len(bodyIDs)+len(additionalIDs))
+	body := make([]int64, 0, watcher.MaxPendingRunIDs)
+	var overflow []int64
+	for _, runID := range append(append([]int64(nil), bodyIDs...), additionalIDs...) {
+		if seen[runID] {
+			continue
+		}
+		seen[runID] = true
+		if len(body) < watcher.MaxPendingRunIDs {
+			body = append(body, runID)
+		} else {
+			overflow = append(overflow, runID)
+		}
+	}
+	slices.Sort(body)
+	slices.Sort(overflow)
+	return body, overflow
 }
 
 func preserveDeferredRunEvents(plan *watcher.Plan, events []triggerEvent, issues []watcher.IssueSnapshot, repo watcher.RepositoryIdentity, appLogin string) error {
@@ -453,6 +470,22 @@ func pendingCheckpointMarker(workflowID int64, runIDs []int64) (string, error) {
 		values[i] = strconv.FormatInt(runID, 10)
 	}
 	return fmt.Sprintf("%sworkflow_id=%d run_ids=%s -->", pendingCheckpointPrefix, workflowID, strings.Join(values, ",")), nil
+}
+
+func pendingCheckpointMarkers(workflowID int64, runIDs []int64) ([]string, error) {
+	ids := append([]int64(nil), runIDs...)
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	markers := make([]string, 0, (len(ids)+maxPendingRunEvents-1)/maxPendingRunEvents)
+	for start := 0; start < len(ids); start += maxPendingRunEvents {
+		end := min(start+maxPendingRunEvents, len(ids))
+		marker, err := pendingCheckpointMarker(workflowID, ids[start:end])
+		if err != nil {
+			return nil, err
+		}
+		markers = append(markers, marker)
+	}
+	return markers, nil
 }
 
 func parsePendingCheckpoint(body string) (int64, []int64, bool, error) {
