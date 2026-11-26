@@ -3,6 +3,7 @@ package snapshot
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
@@ -171,6 +173,20 @@ func TestWriteActualWritesSnapshotFile(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected snapshot contents:\n got %#v\nwant %#v", got, want)
+	}
+}
+
+func TestWriteActualRejectsInvalidTeamMemberRole(t *testing.T) {
+	t.Parallel()
+
+	_, err := WriteActual(physicalTempDir(t), ActualSnapshot{
+		Organization: "acme",
+		TeamMembers: []state.TeamMember{{
+			TeamSlug: "platform", Username: "alice", Role: "owner", Origin: githubpkg.TeamMembershipOriginDirect,
+		}},
+	})
+	if !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("WriteActual error = %v, want %v", err, githubpkg.ErrValidationFailed)
 	}
 }
 
@@ -369,7 +385,7 @@ func TestReadActualAcceptsSnapshotAtAndJustBelowSupportedLimit(t *testing.T) {
 	}
 }
 
-func TestReadActualLegacyTeamMembersRemainDirect(t *testing.T) {
+func TestReadActualLegacyTeamMembersBecomeUnknown(t *testing.T) {
 	t.Parallel()
 
 	stateDir := physicalTempDir(t)
@@ -385,9 +401,38 @@ func TestReadActualLegacyTeamMembersRemainDirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadActual returned error: %v", err)
 	}
-	want := []state.TeamMember{{TeamSlug: "parent", Username: "bob", Role: "member"}}
+	want := []state.TeamMember{{TeamSlug: "parent", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown}}
 	if !reflect.DeepEqual(got.TeamMembers, want) {
-		t.Fatalf("legacy team members = %#v, want direct rows %#v", got.TeamMembers, want)
+		t.Fatalf("legacy team members = %#v, want unknown-origin rows %#v", got.TeamMembers, want)
+	}
+}
+
+func TestNormalizeActualSnapshotCanonicalizesMembershipDuplicates(t *testing.T) {
+	snapshot := ActualSnapshot{TeamMembers: []state.TeamMember{
+		{TeamSlug: "platform", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginInherited},
+		{TeamSlug: "PLATFORM", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginUnknown},
+		{TeamSlug: "platform", Username: "ALICE", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+		{TeamSlug: "PLATFORM", Username: "ALICE", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+	}}
+	if err := normalizeActualSnapshot(&snapshot); err != nil {
+		t.Fatalf("normalize snapshot: %v", err)
+	}
+	want := []state.TeamMember{{
+		TeamSlug: "PLATFORM", Username: "ALICE", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect,
+	}}
+	if !reflect.DeepEqual(snapshot.TeamMembers, want) {
+		t.Fatalf("team members = %#v, want canonical rows %#v", snapshot.TeamMembers, want)
+	}
+}
+
+func TestNormalizeActualSnapshotRejectsConflictingMembershipRoles(t *testing.T) {
+	snapshot := ActualSnapshot{TeamMembers: []state.TeamMember{
+		{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+		{TeamSlug: "PLATFORM", Username: "ALICE", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginDirect},
+	}}
+	err := normalizeActualSnapshot(&snapshot)
+	if !errors.Is(err, githubpkg.ErrValidationFailed) {
+		t.Fatalf("normalize error = %v, want validation failure", err)
 	}
 }
 

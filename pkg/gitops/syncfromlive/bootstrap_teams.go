@@ -13,6 +13,21 @@ func bootstrapTeamMembers(
 	teams []state.Team,
 	members []state.TeamMember,
 ) (map[string][]config.TeamMemberSpec, error) {
+	canonicalMembers, err := state.CanonicalTeamMembers(members)
+	if err != nil {
+		return nil, fmt.Errorf("normalize team memberships for bootstrap: %w", err)
+	}
+	members = canonicalMembers
+	for _, member := range members {
+		switch member.Origin {
+		case githubpkg.TeamMembershipOriginDirect, githubpkg.TeamMembershipOriginInherited:
+		case githubpkg.TeamMembershipOriginUnknown:
+			return nil, fmt.Errorf("team membership origin is unknown for %s/%s: %w", member.TeamSlug, member.Username, githubpkg.ErrValidationFailed)
+		default:
+			return nil, fmt.Errorf("team membership origin %q is invalid for %s/%s: %w", member.Origin, member.TeamSlug, member.Username, githubpkg.ErrValidationFailed)
+		}
+	}
+
 	knownTeams := make(map[string]struct{}, len(teams))
 	for _, team := range teams {
 		knownTeams[strings.ToLower(strings.TrimSpace(team.Slug))] = struct{}{}
@@ -20,6 +35,9 @@ func bootstrapTeamMembers(
 
 	result := make(map[string][]config.TeamMemberSpec, len(teams))
 	for _, member := range members {
+		if member.Origin == githubpkg.TeamMembershipOriginInherited {
+			continue
+		}
 		teamKey := strings.ToLower(strings.TrimSpace(member.TeamSlug))
 		if _, ok := knownTeams[teamKey]; !ok {
 			return nil, fmt.Errorf("team membership references unknown team %q: %w", member.TeamSlug, githubpkg.ErrInvalidFieldValue)

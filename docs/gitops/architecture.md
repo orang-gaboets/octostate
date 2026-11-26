@@ -48,11 +48,16 @@ flowchart LR
 - Defines the normalized in-memory model of actual GitHub organization state
 - Keeps slices non-nil where needed
 - Sorts collections deterministically
+- Stores team membership origin as `direct`, `inherited`, or `unknown`
+- Canonicalizes membership keys case-insensitively and resolves duplicate rows
+  by direct, unknown, then inherited precedence
 
 ### `pkg/gitops/collector`
 - Reads live GitHub state into `state.OrganizationState`
 - Uses bounded concurrency for read-only calls
 - Assembles final state sequentially, then normalizes once
+- Retains membership origin evidence from the existing member listing reads;
+  role-only fallback results have unknown origin
 
 Current collector concurrency limits:
 - top-level fan-out: `4`
@@ -95,6 +100,7 @@ Current collector concurrency limits:
 ### `pkg/gitops/snapshot`
 - Owns the JSON snapshot file contract
 - Persists normalized actual-state snapshots for offline workflows
+- Persists membership origin; legacy rows without it normalize to unknown
 
 ### `pkg/gitops/diff`
 - Compares desired config with the stored snapshot offline
@@ -107,6 +113,9 @@ Current collector concurrency limits:
 - Uses the same organization-member availability rule as plan, so a desired
   member declared alongside a desired team membership is not reported as an
   unfulfillable prerequisite
+- Reports unknown-origin memberships as unresolved without generating actions;
+  unresolved-only reports set `has_unresolved` while `has_changes` remains
+  action-only
 
 ### `pkg/gitops/syncfromlive`
 - Builds desired-state proposals from live GitHub state

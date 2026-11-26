@@ -3,6 +3,7 @@ package plan
 import (
 	"fmt"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -87,7 +88,10 @@ func (p planner) planTeamMembers(memberPlan organizationMemberPlan) []Action {
 			key := teamMemberKey(team.Slug, member.Username)
 			desiredMembers[key] = member
 			actualMember, ok := actualMembers[key]
-			if !ok {
+			if ok && actualMember.Origin == githubpkg.TeamMembershipOriginUnknown {
+				continue
+			}
+			if !ok || actualMember.Origin == githubpkg.TeamMembershipOriginInherited {
 				availability := memberPlan.availabilityFor(member.Username)
 				executable := availability.executable
 				message := fmt.Sprintf("add team membership %s", teamMemberID(team.Slug, member.Username))
@@ -126,6 +130,9 @@ func (p planner) planTeamMembers(memberPlan organizationMemberPlan) []Action {
 	}
 
 	for _, member := range p.actual.TeamMembers {
+		if member.Origin != githubpkg.TeamMembershipOriginDirect {
+			continue
+		}
 		key := teamMemberKey(member.TeamSlug, member.Username)
 		if _, ok := desiredMembers[key]; ok {
 			continue

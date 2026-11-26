@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 // ActionResourceType identifies the GitOps resource category affected by one
@@ -42,21 +44,24 @@ const (
 
 // Report is the machine-readable output produced by GitOps planning.
 type Report struct {
-	Organization string   `json:"organization"`
-	Summary      Summary  `json:"summary"`
-	Actions      []Action `json:"actions"`
+	Organization              string             `json:"organization"`
+	Summary                   Summary            `json:"summary"`
+	Actions                   []Action           `json:"actions"`
+	UnresolvedTeamMemberships []state.TeamMember `json:"unresolved_team_memberships"`
 }
 
 // Summary contains the high-level counts derived from the action list.
 type Summary struct {
-	HasChanges           bool `json:"has_changes"`
-	Actions              int  `json:"actions"`
-	ExecutableActions    int  `json:"executable_actions"`
-	NonExecutableActions int  `json:"non_executable_actions"`
-	CreateActions        int  `json:"create_actions"`
-	UpdateActions        int  `json:"update_actions"`
-	DeleteActions        int  `json:"delete_actions"`
-	RemoveActions        int  `json:"remove_actions"`
+	HasChanges            bool `json:"has_changes"`
+	HasUnresolved         bool `json:"has_unresolved"`
+	UnresolvedMemberships int  `json:"unresolved_memberships"`
+	Actions               int  `json:"actions"`
+	ExecutableActions     int  `json:"executable_actions"`
+	NonExecutableActions  int  `json:"non_executable_actions"`
+	CreateActions         int  `json:"create_actions"`
+	UpdateActions         int  `json:"update_actions"`
+	DeleteActions         int  `json:"delete_actions"`
+	RemoveActions         int  `json:"remove_actions"`
 }
 
 // Action describes one deterministic reconciliation step or unsupported
@@ -88,6 +93,12 @@ func (r *Report) Normalize() {
 	if r.Actions == nil {
 		r.Actions = []Action{}
 	}
+	if r.UnresolvedTeamMemberships == nil {
+		r.UnresolvedTeamMemberships = []state.TeamMember{}
+	}
+	unresolvedState := state.OrganizationState{TeamMembers: r.UnresolvedTeamMemberships}
+	unresolvedState.Normalize()
+	r.UnresolvedTeamMemberships = unresolvedState.TeamMembers
 
 	for i := range r.Actions {
 		r.Actions[i].Normalize()
@@ -104,7 +115,7 @@ func (r *Report) Normalize() {
 	}
 	slices.SortStableFunc(nonRepositoryActions, comparePlanActions)
 	r.Actions = append(repositoryActions, nonRepositoryActions...)
-	r.Summary = summarizeActions(r.Actions)
+	r.Summary = summarizeActions(r.Actions, len(r.UnresolvedTeamMemberships))
 }
 
 // Normalize initializes nil field-change slices and sorts them deterministically.
@@ -120,10 +131,12 @@ func (a *Action) Normalize() {
 	slices.SortFunc(a.Changes, comparePlanFieldChanges)
 }
 
-func summarizeActions(actions []Action) Summary {
+func summarizeActions(actions []Action, unresolvedMemberships int) Summary {
 	summary := Summary{
-		HasChanges: len(actions) > 0,
-		Actions:    len(actions),
+		HasChanges:            len(actions) > 0,
+		HasUnresolved:         unresolvedMemberships > 0,
+		UnresolvedMemberships: unresolvedMemberships,
+		Actions:               len(actions),
 	}
 
 	for _, action := range actions {

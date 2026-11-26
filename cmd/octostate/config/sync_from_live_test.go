@@ -15,6 +15,7 @@ import (
 	internalauth "github.com/orang-gaboets/octostate/cmd/octostate/internal/auth"
 	"github.com/orang-gaboets/octostate/cmd/octostate/internal/exitcode"
 	cmdoutput "github.com/orang-gaboets/octostate/cmd/octostate/internal/output"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/collector"
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
@@ -223,6 +224,106 @@ func TestSyncFromLiveConfigCmdWriteSuccess(t *testing.T) {
 		t.Fatalf("unexpected written config:\n%s", string(content))
 	}
 	assertUnixMode(t, writtenPath, os.FileMode(syncFromLiveConfigFileMode))
+}
+
+func TestSyncFromLiveConfigCmdUnknownTeamMembershipFailsWithoutWriting(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		mode  string
+		write bool
+	}{
+		{name: "bootstrap/stdout", mode: syncFromLiveModeBootstrap},
+		{name: "bootstrap/write", mode: syncFromLiveModeBootstrap, write: true},
+		{name: "adopt/stdout", mode: syncFromLiveModeAdopt},
+		{name: "adopt/write", mode: syncFromLiveModeAdopt, write: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mode := test.mode
+			restoreSyncFromLiveHooks(t)
+
+			configDir := filepath.Join(t.TempDir(), "config")
+			configPath := filepath.Join(configDir, syncFromLiveOrganizationFile)
+			before := []byte("organization: acme\nmembers: []\ninvites: []\nrepositories: []\nteams: []\n")
+			var beforeInfo os.FileInfo
+			if mode == syncFromLiveModeAdopt {
+				if err := os.MkdirAll(configDir, 0o755); err != nil {
+					t.Fatalf("create config directory: %v", err)
+				}
+				if err := os.WriteFile(configPath, before, 0o644); err != nil {
+					t.Fatalf("seed existing config: %v", err)
+				}
+				var err error
+				beforeInfo, err = os.Stat(configPath)
+				if err != nil {
+					t.Fatalf("stat existing adopt config: %v", err)
+				}
+			}
+
+			actual := &state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{Username: "alice", Role: "member"}},
+				Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+				TeamMembers: []state.TeamMember{{
+					TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown,
+				}},
+			}
+			newSyncFromLiveClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+				return internalauth.MockClient{}, nil
+			}
+			collectSyncFromLiveState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				return actual, nil
+			}
+
+			cmd := SyncFromLiveConfigCmd()
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&errBuf)
+			args := []string{
+				"--mode", mode,
+				"--org", "acme",
+				"--config-dir", configDir,
+				"--token", "secret-token",
+			}
+			if test.write {
+				args = append(args, "--write")
+			}
+			cmd.SetArgs(args)
+
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "team membership origin is unknown") {
+				t.Fatalf("expected unknown-origin failure, got %v", err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("expected no generated YAML on stdout, got %q", out.String())
+			}
+			assertNoSyncFromLiveTempFiles(t, configDir)
+			if mode == syncFromLiveModeBootstrap {
+				if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+					t.Fatalf("bootstrap output file stat error = %v, want no file", err)
+				}
+				if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+					t.Fatalf("bootstrap config directory stat error = %v, want no directory", err)
+				}
+				return
+			}
+			afterInfo, err := os.Stat(configPath)
+			if err != nil {
+				t.Fatalf("stat existing adopt config after failure: %v", err)
+			}
+			if !os.SameFile(beforeInfo, afterInfo) {
+				t.Fatal("adopt replaced the existing config file")
+			}
+			if !beforeInfo.ModTime().Equal(afterInfo.ModTime()) {
+				t.Fatalf("adopt modified the existing config timestamp: before %v, after %v", beforeInfo.ModTime(), afterInfo.ModTime())
+			}
+			if got, err := os.ReadFile(configPath); err != nil {
+				t.Fatalf("read existing adopt config: %v", err)
+			} else if string(got) != string(before) {
+				t.Fatalf("adopt changed existing config:\n got %q\nwant %q", got, before)
+			}
+		})
+	}
 }
 
 func TestSyncFromLiveConfigCmdUnsupportedModeReturnsBeforeAuth(t *testing.T) {

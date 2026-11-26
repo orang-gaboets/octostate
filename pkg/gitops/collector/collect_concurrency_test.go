@@ -265,14 +265,14 @@ func TestCollectTeamStateBoundsPerTeamDetailFanOut(t *testing.T) {
 			}
 			return teams, &gh.Response{}, nil
 		},
-		listTeamMembersBySlugFunc: func(_ context.Context, org, slug string, _ *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+		listTeamMembersBySlugFunc: func(_ context.Context, org, slug string, options *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
 			if org != orgName {
 				t.Fatalf("unexpected org in ListTeamMembersBySlug: got %q want %q", org, orgName)
 			}
 			done := tracker.Start()
 			defer done()
 			<-release
-			return []*gh.User{{Login: githubpkg.Ptr(slug + "-user")}}, &gh.Response{}, nil
+			return []*gh.User{{Login: githubpkg.Ptr(slug + "-" + options.Role + "-user")}}, &gh.Response{}, nil
 		},
 		listTeamReposBySlugFunc: func(_ context.Context, org, slug string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
 			if org != orgName {
@@ -689,9 +689,9 @@ func TestCollectOrganizationStableOrderingWithOutOfOrderConcurrentCompletion(t *
 			{Slug: "platform", Name: "Platform", Privacy: "closed"},
 		},
 		TeamMembers: []state.TeamMember{
-			{TeamSlug: "admins", Username: "alice", Role: "member"},
-			{TeamSlug: "platform", Username: "bob", Role: "member"},
-			{TeamSlug: "platform", Username: "carol", Role: "maintainer"},
+			{TeamSlug: "admins", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown},
+			{TeamSlug: "platform", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginUnknown},
+			{TeamSlug: "platform", Username: "carol", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginUnknown},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "admins", Owner: orgName, Name: "repo-a", Permission: "admin"},

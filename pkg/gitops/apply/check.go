@@ -12,6 +12,7 @@ import (
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 // CheckResult captures the actions that passed apply preflight validation and
@@ -21,12 +22,15 @@ import (
 // situations: destructive drift Octostate intentionally declines to reconcile,
 // and a desired create or update that planning determined cannot execute. Use
 // UnfulfilledDesiredActions to tell them apart, or
-// Options.RequireExecutableDesiredActions to fail on the second kind.
+// Options.RequireExecutableDesiredActions to fail on the second kind and on
+// desired memberships with unknown actual origin. Unresolved memberships are
+// listed separately and never turned into checked actions.
 type CheckResult struct {
-	Organization   string              `json:"organization"`
-	PlanSummary    gitopsplan.Summary  `json:"plan_summary"`
-	CheckedActions []gitopsplan.Action `json:"checked_actions"`
-	SkippedActions []gitopsplan.Action `json:"skipped_actions"`
+	Organization              string              `json:"organization"`
+	PlanSummary               gitopsplan.Summary  `json:"plan_summary"`
+	CheckedActions            []gitopsplan.Action `json:"checked_actions"`
+	SkippedActions            []gitopsplan.Action `json:"skipped_actions"`
+	UnresolvedTeamMemberships []state.TeamMember  `json:"unresolved_team_memberships"`
 }
 
 // Normalize initializes nil slices while preserving deterministic action order.
@@ -40,6 +44,12 @@ func (r *CheckResult) Normalize() {
 	if r.SkippedActions == nil {
 		r.SkippedActions = []gitopsplan.Action{}
 	}
+	if r.UnresolvedTeamMemberships == nil {
+		r.UnresolvedTeamMemberships = []state.TeamMember{}
+	}
+	unresolved := state.OrganizationState{TeamMembers: r.UnresolvedTeamMemberships}
+	unresolved.Normalize()
+	r.UnresolvedTeamMemberships = unresolved.TeamMembers
 	for i := range r.CheckedActions {
 		r.CheckedActions[i].Normalize()
 	}
@@ -56,7 +66,8 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 		return nil, err
 	}
 	opt.Desired = config.NormalizeDesiredState(opt.Desired)
-	if err := requireExecutableDesiredActions(opt); err != nil {
+	unresolvedTeamMemberships, err := requireExecutableDesiredActions(opt)
+	if err != nil {
 		return nil, err
 	}
 	if err := validateTeamCreateOrdering(opt.Plan.Actions); err != nil {
@@ -69,8 +80,9 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	}
 
 	result := &CheckResult{
-		Organization: strings.TrimSpace(opt.Desired.Organization),
-		PlanSummary:  opt.Plan.Summary,
+		Organization:              strings.TrimSpace(opt.Desired.Organization),
+		PlanSummary:               applyPlanSummary(opt.Plan, unresolvedTeamMemberships),
+		UnresolvedTeamMemberships: unresolvedTeamMemberships,
 	}
 	failures := &preflightFailures{}
 

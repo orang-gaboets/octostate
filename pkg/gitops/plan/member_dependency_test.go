@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -144,7 +145,7 @@ func TestBuildTreatsInheritedOnlyParentMembershipAsAbsent(t *testing.T) {
 					{Slug: "parent", Name: "Parent", Privacy: "closed"},
 					{Slug: "child", Name: "Child", Privacy: "closed", ParentSlug: "parent"},
 				},
-				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member"}},
+				TeamMembers: []state.TeamMember{{TeamSlug: "child", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect}},
 			}
 
 			report, err := Build(context.Background(), Options{Desired: desired, Actual: actual})
@@ -181,7 +182,7 @@ func TestBuildTeamMembershipRoleUpdateUnchanged(t *testing.T) {
 			Organization: "acme",
 			Members:      []state.OrganizationMember{{Username: "alice", Role: "member"}},
 			Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
-			TeamMembers:  []state.TeamMember{{TeamSlug: "platform", Username: "alice", Role: "member"}},
+			TeamMembers:  []state.TeamMember{{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect}},
 		},
 	})
 	if err != nil {

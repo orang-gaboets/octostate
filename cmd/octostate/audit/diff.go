@@ -98,5 +98,5 @@ func auditDiff(
 		return nil, false, err
 	}
 
-	return report, report.Summary.HasChanges, nil
+	return report, report.Summary.HasChanges || report.Summary.HasUnresolved, nil
 }

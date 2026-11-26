@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -78,7 +79,7 @@ func TestBuildBootstrapConfigRejectsUnknownTeamRelationships(t *testing.T) {
 			Organization: "orang-gaboets",
 			Teams:        []state.Team{},
 			TeamMembers: []state.TeamMember{
-				{TeamSlug: "platform", Username: "alice", Role: "member"},
+				{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
 			},
 		},
 	})
@@ -114,7 +115,7 @@ func TestBuildBootstrapConfigIncludesDirectOrganizationMembers(t *testing.T) {
 				{Slug: "platform", Name: "Platform", Privacy: "closed"},
 			},
 			TeamMembers: []state.TeamMember{
-				{TeamSlug: "platform", Username: "alice", Role: "member"},
+				{TeamSlug: "platform", Username: "alice", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
 			},
 		},
 	})
@@ -197,8 +198,8 @@ func canonicalBootstrapActualState() *state.OrganizationState {
 			},
 		},
 		TeamMembers: []state.TeamMember{
-			{TeamSlug: "platform-infra", Username: "bob", Role: "member"},
-			{TeamSlug: "platform", Username: "alice", Role: "maintainer"},
+			{TeamSlug: "platform-infra", Username: "bob", Role: "member", Origin: githubpkg.TeamMembershipOriginDirect},
+			{TeamSlug: "platform", Username: "alice", Role: "maintainer", Origin: githubpkg.TeamMembershipOriginDirect},
 		},
 		TeamRepositoryPermissions: []state.TeamRepositoryPermission{
 			{TeamSlug: "platform-infra", Owner: "orang-gaboets", Name: "shared-repo", Permission: "pull"},

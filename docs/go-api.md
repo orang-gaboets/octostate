@@ -220,6 +220,66 @@ An exceptional source-incompatible change within `v1` requires an explicit
 maintainer decision, a tracked compatibility rationale, and release notes that
 explain the impact. It is not the normal alternative to a major release.
 
+### Approved exception: team membership origin in #372
+
+Issue [#372](https://github.com/orang-gaboets/octostate/issues/372) approves a
+source-incompatible change to the optional team-member listing API within `v1`.
+The former `TeamMemberWithInheritance` boolean could not distinguish
+`inherited: false` from a missing or null API field, so callers could mistake
+unknown evidence for confirmed direct membership. The replacement uses
+`TeamMemberWithOrigin` and `github.TeamMembershipOrigin` values `direct`,
+`inherited`, and `unknown`.
+
+Consumers implementing the optional team-member listing capability should
+replace `TeamMemberInheritanceLister.ListTeamMembersBySlugWithInheritance`
+with `TeamMemberOriginLister.ListTeamMembersBySlugWithOrigin`. Set origin to
+`direct` only when the API explicitly confirms direct membership, to
+`inherited` when it explicitly confirms inherited membership, and to `unknown`
+when the field is absent, null, or the service only provides role-filtered
+member rows. `ListDirectTeamMembersBySlugWithRoles` now returns
+`github.ErrValidationFailed` if any returned row has unknown origin; callers
+that need all evidence should use `ListTeamMembersBySlugWithOrigin`.
+
+There are two distinct compatibility cases:
+
+- A Go consumer that refers to the removed `TeamMemberWithInheritance` type,
+  `TeamMemberInheritanceLister` interface, or
+  `ListTeamMembersBySlugWithInheritance` method must update its source to use
+  the new API. Implementations of the old optional interface are in this
+  source-incompatible case because their method signature uses the removed
+  result type.
+- A service that implements only the base `teams.Service` interface remains
+  source-compatible; origin reporting is a separate optional capability. If
+  it does not implement `TeamMemberOriginLister`, Octostate uses its
+  role-aware or role-filtered fallback and marks those rows `unknown`. A
+  similarly named method does not provide origin unless its full signature
+  implements `TeamMemberOriginLister`. Consequently,
+  `ListDirectTeamMembersBySlugWithRoles` returns `github.ErrValidationFailed`
+  when such a fallback returns unknown rows. Implement `TeamMemberOriginLister`
+  and return explicit origin evidence when the service can provide it.
+
+The bounded GitHub code-search pass queried the removed type, interface, and
+method names in accessible `orang-gaboets` repositories. Each query returned
+zero matches with `incomplete_results: true`, and the repository search
+metadata reported `orang-gaboets/octostate` as not indexed for code search.
+These results are inconclusive and are not evidence that no downstream
+consumers exist; the search did not establish coverage of private or external
+repositories, forks, unindexed repositories, non-default branches or tags, or
+vendored and downloaded module copies. The separate control repository is a
+known CLI consumer pinned to v1.2.0 as of 2026-11-26. That confirms CLI use, not
+consumption of Octostate's Go API; the search did not verify code in that
+repository.
+
+`state.TeamMember` now has an `Origin` field. Its zero value and snapshots that
+omit the field normalize to `unknown`. Snapshot writers emit the field; strict
+external snapshot readers must accept it. No snapshot migration layer is
+provided. Plan, audit diff, and apply outputs add `unresolved_team_memberships`
+and summary fields `has_unresolved` and `unresolved_memberships`.
+`has_changes` remains action-only. Automation using `audit diff
+--fail-on-drift` must treat exit code `2` as either planned action drift or
+unresolved-only membership evidence. See [audit command compatibility notes](cli/audit.md)
+and [config command output](cli/config.md) for the full CLI contract.
+
 ### Existing importable APIs
 
 For an existing `v1` package outside an `internal` directory, an exported

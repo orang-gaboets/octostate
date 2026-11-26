@@ -179,7 +179,8 @@ Bootstrap rules:
 - `--include-pending-invites` opts into collecting pending invites for the generated `invites:` section
 - Opted-in invites use the live username when available, otherwise the live email; invitation record IDs are never emitted as `user_id`
 - Opted-in invites preserve the live role and attached team slugs, and are ordered deterministically
-- Team `members:` contain direct memberships only; inherited-only parent-team members are omitted
+- Team `members:` contain direct memberships only; inherited memberships are omitted
+- Unknown-origin memberships fail bootstrap before YAML is printed or written
 - Username invites that conflict with durable top-level members are omitted so the generated config remains valid
 - Top-level `members:` are emitted for collected durable organization membership
 - Stable repository settings are emitted as an explicit baseline, including presence-aware optional repository fields
@@ -222,6 +223,7 @@ Behavior:
 - Preserves existing invites that are still transitional; removes invites already satisfied by live org membership
 - Preserves existing config-only declarations; `adopt` does not auto-remove config that is missing from live state
 - Only direct live team memberships are added; inherited-only memberships are not materialized as explicit team `members:` entries
+- Unknown-origin memberships fail adopt before YAML is printed or written
 - Prints the adopted YAML to stdout by default
 - Validates the merged config before printing or writing it
 - With `--write`, atomically replaces `<config-dir>/organization.yaml`
@@ -324,10 +326,14 @@ Plan preview fields:
 - `plan_summary`
 - `executable_actions`
 - `skipped_actions`
+- `unresolved_team_memberships`
 
 Action behavior:
 - `executable_actions` contains the supported changes that a later `config apply` command can carry out, such as `create` and `update`
 - `skipped_actions` contains unsupported live drift that is detected but not automatically reconciled, such as `delete` and `remove`
+- `unresolved_team_memberships` lists actual membership rows whose origin is unknown; these rows do not create, update, or remove actions
+- `plan_summary.has_changes` counts planned actions only; `has_unresolved` and `unresolved_memberships` report unresolved membership evidence separately
+- An inherited-only actual row is not a direct membership. Declaring it in desired `members:` keeps existing create semantics; an unknown-origin row is non-actionable
 - Managed same-organization repository dependencies are emitted in deterministic dependency-safe topological order, using normalized repository identity to break ready-action ties, so a required source create or `is_template: true` enabling update precedes its consumers
 - Existing sources use their explicit final `is_template` value, or retain live state when the field is omitted or null; new sources are usable only with `is_template: true`. Unavailable sources propagate diagnostics transitively, and cycles report stable `template dependency cycle: ...` messages
 - External, cross-organization, live-only, and other non-managed template references are not managed plan dependencies and remain apply-preflight concerns
@@ -356,7 +362,7 @@ Flags:
 - `--expected-org`: Independently expected organization for check, dry-run, or live apply
 - `--expected-config-identity`: Require the loaded desired configuration to match the identity captured during review
 - `--check`: Run apply preflight validation without mutating GitHub
-- `--require-executable`: Fail when a desired create or update cannot be executed. Cannot be combined with `--dry-run`, which never evaluates the requirement
+- `--require-executable`: Fail when a desired create or update cannot be executed or a desired team membership has unknown actual origin. Cannot be combined with `--dry-run`, which never evaluates the requirement
 - `--dry-run`: Build the live plan and print the executable/skipped actions without mutating GitHub
 - `--token`: Optional explicit GitHub personal access token; prefer `OCTOSTATE_GITHUB_TOKEN` for PAT authentication
 - `--app-id`: GitHub App ID (required if using GitHub App authentication)
@@ -381,6 +387,7 @@ Behavior:
 - `--check` may still miss GitHub-side failures caused by permission changes, organization policy, rate limits, races after collection, live state changes after preflight, or other GitHub-side validation that only occurs during write-time execution
 - `--check` and `--dry-run` are mutually exclusive
 - Live apply executes only supported executable `create` / `update` actions
+- Unknown-origin memberships remain visible in `unresolved_team_memberships` in check and apply output
 - Unsupported live drift (`delete` / `remove`) is reported back as skipped drift and is not executed
 - Repository creation uses ordinary organization creation when `template.owner` and `template.name` are omitted, and template creation when both are present
 - Omitted optional repository fields are left unmanaged during apply
@@ -395,6 +402,7 @@ Check output fields:
 - `data.plan_summary`
 - `data.checked_actions`
 - `data.skipped_actions`
+- `data.unresolved_team_memberships`
 
 Dry-run output fields:
 - `status`
@@ -404,6 +412,7 @@ Dry-run output fields:
 - `data.plan_summary`
 - `data.executable_actions`
 - `data.skipped_actions`
+- `data.unresolved_team_memberships`
 
 Live apply output fields:
 - `status`
@@ -413,6 +422,7 @@ Live apply output fields:
 - `data.plan_summary`
 - `data.executed_actions`
 - `data.skipped_actions`
+- `data.unresolved_team_memberships`
 
 ### Unfulfillable desired actions versus unsupported drift
 
@@ -428,14 +438,19 @@ to tell them apart:
 By default both are reported in `skipped_actions` and the command succeeds.
 That default is unchanged.
 
-`--require-executable` makes only the second kind a failure. Unsupported
-destructive drift still does not fail the command, so a workflow can tolerate
-drift it does not reconcile while still requiring its own requested changes to
-be achievable. The flag applies to `config apply` and to
-`config apply --check`, so preflight and live apply share one policy.
+`--require-executable` makes unfulfillable desired actions and desired team
+memberships with unknown actual origin a failure. Unsupported destructive
+drift still does not fail the command, so a workflow can tolerate drift it
+does not reconcile while still requiring its own requested changes to be
+achievable. The flag applies to `config apply` and to `config apply --check`,
+so preflight and live apply share one policy.
 
 With the flag set, live `config apply` refuses before performing any GitHub
-write, so a stated requirement cannot leave a partially applied plan.
+write, so a stated requirement cannot leave a partially applied plan. The same
+pre-write guard applies to `config apply --check`, reviewed Go APIs, and
+caller-supplied plans. A caller-supplied team-membership action targeting an
+unknown-origin actual row is rejected even when `--require-executable` is not
+set.
 
 `--check` remains best-effort preflight. The flag does not promise that a
 later GitHub write will succeed; it reports what Octostate already knows during

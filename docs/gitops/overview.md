@@ -86,12 +86,15 @@ It includes:
 - pending invitations
 - repositories
 - teams
-- team memberships
+- team memberships with direct, inherited, or unknown origin
 - team repository permissions
 
 Normalization is a core design rule across the GitOps engine:
 - slices are made non-nil where needed
 - collections are sorted deterministically
+- team membership keys are trimmed and matched case-insensitively; duplicate
+  rows resolve by direct, unknown, then inherited origin precedence, and
+  conflicting roles at the winning origin fail validation
 - repository topics and invitation team slugs are sorted consistently
 
 That normalization keeps snapshots, plans, diff reports, and apply output
@@ -106,9 +109,16 @@ The collector currently reads:
 - pending invitations
 - repositories
 - teams
-- direct team members with member or maintainer roles; inherited rows are
-  excluded from normalized state
+- team members with member or maintainer roles and explicit origin when the API
+  supplies it; role-only fallback reads carry unknown origin
 - team repository permissions
+
+Unknown-origin rows remain visible in state and reports, but do not generate
+membership actions. An inherited-only row does not count as direct membership:
+if desired config declares that membership directly, the planner keeps the
+existing create behavior; inherited-only rows are never proposed for removal.
+Bootstrap and adopt fail closed on unknown-origin rows and omit inherited rows
+from generated direct `members:` declarations.
 
 The collector uses bounded concurrency for read-only GitHub calls:
 - top-level collector fan-out: `4`
@@ -194,6 +204,13 @@ state/actual/snapshot.json
 
 `audit diff` then compares `config/organization.yaml` against that stored snapshot
 without calling GitHub APIs.
+
+Each `team_members` row stores its origin as `direct`, `inherited`, or
+`unknown`. Rows from older snapshots without `origin` load as `unknown`; no
+snapshot migration layer is applied. Unknown rows appear in
+`unresolved_team_memberships` and remain non-actionable. `summary.has_changes`
+continues to count planned actions only, while `summary.has_unresolved` and
+`summary.unresolved_memberships` report unresolved membership evidence.
 
 This offline path is useful for:
 - CI drift detection

@@ -14,6 +14,7 @@ import (
 	gitopsconfig "github.com/orang-gaboets/octostate/pkg/gitops/config"
 	gitopsdiff "github.com/orang-gaboets/octostate/pkg/gitops/diff"
 	gitopssnapshot "github.com/orang-gaboets/octostate/pkg/gitops/snapshot"
+	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
 func TestDiffCmdSuccessNoDrift(t *testing.T) {
@@ -177,6 +178,42 @@ func TestDiffCmdFailOnDriftReturnsTypedExitAndStillPrintsReport(t *testing.T) {
 	got.Normalize()
 	if !reflect.DeepEqual(got, *want) {
 		t.Fatalf("unexpected diff report:\n got %#v\nwant %#v", got, *want)
+	}
+}
+
+func TestDiffCmdFailOnDriftReturnsTypedExitForUnresolvedOnlyReport(t *testing.T) {
+	restoreAuditDiffHooks(t)
+
+	cfg := gitopsconfig.OrganizationConfig{Organization: "orang-gaboets"}
+	snapshot := &gitopssnapshot.ActualSnapshot{Organization: "orang-gaboets"}
+	want := &gitopsdiff.Report{
+		Organization: "orang-gaboets",
+		UnresolvedTeamMemberships: []state.TeamMember{{
+			TeamSlug: "platform", Username: "alice", Role: "member", Origin: github.TeamMembershipOriginUnknown,
+		}},
+	}
+	want.Normalize()
+
+	loadAuditDiffConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateAuditDiffConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	readAuditSnapshot = func(string) (*gitopssnapshot.ActualSnapshot, error) { return snapshot, nil }
+	buildAuditDiffReport = func(gitopsdiff.Options) (*gitopsdiff.Report, error) { return want, nil }
+
+	cmd := DiffCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--state-dir", "./state", "--fail-on-drift"})
+
+	err := cmd.Execute()
+	if code, ok := exitcode.Code(err); !ok || code != auditDiffExitCodeDrift {
+		t.Fatalf("expected typed exit code %d for unresolved-only report, got code=%d ok=%v err=%v", auditDiffExitCodeDrift, code, ok, err)
+	}
+	got := decodeDiffReport(t, out.Bytes())
+	got.Normalize()
+	if !reflect.DeepEqual(got, *want) {
+		t.Fatalf("unexpected unresolved-only diff report:\n got %#v\nwant %#v", got, *want)
 	}
 }
 

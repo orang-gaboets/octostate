@@ -3,6 +3,7 @@ package diff
 import (
 	"fmt"
 
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
@@ -100,6 +101,7 @@ func largeFixtureBuilder() builder {
 			TeamSlug: slug,
 			Username: memberUsername,
 			Role:     "maintainer",
+			Origin:   githubpkg.TeamMembershipOriginDirect,
 		})
 		actual.TeamRepositoryPermissions = append(actual.TeamRepositoryPermissions, state.TeamRepositoryPermission{
 			TeamSlug:   slug,

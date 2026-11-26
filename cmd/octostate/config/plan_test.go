@@ -205,6 +205,9 @@ func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
 				Message:      "team legacy-team exists in live state but is not declared in desired config",
 			},
 		},
+		UnresolvedTeamMemberships: []state.TeamMember{{
+			TeamSlug: "platform", Username: "alice", Role: "member", Origin: github.TeamMembershipOriginUnknown,
+		}},
 	}
 	report.Normalize()
 
@@ -253,6 +256,9 @@ func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
 	if got.PlanSummary != report.Summary {
 		t.Fatalf("unexpected plan summary: got %#v want %#v", got.PlanSummary, report.Summary)
 	}
+	if len(got.UnresolvedTeamMemberships) != 1 || !got.PlanSummary.HasUnresolved || got.PlanSummary.HasChanges != true {
+		t.Fatalf("unexpected unresolved plan preview: %#v", got)
+	}
 
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(out.Bytes(), &raw); err != nil {
@@ -266,6 +272,9 @@ func TestPlanConfigCmdSplitsExecutableAndSkippedActions(t *testing.T) {
 	}
 	if _, ok := raw["plan_summary"]; !ok {
 		t.Fatalf("expected plan_summary key in payload: %s", out.String())
+	}
+	if _, ok := raw["unresolved_team_memberships"]; !ok {
+		t.Fatalf("expected unresolved_team_memberships key in payload: %s", out.String())
 	}
 }
 

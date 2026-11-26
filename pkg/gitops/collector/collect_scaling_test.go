@@ -147,6 +147,70 @@ func TestCollectTeamStateRoleAwareRequestCountScalesLinearlyWithTeams(t *testing
 	}
 }
 
+func TestCollectTeamStateLegacyFallbackPreservesThreeNPlusOneCalls(t *testing.T) {
+	t.Parallel()
+
+	const (
+		orgName   = "orang-gaboets"
+		teamCount = 8
+	)
+	counter := &teamCallCounter{}
+	teamSvc := &teamServiceStub{
+		listTeamsFunc: func(_ context.Context, _ string, _ *gh.ListOptions) ([]*gh.Team, *gh.Response, error) {
+			counter.listTeams.Add(1)
+			collected := make([]*gh.Team, 0, teamCount)
+			for i := 1; i <= teamCount; i++ {
+				slug := fmt.Sprintf("team-%03d", i)
+				collected = append(collected, &gh.Team{
+					Slug:         githubpkg.Ptr(slug),
+					Name:         githubpkg.Ptr(slug),
+					Organization: &gh.Organization{Login: githubpkg.Ptr(orgName)},
+				})
+			}
+			return collected, &gh.Response{}, nil
+		},
+		listTeamMembersBySlugFunc: func(_ context.Context, _, slug string, opts *gh.TeamListTeamMembersOptions) ([]*gh.User, *gh.Response, error) {
+			counter.listMembers.Add(1)
+			return []*gh.User{{Login: githubpkg.Ptr(slug + "-" + opts.Role)}}, &gh.Response{}, nil
+		},
+		listTeamReposBySlugFunc: func(_ context.Context, _, _ string, _ *gh.ListOptions) ([]*gh.Repository, *gh.Response, error) {
+			counter.listRepos.Add(1)
+			return nil, &gh.Response{}, nil
+		},
+	}
+
+	collectedTeams, members, _, err := collectTeamState(context.Background(), CollectOrganizationOptions{
+		OrgName:     orgName,
+		TeamService: teamSvc,
+	}, defaultCollectorConcurrencyLimits)
+	if err != nil {
+		t.Fatalf("collectTeamState returned error: %v", err)
+	}
+	if got, want := counter.listTeams.Load(), int64(1); got != want {
+		t.Errorf("ListTeams calls = %d, want %d", got, want)
+	}
+	if got, want := counter.listMembers.Load(), int64(teamCount*2); got != want {
+		t.Errorf("legacy role-filter calls = %d, want %d", got, want)
+	}
+	if got, want := counter.listRepos.Load(), int64(teamCount); got != want {
+		t.Errorf("ListTeamReposBySlug calls = %d, want %d", got, want)
+	}
+	if got, want := counter.total(), int64(teamCount*3+1); got != want {
+		t.Errorf("total team service calls = %d, want %d (3N+1)", got, want)
+	}
+	if got, want := len(collectedTeams), teamCount; got != want {
+		t.Errorf("normalized teams = %d, want %d", got, want)
+	}
+	if got, want := len(members), teamCount*2; got != want {
+		t.Fatalf("normalized team members = %d, want %d", got, want)
+	}
+	for _, member := range members {
+		if member.Origin != githubpkg.TeamMembershipOriginUnknown {
+			t.Errorf("legacy fallback member origin = %q, want unknown", member.Origin)
+		}
+	}
+}
+
 // Teams without a usable slug are skipped entirely rather than costing two
 // detail reads each. Counts therefore track eligible teams rather than raw
 // list length.

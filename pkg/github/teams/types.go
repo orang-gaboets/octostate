@@ -4,6 +4,7 @@ import (
 	"context"
 
 	gh "github.com/google/go-github/v88/github"
+	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
 )
 
 // Service defines the subset of GitHub team APIs used by team commands.
@@ -50,12 +51,12 @@ type TeamMember struct {
 	Role     TeamMemberRole
 }
 
-// TeamMemberWithInheritance is a team member together with GitHub's direct vs.
-// inherited membership classification.
-type TeamMemberWithInheritance struct {
-	Username  string
-	Role      TeamMemberRole
-	Inherited bool
+// TeamMemberWithOrigin is a team member together with the evidence for its
+// direct, inherited, or unknown membership origin.
+type TeamMemberWithOrigin struct {
+	Username string
+	Role     TeamMemberRole
+	Origin   githubpkg.TeamMembershipOrigin
 }
 
 // TeamMemberRoleLister is an optional capability for listing team members
@@ -65,10 +66,9 @@ type TeamMemberRoleLister interface {
 	ListTeamMembersBySlugWithRoles(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]TeamMember, *gh.Response, error)
 }
 
-// TeamMemberInheritanceLister is an optional capability for listing team
-// members with their roles and whether membership is inherited through a
-// child team. Service implementations without this capability remain
-// supported by direct-membership helpers using the role-aware or legacy path.
-type TeamMemberInheritanceLister interface {
-	ListTeamMembersBySlugWithInheritance(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]TeamMemberWithInheritance, *gh.Response, error)
+// TeamMemberOriginLister is an optional capability for listing team members
+// with their role and origin. Services without this capability are read using
+// role-aware fallbacks, whose membership origin is unknown.
+type TeamMemberOriginLister interface {
+	ListTeamMembersBySlugWithOrigin(ctx context.Context, org, slug string, opts *gh.ListOptions) ([]TeamMemberWithOrigin, *gh.Response, error)
 }
