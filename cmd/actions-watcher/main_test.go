@@ -125,6 +125,72 @@ func TestPendingRunEventsRetainsClosedBacklogsAcrossSuccessors(t *testing.T) {
 	}
 }
 
+func TestPendingRunEventsBatchesClosedIncidentsOldestFirst(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(1, 1, started)
+	makeBody := func(pending []int64) string {
+		t.Helper()
+		body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+			WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+			Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: pending,
+		}, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+
+	const issueCount = 15
+	issues := make([]watcher.IssueSnapshot, issueCount+1)
+	for i := range issues {
+		if i == issueCount {
+			pending := make([]int64, watcher.MaxPendingRunIDs)
+			for j := range pending {
+				pending[j] = int64(issueCount*watcher.MaxPendingRunIDs + j + 1)
+			}
+			issues[i] = watcher.IssueSnapshot{Number: issueCount + 1, State: "open", Body: makeBody(pending)}
+			continue
+		}
+		pending := make([]int64, watcher.MaxPendingRunIDs)
+		for j := range pending {
+			pending[j] = int64(i*watcher.MaxPendingRunIDs + j + 1)
+		}
+		closedAt := started.Add(time.Duration(i+1) * time.Hour)
+		issues[i] = watcher.IssueSnapshot{
+			Number: i + 1, State: "closed", ClosedAt: &closedAt, Body: makeBody(pending),
+		}
+	}
+
+	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
+	if err != nil {
+		t.Fatalf("pendingRunEvents() first batch error = %v", err)
+	}
+	const batchLimit = 2 * 7 * watcher.MaxPendingRunIDs
+	if len(events) != batchLimit {
+		t.Fatalf("first batch size = %d, want %d", len(events), batchLimit)
+	}
+	closedBatchSize := batchLimit - watcher.MaxPendingRunIDs
+	if events[0].RunID != 1 || events[0].IssueNumber != 1 ||
+		events[closedBatchSize-1].RunID != int64(closedBatchSize) || events[closedBatchSize-1].IssueNumber != closedBatchSize/watcher.MaxPendingRunIDs ||
+		events[closedBatchSize].RunID != issueCount*watcher.MaxPendingRunIDs+1 || events[closedBatchSize].IssueNumber != issueCount+1 ||
+		events[len(events)-1].RunID != (issueCount+1)*watcher.MaxPendingRunIDs || events[len(events)-1].IssueNumber != issueCount+1 {
+		t.Fatalf("first batch boundaries = %#v / %#v / %#v / %#v", events[0], events[closedBatchSize-1], events[closedBatchSize], events[len(events)-1])
+	}
+
+	for i := 0; i < closedBatchSize/watcher.MaxPendingRunIDs; i++ {
+		issues[i].Body = makeBody(nil)
+	}
+	issues[issueCount].Body = makeBody(nil)
+	events, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
+	if err != nil {
+		t.Fatalf("pendingRunEvents() next batch error = %v", err)
+	}
+	if len(events) != 2*watcher.MaxPendingRunIDs || events[0].RunID != int64(closedBatchSize+1) || events[len(events)-1].RunID != issueCount*watcher.MaxPendingRunIDs || events[0].IssueNumber != closedBatchSize/watcher.MaxPendingRunIDs+1 || events[len(events)-1].IssueNumber != issueCount {
+		t.Fatalf("next batch boundaries = %d events, first=%#v last=%#v", len(events), events[0], events[len(events)-1])
+	}
+}
+
 func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)

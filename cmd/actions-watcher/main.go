@@ -189,24 +189,19 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 			return nil
 		}
 		eventsByID[runID] = triggerEvent{RunID: runID, WorkflowName: workflowName, IssueNumber: issueNumber}
-		if len(eventsByID) > maxPendingRunEvents {
-			return fmt.Errorf("managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
-		}
 		return nil
 	}
-	addIssuePendingRuns := func(source issueState, skip map[int64]bool) (map[int64]bool, error) {
+	issuePendingRuns := func(source issueState) ([]int64, error) {
 		seen := make(map[int64]bool)
-		add := func(runID int64) error {
-			seen[runID] = true
-			if skip[runID] {
-				return nil
+		var runIDs []int64
+		add := func(runID int64) {
+			if !seen[runID] {
+				seen[runID] = true
+				runIDs = append(runIDs, runID)
 			}
-			return addRunID(runID, source.state.WorkflowName, source.issue.Number)
 		}
 		for _, runID := range source.state.PendingRunIDs {
-			if err := add(runID); err != nil {
-				return nil, err
-			}
+			add(runID)
 		}
 		for _, comment := range source.issue.Comments {
 			if comment.AuthorLogin != appLogin {
@@ -223,12 +218,10 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 				return nil, fmt.Errorf("issue #%d pending-run checkpoint identifies workflow ID %d, want %d", source.issue.Number, workflowID, source.state.WorkflowID)
 			}
 			for _, runID := range runIDs {
-				if err := add(runID); err != nil {
-					return nil, err
-				}
+				add(runID)
 			}
 		}
-		return seen, nil
+		return runIDs, nil
 	}
 	keys := make([]workflowKey, 0, len(byWorkflow))
 	for key := range byWorkflow {
@@ -240,6 +233,11 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 		}
 		return keys[i].id < keys[j].id
 	})
+	type pendingIssue struct {
+		source issueState
+		runIDs []int64
+	}
+	var openIssues, closedIssues []pendingIssue
 	for _, key := range keys {
 		incidents := byWorkflow[key]
 		var open *issueState
@@ -261,25 +259,83 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 		if open == nil && len(closed) == 0 {
 			continue
 		}
-		sort.Slice(closed, func(i, j int) bool {
-			left, right := closed[i].issue, closed[j].issue
-			if !left.ClosedAt.Equal(*right.ClosedAt) {
-				return left.ClosedAt.Before(*right.ClosedAt)
-			}
-			return left.Number < right.Number
-		})
-		closedPending := make(map[int64]bool)
-		for _, incident := range closed {
-			pending, err := addIssuePendingRuns(*incident, nil)
+		if open != nil {
+			pending, err := issuePendingRuns(*open)
 			if err != nil {
 				return nil, err
 			}
-			for runID := range pending {
-				closedPending[runID] = true
+			openIssues = append(openIssues, pendingIssue{source: *open, runIDs: pending})
+		}
+		for _, incident := range closed {
+			pending, err := issuePendingRuns(*incident)
+			if err != nil {
+				return nil, err
+			}
+			closedIssues = append(closedIssues, pendingIssue{source: *incident, runIDs: pending})
+		}
+	}
+	sort.Slice(closedIssues, func(i, j int) bool {
+		left, right := closedIssues[i].source, closedIssues[j].source
+		if !left.issue.ClosedAt.Equal(*right.issue.ClosedAt) {
+			return left.issue.ClosedAt.Before(*right.issue.ClosedAt)
+		}
+		if left.state.WorkflowName != right.state.WorkflowName {
+			return left.state.WorkflowName < right.state.WorkflowName
+		}
+		return left.issue.Number < right.issue.Number
+	})
+	openRunIDs := make(map[int64]bool)
+	workflowByRunID := make(map[int64]string)
+	registerRunWorkflow := func(issue pendingIssue) error {
+		for _, runID := range issue.runIDs {
+			if previous, exists := workflowByRunID[runID]; exists && previous != issue.source.state.WorkflowName {
+				return fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous, issue.source.state.WorkflowName)
+			}
+			workflowByRunID[runID] = issue.source.state.WorkflowName
+		}
+		return nil
+	}
+	for _, issue := range openIssues {
+		if err := registerRunWorkflow(issue); err != nil {
+			return nil, err
+		}
+		for _, runID := range issue.runIDs {
+			openRunIDs[runID] = true
+		}
+	}
+	for _, issue := range closedIssues {
+		if err := registerRunWorkflow(issue); err != nil {
+			return nil, err
+		}
+	}
+	if len(openRunIDs) > maxPendingRunEvents {
+		return nil, fmt.Errorf("open managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
+	}
+	// Reserve open checkpoints, then take closed incidents oldest-first as whole groups.
+	selectedRunIDs := make(map[int64]bool, len(openRunIDs))
+	for runID := range openRunIDs {
+		selectedRunIDs[runID] = true
+	}
+	for _, issue := range closedIssues {
+		additional := 0
+		for _, runID := range issue.runIDs {
+			if !selectedRunIDs[runID] {
+				additional++
 			}
 		}
-		if open != nil {
-			if _, err := addIssuePendingRuns(*open, closedPending); err != nil {
+		if len(selectedRunIDs)+additional > maxPendingRunEvents {
+			continue
+		}
+		for _, runID := range issue.runIDs {
+			selectedRunIDs[runID] = true
+			if err := addRunID(runID, issue.source.state.WorkflowName, issue.source.issue.Number); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, issue := range openIssues {
+		for _, runID := range issue.runIDs {
+			if err := addRunID(runID, issue.source.state.WorkflowName, issue.source.issue.Number); err != nil {
 				return nil, err
 			}
 		}
