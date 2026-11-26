@@ -1837,6 +1837,84 @@ func TestVerifyOpenIncidentCursorAuthenticatesRecoverySeparateFromOrderingCursor
 	}
 }
 
+func TestVerifyOpenIncidentCursorFailsClosedWhenRecoveryAttemptExpired(t *testing.T) {
+	const repoID = 99
+	var recoveryCalls, latestCalls, laterWorkflowCalls atomic.Int32
+	repo := watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}
+	client := testWatcherClient(t, "https://api.github.com", repo)
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		path := strings.TrimPrefix(req.URL.Path, "/")
+		status, value := http.StatusOK, any(nil)
+		switch path {
+		case "repos/orang-gaboets/octostate/actions/runs/102/attempts/1":
+			recoveryCalls.Add(1)
+			status, value = http.StatusNotFound, map[string]any{"message": "workflow run not found"}
+		case "repos/orang-gaboets/octostate/actions/runs/103/attempts/1":
+			latestCalls.Add(1)
+			value = runAttemptFixture(repoID, 103, 1, "success")
+		case "repos/orang-gaboets/octostate/actions/runs/104/attempts/2":
+			laterWorkflowCalls.Add(1)
+			value = runAttemptFixture(repoID, 104, 2, "success")
+		default:
+			return nil, fmt.Errorf("unexpected API request: %s %s", req.Method, req.URL.String())
+		}
+		payload, err := json.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		header := make(http.Header)
+		header.Set("Content-Type", "application/json")
+		return &http.Response{
+			StatusCode: status, Header: header, Body: io.NopCloser(bytes.NewReader(payload)), Request: req,
+		}, nil
+	})
+	apiClient, err := gh.NewClient(
+		gh.WithHTTPClient(&http.Client{Transport: transport}),
+		gh.WithEnterpriseURLs("https://api.github.com", "https://api.github.com"),
+	)
+	if err != nil {
+		t.Fatalf("create in-memory GitHub client: %v", err)
+	}
+	client.client = apiClient
+	started := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(101, 101, started)
+	recovery := testFailureAttempt(102, 102, started.Add(time.Minute))
+	recovery.Conclusion = "success"
+	recovery.CompletedAt = recovery.StartedAt.Add(30 * time.Second)
+	latest := testFailureAttempt(103, 103, started.Add(time.Minute))
+	latest.Conclusion = "success"
+	latest.CompletedAt = latest.StartedAt.Add(30 * time.Second)
+	state := watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusRecovered,
+		Failures: []watcher.RunAttempt{failure}, Latest: latest, Recovery: &recovery,
+	}
+	body, _, err := watcher.RenderBody(repo, state, "", nil)
+	if err != nil {
+		t.Fatalf("RenderBody() for recovered state: %v", err)
+	}
+
+	later := testFailureAttempt(104, 104, started.Add(2*time.Minute))
+	later.Attempt = 2
+	later.Conclusion = "success"
+	later.CompletedAt = later.StartedAt.Add(30 * time.Second)
+	laterState := state
+	laterState.Latest = later
+	laterBody, _, err := watcher.RenderBody(repo, laterState, "", nil)
+	if err != nil {
+		t.Fatalf("RenderBody() for later workflow state: %v", err)
+	}
+	err = client.verifyOpenIncidentCursors(context.Background(), []watcher.IssueSnapshot{
+		{Number: 7, State: "open", Body: body},
+		{Number: 8, State: "open", Body: laterBody},
+	})
+	if err == nil || !strings.Contains(err.Error(), "verify persisted recovery attempt for issue #7") {
+		t.Fatalf("verifyOpenIncidentCursors() error = %v, want expired recovery to fail closed", err)
+	}
+	if recoveryCalls.Load() != 1 || latestCalls.Load() != 1 || laterWorkflowCalls.Load() != 0 {
+		t.Fatalf("recovery/latest/later-workflow calls = %d/%d/%d, want 1/1/0", recoveryCalls.Load(), latestCalls.Load(), laterWorkflowCalls.Load())
+	}
+}
+
 func TestListFailedJobsDeduplicatesRepeatedNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")

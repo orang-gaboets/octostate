@@ -165,6 +165,15 @@ the stale incident; later failures will then start a new linked incident.
 Before archiving an unavailable job snapshot, the watcher rechecks the attempt
 and adds job names if GitHub now exposes them.
 
+A recovered incident can retain a recovery transition reference that differs
+from its later ordering cursor. The watcher verifies both attempts against the
+Actions API on each sweep. If GitHub expires that distinct recovery attempt,
+the verification fails closed and stops reconciliation for all workflows,
+even when the latest ordering cursor is still available. A maintainer should
+review and manually close the stale incident. Do not remove or bypass the
+recovery verification: it authenticates the persisted recovery transition.
+Making this check retention-aware requires a separate integrity design.
+
 That API verification covers the latest ordering cursor. Failure records kept
 in the issue body are structurally checked and must not be later than the
 verified cursor, but they are not individually fetched from GitHub on every
