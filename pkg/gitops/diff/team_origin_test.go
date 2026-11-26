@@ -26,25 +26,33 @@ func TestBuildDistinguishesUnknownAndInheritedTeamMemberships(t *testing.T) {
 	for _, test := range []struct {
 		name              string
 		origin            githubpkg.TeamMembershipOrigin
+		actualRole        string
+		desiredRole       string
 		wantActions       int
 		wantUnresolved    int
 		wantHasChanges    bool
 		wantHasUnresolved bool
 		wantOperation     ActionOperation
 	}{
-		{name: "unknown is unresolved and non-actionable", origin: githubpkg.TeamMembershipOriginUnknown, wantUnresolved: 1, wantHasUnresolved: true},
-		{name: "inherited preserves direct create semantics", origin: githubpkg.TeamMembershipOriginInherited, wantActions: 1, wantHasChanges: true, wantOperation: ActionOperationCreate},
+		{name: "unknown is unresolved and non-actionable", origin: githubpkg.TeamMembershipOriginUnknown, actualRole: "member", desiredRole: "member", wantUnresolved: 1, wantHasUnresolved: true},
+		{name: "unknown with role mismatch is unresolved and non-actionable", origin: githubpkg.TeamMembershipOriginUnknown, actualRole: "member", desiredRole: "maintainer", wantUnresolved: 1, wantHasUnresolved: true},
+		{name: "inherited preserves direct create semantics", origin: githubpkg.TeamMembershipOriginInherited, actualRole: "member", desiredRole: "member", wantActions: 1, wantHasChanges: true, wantOperation: ActionOperationCreate},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			desiredForTest := desired
+			desiredForTest.Teams = append([]config.TeamSpec(nil), desired.Teams...)
+			desiredForTest.Teams[0].Members = append([]config.TeamMemberSpec(nil), desired.Teams[0].Members...)
+			desiredForTest.Teams[0].Members[0].Role = test.desiredRole
+
 			snap := snapshot.NewActualSnapshot(time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC), &state.OrganizationState{
 				Organization: "acme",
 				Members:      []state.OrganizationMember{{Username: "alice", Role: "member"}},
 				Teams:        []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
 				TeamMembers: []state.TeamMember{{
-					TeamSlug: " PLATFORM ", Username: " Alice ", Role: "member", Origin: test.origin,
+					TeamSlug: " PLATFORM ", Username: " Alice ", Role: test.actualRole, Origin: test.origin,
 				}},
 			})
-			report, err := Build(Options{Desired: desired, Snapshot: &snap})
+			report, err := Build(Options{Desired: desiredForTest, Snapshot: &snap})
 			if err != nil {
 				t.Fatalf("Build returned error: %v", err)
 			}
