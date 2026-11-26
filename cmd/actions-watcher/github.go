@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	gh "github.com/google/go-github/v88/github"
@@ -151,12 +152,42 @@ func retryableRateResponse(resp *http.Response) bool {
 	if resp.Header.Get("Retry-After") != "" || resp.Header.Get("X-RateLimit-Remaining") == "0" {
 		return true
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	original := resp.Body
+	body, err := io.ReadAll(io.LimitReader(original, 1<<20))
+	reader := io.Reader(io.MultiReader(bytes.NewReader(body), original))
+	if err != nil {
+		reader = io.MultiReader(bytes.NewReader(body), &oneShotReadError{err: err}, original)
+	}
+	resp.Body = &replayReadCloser{Reader: reader, source: original}
 	if err != nil {
 		return false
 	}
-	resp.Body = io.NopCloser(bytes.NewReader(body))
 	return bytes.Contains(bytes.ToLower(body), []byte("secondary rate limit"))
+}
+
+type replayReadCloser struct {
+	io.Reader
+	source   io.Closer
+	close    sync.Once
+	closeErr error
+}
+
+func (b *replayReadCloser) Close() error {
+	b.close.Do(func() { b.closeErr = b.source.Close() })
+	return b.closeErr
+}
+
+type oneShotReadError struct {
+	err  error
+	sent bool
+}
+
+func (r *oneShotReadError) Read([]byte) (int, error) {
+	if !r.sent {
+		r.sent = true
+		return 0, r.err
+	}
+	return 0, io.EOF
 }
 
 func rateRetryDelay(header http.Header, now time.Time, attempt int) (time.Duration, bool) {
@@ -186,15 +217,15 @@ func rateRetryDelay(header http.Header, now time.Time, attempt int) (time.Durati
 	return time.Minute << attempt, true
 }
 
-func (c *watcherClient) verifyInstallationScope(ctx context.Context) error {
+func (c *watcherClient) verifyInstallationTokenRepositoryScope(ctx context.Context) error {
 	var repos []*gh.Repository
 	for page := 1; ; page++ {
 		listed, resp, err := c.client.Apps.ListRepos(ctx, &gh.ListOptions{PerPage: apiPageSize, Page: page})
 		if err != nil {
-			return fmt.Errorf("verify installation repositories: %w", err)
+			return fmt.Errorf("verify installation-token repository scope: %w", err)
 		}
 		if listed == nil {
-			return errors.New("installation repository response is empty")
+			return errors.New("installation-token repository response is empty")
 		}
 		repos = append(repos, listed.Repositories...)
 		next, done := nextPage(resp, len(listed.Repositories), apiPageSize, page)
@@ -282,7 +313,7 @@ func (c *watcherClient) collectAttempts(ctx context.Context, activatedAt, now ti
 			eventsByID[event.RunID] = event
 		}
 	}
-	if err := c.verifyInstallationScope(ctx); err != nil {
+	if err := c.verifyInstallationTokenRepositoryScope(ctx); err != nil {
 		return nil, nil, err
 	}
 	workflows, err := c.listWorkflows(ctx)
@@ -469,6 +500,11 @@ func (c *watcherClient) verifyOpenIncidentCursors(ctx context.Context, issues []
 		}
 		if verifyErr != nil {
 			return fmt.Errorf("verify persisted latest attempt for issue #%d: %w", issue.Number, verifyErr)
+		}
+		if state.Recovery != nil && !reflect.DeepEqual(*state.Recovery, state.Latest) {
+			if err := c.verifyPersistedAttempt(ctx, *state.Recovery); err != nil {
+				return fmt.Errorf("verify persisted recovery attempt for issue #%d: %w", issue.Number, err)
+			}
 		}
 	}
 	return nil
@@ -1020,92 +1056,6 @@ func (c *watcherClient) clearPendingRunCheckpoint(ctx context.Context, updated w
 	return updated, nil
 }
 
-func (c *watcherClient) completeClosedPendingRuns(ctx context.Context, initial []watcher.IssueSnapshot, events []triggerEvent, unavailable []unavailableRun) error {
-	pendingByIssue := make(map[int]map[int64]triggerEvent)
-	for _, event := range events {
-		if event.IssueNumber <= 0 {
-			continue
-		}
-		issue, ok := findIssue(initial, event.IssueNumber)
-		if !ok || issue.State != "closed" {
-			continue
-		}
-		if pendingByIssue[issue.Number] == nil {
-			pendingByIssue[issue.Number] = make(map[int64]triggerEvent)
-		}
-		if previous, exists := pendingByIssue[issue.Number][event.RunID]; exists && previous.WorkflowName != event.WorkflowName {
-			return fmt.Errorf("closed issue #%d has pending run %d for conflicting workflows", issue.Number, event.RunID)
-		}
-		pendingByIssue[issue.Number][event.RunID] = event
-	}
-	if len(pendingByIssue) == 0 {
-		return nil
-	}
-	unavailableByID := make(map[int64]unavailableRun, len(unavailable))
-	for _, missing := range unavailable {
-		unavailableByID[missing.Event.RunID] = missing
-	}
-	issueNumbers := make([]int, 0, len(pendingByIssue))
-	for issueNumber := range pendingByIssue {
-		issueNumbers = append(issueNumbers, issueNumber)
-	}
-	sort.Ints(issueNumbers)
-	for _, issueNumber := range issueNumbers {
-		current, _ := findIssue(initial, issueNumber)
-		state, err := watcher.RenderManagedBodyState(current.Body, c.repo)
-		if err != nil {
-			return fmt.Errorf("read pending runs from closed issue #%d: %w", issueNumber, err)
-		}
-		runIDs := make([]int64, 0, len(pendingByIssue[issueNumber]))
-		for runID, event := range pendingByIssue[issueNumber] {
-			if event.WorkflowName != state.WorkflowName {
-				return fmt.Errorf("closed issue #%d pending run %d identifies workflow %q, want %q", issueNumber, runID, event.WorkflowName, state.WorkflowName)
-			}
-			runIDs = append(runIDs, runID)
-		}
-		sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
-		for _, runID := range runIDs {
-			missing, ok := unavailableByID[runID]
-			if !ok {
-				continue
-			}
-			comment := unavailableRunComment(state.WorkflowID, missing)
-			current, err = c.ensureMarkedComment(ctx, current, comment.Marker, comment.Body)
-			if err != nil {
-				return fmt.Errorf("record unavailable run %d on closed issue #%d: %w", runID, issueNumber, err)
-			}
-		}
-
-		completed := make(map[int64]bool, len(runIDs))
-		for _, runID := range runIDs {
-			completed[runID] = true
-		}
-		remaining := make([]int64, 0, len(state.PendingRunIDs))
-		for _, runID := range state.PendingRunIDs {
-			if !completed[runID] {
-				remaining = append(remaining, runID)
-			}
-		}
-		state.PendingRunIDs = remaining
-		body, archives, err := watcher.RenderBody(c.repo, state, current.Body, watcherAuthoredComments(current.Comments, c.appLogin))
-		if err != nil {
-			return fmt.Errorf("clear pending runs from closed issue #%d: %w", issueNumber, err)
-		}
-		if len(archives) > 0 {
-			return fmt.Errorf("clearing pending runs unexpectedly required archiving issue #%d", issueNumber)
-		}
-		current, err = c.patchClosedIssueBody(ctx, current, body)
-		if err != nil {
-			return fmt.Errorf("clear pending runs from closed issue #%d: %w", issueNumber, err)
-		}
-		current, err = c.removePendingCheckpointComments(ctx, current, state.WorkflowID, completed)
-		if err != nil {
-			return fmt.Errorf("clear pending-run checkpoint from closed issue #%d: %w", issueNumber, err)
-		}
-	}
-	return nil
-}
-
 func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []watcher.IssueSnapshot, events []triggerEvent, unavailable []unavailableRun, plan watcher.Plan) error {
 	changedIssues := make(map[int]bool)
 	for _, change := range plan.Changes {
@@ -1179,40 +1129,6 @@ func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []w
 		}
 	}
 	return nil
-}
-
-func (c *watcherClient) patchClosedIssueBody(ctx context.Context, current watcher.IssueSnapshot, body string) (watcher.IssueSnapshot, error) {
-	if current.State != "closed" {
-		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d is no longer closed", current.Number)
-	}
-	if current.Body == body {
-		return current, nil
-	}
-	fresh, err := c.getIssueSnapshot(ctx, current.Number)
-	if err != nil {
-		return watcher.IssueSnapshot{}, fmt.Errorf("preflight closed issue body update: %w", err)
-	}
-	if !sameIssueSnapshot(current, fresh) {
-		return watcher.IssueSnapshot{}, fmt.Errorf("closed issue #%d changed during reconciliation", current.Number)
-	}
-	request := &gh.IssueRequest{Body: &body}
-	_, _, writeErr := c.client.Issues.Edit(ctx, c.repo.Owner, c.repo.Name, current.Number, request)
-	readback, readErr := c.getIssueSnapshot(ctx, current.Number)
-	if readErr != nil {
-		if writeErr != nil {
-			return watcher.IssueSnapshot{}, fmt.Errorf("closed issue update outcome is uncertain (%v), and readback failed: %w", writeErr, readErr)
-		}
-		return watcher.IssueSnapshot{}, fmt.Errorf("read back closed issue body update: %w", readErr)
-	}
-	want := current
-	want.Body = body
-	if !sameIssueSnapshot(want, readback) {
-		if writeErr != nil {
-			return watcher.IssueSnapshot{}, fmt.Errorf("closed issue update outcome is uncertain (%w); desired state was not observed", writeErr)
-		}
-		return watcher.IssueSnapshot{}, fmt.Errorf("closed issue body update readback mismatch on issue #%d", current.Number)
-	}
-	return readback, nil
 }
 
 func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) ([]watcher.RunAttempt, error) {
@@ -1447,6 +1363,13 @@ func (c *watcherClient) patchIssue(ctx context.Context, current watcher.IssueSna
 	if current.Body == body && current.Title == title && sameLabels(current.Labels, labels) {
 		return current, nil
 	}
+	fresh, err := c.getIssueSnapshot(ctx, current.Number)
+	if err != nil {
+		return watcher.IssueSnapshot{}, fmt.Errorf("preflight issue update on #%d: %w", current.Number, err)
+	}
+	if !sameIssueSnapshot(current, fresh) {
+		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d changed before issue update; refusing to overwrite a concurrent edit", current.Number)
+	}
 	request := &gh.IssueRequest{Body: &body, Title: &title, Labels: &labels}
 	_, _, writeErr := c.client.Issues.Edit(ctx, c.repo.Owner, c.repo.Name, current.Number, request)
 	readback, readErr := c.getIssueSnapshot(ctx, current.Number)
@@ -1502,6 +1425,9 @@ func (c *watcherClient) ensureTransitionComments(ctx context.Context, initial wa
 }
 
 func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, expected watcher.IssueSnapshot, workflowID int64, preserved map[int64]bool) (watcher.IssueSnapshot, error) {
+	if expected.State != "open" {
+		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d is not open; refusing to remove pending-run checkpoints", expected.Number)
+	}
 	current := expected
 	for {
 		index := -1
@@ -1566,6 +1492,9 @@ func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, exp
 }
 
 func (c *watcherClient) ensureMarkedComment(ctx context.Context, expected watcher.IssueSnapshot, marker, body string) (watcher.IssueSnapshot, error) {
+	if expected.State != "open" {
+		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d is not open; refusing to create a watcher comment", expected.Number)
+	}
 	current, err := c.getIssueSnapshot(ctx, expected.Number)
 	if err != nil {
 		return watcher.IssueSnapshot{}, fmt.Errorf("preflight comment on issue #%d: %w", expected.Number, err)

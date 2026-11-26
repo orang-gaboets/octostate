@@ -62,11 +62,6 @@ jobs:
           fi
           echo "activated-at=$activated_at" >> "$GITHUB_OUTPUT"
 
-      - name: Delay push reconciliation
-        if: github.event_name == 'push'
-        shell: bash
-        run: sleep 900
-
       - name: Create scoped watcher installation token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

@@ -26,10 +26,13 @@ Configure the App with these repository permissions:
 Do not grant source-code, pull-request, release, organization administration,
 or Actions write access. Install the App on `orang-gaboets/octostate` only.
 The workflow mints a short-lived installation token scoped again to that owner
-and repository. It checks the App slug and verifies that the token can see
-exactly the Octostate repository with the expected repository ID before it
-plans or writes incidents. Missing credentials, a different App, an expanded
-installation, or insufficient API access fail the run; no other credential is
+and repository. It checks the App slug and verifies that the minted token is
+scoped to exactly the Octostate repository with the expected repository ID
+before it plans or writes incidents. That API check reports the repositories
+available to the narrowed token; it does not reveal the App installation's
+full repository selection. Maintainers must configure the App installation
+itself for Octostate only. Missing credentials, a different App, an incorrectly
+scoped token, or insufficient API access fail the run; no other credential is
 used as a fallback.
 
 Create the protected Actions environment named `actions-watcher` and restrict
@@ -96,9 +99,11 @@ in a reviewed change.
 ## Reconciliation and incident lifecycle
 
 The watcher runs on each completed allowlisted `workflow_run` whose source
-event is `push`, `schedule`, or `workflow_dispatch` on `main`, 15 minutes after
-a push to `main`, and hourly. Pull request source runs are filtered before the
-reconciliation job starts. Every run performs a full authoritative
+event is `push`, `schedule`, or `workflow_dispatch` on `main`, on each push to
+`main`, and hourly. Push reconciliation starts immediately; a later
+`workflow_run` event covers eligible runs that were not yet visible during the
+push sweep. Pull request source runs are filtered before the reconciliation
+job starts. Every run performs a full authoritative
 reconciliation instead of trusting the triggering event payload for issue
 state. For a `workflow_run` trigger, it also re-fetches the event's run ID
 directly from GitHub, so a delivered rerun can be reconciled even when its
@@ -112,7 +117,12 @@ Before applying a change associated with a delivered run, the watcher records
 that run ID in the open incident's managed state. If a comment or issue update
 then fails partway through, the next reconciliation fetches the pending run
 IDs directly from GitHub, including runs older than the lookback. A successful
-update clears those IDs from the managed state.
+update clears those IDs from an open incident. If a maintainer closes an issue
+while it still has pending IDs, the watcher leaves that closed issue untouched
+and continues retrying its checkpoint read-only. An unavailable run (HTTP 404
+or 410) is reported in the watcher run's JSON output and does not stop other
+workflows; because the closed issue cannot store a result or clear the ID, the
+same unavailable run may be reported again on later sweeps.
 
 Pending IDs are fetched in batches of at most 1,000 per run. Open incidents are
 processed first, followed by the oldest closed incidents; unselected IDs remain
@@ -181,28 +191,34 @@ closed if a referenced or indexed archive is missing.
 
 Recovery changes the body and status label and adds a marked transition
 comment. A later failure while the issue remains open returns it to failing and
-adds a regression comment. Repeated deliveries and continued successes do not
-create duplicate history or unnecessary notifications. A successful run is
-evidence of an observed recovery only; it does not establish that the root
-cause is fixed or that the same failing path ran.
+adds a regression comment. The body keeps the recovery transition separate
+from the latest observed ordering cursor: continued successes advance the
+cursor so a delayed older failure cannot regress the incident, but they do not
+replace the recovery reference or add notifications. Repeated deliveries do
+not create duplicate history. A successful run is evidence of an observed
+recovery only; it does not establish that the root cause is fixed or that the
+same failing path ran.
 
-Maintainers control closure. The watcher never closes or reopens an issue. A
-failure attempt that started at or before the latest manual `closed_at` is
-treated as delayed or replayed evidence and leaves that issue unchanged. A
-distinct failure attempt that started after closure creates a new incident
-with a fresh history and a link to the previous closed incident. Manually
-reopening a managed issue resumes that issue as the active incident.
+Maintainers control closure. The watcher never closes, reopens, or otherwise
+modifies a closed issue. A failure attempt that started at or before the latest
+manual `closed_at` is treated as delayed or replayed evidence and leaves that
+issue unchanged. A distinct failure attempt that started after closure creates
+a new incident with a fresh history and a link to the previous closed incident.
+Manually reopening a managed issue resumes that issue as the active incident.
 
 ## Failure handling and recovery
 
 An ambiguous identity marker, wrong App author, duplicate open incidents,
 missing archive evidence, concurrent issue edit, or unexpected source
 repository/workflow identity stops the reconciliation before it overwrites
-ambiguous state. The command re-reads issue state immediately before writes;
-GitHub does not provide a transaction across the body, labels, and comments,
-so a human edit between that read and the write can still race. Readback and
-the next hourly reconciliation expose and repair safe partial writes without
-blindly duplicating comments.
+ambiguous state. Before patching an issue, the command re-reads the full issue
+snapshot and compares its body, title, state, labels, and comments with the
+snapshot it intends to update. It preserves unrelated labels when applying the
+watcher's label delta. GitHub does not provide a conditional issue update or a
+transaction across reads and writes, so a human edit in the small interval
+between the final read and PATCH can still race. Readback and the next hourly
+reconciliation expose and repair safe partial writes without blindly
+duplicating comments.
 
 When a run fails, inspect the Actions Watcher run's stderr and the GitHub API
 response. Check, in order:
@@ -217,7 +233,7 @@ response. Check, in order:
 5. The incident body markers and any archive/transition comments remain
    intact and App-authored.
 
-After correcting a configuration or API problem, the next delayed main push
+After correcting a configuration or API problem, the next main push
 reconciliation or hourly run retries a fresh read and repairs non-ambiguous
 partial state. Do not create duplicate incidents or manually edit machine
 markers to bypass a failed invariant. If the watcher refuses to write, resolve

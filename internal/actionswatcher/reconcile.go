@@ -40,7 +40,7 @@ func Reconcile(repo RepositoryIdentity, appLogin string, attempts []RunAttempt, 
 	if err := validateReconcileInput(repo, appLogin, now); err != nil {
 		return Plan{}, err
 	}
-	eligible, err := normalizeEligibleAttempts(attempts)
+	eligible, err := normalizeEligibleAttempts(repo, attempts)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -171,7 +171,7 @@ func reconcileWorkflow(repo RepositoryIdentity, key workflowKey, source []RunAtt
 	return createFirstIncident(repo, key, source)
 }
 
-func normalizeEligibleAttempts(attempts []RunAttempt) ([]RunAttempt, error) {
+func normalizeEligibleAttempts(repo RepositoryIdentity, attempts []RunAttempt) ([]RunAttempt, error) {
 	byKey := make(map[string]RunAttempt)
 	for _, original := range attempts {
 		if _, monitored := monitoredWorkflowNames[original.WorkflowName]; !monitored {
@@ -193,8 +193,8 @@ func normalizeEligibleAttempts(attempts []RunAttempt) ([]RunAttempt, error) {
 		if attempt.HeadSHA == "" {
 			return nil, fmt.Errorf("eligible run attempt %d/%d is missing its commit SHA", attempt.RunID, attempt.Attempt)
 		}
-		if !validHTTPSURL(attempt.HTMLURL) {
-			return nil, fmt.Errorf("eligible run attempt %d/%d is missing a trusted HTTPS run URL", attempt.RunID, attempt.Attempt)
+		if !validRunURL(repo, attempt) {
+			return nil, fmt.Errorf("eligible run attempt %d/%d has a URL that does not identify this repository and run", attempt.RunID, attempt.Attempt)
 		}
 		key := attemptKey(attempt)
 		if previous, ok := byKey[key]; ok {
@@ -379,7 +379,7 @@ func updateOpenIncident(repo RepositoryIdentity, key workflowKey, source []RunAt
 			return IssueChange{}, err
 		}
 		for _, attempt := range attempts {
-			if attempt.WorkflowID != key.id || attempt.WorkflowName != key.name || !validPersistedRunAttempt(attempt) {
+			if attempt.WorkflowID != key.id || attempt.WorkflowName != key.name || !validPersistedRunAttempt(repo, attempt) {
 				return IssueChange{}, errors.New("archive comment contains a mismatched failure attempt")
 			}
 		}
@@ -456,8 +456,11 @@ func stateFromAttempts(key workflowKey, previous *IncidentState, attempts []RunA
 		if attempt.Conclusion == "success" {
 			_, ok := latestFailureBefore(state.Failures, attempt)
 			if ok {
+				if state.Status != StatusRecovered {
+					state.Recovery = cloneAttemptPointer(&attempt)
+				}
 				state.Status = StatusRecovered
-				state.Recovery = cloneAttemptPointer(&attempt)
+				// Latest is the ordering cursor; persist it to reject delayed older failures.
 				state.Latest = attempt
 			}
 			continue
@@ -467,6 +470,13 @@ func stateFromAttempts(key workflowKey, previous *IncidentState, attempts []RunA
 			state.Recovery = nil
 			state.Latest = attempt
 		}
+	}
+	if state.Status == StatusRecovered && state.Recovery != nil && len(state.Failures) > 0 &&
+		attemptLess(*state.Recovery, state.Failures[len(state.Failures)-1]) &&
+		attemptLess(state.Failures[len(state.Failures)-1], state.Latest) {
+		// A newly discovered failure can fall between the saved recovery transition
+		// and the ordering cursor. The cursor then becomes the recovery after it.
+		state.Recovery = cloneAttemptPointer(&state.Latest)
 	}
 	if state.Latest.WorkflowID == 0 {
 		if previous != nil {
@@ -655,9 +665,20 @@ func sameAttempt(left, right RunAttempt) bool {
 	return string(a) == string(b)
 }
 
-func validHTTPSURL(value string) bool {
-	parsed, err := url.Parse(value)
-	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && parsed.User == nil
+func validRunURL(repo RepositoryIdentity, attempt RunAttempt) bool {
+	parsed, err := url.Parse(attempt.HTMLURL)
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "github.com") || parsed.User != nil ||
+		parsed.Opaque != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "" {
+		return false
+	}
+	if repo.Owner == "" || repo.Name == "" || attempt.RunID <= 0 || attempt.Attempt <= 0 {
+		return false
+	}
+	basePath := fmt.Sprintf("/%s/%s/actions/runs/%d", repo.Owner, repo.Name, attempt.RunID)
+	if strings.EqualFold(parsed.Path, basePath) {
+		return true
+	}
+	return strings.EqualFold(parsed.Path, fmt.Sprintf("%s/attempts/%d", basePath, attempt.Attempt))
 }
 
 func statusLabel(status IncidentStatus) string {

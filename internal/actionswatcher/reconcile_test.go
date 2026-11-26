@@ -3,6 +3,7 @@ package actionswatcher
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -46,7 +47,7 @@ func TestReconcileFiltersSourcesOrdersAndDeduplicatesFailures(t *testing.T) {
 		"Latest observed relevant status: **FAILING**", "First failure: 2026-11-25T01:00:00Z",
 		"Latest failure: 2026-11-25T03:00:00Z", "Total distinct failed attempts: 2",
 		"run ID 10", "run ID 20", "attempt 2", "Commit SHA: `abc123`", "Failed jobs: `test-linux`",
-		"Latest observed recovery: none", "https://github.com/org/repo/actions/runs/20/attempts/2",
+		"Latest observed recovery: none", "https://github.com/orang-gaboets/octostate/actions/runs/20/attempts/2",
 	} {
 		if !strings.Contains(change.Body, want) {
 			t.Errorf("managed body does not preserve %q", want)
@@ -77,6 +78,41 @@ func TestReconcileUsesAttemptStartOrderingAndOnlySuccessRecovers(t *testing.T) {
 	}
 	if got := onlyChange(t, plan).CurrentStatus; got != StatusRecovered {
 		t.Fatalf("status after newer success = %q, want recovered", got)
+	}
+}
+
+func TestReconcileAndPersistedStateRejectRunURLsForAnotherRepositoryOrRun(t *testing.T) {
+	repo := testRepository()
+	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
+	valid := attempt(42, 42, "CI", "push", "main", "failure", started, "https://github.com/orang-gaboets/octostate/actions/runs/42")
+	invalidURLs := []string{
+		"https://github.com/other/repo/actions/runs/42",
+		"https://github.com/orang-gaboets/octostate/actions/runs/43",
+		"https://github.com.evil.test/orang-gaboets/octostate/actions/runs/42",
+	}
+	for _, badURL := range invalidURLs {
+		bad := valid
+		bad.HTMLURL = badURL
+		if _, err := Reconcile(repo, "actions-watcher[bot]", []RunAttempt{bad}, nil, started.Add(time.Hour)); err == nil {
+			t.Errorf("Reconcile accepted run URL %q", badURL)
+		}
+	}
+
+	body, _, err := RenderBody(repo, IncidentState{
+		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
+		Failures: []RunAttempt{valid}, Latest: valid,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := valid
+	forged.HTMLURL = invalidURLs[1]
+	tampered := strings.Replace(body, renderFailureLine(valid), renderFailureLine(forged), 1)
+	if tampered == body {
+		t.Fatal("test failed to tamper with the persisted failure record")
+	}
+	if _, err := RenderBodyState(tampered, repo, 100, "CI"); err == nil {
+		t.Fatal("RenderBodyState accepted a persisted URL for a different run ID")
 	}
 }
 
@@ -127,7 +163,7 @@ func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *
 	if change.Action != ActionCreate || change.PreviousIssueNumber != 51 || change.FailureCount != 1 {
 		t.Fatalf("post-close change = %#v; want fresh linked incident with one failure", change)
 	}
-	if strings.Contains(change.Body, "before") || !strings.Contains(change.Body, "rerun") {
+	if strings.Contains(change.Body, "attempt 1") || !strings.Contains(change.Body, "attempt 2") {
 		t.Fatalf("new incident history did not isolate post-close attempts: %q", change.Body)
 	}
 	parsed, err := RenderBodyState(change.Body, testRepository(), 100, "CI")
@@ -271,7 +307,7 @@ func TestReconcileLateFailureKeepsNewerRecoveryAndAddsHistory(t *testing.T) {
 	if change.CurrentStatus != StatusRecovered {
 		t.Fatalf("late older failure changed status to %q, want recovered", change.CurrentStatus)
 	}
-	if change.FailureCount != 2 || !strings.Contains(change.Body, "late-failure") {
+	if change.FailureCount != 2 || !strings.Contains(change.Body, "run ID 3, attempt 1") {
 		t.Fatalf("late failure was not retained in history: count=%d body=%q", change.FailureCount, change.Body)
 	}
 	if len(change.Comments) != 0 {
@@ -316,6 +352,54 @@ func TestReconcilePlansRecoveryAndRegressionCommentsOnce(t *testing.T) {
 	}
 	if len(plan.Changes) != 0 {
 		t.Fatalf("replaying already-applied transitions produced changes: %#v", plan.Changes)
+	}
+}
+
+func TestReconcileAdvancesOrderingCursorWithoutChangingRecoveryTransition(t *testing.T) {
+	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "")
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour), "")
+	initial, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, recovery}, nil, started.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := onlyChange(t, initial)
+	issue := IssueSnapshot{
+		Number: 90, State: "open", AuthorLogin: "actions-watcher[bot]", Title: created.Title,
+		Body: created.Body, Labels: []string{ManagedLabel, RecoveredLabel},
+	}
+	laterSuccess := attempt(3, 3, "CI", "workflow_dispatch", "main", "success", started.Add(3*time.Hour), "")
+	continued, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{laterSuccess}, []IssueSnapshot{issue}, started.Add(4*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := onlyChange(t, continued)
+	if len(change.Comments) != 0 || len(change.AddLabels) != 0 || len(change.RemoveLabels) != 0 {
+		t.Fatalf("continued success produced a transition notification or label change: %#v", change)
+	}
+	state, err := RenderBodyState(change.Body, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Latest.RunID != laterSuccess.RunID || state.Recovery == nil || state.Recovery.RunID != recovery.RunID {
+		t.Fatalf("continued-success state = latest %d, recovery %#v; want cursor %d and original recovery %d", state.Latest.RunID, state.Recovery, laterSuccess.RunID, recovery.RunID)
+	}
+
+	lateFailure := attempt(4, 4, "CI", "push", "main", "failure", started.Add(2*time.Hour+30*time.Minute), "")
+	updated, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{lateFailure}, []IssueSnapshot{{
+		Number: 90, State: "open", AuthorLogin: "actions-watcher[bot]", Title: change.Title,
+		Body: change.Body, Labels: []string{ManagedLabel, RecoveredLabel},
+	}}, started.Add(5*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lateChange := onlyChange(t, updated)
+	lateState, err := RenderBodyState(lateChange.Body, testRepository(), 100, "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lateChange.CurrentStatus != StatusRecovered || lateState.Latest.RunID != laterSuccess.RunID || lateState.Recovery == nil || lateState.Recovery.RunID != laterSuccess.RunID {
+		t.Fatalf("late failure changed recovered ordering state: status=%q latest=%d recovery=%#v", lateChange.CurrentStatus, lateState.Latest.RunID, lateState.Recovery)
 	}
 }
 
@@ -556,7 +640,7 @@ func TestReconcileClearsConsumedPendingRunIDs(t *testing.T) {
 
 func TestRenderBodyLinksRerunsToTheirSpecificAttempts(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	runURL := "https://github.com/org/repo/actions/runs/42"
+	runURL := "https://github.com/orang-gaboets/octostate/actions/runs/42"
 	first := attempt(42, 42, "CI", "push", "main", "failure", started, runURL)
 	second := first
 	second.Attempt = 2
@@ -622,7 +706,9 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
 		started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Minute)
-		state.Failures = append(state.Failures, attempt(int64(i), 1, "CI", "push", "main", "failure", started, "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
+		failure := attempt(int64(i), 1, "CI", "push", "main", "failure", started, "")
+		failure.FailedJobs = []string{strings.Repeat("x", 500)}
+		state.Failures = append(state.Failures, failure)
 	}
 	state.Latest = state.Failures[len(state.Failures)-1]
 	body, archives, err := RenderBody(testRepository(), state, "", nil)
@@ -670,7 +756,9 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
-		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
+		failure := attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "")
+		failure.FailedJobs = []string{strings.Repeat("x", 500)}
+		state.Failures = append(state.Failures, failure)
 	}
 	state.Latest = state.Failures[len(state.Failures)-1]
 	body, archives, err := RenderBody(testRepository(), state, "", nil)
@@ -681,7 +769,8 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 		t.Fatal("initial history did not create archives")
 	}
 
-	late := attempt(1000, 1000, "CI", "push", "main", "failure", started, "https://example.test/late-attempt/"+strings.Repeat("y", 5000))
+	late := attempt(1000, 1000, "CI", "push", "main", "failure", started, "")
+	late.FailedJobs = []string{strings.Repeat("y", 25000)}
 	state.Failures = append(state.Failures, late)
 	comments := make([]CommentSnapshot, 0, len(archives))
 	for i, archive := range archives {
@@ -773,6 +862,40 @@ func TestRenderCheckpointBodyArchivesHistoryBeforePendingRunOverflow(t *testing.
 	for _, failure := range state.Failures {
 		if !archivedKeys[attemptKey(failure)] {
 			t.Errorf("checkpoint dropped failure run %d", failure.RunID)
+		}
+	}
+}
+
+func TestRenderCheckpointBodyReconstructsArchivedFailureSummary(t *testing.T) {
+	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
+	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	for i := 1; i <= 400; i++ {
+		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+	body, archives, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) == 0 {
+		t.Fatal("initial history did not create archives")
+	}
+	comments := make([]CommentSnapshot, 0, len(archives))
+	for _, archive := range archives {
+		comments = append(comments, CommentSnapshot{AuthorLogin: "actions-watcher[bot]", Body: archive.Body})
+	}
+
+	checkpoint, _, err := RenderCheckpointBody(body, testRepository(), []int64{5000}, comments)
+	if err != nil {
+		t.Fatalf("RenderCheckpointBody() error = %v", err)
+	}
+	for _, want := range []string{
+		"First failure: " + formatTime(state.Failures[0].StartedAt),
+		"Latest failure: " + formatTime(state.Failures[len(state.Failures)-1].StartedAt),
+		"Total distinct failed attempts: 400",
+	} {
+		if !strings.Contains(checkpoint, want) {
+			t.Errorf("checkpoint body does not contain reconstructed summary %q", want)
 		}
 	}
 }
@@ -913,11 +1036,12 @@ func TestRenderBodyDistinguishesUnavailableJobsFromKnownEmpty(t *testing.T) {
 	}
 }
 
-func attempt(runID int64, number int, name, event, branch, conclusion string, started time.Time, url string) RunAttempt {
+func attempt(runID int64, number int, name, event, branch, conclusion string, started time.Time, _ string) RunAttempt {
 	return RunAttempt{
 		WorkflowID: 100, WorkflowName: name, RunID: runID, RunNumber: number, Attempt: 1,
 		Event: event, HeadBranch: branch, Conclusion: conclusion, HeadSHA: "abc123",
-		HTMLURL: url, StartedAt: started, CompletedAt: started.Add(time.Minute),
+		HTMLURL:   fmt.Sprintf("https://github.com/%s/%s/actions/runs/%d", testRepository().Owner, testRepository().Name, runID),
+		StartedAt: started, CompletedAt: started.Add(time.Minute),
 		FailedJobs: []string{"test-linux"}, JobDataAvailable: true,
 	}
 }

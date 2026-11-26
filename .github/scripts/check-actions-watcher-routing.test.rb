@@ -85,6 +85,10 @@ mutations = {
     "name: Actions Watcher\n",
     "name: Actions Watcher\ndefaults:\n  run:\n    working-directory: tools\n"
   ), source],
+  "reintroduced push delay" => [workflow.sub(
+    "      - name: Create scoped watcher installation token",
+    "      - name: Delay push reconciliation\n        if: github.event_name == 'push'\n        run: sleep 900\n\n      - name: Create scoped watcher installation token"
+  ), source],
   "job run working directory default" => [workflow.sub(
     "  reconcile:\n",
     "  reconcile:\n    defaults:\n      run:\n        working-directory: tools\n"

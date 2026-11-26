@@ -133,9 +133,6 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := client.completeOpenPendingRuns(ctx, issues, triggerEvents, unavailableRuns, plan); err != nil {
 		return fmt.Errorf("complete open-incident checkpoints: %w", err)
 	}
-	if err := client.completeClosedPendingRuns(ctx, issues, triggerEvents, unavailableRuns); err != nil {
-		return fmt.Errorf("complete closed-incident checkpoints: %w", err)
-	}
 	result := resultFor(attemptCount, plan, unavailableRuns...)
 	if err := json.NewEncoder(stdout).Encode(result); err != nil {
 		return fmt.Errorf("write reconciliation result: %w", err)

@@ -85,7 +85,6 @@ expected_step_names = [
   "Checkout trusted main",
   "Set up Go",
   "Derive watcher activation time",
-  "Delay push reconciliation",
   "Create scoped watcher installation token",
   "Reconcile workflow incidents"
 ]
@@ -113,8 +112,6 @@ activation_script = <<~'SCRIPT'.strip
   echo "activated-at=$activated_at" >> "$GITHUB_OUTPUT"
 SCRIPT
 require_check(!activation.nil? && activation.fetch("run").strip == activation_script && activation.fetch("shell") == "bash", "activation step must run only the reviewed trusted-main script")
-delay = steps.find { |step| step["name"] == "Delay push reconciliation" }
-require_check(!delay.nil? && delay.fetch("if") == "github.event_name == 'push'" && delay.fetch("shell") == "bash" && delay.fetch("run") == "sleep 900", "main push reconciliation must run only the reviewed 15-minute delay")
 command = steps.find { |step| step["name"] == "Reconcile workflow incidents" }
 require_check(!command.nil? && command.keys.sort == %w[env name run] && command.fetch("run") == "go run ./cmd/actions-watcher", "watcher command step must use only the reviewed root command, without execution overrides")
 require_check(!command["continue-on-error"], "reconciliation command must fail the job on error")

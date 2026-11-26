@@ -118,8 +118,8 @@ func validateLatestIncidentState(state IncidentState, failures []RunAttempt) err
 	if state.Status == StatusFailing && !isFailure(state.Latest.Conclusion) {
 		return errors.New("failing incident must have a latest failed attempt")
 	}
-	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || !sameAttempt(*state.Recovery, state.Latest)) {
-		return errors.New("recovered incident must have its latest successful attempt as recovery")
+	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || attemptLess(state.Latest, *state.Recovery)) {
+		return errors.New("recovered incident must have a successful recovery no later than its ordering cursor")
 	}
 	if state.Recovery != nil && (state.Recovery.WorkflowID != state.WorkflowID || state.Recovery.WorkflowName != state.WorkflowName || state.Recovery.Conclusion != "success") {
 		return errors.New("recovery attempt does not match the incident workflow")
@@ -420,6 +420,23 @@ func RenderCheckpointBody(body string, repo RepositoryIdentity, runIDs []int64, 
 	if err != nil {
 		return "", nil, err
 	}
+	archives, _, err := parseArchives(archiveComments, state.WorkflowID)
+	if err != nil {
+		return "", nil, fmt.Errorf("parse archived failure history: %w", err)
+	}
+	archivedFailures := make([]RunAttempt, 0)
+	for _, archive := range archives {
+		for _, attempt := range archive.Attempts {
+			if attempt.WorkflowID != state.WorkflowID || attempt.WorkflowName != state.WorkflowName || !validPersistedRunAttempt(repo, attempt) {
+				return "", nil, errors.New("archive comment contains a mismatched failure attempt")
+			}
+			archivedFailures = append(archivedFailures, attempt)
+		}
+	}
+	state.Failures, err = mergeFailures(state.Failures, archivedFailures)
+	if err != nil {
+		return "", nil, fmt.Errorf("reconstruct archived failure history: %w", err)
+	}
 	state.PendingRunIDs, err = normalizePendingRunIDs(runIDs)
 	if err != nil {
 		return "", nil, err
@@ -483,11 +500,11 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 		return errors.New("managed failure history is empty")
 	}
 	for _, failure := range failures {
-		if failure.WorkflowID != workflowID || failure.WorkflowName != workflowName || !validPersistedRunAttempt(failure) {
+		if failure.WorkflowID != workflowID || failure.WorkflowName != workflowName || !validPersistedRunAttempt(repo, failure) {
 			return errors.New("failure history contains an invalid or mismatched attempt")
 		}
 	}
-	if state.Latest.WorkflowID != workflowID || state.Latest.WorkflowName != workflowName || !validPersistedRunAttempt(state.Latest) {
+	if state.Latest.WorkflowID != workflowID || state.Latest.WorkflowName != workflowName || !validPersistedRunAttempt(repo, state.Latest) {
 		return errors.New("managed state contains an invalid or mismatched latest attempt")
 	}
 	latestFailureRecorded := false
@@ -505,10 +522,10 @@ func validatePersistedState(state IncidentState, repo RepositoryIdentity, workfl
 	if state.Status == StatusFailing && !latestFailureRecorded {
 		return errors.New("managed failure history is missing the latest failing attempt")
 	}
-	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || !sameAttempt(*state.Recovery, state.Latest)) {
-		return errors.New("managed recovered status does not match its latest attempt")
+	if state.Status == StatusRecovered && (state.Latest.Conclusion != "success" || state.Recovery == nil || attemptLess(state.Latest, *state.Recovery)) {
+		return errors.New("managed recovered status does not match its ordering cursor")
 	}
-	if state.Recovery != nil && (state.Recovery.WorkflowID != workflowID || state.Recovery.WorkflowName != workflowName || !validPersistedRunAttempt(*state.Recovery) || state.Recovery.Conclusion != "success") {
+	if state.Recovery != nil && (state.Recovery.WorkflowID != workflowID || state.Recovery.WorkflowName != workflowName || !validPersistedRunAttempt(repo, *state.Recovery) || state.Recovery.Conclusion != "success") {
 		return errors.New("managed recovery attempt is invalid or mismatched")
 	}
 	if state.Status == StatusRecovered && !attemptLess(failures[len(failures)-1], *state.Recovery) {
@@ -550,11 +567,11 @@ func normalizePendingRunIDs(runIDs []int64) ([]int64, error) {
 	return ids, nil
 }
 
-func validPersistedRunAttempt(attempt RunAttempt) bool {
+func validPersistedRunAttempt(repo RepositoryIdentity, attempt RunAttempt) bool {
 	return attempt.WorkflowID > 0 && attempt.RunID > 0 && attempt.RunNumber > 0 && attempt.Attempt > 0 &&
 		(attempt.Event == "push" || attempt.Event == "schedule" || attempt.Event == "workflow_dispatch") &&
 		attempt.HeadBranch == "main" && !attempt.StartedAt.IsZero() && !attempt.CompletedAt.IsZero() &&
-		!attempt.CompletedAt.Before(attempt.StartedAt) && attempt.HeadSHA != "" && validHTTPSURL(attempt.HTMLURL)
+		!attempt.CompletedAt.Before(attempt.StartedAt) && attempt.HeadSHA != "" && validRunURL(repo, attempt)
 }
 
 func parseArchives(comments []CommentSnapshot, workflowID int64) ([]ArchiveComment, map[string]bool, error) {

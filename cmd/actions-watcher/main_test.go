@@ -434,7 +434,7 @@ func TestRemovePendingCheckpointCommentsKeepsUncompletedRunIDs(t *testing.T) {
 		map[string]any{"id": 2, "body": remainingMarker, "user": map[string]any{"login": expectedAppSlug + "[bot]"}},
 	}
 	expected := watcher.IssueSnapshot{
-		Number: 7, State: "closed", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
 		Body: "managed body", Comments: []watcher.CommentSnapshot{
 			{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: completedMarker},
 			{ID: 2, AuthorLogin: expectedAppSlug + "[bot]", Body: remainingMarker},
@@ -465,6 +465,35 @@ func TestRemovePendingCheckpointCommentsKeepsUncompletedRunIDs(t *testing.T) {
 	}
 	if len(updated.Comments) != 1 || updated.Comments[0].ID != 2 || updated.Comments[0].Body != remainingMarker {
 		t.Fatalf("remaining pending checkpoints = %#v, want only uncompleted run 102", updated.Comments)
+	}
+}
+
+func TestClosedIssuesRejectWatcherCommentAndCheckpointMutations(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	marker, err := pendingCheckpointMarker(1, []int64{101})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := watcher.IssueSnapshot{
+		Number: 7, State: "closed", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: "managed body", Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: marker}},
+	}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "closed issue should not be read for mutation"})
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, repo)
+
+	if _, err := client.ensureMarkedComment(context.Background(), closed, "marker", "comment"); err == nil {
+		t.Fatal("ensureMarkedComment() accepted a closed issue")
+	}
+	if _, err := client.removePendingCheckpointComments(context.Background(), closed, 1, nil); err == nil {
+		t.Fatal("removePendingCheckpointComments() accepted a closed issue")
+	}
+	if requests != 0 {
+		t.Fatalf("closed issue mutation guards made %d API requests, want none", requests)
 	}
 }
 
@@ -546,7 +575,7 @@ func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) 
 }
 
 //nolint:gocyclo // The API route branches are part of this end-to-end checkpoint scenario.
-func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
+func TestRunLeavesClosedIncidentUntouchedAndRetriesPendingRuns(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
 	previousFailure := testFailureAttempt(100, 100, closedAt.Add(-time.Hour))
@@ -563,7 +592,7 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	issues := map[int]map[string]any{7: oldIssue}
 	comments := map[int][]any{7: {}}
 	nextIssueNumber := 7
-	failUnavailableCommentWrite := true
+	closedIssueWrites := 0
 	started := closedAt.Add(5 * time.Minute)
 	newRun := runFixture(repo.ID, 901, 1, "failure")
 	newRun["run_started_at"] = started.Format(time.RFC3339)
@@ -606,9 +635,8 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 		case r.Method == http.MethodPost && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/") && strings.HasSuffix(path, "/comments"):
 			parts := strings.Split(path, "/")
 			number, _ := strconv.Atoi(parts[4])
-			if number == 7 && failUnavailableCommentWrite {
-				writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "temporary comment write failure"})
-				return
+			if number == 7 {
+				closedIssueWrites++
 			}
 			var request struct {
 				Body string `json:"body"`
@@ -647,6 +675,9 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 		case r.Method == http.MethodPatch && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/"):
 			parts := strings.Split(path, "/")
 			number, _ := strconv.Atoi(parts[4])
+			if number == 7 {
+				closedIssueWrites++
+			}
 			var request struct {
 				Title  string   `json:"title"`
 				Body   string   `json:"body"`
@@ -668,6 +699,9 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 				issue["labels"] = labelObjects(request.Labels)
 			}
 			writeJSON(w, http.StatusOK, issue)
+		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/1":
+			closedIssueWrites++
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
 			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
@@ -686,13 +720,15 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	}
 	var stdout bytes.Buffer
 	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return started.Add(time.Hour) })
-	if err == nil || !strings.Contains(err.Error(), "complete closed-incident checkpoints") {
-		t.Fatalf("first run() error = %v, want closed-incident checkpoint write failure", err)
+	if err != nil {
+		t.Fatalf("first run() error = %v", err)
 	}
 	if nextIssueNumber != 8 {
 		t.Fatalf("created successor issues after first run = %d, want one successor", nextIssueNumber-7)
 	}
-	failUnavailableCommentWrite = false
+	if !strings.Contains(stdout.String(), `"run_id":902`) || !strings.Contains(stdout.String(), `"status_code":410`) {
+		t.Fatalf("first run() output = %q, want unavailable run 902 with HTTP 410", stdout.String())
+	}
 	stdout.Reset()
 	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return started.Add(time.Hour) })
 	if err != nil {
@@ -701,15 +737,11 @@ func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	if nextIssueNumber != 8 {
 		t.Fatalf("created successor issues = %d, want one successor", nextIssueNumber-7)
 	}
-	state, err := watcher.RenderManagedBodyState(issues[7]["body"].(string), repo)
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(stdout.String(), `"run_id":902`) || !strings.Contains(stdout.String(), `"status_code":410`) {
+		t.Fatalf("retry run() output = %q, want unavailable run 902 with HTTP 410", stdout.String())
 	}
-	if len(state.PendingRunIDs) != 0 {
-		t.Fatalf("closed issue retained pending run IDs %v", state.PendingRunIDs)
-	}
-	if len(comments[7]) != 1 || !strings.Contains(comments[7][0].(map[string]any)["body"].(string), "actions-watcher:unavailable:v1 workflow_id=1 run_id=902 status=410") {
-		t.Fatalf("closed issue unavailable-run comments = %#v, want a visible HTTP 410 marker", comments[7])
+	if closedIssueWrites != 0 || issues[7]["body"] != body || len(comments[7]) != 0 {
+		t.Fatalf("closed issue changed: writes=%d body_same=%t comments=%#v", closedIssueWrites, issues[7]["body"] == body, comments[7])
 	}
 	if issues[7]["state"] != "closed" {
 		t.Fatalf("closed incident state = %v, want closed", issues[7]["state"])
@@ -967,7 +999,7 @@ func TestRunRefreshesUnavailableFailureBeforeArchiving(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		runID := int64(1001 + i)
 		failure := testFailureAttempt(runID, int(runID), started)
-		failure.HTMLURL = fmt.Sprintf("https://github.com/orang-gaboets/octostate/actions/runs/%d/%s", runID, strings.Repeat("x", 900))
+		failure.HeadSHA = strings.Repeat("x", 900)
 		if i == 0 {
 			failure.JobDataAvailable = false
 			failure.FailedJobs = nil
@@ -995,7 +1027,7 @@ func TestRunRefreshesUnavailableFailureBeforeArchiving(t *testing.T) {
 	unavailable := history[0]
 	newFailure := testFailureAttempt(9000, 9000, started.Add(time.Hour))
 	newFailure.CompletedAt = newFailure.StartedAt.Add(10 * time.Minute)
-	newFailure.HTMLURL = "https://github.com/orang-gaboets/octostate/actions/runs/9000/" + strings.Repeat("n", 12000)
+	newFailure.HeadSHA = strings.Repeat("n", 12000)
 
 	attemptsByID := make(map[int64]watcher.RunAttempt, len(history)+1)
 	for _, attempt := range history {
@@ -1509,6 +1541,53 @@ func TestVerifyOpenIncidentCursorRejectsTamperedLatestFailureJobs(t *testing.T) 
 	}
 }
 
+func TestVerifyOpenIncidentCursorAuthenticatesRecoverySeparateFromOrderingCursor(t *testing.T) {
+	const repoID = 99
+	var recoveryCalls, latestCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch path {
+		case "repos/orang-gaboets/octostate/actions/runs/102/attempts/1":
+			recoveryCalls.Add(1)
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 102, 1, "success"))
+		case "repos/orang-gaboets/octostate/actions/runs/103/attempts/1":
+			latestCalls.Add(1)
+			writeJSON(w, http.StatusOK, runAttemptFixture(repoID, 103, 1, "success"))
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	repo := watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}
+	client := testWatcherClient(t, server.URL, repo)
+	started := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(101, 101, started)
+	recovery := testFailureAttempt(102, 102, started.Add(time.Minute))
+	recovery.Conclusion = "success"
+	recovery.CompletedAt = recovery.StartedAt.Add(30 * time.Second)
+	latest := testFailureAttempt(103, 103, started.Add(time.Minute))
+	latest.Conclusion = "success"
+	latest.CompletedAt = latest.StartedAt.Add(30 * time.Second)
+	forgedRecovery := recovery
+	forgedRecovery.CompletedAt = forgedRecovery.CompletedAt.Add(time.Minute)
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusRecovered,
+		Failures: []watcher.RunAttempt{failure}, Latest: latest, Recovery: &forgedRecovery,
+	}, "", nil)
+	if err != nil {
+		t.Fatalf("RenderBody() for recovered state: %v", err)
+	}
+	err = client.verifyOpenIncidentCursors(context.Background(), []watcher.IssueSnapshot{{Number: 7, State: "open", Body: body}})
+	if err == nil || !strings.Contains(err.Error(), "verify persisted recovery attempt") {
+		t.Fatalf("verifyOpenIncidentCursors() error = %v, want tampered recovery rejection", err)
+	}
+	if recoveryCalls.Load() != 1 || latestCalls.Load() != 1 {
+		t.Fatalf("recovery/latest API calls = %d/%d, want 1/1", recoveryCalls.Load(), latestCalls.Load())
+	}
+}
+
 func TestListFailedJobsDeduplicatesRepeatedNames(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
@@ -2019,7 +2098,7 @@ func TestCollectAttemptsRejectsInstallationScopeAndAuthorizationFailures(t *test
 		body       string
 		wantPhrase string
 	}{
-		{name: "unauthorized token", status: http.StatusUnauthorized, body: `{"message":"Bad credentials"}`, wantPhrase: "verify installation repositories"},
+		{name: "unauthorized token", status: http.StatusUnauthorized, body: `{"message":"Bad credentials"}`, wantPhrase: "verify installation-token repository scope"},
 		{name: "wrong repository scope", status: http.StatusOK, body: `{"total_count":1,"repositories":[{"id":101,"full_name":"someone/else"}]}`, wantPhrase: "must be scoped only to"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2103,6 +2182,46 @@ func TestRateLimitTransportReturnsSuccessfulResponseAtQuotaBoundary(t *testing.T
 	}
 	if calls.Load() != 1 || len(waits) != 0 || string(body) != "valid response" {
 		t.Fatalf("successful response calls/waits/body = %d/%v/%q, want 1/[]/valid response", calls.Load(), waits, body)
+	}
+}
+
+func TestRetryableRateResponseReplaysBodyAndClosesOriginal(t *testing.T) {
+	original := &trackedReadCloser{Reader: strings.NewReader(`{"message":"secondary rate limit"}`)}
+	response := &http.Response{StatusCode: http.StatusForbidden, Header: make(http.Header), Body: original}
+	if !retryableRateResponse(response) {
+		t.Fatal("retryableRateResponse() = false, want secondary rate limit")
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil || string(body) != `{"message":"secondary rate limit"}` {
+		t.Fatalf("replayed response body = %q, %v", body, err)
+	}
+	if original.closeCalls.Load() != 0 {
+		t.Fatal("peeking at the response closed the original body before the caller")
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if original.closeCalls.Load() != 1 {
+		t.Fatalf("original body close calls = %d, want one", original.closeCalls.Load())
+	}
+}
+
+func TestRetryableRateResponsePreservesBodyAndReadError(t *testing.T) {
+	wantErr := fmt.Errorf("injected body read failure")
+	original := &trackedReadCloser{Reader: strings.NewReader(`{"message":"ordinary forbidden response"}`), readErr: wantErr}
+	response := &http.Response{StatusCode: http.StatusForbidden, Header: make(http.Header), Body: original}
+	if retryableRateResponse(response) {
+		t.Fatal("retryableRateResponse() = true after the body read failed")
+	}
+	body, err := io.ReadAll(response.Body)
+	if err == nil || err.Error() != wantErr.Error() || string(body) != `{"message":"ordinary forbidden response"}` {
+		t.Fatalf("response body after peek error = %q, %v; want original bytes and read error", body, err)
+	}
+	if err := response.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if original.closeCalls.Load() != 1 {
+		t.Fatalf("original body close calls = %d, want one", original.closeCalls.Load())
 	}
 }
 
@@ -2280,6 +2399,39 @@ func TestPatchIssueReadsBackAmbiguousMutationWithoutRetry(t *testing.T) {
 	wantLabels := []string{watcher.ManagedLabel, watcher.RecoveredLabel, "keep-me"}
 	if updated.Title != "new title" || updated.Body != "new body" || !sameLabels(updated.Labels, wantLabels) {
 		t.Fatalf("readback issue = %#v, want desired state and preserved label", updated)
+	}
+}
+
+func TestPatchIssueRejectsSnapshotChangedImmediatelyBeforeMutation(t *testing.T) {
+	fresh := issueJSON(7, "open", "human title", "human body", []string{watcher.ManagedLabel, watcher.FailingLabel, "keep-me", "human-label"})
+	var patchCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, fresh)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, []any{})
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			patchCalls.Add(1)
+			writeJSON(w, http.StatusOK, fresh)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"})
+	current := watcher.IssueSnapshot{Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "old title", Body: "old body", Labels: []string{watcher.ManagedLabel, watcher.FailingLabel, "keep-me"}}
+	change := watcher.IssueChange{
+		Action: watcher.ActionUpdate, IssueNumber: 7, Title: "new title", Body: "new body",
+		AddLabels: []string{watcher.RecoveredLabel}, RemoveLabels: []string{watcher.FailingLabel},
+	}
+	if _, err := client.patchIssue(context.Background(), current, change); err == nil || !strings.Contains(err.Error(), "changed before issue update") {
+		t.Fatalf("patchIssue() error = %v, want last-minute snapshot change refusal", err)
+	}
+	if patchCalls.Load() != 0 {
+		t.Fatalf("issue PATCH calls = %d, want none after human edit", patchCalls.Load())
 	}
 }
 
@@ -2701,3 +2853,24 @@ func writeRaw(w http.ResponseWriter, status int, body string) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+type trackedReadCloser struct {
+	io.Reader
+	closeCalls  atomic.Int32
+	readErr     error
+	readErrSent bool
+}
+
+func (b *trackedReadCloser) Read(p []byte) (int, error) {
+	n, err := b.Reader.Read(p)
+	if b.readErr != nil && !b.readErrSent {
+		b.readErrSent = true
+		return n, b.readErr
+	}
+	return n, err
+}
+
+func (b *trackedReadCloser) Close() error {
+	b.closeCalls.Add(1)
+	return nil
+}
