@@ -468,6 +468,83 @@ func TestRemovePendingCheckpointCommentsKeepsUncompletedRunIDs(t *testing.T) {
 	}
 }
 
+func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(100, 100, started)
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := triggerEvent{RunID: 101, WorkflowName: "CI", IssueNumber: 7}
+	missing := unavailableRun{Event: event, StatusCode: http.StatusGone}
+	pendingMarker, err := pendingCheckpointMarker(1, []int64{event.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: body, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
+		Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: pendingMarker}},
+	}
+	apiIssue := issueSnapshotJSON(issue)
+	comments := []any{map[string]any{
+		"id": 1, "body": pendingMarker, "user": map[string]any{"login": expectedAppSlug + "[bot]"},
+	}}
+	deleteAttempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			var request struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode comment request: %v", err)
+			}
+			comments = append(comments, map[string]any{
+				"id": 2, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"},
+			})
+			writeJSON(w, http.StatusCreated, comments[len(comments)-1])
+		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/1":
+			deleteAttempts++
+			if deleteAttempts == 1 {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "temporary deletion failure"})
+				return
+			}
+			comments = comments[1:]
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+	client := testWatcherClient(t, server.URL, repo)
+
+	err = client.completeOpenPendingRuns(context.Background(), []watcher.IssueSnapshot{issue}, []triggerEvent{event}, []unavailableRun{missing}, watcher.Plan{})
+	if err == nil || deleteAttempts != 1 || len(comments) != 2 {
+		t.Fatalf("first checkpoint cleanup error/deletes/comments = %v/%d/%d; want failure, one attempt, and both markers", err, deleteAttempts, len(comments))
+	}
+	issue.Comments = append(issue.Comments, watcher.CommentSnapshot{
+		ID: 2, AuthorLogin: expectedAppSlug + "[bot]", Body: unavailableRunComment(1, missing).Body,
+	})
+	err = client.completeOpenPendingRuns(context.Background(), []watcher.IssueSnapshot{issue}, []triggerEvent{event}, []unavailableRun{missing}, watcher.Plan{})
+	if err != nil {
+		t.Fatalf("retry checkpoint cleanup after noop plan: %v", err)
+	}
+	if deleteAttempts != 2 || len(comments) != 1 || comments[0].(map[string]any)["body"] != unavailableRunComment(1, missing).Body {
+		t.Fatalf("checkpoint comments after retry = %#v with %d deletes; want only the visible unavailable marker", comments, deleteAttempts)
+	}
+}
+
 func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)

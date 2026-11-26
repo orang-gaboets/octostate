@@ -130,6 +130,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 			return fmt.Errorf("apply incident reconciliation: %w", err)
 		}
 	}
+	if err := client.completeOpenPendingRuns(ctx, issues, triggerEvents, unavailableRuns, plan); err != nil {
+		return fmt.Errorf("complete open-incident checkpoints: %w", err)
+	}
 	if err := client.completeClosedPendingRuns(ctx, issues, triggerEvents, unavailableRuns); err != nil {
 		return fmt.Errorf("complete closed-incident checkpoints: %w", err)
 	}

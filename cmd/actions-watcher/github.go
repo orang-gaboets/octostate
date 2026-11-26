@@ -1065,6 +1065,81 @@ func (c *watcherClient) completeClosedPendingRuns(ctx context.Context, initial [
 	return nil
 }
 
+func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []watcher.IssueSnapshot, events []triggerEvent, unavailable []unavailableRun, plan watcher.Plan) error {
+	changedIssues := make(map[int]bool)
+	for _, change := range plan.Changes {
+		if change.IssueNumber > 0 {
+			changedIssues[change.IssueNumber] = true
+		}
+	}
+
+	pendingByIssue := make(map[int]map[int64]triggerEvent)
+	for _, event := range events {
+		if event.IssueNumber <= 0 || changedIssues[event.IssueNumber] {
+			continue
+		}
+		issue, ok := findIssue(initial, event.IssueNumber)
+		if !ok || issue.State != "open" {
+			continue
+		}
+		if pendingByIssue[issue.Number] == nil {
+			pendingByIssue[issue.Number] = make(map[int64]triggerEvent)
+		}
+		if previous, exists := pendingByIssue[issue.Number][event.RunID]; exists && previous.WorkflowName != event.WorkflowName {
+			return fmt.Errorf("open issue #%d has pending run %d for conflicting workflows", issue.Number, event.RunID)
+		}
+		pendingByIssue[issue.Number][event.RunID] = event
+	}
+	if len(pendingByIssue) == 0 {
+		return nil
+	}
+
+	unavailableByID := make(map[int64]unavailableRun, len(unavailable))
+	for _, missing := range unavailable {
+		unavailableByID[missing.Event.RunID] = missing
+	}
+	issueNumbers := make([]int, 0, len(pendingByIssue))
+	for issueNumber := range pendingByIssue {
+		issueNumbers = append(issueNumbers, issueNumber)
+	}
+	sort.Ints(issueNumbers)
+	for _, issueNumber := range issueNumbers {
+		current, _ := findIssue(initial, issueNumber)
+		state, err := watcher.RenderManagedBodyState(current.Body, c.repo)
+		if err != nil {
+			return fmt.Errorf("read pending runs from open issue #%d: %w", issueNumber, err)
+		}
+		runIDs := make([]int64, 0, len(pendingByIssue[issueNumber]))
+		preserved := make(map[int64]bool, len(state.PendingRunIDs)+len(pendingByIssue[issueNumber]))
+		for _, runID := range state.PendingRunIDs {
+			preserved[runID] = true
+		}
+		for runID, event := range pendingByIssue[issueNumber] {
+			if event.WorkflowName != state.WorkflowName {
+				return fmt.Errorf("open issue #%d pending run %d identifies workflow %q, want %q", issueNumber, runID, event.WorkflowName, state.WorkflowName)
+			}
+			runIDs = append(runIDs, runID)
+			preserved[runID] = true
+		}
+		sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
+		for _, runID := range runIDs {
+			missing, ok := unavailableByID[runID]
+			if !ok {
+				continue
+			}
+			comment := unavailableRunComment(state.WorkflowID, missing)
+			current, err = c.ensureMarkedComment(ctx, current, comment.Marker, comment.Body)
+			if err != nil {
+				return fmt.Errorf("record unavailable run %d on open issue #%d: %w", runID, issueNumber, err)
+			}
+		}
+		if _, err := c.removePendingCheckpointComments(ctx, current, state.WorkflowID, preserved); err != nil {
+			return fmt.Errorf("clear pending-run checkpoint from open issue #%d: %w", issueNumber, err)
+		}
+	}
+	return nil
+}
+
 func (c *watcherClient) patchClosedIssueBody(ctx context.Context, current watcher.IssueSnapshot, body string) (watcher.IssueSnapshot, error) {
 	if current.State != "closed" {
 		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d is no longer closed", current.Number)
