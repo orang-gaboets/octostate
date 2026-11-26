@@ -538,7 +538,7 @@ func recordRunEvents(plan *watcher.Plan, events []triggerEvent, unavailable []un
 	for i := range plan.Changes {
 		change := &plan.Changes[i]
 		for _, event := range events {
-			if event.WorkflowName == change.WorkflowName && !unavailableIDs[event.RunID] {
+			if event.WorkflowName == change.WorkflowName && (event.IssueNumber == 0 || event.IssueNumber == change.IssueNumber) && !unavailableIDs[event.RunID] {
 				change.PendingRunIDs = append(change.PendingRunIDs, event.RunID)
 			}
 		}

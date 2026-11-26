@@ -391,6 +391,9 @@ func TestRecordRunEventsPersistsUnavailableRunAndKeepsOtherCheckpoints(t *testin
 		{RunID: 901, WorkflowName: "CI", IssueNumber: 7},
 		{RunID: 902, WorkflowName: "CodeQL Security"},
 	}
+	for runID := int64(10000); runID < 10000+watcher.MaxPendingRunIDs+1; runID++ {
+		events = append(events, triggerEvent{RunID: runID, WorkflowName: "CI", IssueNumber: 6})
+	}
 	unavailable := []unavailableRun{{Event: events[0], StatusCode: http.StatusGone}}
 	if err := recordRunEvents(&plan, events, unavailable); err != nil {
 		t.Fatalf("recordRunEvents() error = %v", err)
