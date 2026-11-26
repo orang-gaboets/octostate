@@ -82,7 +82,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := client.verifyOpenIncidentCursors(ctx, issues); err != nil {
 		return fmt.Errorf("verify watcher incident state: %w", err)
 	}
-	triggerEvents, err := pendingRunEvents(cfg.Repository, client.appLogin, issues)
+	triggerEvents, deferredRunEvents, err := pendingRunEvents(cfg.Repository, client.appLogin, issues)
 	if err != nil {
 		return fmt.Errorf("read pending workflow runs: %w", err)
 	}
@@ -100,6 +100,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := recordRunEvents(&plan, triggerEvents, unavailableRuns); err != nil {
 		return fmt.Errorf("record workflow run events: %w", err)
 	}
+	if err := preserveDeferredRunEvents(&plan, deferredRunEvents, issues, cfg.Repository, client.appLogin); err != nil {
+		return fmt.Errorf("preserve deferred workflow run events: %w", err)
+	}
 	attemptCount := len(attempts)
 	refreshed, err := client.refreshUnavailableArchiveAttempts(ctx, plan, issues)
 	if err != nil {
@@ -113,6 +116,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 		}
 		if err := recordRunEvents(&plan, triggerEvents, unavailableRuns); err != nil {
 			return fmt.Errorf("record workflow run events: %w", err)
+		}
+		if err := preserveDeferredRunEvents(&plan, deferredRunEvents, issues, cfg.Repository, client.appLogin); err != nil {
+			return fmt.Errorf("preserve deferred workflow run events: %w", err)
 		}
 	}
 	if len(plan.Changes) > 0 {
@@ -156,7 +162,7 @@ func mergeArchiveRefreshes(attempts, refreshed []watcher.RunAttempt) []watcher.R
 	return result
 }
 
-func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot) ([]triggerEvent, error) {
+func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot) ([]triggerEvent, []triggerEvent, error) {
 	type workflowKey struct {
 		id   int64
 		name string
@@ -168,18 +174,18 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	byWorkflow := make(map[workflowKey][]issueState)
 	for _, issue := range issues {
 		if issue.State != "open" && issue.State != "closed" {
-			return nil, fmt.Errorf("issue #%d has unknown state %q", issue.Number, issue.State)
+			return nil, nil, fmt.Errorf("issue #%d has unknown state %q", issue.Number, issue.State)
 		}
 		state, err := watcher.RenderManagedBodyState(issue.Body, repo)
 		if err != nil {
-			return nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
+			return nil, nil, fmt.Errorf("issue #%d: %w", issue.Number, err)
 		}
 		key := workflowKey{id: state.WorkflowID, name: state.WorkflowName}
 		byWorkflow[key] = append(byWorkflow[key], issueState{issue: issue, state: state})
 	}
 
 	eventsByID := make(map[int64]triggerEvent)
-	maxPendingRunEvents := 2 * len(expectedWorkflowPaths) * watcher.MaxPendingRunIDs
+	maxPendingRunEvents := watcher.MaxPendingRunIDs
 	addRunID := func(runID int64, workflowName string, issueNumber int) error {
 		if previous, exists := eventsByID[runID]; exists {
 			if previous.WorkflowName != workflowName {
@@ -246,13 +252,13 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 			candidate := &incidents[i]
 			if candidate.issue.State == "open" {
 				if open != nil {
-					return nil, fmt.Errorf("workflow %q has multiple open watcher incidents", candidate.state.WorkflowName)
+					return nil, nil, fmt.Errorf("workflow %q has multiple open watcher incidents", candidate.state.WorkflowName)
 				}
 				open = candidate
 				continue
 			}
 			if candidate.issue.ClosedAt == nil {
-				return nil, fmt.Errorf("closed issue #%d is missing its closure timestamp", candidate.issue.Number)
+				return nil, nil, fmt.Errorf("closed issue #%d is missing its closure timestamp", candidate.issue.Number)
 			}
 			closed = append(closed, candidate)
 		}
@@ -262,14 +268,14 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 		if open != nil {
 			pending, err := issuePendingRuns(*open)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			openIssues = append(openIssues, pendingIssue{source: *open, runIDs: pending})
 		}
 		for _, incident := range closed {
 			pending, err := issuePendingRuns(*incident)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			closedIssues = append(closedIssues, pendingIssue{source: *incident, runIDs: pending})
 		}
@@ -284,7 +290,6 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 		}
 		return left.issue.Number < right.issue.Number
 	})
-	openRunIDs := make(map[int64]bool)
 	workflowByRunID := make(map[int64]string)
 	registerRunWorkflow := func(issue pendingIssue) error {
 		for _, runID := range issue.runIDs {
@@ -297,46 +302,54 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	}
 	for _, issue := range openIssues {
 		if err := registerRunWorkflow(issue); err != nil {
-			return nil, err
-		}
-		for _, runID := range issue.runIDs {
-			openRunIDs[runID] = true
+			return nil, nil, err
 		}
 	}
 	for _, issue := range closedIssues {
 		if err := registerRunWorkflow(issue); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	if len(openRunIDs) > maxPendingRunEvents {
-		return nil, fmt.Errorf("open managed issues contain more than %d pending workflow runs", maxPendingRunEvents)
+	// Bound re-fetches to one issue-sized batch, preferring open checkpoints and then older closed incidents.
+	selectedRunIDs := make(map[int64]bool, maxPendingRunEvents)
+	selectIssues := func(issues []pendingIssue) {
+		for _, issue := range issues {
+			additional := 0
+			for _, runID := range issue.runIDs {
+				if !selectedRunIDs[runID] {
+					additional++
+				}
+			}
+			if len(selectedRunIDs)+additional > maxPendingRunEvents {
+				continue
+			}
+			for _, runID := range issue.runIDs {
+				selectedRunIDs[runID] = true
+			}
+		}
 	}
-	// Reserve open checkpoints, then take closed incidents oldest-first as whole groups.
-	selectedRunIDs := make(map[int64]bool, len(openRunIDs))
-	for runID := range openRunIDs {
-		selectedRunIDs[runID] = true
-	}
+	selectIssues(openIssues)
+	selectIssues(closedIssues)
+	// Closed incidents own duplicate IDs so cleanup stays tied to the source checkpoint.
 	for _, issue := range closedIssues {
-		additional := 0
 		for _, runID := range issue.runIDs {
 			if !selectedRunIDs[runID] {
-				additional++
+				continue
 			}
-		}
-		if len(selectedRunIDs)+additional > maxPendingRunEvents {
-			continue
-		}
-		for _, runID := range issue.runIDs {
-			selectedRunIDs[runID] = true
 			if err := addRunID(runID, issue.source.state.WorkflowName, issue.source.issue.Number); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
+	var deferred []triggerEvent
 	for _, issue := range openIssues {
 		for _, runID := range issue.runIDs {
+			if !selectedRunIDs[runID] {
+				deferred = append(deferred, triggerEvent{RunID: runID, WorkflowName: issue.source.state.WorkflowName, IssueNumber: issue.source.issue.Number})
+				continue
+			}
 			if err := addRunID(runID, issue.source.state.WorkflowName, issue.source.issue.Number); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
@@ -349,7 +362,75 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	for _, runID := range runIDs {
 		events = append(events, eventsByID[runID])
 	}
-	return events, nil
+	return events, deferred, nil
+}
+
+func preserveDeferredRunEvents(plan *watcher.Plan, events []triggerEvent, issues []watcher.IssueSnapshot, repo watcher.RepositoryIdentity, appLogin string) error {
+	byIssue := make(map[int][]triggerEvent)
+	for _, event := range events {
+		if event.IssueNumber > 0 {
+			byIssue[event.IssueNumber] = append(byIssue[event.IssueNumber], event)
+		}
+	}
+	issueNumbers := make([]int, 0, len(byIssue))
+	for issueNumber := range byIssue {
+		issueNumbers = append(issueNumbers, issueNumber)
+	}
+	sort.Ints(issueNumbers)
+	for _, issueNumber := range issueNumbers {
+		issue, ok := findIssue(issues, issueNumber)
+		if !ok || issue.State != "open" {
+			return fmt.Errorf("deferred runs reference missing or closed issue #%d", issueNumber)
+		}
+		runIDs := make([]int64, 0, len(byIssue[issueNumber]))
+		workflowName := byIssue[issueNumber][0].WorkflowName
+		for _, event := range byIssue[issueNumber] {
+			if event.WorkflowName != workflowName {
+				return fmt.Errorf("deferred runs on issue #%d identify conflicting workflows", issueNumber)
+			}
+			runIDs = append(runIDs, event.RunID)
+		}
+		sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
+		for i := range plan.Changes {
+			change := &plan.Changes[i]
+			if change.Action != watcher.ActionUpdate || change.IssueNumber != issueNumber {
+				continue
+			}
+			if change.WorkflowName != workflowName {
+				return fmt.Errorf("deferred runs on issue #%d identify workflow %q, plan identifies %q", issueNumber, workflowName, change.WorkflowName)
+			}
+			state, err := watcher.RenderManagedBodyState(change.Body, repo)
+			if err != nil {
+				return fmt.Errorf("read planned body for issue #%d: %w", issueNumber, err)
+			}
+			state.PendingRunIDs = append(state.PendingRunIDs, runIDs...)
+			archiveComments := watcherAuthoredComments(issue.Comments, appLogin)
+			for _, archive := range change.Archives {
+				found := false
+				for _, comment := range archiveComments {
+					if strings.Contains(comment.Body, archive.Marker) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					archiveComments = append(archiveComments, watcher.CommentSnapshot{AuthorLogin: appLogin, Body: archive.Body})
+				}
+			}
+			body, archives, err := watcher.RenderBody(repo, state, change.Body, archiveComments)
+			if err != nil {
+				return fmt.Errorf("preserve deferred runs on issue #%d: %w", issueNumber, err)
+			}
+			change.Body = body
+			change.PendingRunIDs = append(change.PendingRunIDs, runIDs...)
+			change.Archives, err = mergeArchiveComments(change.Archives, archives)
+			if err != nil {
+				return fmt.Errorf("preserve deferred archives on issue #%d: %w", issueNumber, err)
+			}
+			break
+		}
+	}
+	return nil
 }
 
 func pendingCheckpointMarker(workflowID int64, runIDs []int64) (string, error) {

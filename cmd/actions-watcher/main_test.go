@@ -63,7 +63,7 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 		t.Fatal(err)
 	}
 	closedAt := time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)
-	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
 		{Number: 7, State: "open", Body: body},
 		{Number: 6, State: "closed", ClosedAt: &closedAt, Body: body},
 	})
@@ -73,6 +73,9 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	want := []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 6}, {RunID: 104, WorkflowName: "CI", IssueNumber: 6}}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
+	}
+	if len(deferred) != 0 {
+		t.Fatalf("pendingRunEvents() deferred = %#v, want none", deferred)
 	}
 }
 
@@ -96,7 +99,7 @@ func TestPendingRunEventsRetainsClosedBacklogsAcrossSuccessors(t *testing.T) {
 	older := watcher.IssueSnapshot{Number: 6, State: "closed", ClosedAt: &olderClosedAt, Body: makeBody([]int64{101}, 0)}
 	latestClosed := watcher.IssueSnapshot{Number: 7, State: "closed", ClosedAt: &closedAt, Body: makeBody([]int64{101, 102}, 0)}
 
-	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed})
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,11 +110,14 @@ func TestPendingRunEventsRetainsClosedBacklogsAcrossSuccessors(t *testing.T) {
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() without open successor = %#v, want %#v", events, want)
 	}
+	if len(deferred) != 0 {
+		t.Fatalf("pendingRunEvents() without open successor deferred = %#v, want none", deferred)
+	}
 
 	successor := watcher.IssueSnapshot{
 		Number: 8, State: "open", Body: makeBody([]int64{101, 102, 103}, 7),
 	}
-	events, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed, successor})
+	events, deferred, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed, successor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +128,9 @@ func TestPendingRunEventsRetainsClosedBacklogsAcrossSuccessors(t *testing.T) {
 	}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() with open successor = %#v, want %#v", events, want)
+	}
+	if len(deferred) != 0 {
+		t.Fatalf("pendingRunEvents() with open successor deferred = %#v, want none", deferred)
 	}
 }
 
@@ -162,32 +171,92 @@ func TestPendingRunEventsBatchesClosedIncidentsOldestFirst(t *testing.T) {
 		}
 	}
 
-	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
 	if err != nil {
 		t.Fatalf("pendingRunEvents() first batch error = %v", err)
 	}
-	const batchLimit = 2 * 7 * watcher.MaxPendingRunIDs
+	const batchLimit = watcher.MaxPendingRunIDs
 	if len(events) != batchLimit {
 		t.Fatalf("first batch size = %d, want %d", len(events), batchLimit)
 	}
-	closedBatchSize := batchLimit - watcher.MaxPendingRunIDs
-	if events[0].RunID != 1 || events[0].IssueNumber != 1 ||
-		events[closedBatchSize-1].RunID != int64(closedBatchSize) || events[closedBatchSize-1].IssueNumber != closedBatchSize/watcher.MaxPendingRunIDs ||
-		events[closedBatchSize].RunID != issueCount*watcher.MaxPendingRunIDs+1 || events[closedBatchSize].IssueNumber != issueCount+1 ||
-		events[len(events)-1].RunID != (issueCount+1)*watcher.MaxPendingRunIDs || events[len(events)-1].IssueNumber != issueCount+1 {
-		t.Fatalf("first batch boundaries = %#v / %#v / %#v / %#v", events[0], events[closedBatchSize-1], events[closedBatchSize], events[len(events)-1])
-	}
-
-	for i := 0; i < closedBatchSize/watcher.MaxPendingRunIDs; i++ {
-		issues[i].Body = makeBody(nil)
+	if events[0].RunID != issueCount*watcher.MaxPendingRunIDs+1 || events[0].IssueNumber != issueCount+1 ||
+		events[len(events)-1].RunID != (issueCount+1)*watcher.MaxPendingRunIDs || events[len(events)-1].IssueNumber != issueCount+1 || len(deferred) != 0 {
+		t.Fatalf("first batch = first=%#v last=%#v deferred=%d", events[0], events[len(events)-1], len(deferred))
 	}
 	issues[issueCount].Body = makeBody(nil)
-	events, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
-	if err != nil {
-		t.Fatalf("pendingRunEvents() next batch error = %v", err)
+	for i := 0; i < issueCount; i++ {
+		events, deferred, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
+		if err != nil {
+			t.Fatalf("pendingRunEvents() closed batch %d error = %v", i, err)
+		}
+		if len(events) != watcher.MaxPendingRunIDs || events[0].RunID != int64(i*watcher.MaxPendingRunIDs+1) ||
+			events[len(events)-1].RunID != int64((i+1)*watcher.MaxPendingRunIDs) || events[0].IssueNumber != i+1 || events[len(events)-1].IssueNumber != i+1 || len(deferred) != 0 {
+			t.Fatalf("closed batch %d = first=%#v last=%#v deferred=%d", i, events[0], events[len(events)-1], len(deferred))
+		}
+		issues[i].Body = makeBody(nil)
 	}
-	if len(events) != 2*watcher.MaxPendingRunIDs || events[0].RunID != int64(closedBatchSize+1) || events[len(events)-1].RunID != issueCount*watcher.MaxPendingRunIDs || events[0].IssueNumber != closedBatchSize/watcher.MaxPendingRunIDs+1 || events[len(events)-1].IssueNumber != issueCount {
-		t.Fatalf("next batch boundaries = %d events, first=%#v last=%#v", len(events), events[0], events[len(events)-1])
+	events, deferred, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
+	if err != nil || len(events) != 0 || len(deferred) != 0 {
+		t.Fatalf("pendingRunEvents() after draining = %d selected, %d deferred, err=%v; want none", len(events), len(deferred), err)
+	}
+}
+
+func TestPendingRunEventsDefersOpenCheckpointsAndPreservesThemInPlan(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	ciFailure := testFailureAttempt(1, 1, started)
+	codeQLFailure := testFailureAttempt(2, 2, started.Add(time.Minute))
+	codeQLFailure.WorkflowID, codeQLFailure.WorkflowName = 2, "CodeQL Security"
+	makeBody := func(failure watcher.RunAttempt, pending []int64) string {
+		t.Helper()
+		body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+			WorkflowID: failure.WorkflowID, WorkflowName: failure.WorkflowName,
+			Status: watcher.StatusFailing, Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: pending,
+		}, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	ciIDs := make([]int64, watcher.MaxPendingRunIDs)
+	codeQLIDs := make([]int64, watcher.MaxPendingRunIDs)
+	for i := range ciIDs {
+		ciIDs[i] = int64(i + 1)
+		codeQLIDs[i] = int64(watcher.MaxPendingRunIDs + i + 1)
+	}
+	issues := []watcher.IssueSnapshot{
+		{Number: 7, State: "open", Body: makeBody(ciFailure, ciIDs)},
+		{Number: 8, State: "open", Body: makeBody(codeQLFailure, codeQLIDs)},
+	}
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
+	if err != nil {
+		t.Fatalf("pendingRunEvents() error = %v", err)
+	}
+	if len(events) != watcher.MaxPendingRunIDs {
+		t.Fatalf("selected batch has %d events, want %d", len(events), watcher.MaxPendingRunIDs)
+	}
+	if events[0].IssueNumber != 7 || events[len(events)-1].IssueNumber != 7 {
+		t.Fatalf("selected batch boundaries = %#v / %#v, want issue #7", events[0], events[len(events)-1])
+	}
+	if len(deferred) != watcher.MaxPendingRunIDs {
+		t.Fatalf("deferred batch has %d events, want %d", len(deferred), watcher.MaxPendingRunIDs)
+	}
+	if deferred[0].IssueNumber != 8 || deferred[len(deferred)-1].IssueNumber != 8 {
+		t.Fatalf("deferred batch boundaries = %#v / %#v, want issue #8", deferred[0], deferred[len(deferred)-1])
+	}
+	planBody := makeBody(codeQLFailure, nil)
+	plan := watcher.Plan{Changes: []watcher.IssueChange{{
+		Action: watcher.ActionUpdate, WorkflowID: 2, WorkflowName: "CodeQL Security", IssueNumber: 8, Body: planBody,
+	}}}
+	if err := preserveDeferredRunEvents(&plan, deferred, issues, repo, expectedAppSlug+"[bot]"); err != nil {
+		t.Fatalf("preserveDeferredRunEvents() error = %v", err)
+	}
+	state, err := watcher.RenderManagedBodyState(plan.Changes[0].Body, repo)
+	if err != nil {
+		t.Fatalf("RenderManagedBodyState() error = %v", err)
+	}
+	if !reflect.DeepEqual(state.PendingRunIDs, codeQLIDs) || !reflect.DeepEqual(plan.Changes[0].PendingRunIDs, codeQLIDs) {
+		t.Fatalf("preserved deferred IDs = body:%d checkpoint:%d; want %d each", len(state.PendingRunIDs), len(plan.Changes[0].PendingRunIDs), len(codeQLIDs))
 	}
 }
 
@@ -527,7 +596,7 @@ func TestPendingRunEventsAcceptsBacklogsAcrossIncidents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{
 		{Number: 7, State: "open", Body: firstBody},
 		{Number: 8, State: "open", Body: secondBody},
 	})
@@ -536,6 +605,9 @@ func TestPendingRunEventsAcceptsBacklogsAcrossIncidents(t *testing.T) {
 	}
 	if len(events) != 51 {
 		t.Fatalf("pendingRunEvents() returned %d events, want 51", len(events))
+	}
+	if len(deferred) != 0 {
+		t.Fatalf("pendingRunEvents() deferred %d events, want none", len(deferred))
 	}
 	if events[0] != (triggerEvent{RunID: 1000, WorkflowName: "CI", IssueNumber: 7}) || events[25] != (triggerEvent{RunID: 1025, WorkflowName: "CI", IssueNumber: 7}) ||
 		events[26] != (triggerEvent{RunID: 2000, WorkflowName: "CodeQL Security", IssueNumber: 8}) || events[50] != (triggerEvent{RunID: 2024, WorkflowName: "CodeQL Security", IssueNumber: 8}) {
@@ -989,13 +1061,16 @@ func TestApplyPlanPersistsNewRunBeforeCheckpointArchiveWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{current})
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{current})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []triggerEvent{{RunID: 9000, WorkflowName: "CI", IssueNumber: 7}}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
+	}
+	if len(deferred) != 0 {
+		t.Fatalf("pendingRunEvents() deferred = %#v, want none", deferred)
 	}
 	failArchive = false
 	if err := client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{current}); err != nil {
@@ -1378,9 +1453,12 @@ func TestCollectAttemptsPaginatesWorkflowsAndRunsAndReadsEveryAttempt(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	pendingEvents, err := pendingRunEvents(watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{{State: "open", Body: pendingBody}})
+	pendingEvents, deferredEvents, err := pendingRunEvents(watcher.RepositoryIdentity{ID: repoID, Owner: "orang-gaboets", Name: "octostate"}, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{{State: "open", Body: pendingBody}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(deferredEvents) != 0 {
+		t.Fatalf("deferred events = %#v, want none", deferredEvents)
 	}
 	pendingAttempts, _, err := client.collectAttempts(context.Background(), activatedAt, now, pendingEvents)
 	if err != nil {
