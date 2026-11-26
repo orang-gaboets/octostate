@@ -124,12 +124,12 @@ or 410) is reported in the watcher run's JSON output and does not stop other
 workflows; because the closed issue cannot store a result or clear the ID, the
 same unavailable run may be reported again on later sweeps.
 
-Pending IDs are fetched in batches of at most 1,000 per run. Open incidents are
-prioritized; if they alone exceed the batch limit, their IDs rotate by hourly
-reconciliation slot. Remaining capacity rotates through closed checkpoints in
-stable run-ID order, so immutable closed issues do not permanently reserve the
-same batch. Unselected IDs remain in their source checkpoint for a later
-reconciliation.
+Pending IDs are fetched in batches of at most 1,000 per run. The stable
+candidate order starts with open incidents, followed by the oldest closed
+incidents, with run IDs sorted within each issue. Each UTC-hour reconciliation
+advances the batch through that full order, so a large open or closed backlog
+cannot reserve the same batch indefinitely. Unselected IDs remain in their
+source checkpoint for a later reconciliation.
 
 The command reads all pages of workflow, run, issue, label, and comment data.
 It partitions an oversized run query when GitHub's workflow-run endpoint

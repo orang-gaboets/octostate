@@ -326,38 +326,31 @@ func validatePendingRunWorkflows(openIssues, closedIssues []pendingIncidentIssue
 
 func selectPendingRunIDs(openIssues, closedIssues []pendingIncidentIssue, reconcileAt time.Time) map[int64]bool {
 	selected := make(map[int64]bool, maxPendingRunEvents)
-	openRunIDs := pendingRunIDSet(openIssues)
-	for _, runID := range rotatingPendingRunIDs(openRunIDs, maxPendingRunEvents, reconcileAt) {
-		selected[runID] = true
-	}
-
-	closedRunIDs := pendingRunIDSet(closedIssues)
-	for runID := range selected {
-		delete(closedRunIDs, runID)
-	}
-	closedLimit := maxPendingRunEvents - len(selected)
-	for _, runID := range rotatingPendingRunIDs(closedRunIDs, closedLimit, reconcileAt) {
+	seen := make(map[int64]bool)
+	runIDs := appendPendingRunIDs(nil, openIssues, seen)
+	runIDs = appendPendingRunIDs(runIDs, closedIssues, seen)
+	for _, runID := range rotatingPendingRunIDs(runIDs, maxPendingRunEvents, reconcileAt) {
 		selected[runID] = true
 	}
 	return selected
 }
 
-func pendingRunIDSet(issues []pendingIncidentIssue) map[int64]bool {
-	runIDs := make(map[int64]bool)
+func appendPendingRunIDs(runIDs []int64, issues []pendingIncidentIssue, seen map[int64]bool) []int64 {
 	for _, issue := range issues {
-		for _, runID := range issue.runIDs {
-			runIDs[runID] = true
+		issueRunIDs := append([]int64(nil), issue.runIDs...)
+		slices.Sort(issueRunIDs)
+		for _, runID := range issueRunIDs {
+			if seen[runID] {
+				continue
+			}
+			seen[runID] = true
+			runIDs = append(runIDs, runID)
 		}
 	}
 	return runIDs
 }
 
-func rotatingPendingRunIDs(runIDSet map[int64]bool, limit int, reconcileAt time.Time) []int64 {
-	runIDs := make([]int64, 0, len(runIDSet))
-	for runID := range runIDSet {
-		runIDs = append(runIDs, runID)
-	}
-	slices.Sort(runIDs)
+func rotatingPendingRunIDs(runIDs []int64, limit int, reconcileAt time.Time) []int64 {
 	if limit <= 0 {
 		return nil
 	}
@@ -365,8 +358,8 @@ func rotatingPendingRunIDs(runIDSet map[int64]bool, limit int, reconcileAt time.
 		return runIDs
 	}
 
-	// Advance one batch per UTC hour so immutable closed-issue checkpoints do
-	// not permanently occupy the first batch on every scheduled reconciliation.
+	// Advance one batch per UTC hour so an oversized pending queue does not
+	// permanently occupy the same selection window.
 	start := 0
 	if !reconcileAt.IsZero() {
 		total := int64(len(runIDs))
