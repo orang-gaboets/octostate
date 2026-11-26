@@ -545,6 +545,7 @@ func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) 
 	}
 }
 
+//nolint:gocyclo // The API route branches are part of this end-to-end checkpoint scenario.
 func TestRunReconcilesAndClearsPendingRunFromClosedIncident(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
@@ -956,6 +957,7 @@ func TestRunRejectsForgedPersistedLatestAttempt(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // The API route branches exercise unavailable evidence and archive refresh together.
 func TestRunRefreshesUnavailableFailureBeforeArchiving(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
@@ -1132,6 +1134,7 @@ func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // The mock API routes assert checkpoint, transition, and retry ordering.
 func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
@@ -1305,6 +1308,7 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // The mock API routes cover checkpoint and archive failure recovery in one scenario.
 func TestApplyPlanPersistsNewRunBeforeCheckpointArchiveWrite(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
