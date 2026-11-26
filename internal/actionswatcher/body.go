@@ -66,6 +66,57 @@ func RenderBody(repo RepositoryIdentity, state IncidentState, existing string, a
 	return renderBodyContent(repo, state, failures, existing, archiveComments)
 }
 
+// RenderBodyWithArchiveHistory merges failure records from persisted comments
+// and planned archives into state before rendering. Planned archives may
+// overlap persisted checkpoint archives when the checkpoint changes chunk
+// boundaries; identical attempts are deduplicated, while conflicting records
+// remain an error. Only archiveComments are considered already persisted.
+func RenderBodyWithArchiveHistory(repo RepositoryIdentity, state IncidentState, existing string, archiveComments []CommentSnapshot, plannedArchives []ArchiveComment) (string, []ArchiveComment, error) {
+	state, err := mergeArchivedFailureHistory(repo, state, archiveComments, plannedArchives)
+	if err != nil {
+		return "", nil, err
+	}
+	return RenderBody(repo, state, existing, archiveComments)
+}
+
+func mergeArchivedFailureHistory(repo RepositoryIdentity, state IncidentState, archiveComments []CommentSnapshot, plannedArchives []ArchiveComment) (IncidentState, error) {
+	persisted, _, err := parseArchives(archiveComments, state.WorkflowID)
+	if err != nil {
+		return IncidentState{}, fmt.Errorf("parse archived failure history: %w", err)
+	}
+	failures := make([]RunAttempt, 0)
+	for _, archive := range persisted {
+		failures = append(failures, archive.Attempts...)
+	}
+	for _, planned := range plannedArchives {
+		if len(planned.Attempts) == 0 {
+			return IncidentState{}, errors.New("planned archive contains no failure attempts")
+		}
+		canonical, err := makeArchive(state.WorkflowID, planned.Attempts)
+		if err != nil {
+			return IncidentState{}, fmt.Errorf("validate planned archive: %w", err)
+		}
+		if canonical.Marker != planned.Marker || canonical.Body != planned.Body {
+			return IncidentState{}, errors.New("planned archive marker or body does not match its failure attempts")
+		}
+		parsed, _, err := parseArchives([]CommentSnapshot{{Body: planned.Body}}, state.WorkflowID)
+		if err != nil || len(parsed) != 1 {
+			return IncidentState{}, errors.New("planned archive contains invalid failure records")
+		}
+		failures = append(failures, parsed[0].Attempts...)
+	}
+	for _, failure := range failures {
+		if failure.WorkflowID != state.WorkflowID || failure.WorkflowName != state.WorkflowName || !validPersistedRunAttempt(repo, failure) {
+			return IncidentState{}, errors.New("archive comment contains a mismatched failure attempt")
+		}
+	}
+	state.Failures, err = mergeFailures(state.Failures, failures)
+	if err != nil {
+		return IncidentState{}, fmt.Errorf("reconstruct archived failure history: %w", err)
+	}
+	return state, nil
+}
+
 func validateIncidentState(repo RepositoryIdentity, state IncidentState) (IncidentState, []RunAttempt, error) {
 	if repo.ID <= 0 || repo.Owner == "" || repo.Name == "" {
 		return IncidentState{}, nil, errors.New("repository identity is incomplete")
@@ -420,28 +471,11 @@ func RenderCheckpointBody(body string, repo RepositoryIdentity, runIDs []int64, 
 	if err != nil {
 		return "", nil, err
 	}
-	archives, _, err := parseArchives(archiveComments, state.WorkflowID)
-	if err != nil {
-		return "", nil, fmt.Errorf("parse archived failure history: %w", err)
-	}
-	archivedFailures := make([]RunAttempt, 0)
-	for _, archive := range archives {
-		for _, attempt := range archive.Attempts {
-			if attempt.WorkflowID != state.WorkflowID || attempt.WorkflowName != state.WorkflowName || !validPersistedRunAttempt(repo, attempt) {
-				return "", nil, errors.New("archive comment contains a mismatched failure attempt")
-			}
-			archivedFailures = append(archivedFailures, attempt)
-		}
-	}
-	state.Failures, err = mergeFailures(state.Failures, archivedFailures)
-	if err != nil {
-		return "", nil, fmt.Errorf("reconstruct archived failure history: %w", err)
-	}
 	state.PendingRunIDs, err = normalizePendingRunIDs(runIDs)
 	if err != nil {
 		return "", nil, err
 	}
-	return RenderBody(repo, state, body, archiveComments)
+	return RenderBodyWithArchiveHistory(repo, state, body, archiveComments, nil)
 }
 
 func managedBody(body string, repo RepositoryIdentity, workflowID int64, workflowName string) (string, error) {

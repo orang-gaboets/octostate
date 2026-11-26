@@ -969,6 +969,12 @@ func (c *watcherClient) applyUpdateChange(ctx context.Context, change watcher.Is
 			return watcher.IssueSnapshot{}, err
 		}
 	}
+	if checkpointed {
+		change, err = c.reconcileCheckpointedChange(current, change)
+		if err != nil {
+			return watcher.IssueSnapshot{}, fmt.Errorf("reconcile checkpoint archives for issue #%d: %w", current.Number, err)
+		}
+	}
 	current, err = c.ensureArchiveComments(ctx, current, change.Archives)
 	if err != nil {
 		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d: %w", change.IssueNumber, err)
@@ -988,6 +994,26 @@ func (c *watcherClient) applyUpdateChange(ctx context.Context, change watcher.Is
 		}
 	}
 	return updated, nil
+}
+
+func (c *watcherClient) reconcileCheckpointedChange(current watcher.IssueSnapshot, change watcher.IssueChange) (watcher.IssueChange, error) {
+	state, err := watcher.RenderManagedBodyState(change.Body, c.repo)
+	if err != nil {
+		return watcher.IssueChange{}, fmt.Errorf("read planned incident body: %w", err)
+	}
+	body, archives, err := watcher.RenderBodyWithArchiveHistory(
+		c.repo,
+		state,
+		current.Body,
+		watcherAuthoredComments(current.Comments, c.appLogin),
+		change.Archives,
+	)
+	if err != nil {
+		return watcher.IssueChange{}, fmt.Errorf("render final incident body: %w", err)
+	}
+	change.Body = body
+	change.Archives = archives
+	return change, nil
 }
 
 func (c *watcherClient) checkpointPendingRuns(ctx context.Context, current watcher.IssueSnapshot, state watcher.IncidentState, change watcher.IssueChange) (watcher.IssueSnapshot, error) {

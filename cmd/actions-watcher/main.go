@@ -497,7 +497,7 @@ func preserveDeferredRunEvents(plan *watcher.Plan, events []triggerEvent, issues
 					archiveComments = append(archiveComments, watcher.CommentSnapshot{AuthorLogin: appLogin, Body: archive.Body})
 				}
 			}
-			body, archives, err := watcher.RenderBody(repo, state, change.Body, archiveComments)
+			body, archives, err := watcher.RenderBodyWithArchiveHistory(repo, state, change.Body, archiveComments, nil)
 			if err != nil {
 				return fmt.Errorf("preserve deferred runs on issue #%d: %w", issueNumber, err)
 			}

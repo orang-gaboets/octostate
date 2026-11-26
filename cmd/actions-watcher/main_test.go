@@ -446,6 +446,60 @@ func TestPreserveDeferredRunEventsKeepsOverflowInCheckpointComments(t *testing.T
 	}
 }
 
+func TestPreserveDeferredRunEventsKeepsArchivedFailureSummary(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	state := watcher.IncidentState{WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing}
+	for i := 1; i <= 100; i++ {
+		failure := testFailureAttempt(int64(i), i, started.Add(time.Duration(i)*time.Minute))
+		failure.FailedJobs = []string{fmt.Sprintf("job-%03d-%s", i, strings.Repeat("x", 1000))}
+		state.Failures = append(state.Failures, failure)
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+	body, archives, err := watcher.RenderBody(repo, state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) == 0 {
+		t.Fatal("fixture did not archive any failure history")
+	}
+	comments := make([]watcher.CommentSnapshot, 0, len(archives))
+	for i, archive := range archives {
+		comments = append(comments, watcher.CommentSnapshot{
+			ID: int64(i + 1), AuthorLogin: expectedAppSlug + "[bot]", Body: archive.Body,
+		})
+	}
+	plannedBody, plannedArchives, err := watcher.RenderBody(repo, state, body, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() with persisted archives: %v", err)
+	}
+	if plannedBody != body || len(plannedArchives) != 0 {
+		t.Fatalf("archived plan changed body or created archives: body_same=%t new_archives=%d", plannedBody == body, len(plannedArchives))
+	}
+	issue := watcher.IssueSnapshot{Number: 7, State: "open", Body: body, Comments: comments}
+	plan := watcher.Plan{Changes: []watcher.IssueChange{{
+		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7, Body: plannedBody,
+	}}}
+	event := triggerEvent{RunID: 5000, WorkflowName: "CI", IssueNumber: 7}
+	if err := preserveDeferredRunEvents(&plan, []triggerEvent{event}, []watcher.IssueSnapshot{issue}, repo, expectedAppSlug+"[bot]"); err != nil {
+		t.Fatalf("preserveDeferredRunEvents() error = %v", err)
+	}
+	for _, prefix := range []string{"- First failure:", "- Latest failure:", "- Total distinct failed attempts:"} {
+		if got, want := managedSummaryLine(plan.Changes[0].Body, prefix), managedSummaryLine(body, prefix); got != want {
+			t.Errorf("%s summary after deferred-event preservation = %q, want %q", prefix, got, want)
+		}
+	}
+}
+
+func managedSummaryLine(body, prefix string) string {
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	return ""
+}
+
 func TestApplyPlanKeepsDeferredOverflowCheckpointComment(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
@@ -1618,6 +1672,79 @@ func TestApplyPlanPersistsNewRunBeforeCheckpointArchiveWrite(t *testing.T) {
 		if strings.Contains(comment.Body, pendingCheckpointPrefix) {
 			t.Fatalf("successful retry left transient checkpoint comment: %q", comment.Body)
 		}
+	}
+}
+
+func TestReconcileCheckpointedChangeReplansOverlappingArchiveChunks(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	state := watcher.IncidentState{WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing}
+	for i := 1; i <= 30; i++ {
+		failure := testFailureAttempt(int64(i), i, started.Add(time.Duration(i)*time.Minute))
+		failure.FailedJobs = []string{fmt.Sprintf("job-%03d-%s", i, strings.Repeat("x", 500))}
+		state.Failures = append(state.Failures, failure)
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+	currentBody, currentArchives, err := watcher.RenderBody(repo, state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(currentArchives) != 0 {
+		t.Fatalf("current history unexpectedly produced %d archives", len(currentArchives))
+	}
+	lateFailure := testFailureAttempt(10000, 10000, started.Add(30*time.Second))
+	lateFailure.FailedJobs = []string{strings.Repeat("y", 500)}
+	plannedState := state
+	plannedState.Failures = append(append([]watcher.RunAttempt(nil), state.Failures...), lateFailure)
+	plannedBody, plannedArchives, err := watcher.RenderBody(repo, plannedState, currentBody, nil)
+	if err != nil {
+		t.Fatalf("RenderBody() planned update: %v", err)
+	}
+	if len(plannedArchives) == 0 {
+		t.Fatal("planned update did not archive its expanded failure history")
+	}
+	pendingRunIDs := make([]int64, 300)
+	for i := range pendingRunIDs {
+		pendingRunIDs[i] = int64(20000 + i)
+	}
+	checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(currentBody, repo, pendingRunIDs, nil)
+	if err != nil {
+		t.Fatalf("RenderCheckpointBody(): %v", err)
+	}
+	if len(checkpointArchives) == 0 {
+		t.Fatal("checkpoint did not archive the current failure history")
+	}
+	comments := make([]watcher.CommentSnapshot, 0, len(checkpointArchives))
+	for i, archive := range checkpointArchives {
+		comments = append(comments, watcher.CommentSnapshot{
+			ID: int64(i + 1), AuthorLogin: expectedAppSlug + "[bot]", Body: archive.Body,
+		})
+	}
+	client := &watcherClient{repo: repo, appLogin: expectedAppSlug + "[bot]"}
+	current := watcher.IssueSnapshot{Number: 7, State: "open", Body: checkpointBody, Comments: comments}
+	change := watcher.IssueChange{Body: plannedBody, Archives: plannedArchives}
+	change, err = client.reconcileCheckpointedChange(current, change)
+	if err != nil {
+		t.Fatalf("reconcileCheckpointedChange(): %v", err)
+	}
+	for i, archive := range change.Archives {
+		comments = append(comments, watcher.CommentSnapshot{
+			ID: int64(len(comments) + i + 1), AuthorLogin: expectedAppSlug + "[bot]", Body: archive.Body,
+		})
+	}
+	stateAfterWrite, err := watcher.RenderManagedBodyState(change.Body, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readback, newArchives, err := watcher.RenderBodyWithArchiveHistory(repo, stateAfterWrite, change.Body, comments, nil)
+	if err != nil {
+		t.Fatalf("read back final archive set: %v", err)
+	}
+	if readback != change.Body || len(newArchives) != 0 {
+		t.Fatalf("final archive set is not stable: body_same=%t new_archives=%d", readback == change.Body, len(newArchives))
+	}
+	if got := managedSummaryLine(change.Body, "- Total distinct failed attempts:"); got != "- Total distinct failed attempts: 31" {
+		t.Fatalf("final summary = %q, want all 31 failures", got)
 	}
 }
 
