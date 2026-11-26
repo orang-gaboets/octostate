@@ -125,8 +125,11 @@ workflows; because the closed issue cannot store a result or clear the ID, the
 same unavailable run may be reported again on later sweeps.
 
 Pending IDs are fetched in batches of at most 1,000 per run. Open incidents are
-processed first, followed by the oldest closed incidents; unselected IDs remain
-in their source checkpoint for a later reconciliation.
+prioritized; if they alone exceed the batch limit, their IDs rotate by hourly
+reconciliation slot. Remaining capacity rotates through closed checkpoints in
+stable run-ID order, so immutable closed issues do not permanently reserve the
+same batch. Unselected IDs remain in their source checkpoint for a later
+reconciliation.
 
 The command reads all pages of workflow, run, issue, label, and comment data.
 It partitions an oversized run query when GitHub's workflow-run endpoint

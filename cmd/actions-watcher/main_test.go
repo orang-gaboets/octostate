@@ -20,6 +20,10 @@ import (
 	watcher "github.com/orang-gaboets/octostate/internal/actionswatcher"
 )
 
+func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot) ([]triggerEvent, []triggerEvent, error) {
+	return pendingRunEventsAt(repo, appLogin, issues, time.Time{})
+}
+
 func TestReadConfigRequiresTrustedRepositoryAndDedicatedApp(t *testing.T) {
 	eventFile := t.TempDir() + "/event.json"
 	if err := os.WriteFile(eventFile, []byte(`{"ref":"refs/heads/main"}`), 0o600); err != nil {
@@ -198,6 +202,63 @@ func TestPendingRunEventsBatchesClosedIncidentsOldestFirst(t *testing.T) {
 	events, deferred, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", issues)
 	if err != nil || len(events) != 0 || len(deferred) != 0 {
 		t.Fatalf("pendingRunEvents() after draining = %d selected, %d deferred, err=%v; want none", len(events), len(deferred), err)
+	}
+}
+
+func TestPendingRunEventsRotatesClosedCheckpointsWithoutMutatingIssues(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(1, 1, started)
+	makeBody := func(pending []int64) string {
+		t.Helper()
+		body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+			WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+			Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: pending,
+		}, "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+
+	const pendingCount = maxPendingRunEvents*2 + 2
+	firstPendingIDs := make([]int64, maxPendingRunEvents+1)
+	for i := range firstPendingIDs {
+		firstPendingIDs[i] = int64(10_001 + i)
+	}
+	secondPendingIDs := make([]int64, maxPendingRunEvents+1)
+	for i := range secondPendingIDs {
+		secondPendingIDs[i] = int64(10_001 + maxPendingRunEvents + i + 1)
+	}
+	firstClosedAt, secondClosedAt := started, started.Add(time.Hour)
+	issues := []watcher.IssueSnapshot{
+		{Number: 7, State: "closed", ClosedAt: &firstClosedAt, Body: makeBody(firstPendingIDs)},
+		{Number: 8, State: "closed", ClosedAt: &secondClosedAt, Body: makeBody(secondPendingIDs)},
+	}
+	originalIssues := append([]watcher.IssueSnapshot(nil), issues...)
+	for i := range originalIssues {
+		closedAt := *originalIssues[i].ClosedAt
+		originalIssues[i].ClosedAt = &closedAt
+	}
+	seen := make(map[int64]bool, pendingCount)
+	for hour := int64(0); hour < 3; hour++ {
+		reconcileAt := time.Unix(hour*int64(time.Hour/time.Second), 0).UTC()
+		events, deferred, err := pendingRunEventsAt(repo, expectedAppSlug+"[bot]", issues, reconcileAt)
+		if err != nil {
+			t.Fatalf("pendingRunEventsAt(hour %d) error = %v", hour, err)
+		}
+		if len(events) != maxPendingRunEvents || len(deferred) != 0 {
+			t.Fatalf("pendingRunEventsAt(hour %d) = %d selected, %d deferred; want %d and 0", hour, len(events), len(deferred), maxPendingRunEvents)
+		}
+		for _, event := range events {
+			seen[event.RunID] = true
+		}
+		if !reflect.DeepEqual(issues, originalIssues) {
+			t.Fatalf("pendingRunEventsAt(hour %d) mutated closed issue checkpoints", hour)
+		}
+	}
+	if len(seen) != pendingCount {
+		t.Fatalf("three rotating selections visited %d pending IDs, want %d", len(seen), pendingCount)
 	}
 }
 

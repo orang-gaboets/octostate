@@ -83,7 +83,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 	if err := client.verifyOpenIncidentCursors(ctx, issues); err != nil {
 		return fmt.Errorf("verify watcher incident state: %w", err)
 	}
-	triggerEvents, deferredRunEvents, err := pendingRunEvents(cfg.Repository, client.appLogin, issues)
+	triggerEvents, deferredRunEvents, err := pendingRunEventsAt(cfg.Repository, client.appLogin, issues, cfg.ReconcileAt)
 	if err != nil {
 		return fmt.Errorf("read pending workflow runs: %w", err)
 	}
@@ -178,7 +178,7 @@ type pendingIncidentIssue struct {
 	runIDs []int64
 }
 
-func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot) ([]triggerEvent, []triggerEvent, error) {
+func pendingRunEventsAt(repo watcher.RepositoryIdentity, appLogin string, issues []watcher.IssueSnapshot, reconcileAt time.Time) ([]triggerEvent, []triggerEvent, error) {
 	byWorkflow, err := groupPendingIssues(repo, issues)
 	if err != nil {
 		return nil, nil, err
@@ -190,7 +190,7 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	if err := validatePendingRunWorkflows(openIssues, closedIssues); err != nil {
 		return nil, nil, err
 	}
-	selectedRunIDs := selectPendingRunIDs(openIssues, closedIssues)
+	selectedRunIDs := selectPendingRunIDs(openIssues, closedIssues, reconcileAt)
 	return buildPendingRunEvents(openIssues, closedIssues, selectedRunIDs)
 }
 
@@ -324,20 +324,62 @@ func validatePendingRunWorkflows(openIssues, closedIssues []pendingIncidentIssue
 	return nil
 }
 
-func selectPendingRunIDs(openIssues, closedIssues []pendingIncidentIssue) map[int64]bool {
+func selectPendingRunIDs(openIssues, closedIssues []pendingIncidentIssue, reconcileAt time.Time) map[int64]bool {
 	selected := make(map[int64]bool, maxPendingRunEvents)
-	for _, issues := range [][]pendingIncidentIssue{openIssues, closedIssues} {
-		for _, issue := range issues {
-			for _, runID := range issue.runIDs {
-				if selected[runID] {
-					continue
-				}
-				if len(selected) == maxPendingRunEvents {
-					return selected
-				}
-				selected[runID] = true
-			}
+	openRunIDs := pendingRunIDSet(openIssues)
+	for _, runID := range rotatingPendingRunIDs(openRunIDs, maxPendingRunEvents, reconcileAt) {
+		selected[runID] = true
+	}
+
+	closedRunIDs := pendingRunIDSet(closedIssues)
+	for runID := range selected {
+		delete(closedRunIDs, runID)
+	}
+	closedLimit := maxPendingRunEvents - len(selected)
+	for _, runID := range rotatingPendingRunIDs(closedRunIDs, closedLimit, reconcileAt) {
+		selected[runID] = true
+	}
+	return selected
+}
+
+func pendingRunIDSet(issues []pendingIncidentIssue) map[int64]bool {
+	runIDs := make(map[int64]bool)
+	for _, issue := range issues {
+		for _, runID := range issue.runIDs {
+			runIDs[runID] = true
 		}
+	}
+	return runIDs
+}
+
+func rotatingPendingRunIDs(runIDSet map[int64]bool, limit int, reconcileAt time.Time) []int64 {
+	runIDs := make([]int64, 0, len(runIDSet))
+	for runID := range runIDSet {
+		runIDs = append(runIDs, runID)
+	}
+	slices.Sort(runIDs)
+	if limit <= 0 {
+		return nil
+	}
+	if len(runIDs) <= limit {
+		return runIDs
+	}
+
+	// Advance one batch per UTC hour so immutable closed-issue checkpoints do
+	// not permanently occupy the first batch on every scheduled reconciliation.
+	start := 0
+	if !reconcileAt.IsZero() {
+		total := int64(len(runIDs))
+		hour := reconcileAt.UTC().Unix() / int64(time.Hour/time.Second)
+		hour %= total
+		if hour < 0 {
+			hour += total
+		}
+		start = int(hour * (int64(limit) % total) % total)
+	}
+	selected := make([]int64, 0, limit)
+	for i := 0; i < limit; i++ {
+		selected = append(selected, runIDs[(start+i)%len(runIDs)])
 	}
 	return selected
 }
