@@ -116,7 +116,11 @@ actions. New snapshots include an `origin` field on every `team_members` row:
 are used when present; a missing or null label and role-only fallback reads do
 not prove direct membership, so they are recorded as `unknown`. Run
 `octostate audit pull` to refresh the snapshot from current API evidence.
-Snapshot readers that validate a fixed schema must accept the new field.
+Snapshot readers that validate a fixed schema must accept the new field. The
+v1.2.0 CLI strictly decodes the previous snapshot schema and rejects this new
+`team_members[].origin` field. The control repository currently pins that
+version, so upgrade its CLI before a newer `audit pull` writes this snapshot
+schema; keep `audit pull` and `audit diff` on compatible CLI versions.
 
 The [#371 research report](https://github.com/orang-gaboets/octostate/issues/371)
 distinguishes documented semantics from live observations. GitHub documents
