@@ -62,6 +62,7 @@ mutations = {
   "setup-go action revision" => [workflow.sub("actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5", "actions/setup-go@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), source],
   "extra setup-go input" => [workflow.sub("          cache: true", "          cache: true\n          token: ${{ secrets.EXTRA_TOKEN }}"), source],
   "App token action revision" => [workflow.sub("actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510", "actions/create-github-app-token@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), source],
+  "deprecated App token ID input" => [workflow.sub("client-id: ${{ vars.ACTIONS_WATCHER_APP_CLIENT_ID }}", "app-id: ${{ vars.ACTIONS_WATCHER_APP_CLIENT_ID }}"), source],
   "App token private key override" => [workflow.sub("private-key: ${{ secrets.ACTIONS_WATCHER_PRIVATE_KEY }}", "private-key: ${{ secrets.OTHER_PRIVATE_KEY }}"), source],
   "token permission" => [workflow.sub("permission-issues: write", "permission-issues: read"), source],
   "extra token permission" => [workflow.sub("permission-metadata: read", "permission-metadata: read\n          permission-contents: write"), source],

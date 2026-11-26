@@ -39,7 +39,7 @@ not for deployment records. Configure these values in that environment:
 
 | Name | Type | Value |
 | --- | --- | --- |
-| `ACTIONS_WATCHER_APP_ID` | Variable | The dedicated App's client ID |
+| `ACTIONS_WATCHER_APP_CLIENT_ID` | Variable | The dedicated App's client ID |
 | `ACTIONS_WATCHER_PRIVATE_KEY` | Secret | The dedicated App's private key |
 
 The workflow requests an installation token with Actions read, Issues write,
@@ -207,7 +207,7 @@ blindly duplicating comments.
 When a run fails, inspect the Actions Watcher run's stderr and the GitHub API
 response. Check, in order:
 
-1. The environment is restricted to `main` and has the dedicated App ID and
+1. The environment is restricted to `main` and has the dedicated App client ID and
    private key.
 2. The App remains installed only on `orang-gaboets/octostate` with the three
    documented permissions.
