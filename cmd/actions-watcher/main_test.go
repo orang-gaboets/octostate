@@ -851,7 +851,8 @@ func TestApplyPlanCheckpointsPendingRunBeforeTransitionComment(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
 	first := testFailureAttempt(100, 100, started)
-	pendingIDs := make([]int64, 50)
+	const fullPendingBatch = 1000
+	pendingIDs := make([]int64, fullPendingBatch)
 	for i := range pendingIDs {
 		pendingIDs[i] = int64(200 + i)
 	}
