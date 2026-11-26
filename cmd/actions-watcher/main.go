@@ -420,7 +420,8 @@ func preserveDeferredRunEvents(plan *watcher.Plan, events []triggerEvent, issues
 			if err != nil {
 				return fmt.Errorf("read planned body for issue #%d: %w", issueNumber, err)
 			}
-			state.PendingRunIDs = append(state.PendingRunIDs, runIDs...)
+			// Deferred IDs beyond the body limit remain in their source checkpoint comments.
+			state.PendingRunIDs, _ = splitPendingRunIDs(state.PendingRunIDs, runIDs)
 			archiveComments := watcherAuthoredComments(issue.Comments, appLogin)
 			for _, archive := range change.Archives {
 				found := false
@@ -439,7 +440,6 @@ func preserveDeferredRunEvents(plan *watcher.Plan, events []triggerEvent, issues
 				return fmt.Errorf("preserve deferred runs on issue #%d: %w", issueNumber, err)
 			}
 			change.Body = body
-			change.PendingRunIDs = append(change.PendingRunIDs, runIDs...)
 			change.Archives, err = mergeArchiveComments(change.Archives, archives)
 			if err != nil {
 				return fmt.Errorf("preserve deferred archives on issue #%d: %w", issueNumber, err)
@@ -645,14 +645,10 @@ func resultFor(attemptCount int, plan watcher.Plan, unavailable ...unavailableRu
 }
 
 func recordRunEvents(plan *watcher.Plan, events []triggerEvent, unavailable []unavailableRun) error {
-	unavailableIDs := make(map[int64]bool, len(unavailable))
-	for _, missing := range unavailable {
-		unavailableIDs[missing.Event.RunID] = true
-	}
 	for i := range plan.Changes {
 		change := &plan.Changes[i]
 		for _, event := range events {
-			if event.WorkflowName == change.WorkflowName && (event.IssueNumber == 0 || event.IssueNumber == change.IssueNumber) && !unavailableIDs[event.RunID] {
+			if event.WorkflowName == change.WorkflowName && (event.IssueNumber == 0 || event.IssueNumber == change.IssueNumber) {
 				change.PendingRunIDs = append(change.PendingRunIDs, event.RunID)
 			}
 		}

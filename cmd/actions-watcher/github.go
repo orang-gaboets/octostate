@@ -955,7 +955,18 @@ func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initia
 				return fmt.Errorf("update issue #%d: %w", change.IssueNumber, err)
 			}
 			if checkpointed {
-				updated, err = c.removePendingCheckpointComments(ctx, updated, state.WorkflowID, nil)
+				preservedRunIDs := make(map[int64]bool, len(change.PendingRunIDs))
+				for _, runID := range change.PendingRunIDs {
+					preservedRunIDs[runID] = true
+				}
+				updatedState, err := watcher.RenderManagedBodyState(updated.Body, c.repo)
+				if err != nil {
+					return fmt.Errorf("read preserved pending runs from issue #%d: %w", change.IssueNumber, err)
+				}
+				for _, runID := range updatedState.PendingRunIDs {
+					preservedRunIDs[runID] = true
+				}
+				updated, err = c.removePendingCheckpointComments(ctx, updated, state.WorkflowID, preservedRunIDs)
 				if err != nil {
 					return fmt.Errorf("clear pending-run checkpoint for issue #%d: %w", change.IssueNumber, err)
 				}
@@ -1374,7 +1385,7 @@ func (c *watcherClient) ensureTransitionComments(ctx context.Context, initial wa
 	return current, nil
 }
 
-func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, expected watcher.IssueSnapshot, workflowID int64, completed map[int64]bool) (watcher.IssueSnapshot, error) {
+func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, expected watcher.IssueSnapshot, workflowID int64, preserved map[int64]bool) (watcher.IssueSnapshot, error) {
 	current := expected
 	for {
 		index := -1
@@ -1390,15 +1401,15 @@ func (c *watcherClient) removePendingCheckpointComments(ctx context.Context, exp
 				return watcher.IssueSnapshot{}, fmt.Errorf("pending-run checkpoint identifies workflow ID %d, want %d", id, workflowID)
 			}
 			if found {
-				if completed != nil {
-					allCompleted := true
+				if preserved != nil {
+					allPreserved := true
 					for _, runID := range runIDs {
-						if !completed[runID] {
-							allCompleted = false
+						if !preserved[runID] {
+							allPreserved = false
 							break
 						}
 					}
-					if !allCompleted {
+					if !allPreserved {
 						continue
 					}
 				}

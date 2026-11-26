@@ -255,8 +255,167 @@ func TestPendingRunEventsDefersOpenCheckpointsAndPreservesThemInPlan(t *testing.
 	if err != nil {
 		t.Fatalf("RenderManagedBodyState() error = %v", err)
 	}
-	if !reflect.DeepEqual(state.PendingRunIDs, codeQLIDs) || !reflect.DeepEqual(plan.Changes[0].PendingRunIDs, codeQLIDs) {
-		t.Fatalf("preserved deferred IDs = body:%d checkpoint:%d; want %d each", len(state.PendingRunIDs), len(plan.Changes[0].PendingRunIDs), len(codeQLIDs))
+	if !reflect.DeepEqual(state.PendingRunIDs, codeQLIDs) || len(plan.Changes[0].PendingRunIDs) != 0 {
+		t.Fatalf("preserved deferred IDs = body:%d checkpoint:%d; want %d body IDs and no selected IDs", len(state.PendingRunIDs), len(plan.Changes[0].PendingRunIDs), len(codeQLIDs))
+	}
+}
+
+func TestPreserveDeferredRunEventsKeepsOverflowInCheckpointComments(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(1, 1, started)
+	bodyIDs := make([]int64, watcher.MaxPendingRunIDs)
+	for i := range bodyIDs {
+		bodyIDs[i] = int64(i + 1)
+	}
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: bodyIDs,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commentIDs := make([]int64, watcher.MaxPendingRunIDs)
+	for i := range commentIDs {
+		commentIDs[i] = int64(watcher.MaxPendingRunIDs + i + 1)
+	}
+	marker, err := pendingCheckpointMarker(1, commentIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := watcher.IssueSnapshot{
+		Number: 7, State: "open", Body: body,
+		Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: marker}},
+	}
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{issue})
+	if err != nil {
+		t.Fatalf("pendingRunEvents() error = %v", err)
+	}
+	if len(events) != maxPendingRunEvents || len(deferred) != 1002 {
+		t.Fatalf("pendingRunEvents() = %d selected, %d deferred; want %d and 1002", len(events), len(deferred), maxPendingRunEvents)
+	}
+	planBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure,
+	}, body, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedIDs := make([]int64, len(events))
+	for i, event := range events {
+		selectedIDs[i] = event.RunID
+	}
+	plan := watcher.Plan{Changes: []watcher.IssueChange{{
+		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
+		Body: planBody, PendingRunIDs: selectedIDs,
+	}}}
+	if err := preserveDeferredRunEvents(&plan, deferred, []watcher.IssueSnapshot{issue}, repo, expectedAppSlug+"[bot]"); err != nil {
+		t.Fatalf("preserveDeferredRunEvents() error = %v", err)
+	}
+	state, err := watcher.RenderManagedBodyState(plan.Changes[0].Body, repo)
+	if err != nil {
+		t.Fatalf("RenderManagedBodyState() error = %v", err)
+	}
+	if len(state.PendingRunIDs) != watcher.MaxPendingRunIDs {
+		t.Fatalf("planned body stores %d deferred IDs, want at most %d", len(state.PendingRunIDs), watcher.MaxPendingRunIDs)
+	}
+	if !reflect.DeepEqual(plan.Changes[0].PendingRunIDs, selectedIDs) {
+		t.Fatalf("plan checkpoint IDs grew to %d, want only selected IDs (%d)", len(plan.Changes[0].PendingRunIDs), len(selectedIDs))
+	}
+}
+
+func TestApplyPlanKeepsDeferredOverflowCheckpointComment(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(1, 1, started)
+	bodyIDs := make([]int64, watcher.MaxPendingRunIDs)
+	for i := range bodyIDs {
+		bodyIDs[i] = int64(i + 1)
+	}
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: bodyIDs,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commentIDs := make([]int64, watcher.MaxPendingRunIDs)
+	for i := range commentIDs {
+		commentIDs[i] = int64(watcher.MaxPendingRunIDs + i + 1)
+	}
+	marker, err := pendingCheckpointMarker(1, commentIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: body, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
+		Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: marker}},
+	}
+	apiIssue := issueSnapshotJSON(initial)
+	apiComments := []any{map[string]any{
+		"id": 1, "body": marker, "user": map[string]any{"login": expectedAppSlug + "[bot]"},
+	}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, apiComments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode issue patch: %v", err)
+			}
+			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/1":
+			apiComments = nil
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	deferredBodyIDs := make([]int64, watcher.MaxPendingRunIDs)
+	for i := range deferredBodyIDs {
+		deferredBodyIDs[i] = int64(maxPendingRunEvents + i + 1)
+	}
+	planBody, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: deferredBodyIDs,
+	}, body, initial.Comments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedIDs := make([]int64, maxPendingRunEvents)
+	for i := range selectedIDs {
+		selectedIDs[i] = int64(i + 1)
+	}
+	change := watcher.IssueChange{
+		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
+		Title: "incident", Body: planBody, PendingRunIDs: selectedIDs,
+	}
+	client := testWatcherClient(t, server.URL, repo)
+	if err := client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{initial}); err != nil {
+		t.Fatalf("applyPlan() error = %v", err)
+	}
+	if len(apiComments) != 1 || apiComments[0].(map[string]any)["body"] != marker {
+		t.Fatalf("pending checkpoint comments after apply = %#v; want the marker containing unprocessed run %d", apiComments, commentIDs[len(commentIDs)-1])
+	}
+	state, err := watcher.RenderManagedBodyState(apiIssue["body"].(string), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.PendingRunIDs) != watcher.MaxPendingRunIDs {
+		t.Fatalf("final body stores %d pending IDs, want %d", len(state.PendingRunIDs), watcher.MaxPendingRunIDs)
 	}
 }
 
@@ -532,8 +691,8 @@ func TestRecordRunEventsPersistsUnavailableRunAndKeepsOtherCheckpoints(t *testin
 	if err != nil || len(ciState.PendingRunIDs) != 0 {
 		t.Fatalf("CI plan retained pending run: state=%#v err=%v", ciState, err)
 	}
-	if len(ciChange.PendingRunIDs) != 0 || len(ciChange.Comments) != 1 {
-		t.Fatalf("CI change pending/comments = %v/%#v, want no pending ID and one unavailable marker", ciChange.PendingRunIDs, ciChange.Comments)
+	if !reflect.DeepEqual(ciChange.PendingRunIDs, []int64{901}) || len(ciChange.Comments) != 1 {
+		t.Fatalf("CI change pending/comments = %v/%#v, want the unavailable run checkpointed and one marker", ciChange.PendingRunIDs, ciChange.Comments)
 	}
 	if comment := ciChange.Comments[0]; !strings.Contains(comment.Marker, "run_id=901 status=410") || !strings.Contains(comment.Body, "does not indicate a successful run") {
 		t.Fatalf("unavailable marker comment = %#v", comment)
