@@ -76,7 +76,7 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	}
 }
 
-func TestPendingRunEventsUsesClosedIncidentBacklogUntilSuccessorOpens(t *testing.T) {
+func TestPendingRunEventsRetainsClosedBacklogsAcrossSuccessors(t *testing.T) {
 	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	closedAt := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
 	failure := testFailureAttempt(100, 100, closedAt.Add(-time.Hour))
@@ -94,25 +94,29 @@ func TestPendingRunEventsUsesClosedIncidentBacklogUntilSuccessorOpens(t *testing
 	}
 	olderClosedAt := closedAt.Add(-time.Hour)
 	older := watcher.IssueSnapshot{Number: 6, State: "closed", ClosedAt: &olderClosedAt, Body: makeBody([]int64{101}, 0)}
-	latestClosed := watcher.IssueSnapshot{Number: 7, State: "closed", ClosedAt: &closedAt, Body: makeBody([]int64{102}, 0)}
+	latestClosed := watcher.IssueSnapshot{Number: 7, State: "closed", ClosedAt: &closedAt, Body: makeBody([]int64{101, 102}, 0)}
 
 	events, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []triggerEvent{{RunID: 102, WorkflowName: "CI", IssueNumber: 7}}
+	want := []triggerEvent{
+		{RunID: 101, WorkflowName: "CI", IssueNumber: 6},
+		{RunID: 102, WorkflowName: "CI", IssueNumber: 7},
+	}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() without open successor = %#v, want %#v", events, want)
 	}
 
 	successor := watcher.IssueSnapshot{
-		Number: 8, State: "open", Body: makeBody([]int64{102, 103}, 7),
+		Number: 8, State: "open", Body: makeBody([]int64{101, 102, 103}, 7),
 	}
 	events, err = pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{older, latestClosed, successor})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want = []triggerEvent{
+		{RunID: 101, WorkflowName: "CI", IssueNumber: 6},
 		{RunID: 102, WorkflowName: "CI", IssueNumber: 7},
 		{RunID: 103, WorkflowName: "CI", IssueNumber: 8},
 	}

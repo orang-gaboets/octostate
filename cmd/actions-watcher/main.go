@@ -185,9 +185,7 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 			if previous.WorkflowName != workflowName {
 				return fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous.WorkflowName, workflowName)
 			}
-			if previous.IssueNumber != issueNumber {
-				return fmt.Errorf("pending workflow run %d is stored on multiple incidents", runID)
-			}
+			// Closed incidents are processed oldest first, so keep the first cleanup owner.
 			return nil
 		}
 		eventsByID[runID] = triggerEvent{RunID: runID, WorkflowName: workflowName, IssueNumber: issueNumber}
@@ -244,7 +242,8 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 	})
 	for _, key := range keys {
 		incidents := byWorkflow[key]
-		var open, latestClosed *issueState
+		var open *issueState
+		closed := make([]*issueState, 0, len(incidents))
 		for i := range incidents {
 			candidate := &incidents[i]
 			if candidate.issue.State == "open" {
@@ -257,20 +256,26 @@ func pendingRunEvents(repo watcher.RepositoryIdentity, appLogin string, issues [
 			if candidate.issue.ClosedAt == nil {
 				return nil, fmt.Errorf("closed issue #%d is missing its closure timestamp", candidate.issue.Number)
 			}
-			if latestClosed == nil || candidate.issue.ClosedAt.After(*latestClosed.issue.ClosedAt) ||
-				(candidate.issue.ClosedAt.Equal(*latestClosed.issue.ClosedAt) && candidate.issue.Number > latestClosed.issue.Number) {
-				latestClosed = candidate
-			}
+			closed = append(closed, candidate)
 		}
-		if open == nil && latestClosed == nil {
+		if open == nil && len(closed) == 0 {
 			continue
 		}
-		var closedPending map[int64]bool
-		if latestClosed != nil {
-			var err error
-			closedPending, err = addIssuePendingRuns(*latestClosed, nil)
+		sort.Slice(closed, func(i, j int) bool {
+			left, right := closed[i].issue, closed[j].issue
+			if !left.ClosedAt.Equal(*right.ClosedAt) {
+				return left.ClosedAt.Before(*right.ClosedAt)
+			}
+			return left.Number < right.Number
+		})
+		closedPending := make(map[int64]bool)
+		for _, incident := range closed {
+			pending, err := addIssuePendingRuns(*incident, nil)
 			if err != nil {
 				return nil, err
+			}
+			for runID := range pending {
+				closedPending[runID] = true
 			}
 		}
 		if open != nil {
