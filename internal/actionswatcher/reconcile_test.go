@@ -14,15 +14,15 @@ import (
 func TestReconcileFiltersSourcesOrdersAndDeduplicatesFailures(t *testing.T) {
 	repo := RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
 	start := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	newAttempt := attempt(20, 2, "CI", "push", "main", "failure", start.Add(2*time.Hour), "https://github.com/org/repo/actions/runs/20/attempts/2")
+	newAttempt := attempt(20, 2, "CI", "push", "main", "failure", start.Add(2*time.Hour))
 	newAttempt.Attempt = 2
 	attempts := []RunAttempt{
 		newAttempt,
-		attempt(10, 1, "CI", "push", "main", "failure", start, "https://github.com/org/repo/actions/runs/10"),
-		attempt(10, 1, "CI", "push", "main", "failure", start, "https://github.com/org/repo/actions/runs/10"),
-		attempt(30, 1, "CI", "pull_request", "main", "failure", start.Add(3*time.Hour), "https://github.com/org/repo/actions/runs/30"),
-		attempt(40, 1, "CI", "schedule", "release", "failure", start.Add(4*time.Hour), "https://github.com/org/repo/actions/runs/40"),
-		attempt(50, 1, "CI", "push", "main", "cancelled", start.Add(5*time.Hour), "https://github.com/org/repo/actions/runs/50"),
+		attempt(10, 1, "CI", "push", "main", "failure", start),
+		attempt(10, 1, "CI", "push", "main", "failure", start),
+		attempt(30, 1, "CI", "pull_request", "main", "failure", start.Add(3*time.Hour)),
+		attempt(40, 1, "CI", "schedule", "release", "failure", start.Add(4*time.Hour)),
+		attempt(50, 1, "CI", "push", "main", "cancelled", start.Add(5*time.Hour)),
 	}
 
 	plan, err := Reconcile(repo, "actions-watcher[bot]", attempts, nil, start.Add(6*time.Hour))
@@ -60,9 +60,9 @@ func TestReconcileFiltersSourcesOrdersAndDeduplicatesFailures(t *testing.T) {
 
 func TestReconcileUsesAttemptStartOrderingAndOnlySuccessRecovers(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/failure")
-	lateOldSuccess := attempt(2, 1, "CI", "push", "main", "success", started, "https://example.test/old-success")
-	neutral := attempt(3, 1, "CI", "push", "main", "neutral", started.Add(2*time.Hour), "https://example.test/neutral")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started.Add(time.Hour))
+	lateOldSuccess := attempt(2, 1, "CI", "push", "main", "success", started)
+	neutral := attempt(3, 1, "CI", "push", "main", "neutral", started.Add(2*time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, lateOldSuccess, neutral}, nil, started.Add(3*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestReconcileUsesAttemptStartOrderingAndOnlySuccessRecovers(t *testing.T) {
 		t.Fatalf("status after stale success and neutral = %q, want failing", got)
 	}
 
-	success := attempt(4, 1, "CI", "workflow_dispatch", "main", "success", started.Add(3*time.Hour), "https://example.test/recovery")
+	success := attempt(4, 1, "CI", "workflow_dispatch", "main", "success", started.Add(3*time.Hour))
 	plan, err = Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, success}, nil, started.Add(4*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestReconcileUsesAttemptStartOrderingAndOnlySuccessRecovers(t *testing.T) {
 func TestReconcileAndPersistedStateRejectRunURLsForAnotherRepositoryOrRun(t *testing.T) {
 	repo := testRepository()
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	valid := attempt(42, 42, "CI", "push", "main", "failure", started, "https://github.com/orang-gaboets/octostate/actions/runs/42")
+	valid := attempt(42, 42, "CI", "push", "main", "failure", started)
 	invalidURLs := []string{
 		"https://github.com/other/repo/actions/runs/42",
 		"https://github.com/orang-gaboets/octostate/actions/runs/43",
@@ -118,8 +118,8 @@ func TestReconcileAndPersistedStateRejectRunURLsForAnotherRepositoryOrRun(t *tes
 
 func TestReconcileRecoversOnLaterAttemptWithSameStartTime(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
-	success := attempt(2, 2, "CI", "push", "main", "success", started, "https://example.test/recovery")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
+	success := attempt(2, 2, "CI", "push", "main", "success", started)
 
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, success}, nil, started.Add(time.Hour))
 	if err != nil {
@@ -144,7 +144,7 @@ func TestReconcileRecoversOnLaterAttemptWithSameStartTime(t *testing.T) {
 func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *testing.T) {
 	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)
-	before := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Minute), "https://example.test/before")
+	before := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Minute))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{before}, []IssueSnapshot{closed}, closedAt.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *
 		t.Fatalf("pre-closure replay produced changes: %#v", plan.Changes)
 	}
 
-	postClose := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(time.Minute), "https://example.test/rerun")
+	postClose := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(time.Minute))
 	postClose.Attempt = 2
 	plan, err = Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{before, postClose}, []IssueSnapshot{closed}, closedAt.Add(time.Hour))
 	if err != nil {
@@ -174,8 +174,8 @@ func TestReconcileClosedIssueIgnoresReplayButStartsFreshIncidentAfterClosure(t *
 
 func TestReconcileIgnoresUntrustedWatcherCommentMarkers(t *testing.T) {
 	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Hour), "https://example.test/failure")
-	recovery := attempt(2, 1, "CI", "schedule", "main", "success", closedAt, "https://example.test/recovery")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Hour))
+	recovery := attempt(2, 1, "CI", "schedule", "main", "success", closedAt)
 	state := IncidentState{
 		WorkflowID: 100, WorkflowName: "CI", Status: StatusRecovered,
 		Failures: []RunAttempt{failure}, Latest: recovery, Recovery: &recovery,
@@ -189,10 +189,10 @@ func TestReconcileIgnoresUntrustedWatcherCommentMarkers(t *testing.T) {
 		Labels: []string{ManagedLabel, RecoveredLabel},
 		Comments: []CommentSnapshot{
 			{ID: 1, AuthorLogin: "public-user", Body: "quoted: " + archiveMarkerPrefix},
-			{ID: 2, AuthorLogin: "public-user", Body: transitionMarkerPrefix + transitionKey(StatusFailing, attempt(3, 1, "CI", "push", "main", "failure", closedAt.Add(time.Hour), "https://example.test/new-failure")) + " -->"},
+			{ID: 2, AuthorLogin: "public-user", Body: transitionMarkerPrefix + transitionKey(StatusFailing, attempt(3, 1, "CI", "push", "main", "failure", closedAt.Add(time.Hour))) + " -->"},
 		},
 	}
-	newFailure := attempt(3, 1, "CI", "push", "main", "failure", closedAt.Add(time.Hour), "https://example.test/new-failure")
+	newFailure := attempt(3, 1, "CI", "push", "main", "failure", closedAt.Add(time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{newFailure}, []IssueSnapshot{issue}, closedAt.Add(2*time.Hour))
 	if err != nil {
 		t.Fatalf("Reconcile() rejected untrusted comment markers: %v", err)
@@ -206,8 +206,8 @@ func TestReconcileIgnoresUntrustedWatcherCommentMarkers(t *testing.T) {
 func TestReconcilePostClosureInitialBodyRetainsPreviousIssueNumber(t *testing.T) {
 	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(time.Minute), "https://example.test/failure")
-	recovery := attempt(2, 2, "CI", "schedule", "main", "success", closedAt.Add(2*time.Minute), "https://example.test/recovery")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(time.Minute))
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", closedAt.Add(2*time.Minute))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, recovery}, []IssueSnapshot{closed}, closedAt.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -228,8 +228,8 @@ func TestReconcilePostClosureInitialBodyRetainsPreviousIssueNumber(t *testing.T)
 func TestReconcileKeepsPreClosureFailuresOutOfSuccessorHistory(t *testing.T) {
 	closedAt := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	closed := managedIssue(t, 51, "closed", closedAt, "actions-watcher[bot]", "CI", 100)
-	before := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Minute), "https://example.test/before")
-	after := attempt(2, 2, "CI", "push", "main", "failure", closedAt.Add(time.Minute), "https://example.test/after")
+	before := attempt(1, 1, "CI", "push", "main", "failure", closedAt.Add(-time.Minute))
+	after := attempt(2, 2, "CI", "push", "main", "failure", closedAt.Add(time.Minute))
 	when := closedAt.Add(time.Hour)
 
 	created, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{before, after}, []IssueSnapshot{closed}, when)
@@ -261,7 +261,7 @@ func TestReconcileKeepsPreClosureFailuresOutOfSuccessorHistory(t *testing.T) {
 func TestReconcileManualReopenResumesExistingIncident(t *testing.T) {
 	previouslyClosed := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 	issue := managedIssue(t, 71, "open", previouslyClosed, "actions-watcher[bot]", "CI", 100)
-	newFailure := attempt(9, 1, "CI", "push", "main", "failure", previouslyClosed.Add(time.Hour), "https://example.test/reopened")
+	newFailure := attempt(9, 1, "CI", "push", "main", "failure", previouslyClosed.Add(time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{newFailure}, []IssueSnapshot{issue}, previouslyClosed.Add(2*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -287,8 +287,8 @@ func TestReconcileFailsClosedForWrongAppAndMultipleOpenIncidents(t *testing.T) {
 
 func TestReconcileLateFailureKeepsNewerRecoveryAndAddsHistory(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	first := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")
-	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(2*time.Hour), "https://example.test/recovery")
+	first := attempt(1, 1, "CI", "push", "main", "failure", started)
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(2*time.Hour))
 	state, err := stateFromAttempts(workflowKey{id: 100, name: "CI"}, nil, []RunAttempt{first, recovery})
 	if err != nil {
 		t.Fatal(err)
@@ -298,7 +298,7 @@ func TestReconcileLateFailureKeepsNewerRecoveryAndAddsHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	issue := IssueSnapshot{Number: 90, State: "open", AuthorLogin: "actions-watcher[bot]", Title: incidentTitle("CI"), Body: body, Labels: []string{ManagedLabel, RecoveredLabel, "keep-me"}}
-	late := attempt(3, 3, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/late-failure")
+	late := attempt(3, 3, "CI", "push", "main", "failure", started.Add(time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{late}, []IssueSnapshot{issue}, started.Add(3*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -317,8 +317,8 @@ func TestReconcileLateFailureKeepsNewerRecoveryAndAddsHistory(t *testing.T) {
 
 func TestReconcilePlansRecoveryAndRegressionCommentsOnce(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")
-	initialRecovery := attempt(4, 4, "CI", "schedule", "main", "success", started.Add(30*time.Minute), "https://example.test/initial-recovery")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
+	initialRecovery := attempt(4, 4, "CI", "schedule", "main", "success", started.Add(30*time.Minute))
 	state, err := stateFromAttempts(workflowKey{id: 100, name: "CI"}, nil, []RunAttempt{failure, initialRecovery})
 	if err != nil {
 		t.Fatal(err)
@@ -328,8 +328,8 @@ func TestReconcilePlansRecoveryAndRegressionCommentsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	issue := IssueSnapshot{Number: 91, State: "open", AuthorLogin: "actions-watcher[bot]", Title: incidentTitle("CI"), Body: body, Labels: []string{ManagedLabel, RecoveredLabel, "keep-me"}}
-	regression := attempt(2, 2, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/regression")
-	recovery := attempt(3, 3, "CI", "workflow_dispatch", "main", "success", started.Add(2*time.Hour), "https://example.test/recovery")
+	regression := attempt(2, 2, "CI", "push", "main", "failure", started.Add(time.Hour))
+	recovery := attempt(3, 3, "CI", "workflow_dispatch", "main", "success", started.Add(2*time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{regression, recovery}, []IssueSnapshot{issue}, started.Add(3*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -357,8 +357,8 @@ func TestReconcilePlansRecoveryAndRegressionCommentsOnce(t *testing.T) {
 
 func TestReconcileAdvancesOrderingCursorWithoutChangingRecoveryTransition(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "")
-	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour), "")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour))
 	initial, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, recovery}, nil, started.Add(2*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -368,7 +368,7 @@ func TestReconcileAdvancesOrderingCursorWithoutChangingRecoveryTransition(t *tes
 		Number: 90, State: "open", AuthorLogin: "actions-watcher[bot]", Title: created.Title,
 		Body: created.Body, Labels: []string{ManagedLabel, RecoveredLabel},
 	}
-	laterSuccess := attempt(3, 3, "CI", "workflow_dispatch", "main", "success", started.Add(3*time.Hour), "")
+	laterSuccess := attempt(3, 3, "CI", "workflow_dispatch", "main", "success", started.Add(3*time.Hour))
 	continued, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{laterSuccess}, []IssueSnapshot{issue}, started.Add(4*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -385,7 +385,7 @@ func TestReconcileAdvancesOrderingCursorWithoutChangingRecoveryTransition(t *tes
 		t.Fatalf("continued-success state = latest %d, recovery %#v; want cursor %d and original recovery %d", state.Latest.RunID, state.Recovery, laterSuccess.RunID, recovery.RunID)
 	}
 
-	lateFailure := attempt(4, 4, "CI", "push", "main", "failure", started.Add(2*time.Hour+30*time.Minute), "")
+	lateFailure := attempt(4, 4, "CI", "push", "main", "failure", started.Add(2*time.Hour+30*time.Minute))
 	updated, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{lateFailure}, []IssueSnapshot{{
 		Number: 90, State: "open", AuthorLogin: "actions-watcher[bot]", Title: change.Title,
 		Body: change.Body, Labels: []string{ManagedLabel, RecoveredLabel},
@@ -405,9 +405,9 @@ func TestReconcileAdvancesOrderingCursorWithoutChangingRecoveryTransition(t *tes
 
 func TestReconcileInitialSnapshotRecordsObservedTransitions(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
-	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour), "https://example.test/recovery")
-	regression := attempt(3, 3, "CI", "push", "main", "startup_failure", started.Add(2*time.Hour), "https://example.test/regression")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour))
+	regression := attempt(3, 3, "CI", "push", "main", "startup_failure", started.Add(2*time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure, recovery, regression}, nil, started.Add(3*time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -420,7 +420,7 @@ func TestReconcileInitialSnapshotRecordsObservedTransitions(t *testing.T) {
 
 func TestReconcileIsNoopAfterCreatedIncidentIsReadBack(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
 	first, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{failure}, nil, started.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -453,7 +453,7 @@ func TestReconcileRestoresIncidentTitleAfterTitleOnlyEdit(t *testing.T) {
 
 func TestReconcileEnrichesCheckpointedFailureWhenJobsBecomeAvailable(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	checkpointed := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/run/1")
+	checkpointed := attempt(1, 1, "CI", "push", "main", "failure", started)
 	checkpointed.JobDataAvailable = false
 	checkpointed.FailedJobs = nil
 	body, _, err := RenderBody(testRepository(), IncidentState{
@@ -490,17 +490,17 @@ func TestReconcileEnrichesCheckpointedFailureWhenJobsBecomeAvailable(t *testing.
 
 func TestReconcileRejectsConflictingAttemptAndWorkflowIdentity(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	first := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")
+	first := attempt(1, 1, "CI", "push", "main", "failure", started)
 	duplicate := first
 	duplicate.HeadSHA = "different"
 	if _, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{first, duplicate}, nil, started.Add(time.Hour)); err == nil {
 		t.Fatal("Reconcile accepted conflicting metadata for a duplicate run attempt")
 	}
-	otherName := attempt(2, 2, "CodeQL Security", "push", "main", "failure", started.Add(time.Hour), "https://example.test/other")
+	otherName := attempt(2, 2, "CodeQL Security", "push", "main", "failure", started.Add(time.Hour))
 	if _, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{first, otherName}, nil, started.Add(2*time.Hour)); err == nil {
 		t.Fatal("Reconcile accepted one workflow ID with two workflow names")
 	}
-	unknown := attempt(3, 3, "Unmonitored workflow", "push", "main", "failure", started.Add(time.Hour), "https://example.test/unknown")
+	unknown := attempt(3, 3, "Unmonitored workflow", "push", "main", "failure", started.Add(time.Hour))
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{unknown}, nil, started.Add(2*time.Hour))
 	if err != nil || len(plan.Changes) != 0 {
 		t.Fatalf("unmonitored workflow was not ignored safely: plan=%#v err=%v", plan, err)
@@ -515,9 +515,9 @@ func TestReconcileRejectsConflictingAttemptAndWorkflowIdentity(t *testing.T) {
 
 func TestReconcileUsesTieBreakersForEqualStartTimes(t *testing.T) {
 	started := time.Date(2026, 11, 25, 1, 0, 0, 0, time.UTC)
-	first := attempt(20, 2, "CI", "push", "main", "failure", started, "https://example.test/20")
+	first := attempt(20, 2, "CI", "push", "main", "failure", started)
 	first.RunNumber = 4
-	second := attempt(10, 1, "CI", "push", "main", "timed_out", started, "https://example.test/10")
+	second := attempt(10, 1, "CI", "push", "main", "timed_out", started)
 	second.RunNumber = 5
 	plan, err := Reconcile(testRepository(), "actions-watcher[bot]", []RunAttempt{first, second}, nil, started.Add(time.Hour))
 	if err != nil {
@@ -535,8 +535,8 @@ func TestRenderBodyPreservesHumanTextAndRejectsMalformedMarkers(t *testing.T) {
 		WorkflowID:   100,
 		WorkflowName: "CI",
 		Status:       StatusFailing,
-		Failures:     []RunAttempt{attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC), "https://example.test/1")},
-		Latest:       attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC), "https://example.test/1"),
+		Failures:     []RunAttempt{attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC))},
+		Latest:       attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)),
 	}
 	original := "Keep this human investigation.\n\n" + identityMarker(testRepository(), 100, "CI") + "\n" + managedStart + "\nold managed content\n" + managedEnd + "\n\nFollow-up owned by maintainers."
 	got, _, err := RenderBody(testRepository(), state, original, nil)
@@ -566,8 +566,8 @@ func TestRenderBodyPreservesHumanTextAndRejectsMalformedMarkers(t *testing.T) {
 
 func TestRenderBodyStateRejectsRecoveryThatDiffersFromLatest(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
-	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour), "https://example.test/recovery")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
+	recovery := attempt(2, 2, "CI", "schedule", "main", "success", started.Add(time.Hour))
 	state := IncidentState{
 		WorkflowID: 100, WorkflowName: "CI", Status: StatusRecovered,
 		Failures: []RunAttempt{failure}, Latest: recovery, Recovery: &recovery,
@@ -589,7 +589,7 @@ func TestRenderBodyStateRejectsRecoveryThatDiffersFromLatest(t *testing.T) {
 
 func TestRenderBodyStatePersistsPendingRunIDs(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/failure")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
 	body, _, err := RenderBody(testRepository(), IncidentState{
 		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
 		Failures: []RunAttempt{failure}, Latest: failure, PendingRunIDs: []int64{303, 202, 303},
@@ -609,7 +609,7 @@ func TestRenderBodyStatePersistsPendingRunIDs(t *testing.T) {
 
 func TestReconcileClearsConsumedPendingRunIDs(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	failure := attempt(100, 100, "CI", "push", "main", "failure", started, "https://example.test/failure")
+	failure := attempt(100, 100, "CI", "push", "main", "failure", started)
 	body, _, err := RenderBody(testRepository(), IncidentState{
 		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
 		Failures: []RunAttempt{failure}, Latest: failure, PendingRunIDs: []int64{200},
@@ -641,7 +641,7 @@ func TestReconcileClearsConsumedPendingRunIDs(t *testing.T) {
 func TestRenderBodyLinksRerunsToTheirSpecificAttempts(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
 	runURL := "https://github.com/orang-gaboets/octostate/actions/runs/42"
-	first := attempt(42, 42, "CI", "push", "main", "failure", started, runURL)
+	first := attempt(42, 42, "CI", "push", "main", "failure", started)
 	second := first
 	second.Attempt = 2
 	second.StartedAt = started.Add(time.Hour)
@@ -666,7 +666,7 @@ func TestRenderBodyLinksRerunsToTheirSpecificAttempts(t *testing.T) {
 
 func TestRenderBodyStateRejectsFailureLaterThanLatestCursor(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	latest := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/latest")
+	latest := attempt(1, 1, "CI", "push", "main", "failure", started)
 	body, _, err := RenderBody(testRepository(), IncidentState{
 		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
 		Failures: []RunAttempt{latest}, Latest: latest,
@@ -674,7 +674,7 @@ func TestRenderBodyStateRejectsFailureLaterThanLatestCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forged := attempt(999, 999, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/forged")
+	forged := attempt(999, 999, "CI", "push", "main", "failure", started.Add(time.Hour))
 	end := strings.Index(body, managedEnd)
 	if end < 0 {
 		t.Fatal("rendered body is missing managed end marker")
@@ -687,8 +687,8 @@ func TestRenderBodyStateRejectsFailureLaterThanLatestCursor(t *testing.T) {
 
 func TestRenderBodyStateRejectsFailingCursorMissingFromHistory(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	first := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/first")
-	latest := attempt(2, 2, "CI", "push", "main", "failure", started.Add(time.Hour), "https://example.test/latest")
+	first := attempt(1, 1, "CI", "push", "main", "failure", started)
+	latest := attempt(2, 2, "CI", "push", "main", "failure", started.Add(time.Hour))
 	body, _, err := RenderBody(testRepository(), IncidentState{
 		WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing,
 		Failures: []RunAttempt{first, latest}, Latest: latest,
@@ -706,7 +706,7 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
 		started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Minute)
-		failure := attempt(int64(i), 1, "CI", "push", "main", "failure", started, "")
+		failure := attempt(int64(i), 1, "CI", "push", "main", "failure", started)
 		failure.FailedJobs = []string{strings.Repeat("x", 500)}
 		state.Failures = append(state.Failures, failure)
 	}
@@ -756,7 +756,7 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 400; i++ {
-		failure := attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "")
+		failure := attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute))
 		failure.FailedJobs = []string{strings.Repeat("x", 500)}
 		state.Failures = append(state.Failures, failure)
 	}
@@ -769,7 +769,7 @@ func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 		t.Fatal("initial history did not create archives")
 	}
 
-	late := attempt(1000, 1000, "CI", "push", "main", "failure", started, "")
+	late := attempt(1000, 1000, "CI", "push", "main", "failure", started)
 	late.FailedJobs = []string{strings.Repeat("y", 25000)}
 	state.Failures = append(state.Failures, late)
 	comments := make([]CommentSnapshot, 0, len(archives))
@@ -808,7 +808,7 @@ func TestRenderCheckpointBodyArchivesHistoryBeforePendingRunOverflow(t *testing.
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	for i := 1; i <= 25; i++ {
 		started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Minute)
-		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started, "https://example.test/attempt/"+string(rune('a'+i%26))))
+		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started))
 	}
 	state.Latest = state.Failures[len(state.Failures)-1]
 	body, archives, err := RenderBody(testRepository(), state, "", nil)
@@ -870,7 +870,7 @@ func TestRenderCheckpointBodyReconstructsArchivedFailureSummary(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	for i := 1; i <= 400; i++ {
-		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "https://example.test/attempt/"+strings.Repeat("x", 200)+string(rune('a'+i%26))))
+		state.Failures = append(state.Failures, attempt(int64(i), i, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute)))
 	}
 	state.Latest = state.Failures[len(state.Failures)-1]
 	body, archives, err := RenderBody(testRepository(), state, "", nil)
@@ -906,7 +906,7 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
 	comments := make([]CommentSnapshot, 0, archiveCount)
 	for i := range archiveCount {
-		failure := attempt(int64(i+1), i+1, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute), "https://example.test/run")
+		failure := attempt(int64(i+1), i+1, "CI", "push", "main", "failure", started.Add(time.Duration(i)*time.Minute))
 		state.Failures = append(state.Failures, failure)
 		archive, err := makeArchive(state.WorkflowID, []RunAttempt{failure})
 		if err != nil {
@@ -968,7 +968,7 @@ func TestRenderBodyBoundsArchiveReferences(t *testing.T) {
 }
 
 func TestRenderBodyUpgradesLegacyArchiveIndex(t *testing.T) {
-	failure := attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), "https://example.test/run")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing, Failures: []RunAttempt{failure}, Latest: failure}
 	archive, err := makeArchive(state.WorkflowID, []RunAttempt{failure})
 	if err != nil {
@@ -996,7 +996,7 @@ func TestRenderBodyUpgradesLegacyArchiveIndex(t *testing.T) {
 
 func TestRenderBodyEscapesUntrustedJobNamesAndRemainsValidUTF8(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	failure := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/1")
+	failure := attempt(1, 1, "CI", "push", "main", "failure", started)
 	failure.FailedJobs = []string{"🔐 @everyone <script>alert(1)</script>"}
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing, Failures: []RunAttempt{failure}, Latest: failure}
 	body, _, err := RenderBody(testRepository(), state, "", nil)
@@ -1013,7 +1013,7 @@ func TestRenderBodyEscapesUntrustedJobNamesAndRemainsValidUTF8(t *testing.T) {
 
 func TestRenderBodyDistinguishesUnavailableJobsFromKnownEmpty(t *testing.T) {
 	started := time.Date(2026, 11, 25, 0, 0, 0, 0, time.UTC)
-	unavailable := attempt(1, 1, "CI", "push", "main", "failure", started, "https://example.test/1")
+	unavailable := attempt(1, 1, "CI", "push", "main", "failure", started)
 	unavailable.JobDataAvailable = false
 	unavailable.FailedJobs = nil
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing, Failures: []RunAttempt{unavailable}, Latest: unavailable}
@@ -1036,7 +1036,7 @@ func TestRenderBodyDistinguishesUnavailableJobsFromKnownEmpty(t *testing.T) {
 	}
 }
 
-func attempt(runID int64, number int, name, event, branch, conclusion string, started time.Time, _ string) RunAttempt {
+func attempt(runID int64, number int, name, event, branch, conclusion string, started time.Time) RunAttempt {
 	return RunAttempt{
 		WorkflowID: 100, WorkflowName: name, RunID: runID, RunNumber: number, Attempt: 1,
 		Event: event, HeadBranch: branch, Conclusion: conclusion, HeadSHA: "abc123",
@@ -1060,7 +1060,7 @@ func onlyChange(t *testing.T, plan Plan) IssueChange {
 
 func managedIssue(t *testing.T, number int, state string, closedAt time.Time, author, workflow string, workflowID int64) IssueSnapshot {
 	t.Helper()
-	seed := attempt(1000+int64(number), number, workflow, "push", "main", "failure", time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC), "https://example.test/seed")
+	seed := attempt(1000+int64(number), number, workflow, "push", "main", "failure", time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC))
 	incident := IncidentState{WorkflowID: workflowID, WorkflowName: workflow, Status: StatusFailing, Failures: []RunAttempt{seed}, Latest: seed}
 	body, _, err := RenderBody(testRepository(), incident, "", nil)
 	if err != nil {
