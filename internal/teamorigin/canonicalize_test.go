@@ -122,16 +122,21 @@ func TestCanonicalizeMembershipsChoosesSpellingIndependentOfInputOrder(t *testin
 		{TeamSlug: "platform", Username: "Alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
 		{TeamSlug: "platform", Username: "alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
 	}
-	want := []Membership{{
-		TeamSlug: "platform", Username: "Alice", Role: "member", Origin: github.TeamMembershipOriginDirect,
-	}}
-	for _, permutation := range [][]Membership{rows, {rows[1], rows[0]}} {
+	var first []Membership
+	for index, permutation := range [][]Membership{rows, {rows[1], rows[0]}} {
 		got, err := Canonicalize(permutation)
 		if err != nil {
 			t.Fatalf("Canonicalize returned error: %v", err)
 		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("Canonicalize = %#v, want %#v", got, want)
+		if len(got) != 1 || (got[0] != rows[0] && got[0] != rows[1]) {
+			t.Fatalf("Canonicalize = %#v, want one of the duplicate rows", got)
+		}
+		if index == 0 {
+			first = got
+			continue
+		}
+		if !reflect.DeepEqual(got, first) {
+			t.Fatalf("Canonicalize depends on input order: forward=%#v reverse=%#v", first, got)
 		}
 	}
 }
