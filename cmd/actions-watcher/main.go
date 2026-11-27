@@ -379,15 +379,6 @@ func rotatingPendingRunIDs(runIDs []int64, limit int, reconcileAt time.Time) []i
 
 func buildPendingRunEvents(openIssues, closedIssues []pendingIncidentIssue, selectedRunIDs map[int64]bool) ([]triggerEvent, []triggerEvent, error) {
 	eventsByID := make(map[int64]triggerEvent)
-	for _, issue := range closedIssues {
-		for _, runID := range issue.runIDs {
-			if selectedRunIDs[runID] {
-				if err := addPendingRunEvent(eventsByID, runID, issue); err != nil {
-					return nil, nil, err
-				}
-			}
-		}
-	}
 	var deferred []triggerEvent
 	for _, issue := range openIssues {
 		for _, runID := range issue.runIDs {
@@ -397,6 +388,15 @@ func buildPendingRunEvents(openIssues, closedIssues []pendingIncidentIssue, sele
 			}
 			if err := addPendingRunEvent(eventsByID, runID, issue); err != nil {
 				return nil, nil, err
+			}
+		}
+	}
+	for _, issue := range closedIssues {
+		for _, runID := range issue.runIDs {
+			if selectedRunIDs[runID] {
+				if err := addPendingRunEvent(eventsByID, runID, issue); err != nil {
+					return nil, nil, err
+				}
 			}
 		}
 	}
@@ -417,7 +417,7 @@ func addPendingRunEvent(eventsByID map[int64]triggerEvent, runID int64, issue pe
 		if previous.WorkflowName != issue.source.state.WorkflowName {
 			return fmt.Errorf("pending workflow run %d identifies conflicting workflows %q and %q", runID, previous.WorkflowName, issue.source.state.WorkflowName)
 		}
-		// Closed incidents are processed oldest first, so keep the first cleanup owner.
+		// Prefer the open issue's checkpoint for cleanup; otherwise the oldest closed issue owns it.
 		return nil
 	}
 	eventsByID[runID] = triggerEvent{RunID: runID, WorkflowName: issue.source.state.WorkflowName, IssueNumber: issue.source.issue.Number}

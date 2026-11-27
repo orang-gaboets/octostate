@@ -74,7 +74,7 @@ func TestPendingRunEventsReadsManagedState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 6}, {RunID: 104, WorkflowName: "CI", IssueNumber: 6}}
+	want := []triggerEvent{{RunID: 103, WorkflowName: "CI", IssueNumber: 7}, {RunID: 104, WorkflowName: "CI", IssueNumber: 7}}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pendingRunEvents() = %#v, want %#v", events, want)
 	}
@@ -126,15 +126,84 @@ func TestPendingRunEventsRetainsClosedBacklogsAcrossSuccessors(t *testing.T) {
 		t.Fatal(err)
 	}
 	want = []triggerEvent{
-		{RunID: 101, WorkflowName: "CI", IssueNumber: 6},
-		{RunID: 102, WorkflowName: "CI", IssueNumber: 7},
+		{RunID: 101, WorkflowName: "CI", IssueNumber: 8},
+		{RunID: 102, WorkflowName: "CI", IssueNumber: 8},
 		{RunID: 103, WorkflowName: "CI", IssueNumber: 8},
 	}
 	if !reflect.DeepEqual(events, want) {
-		t.Fatalf("pendingRunEvents() with open successor = %#v, want %#v", events, want)
+		t.Fatalf("pendingRunEvents() with open successor = %#v, want the open successor to own shared checkpoints: %#v", events, want)
 	}
 	if len(deferred) != 0 {
 		t.Fatalf("pendingRunEvents() with open successor deferred = %#v, want none", deferred)
+	}
+}
+
+func TestPendingRunEventsCleanSharedCheckpointOnOpenSuccessor(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(100, 100, started)
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedAt := started.Add(time.Hour)
+	marker, err := pendingCheckpointMarker(1, []int64{101})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appLogin := expectedAppSlug + "[bot]"
+	closed := watcher.IssueSnapshot{
+		Number: 6, State: "closed", ClosedAt: &closedAt, AuthorLogin: appLogin, Title: "closed incident", Body: body,
+		Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: appLogin, Body: marker}},
+	}
+	open := watcher.IssueSnapshot{
+		Number: 8, State: "open", AuthorLogin: appLogin, Title: "open successor", Body: body,
+		Comments: []watcher.CommentSnapshot{{ID: 2, AuthorLogin: appLogin, Body: marker}},
+	}
+	events, deferred, err := pendingRunEvents(repo, appLogin, []watcher.IssueSnapshot{closed, open})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(events, []triggerEvent{{RunID: 101, WorkflowName: "CI", IssueNumber: open.Number}}) || len(deferred) != 0 {
+		t.Fatalf("pending events/deferred = %#v/%#v; want run 101 owned by open issue #%d", events, deferred, open.Number)
+	}
+
+	apiIssue := issueSnapshotJSON(open)
+	comments := []any{map[string]any{"id": 2, "body": marker, "user": map[string]any{"login": appLogin}}}
+	var closedIssueRequests, deletions int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		if strings.Contains(path, "/issues/6") || strings.HasSuffix(path, "/issues/comments/1") {
+			closedIssueRequests++
+		}
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/8/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/8":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/2":
+			deletions++
+			comments = nil
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, repo)
+	if err := client.completeOpenPendingRuns(context.Background(), []watcher.IssueSnapshot{closed, open}, events, nil, watcher.Plan{}); err != nil {
+		t.Fatalf("completeOpenPendingRuns() error = %v", err)
+	}
+	if deletions != 1 || len(comments) != 0 {
+		t.Fatalf("open successor checkpoint deletions/comments = %d/%d; want 1/0", deletions, len(comments))
+	}
+	if closedIssueRequests != 0 {
+		t.Fatalf("closed issue was read or mutated %d times; want no requests", closedIssueRequests)
 	}
 }
 
