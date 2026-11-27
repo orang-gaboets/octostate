@@ -59,3 +59,53 @@ func TestWrapError(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIErrorStringOmitsResponseBody(t *testing.T) {
+	const secret = "SYNTHETIC_SENSITIVE_VALUE"
+	tests := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{
+			name: "json_validation_errors",
+			body: `{"message":"Validation Failed","errors":[{"resource":"Team","field":"name","code":"custom","message":"` + secret + `"}],"documentation_url":"https://docs.github.com/rest","status":"422"}`,
+			want: []string{"status 422: Validation Failed", "(docs: https://docs.github.com/rest)", "Team.name: custom"},
+		},
+		{
+			name: "non_json_body",
+			body: "<html>" + secret + "</html>",
+			want: []string{"status 422"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: http.StatusUnprocessableEntity,
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+				Header:     http.Header{},
+			}
+			err := WrapError(gh.CheckResponse(resp), "create team")
+			if !errors.Is(err, ErrValidationFailed) {
+				t.Fatalf("expected ErrValidationFailed, got %v", err)
+			}
+			got := err.Error()
+			if strings.Contains(got, secret) {
+				t.Fatalf("error text exposes response body: %q", got)
+			}
+			if strings.Contains(got, "(docs: )") {
+				t.Fatalf("error text has an empty docs URL: %q", got)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("error text %q missing %q", got, want)
+				}
+			}
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) || !strings.Contains(string(apiErr.Body), secret) {
+				t.Fatalf("APIError.Body must still carry the raw body for explicit inspection")
+			}
+		})
+	}
+}

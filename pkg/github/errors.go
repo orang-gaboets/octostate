@@ -18,9 +18,24 @@ type APIError struct {
 	err              error
 }
 
-// Error implements the error interface.
+// Error implements the error interface. It reports the status, GitHub's
+// message, the documentation URL, and field-level validation codes. The raw
+// response body is deliberately omitted; callers can still inspect Body.
 func (e *APIError) Error() string {
-	return fmt.Sprintf("status %d: %s (docs: %s) body: %s", e.StatusCode, e.Message, e.DocumentationURL, string(e.Body))
+	msg := fmt.Sprintf("status %d", e.StatusCode)
+	if e.Message != "" {
+		msg += ": " + e.Message
+	}
+	if e.DocumentationURL != "" {
+		msg += " (docs: " + e.DocumentationURL + ")"
+	}
+	var resp *gh.ErrorResponse
+	if errors.As(e.err, &resp) {
+		for _, fieldErr := range resp.Errors {
+			msg += fmt.Sprintf("; %s.%s: %s", fieldErr.Resource, fieldErr.Field, fieldErr.Code)
+		}
+	}
+	return msg
 }
 
 // Unwrap returns the underlying error.
