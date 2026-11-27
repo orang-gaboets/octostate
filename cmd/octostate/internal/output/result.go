@@ -12,6 +12,9 @@ const (
 	OperationResultStatusDryRun OperationResultStatus = "dry-run"
 	// OperationResultStatusCheck indicates a preflight command operation result.
 	OperationResultStatusCheck OperationResultStatus = "check"
+	// OperationResultStatusFailure indicates a command operation stopped after
+	// execution began and includes safe recovery information.
+	OperationResultStatusFailure OperationResultStatus = "failure"
 )
 
 // OperationResult is a structured payload for command output.
@@ -48,6 +51,15 @@ func PrintDryRun(cmd *cobra.Command, message string, data any) error {
 func PrintCheck(cmd *cobra.Command, message string, data any) error {
 	return PrintOperationResult(cmd, OperationResult{
 		Status:  OperationResultStatusCheck,
+		Message: message,
+		Data:    data,
+	})
+}
+
+// PrintFailure writes a structured failure result to command stdout.
+func PrintFailure(cmd *cobra.Command, message string, data any) error {
+	return PrintOperationResult(cmd, OperationResult{
+		Status:  OperationResultStatusFailure,
 		Message: message,
 		Data:    data,
 	})
