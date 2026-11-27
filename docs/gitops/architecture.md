@@ -133,10 +133,11 @@ Some differences are intentional because the builders have different inputs:
   does not reproduce that dependency graph or its ordering.
 - `plan` resolves numeric invite user IDs through the live user service;
   `diff` uses the snapshot's `resolved_invite_user_ids_by_username` mapping.
-- Repository availability comes from live collection in `plan` and snapshot
-  presence plus desired-state creatability in `diff`. Parity applies only to
-  the evidence both paths can determine, including the #217 presence and
-  creatability cases.
+- Team repository permission availability uses live repositories and the
+  planned state of desired repositories in `plan`, including managed template
+  dependency checks; offline `diff` uses snapshot presence or a desired
+  repository declaration. Parity applies only to equivalent evidence both
+  paths can determine, including the #217 presence and creatability cases.
 
 Unexpected differences in cases with equivalent evidence should be reported
 for maintainer review rather than hidden as an intentional exception or fixed
