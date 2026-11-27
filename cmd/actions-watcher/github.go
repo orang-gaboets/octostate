@@ -841,7 +841,7 @@ func (c *watcherClient) requireLabels(ctx context.Context, plan watcher.Plan) er
 func (c *watcherClient) applyPlan(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) error {
 	preflight := watcher.Plan{Changes: make([]watcher.IssueChange, 0, len(plan.Changes))}
 	for _, change := range plan.Changes {
-		if change.Action == watcher.ActionUpdate && len(change.PendingRunIDs) == 0 {
+		if change.Action == watcher.ActionUpdate {
 			preflight.Changes = append(preflight.Changes, change)
 		}
 	}
@@ -961,11 +961,6 @@ func (c *watcherClient) applyUpdateChange(ctx context.Context, change watcher.Is
 	if checkpointed {
 		current, err = c.checkpointPendingRuns(ctx, current, state, change)
 		if err != nil {
-			return watcher.IssueSnapshot{}, err
-		}
-	}
-	if len(change.PendingRunIDs) > 0 {
-		if err := c.verifyArchiveAttempts(ctx, watcher.Plan{Changes: []watcher.IssueChange{change}}); err != nil {
 			return watcher.IssueSnapshot{}, err
 		}
 	}

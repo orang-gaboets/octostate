@@ -2051,6 +2051,96 @@ func TestApplyPlanRejectsUnverifiedArchiveBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestApplyPlanRejectsUnverifiedCheckpointArchiveBeforeMutation(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	first := testFailureAttempt(100, 100, started)
+	second := testFailureAttempt(101, 101, started.Add(time.Hour))
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{first, second}, Latest: second,
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := body + strings.Repeat("x", watcher.MaxIssueBodyBytes-len(body)-1)
+	_, checkpointArchives, err := watcher.RenderCheckpointBody(candidate, repo, []int64{9000}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpointArchives) == 0 {
+		t.Fatal("fixture did not generate a checkpoint archive")
+	}
+	issue := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: candidate, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
+	}
+	apiIssue := issueSnapshotJSON(issue)
+	comments := make([]any, 0)
+	var mutationCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/runs/100/attempts/1":
+			// The historical record claims a failed attempt, but the authoritative
+			// API says this run succeeded.
+			writeJSON(w, http.StatusOK, runAttemptFixture(repo.ID, 100, 1, "success"))
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPost:
+			mutationCalls.Add(1)
+			var request struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode comment creation: %v", err)
+			}
+			comment := map[string]any{"id": len(comments) + 1, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"}}
+			comments = append(comments, comment)
+			writeJSON(w, http.StatusCreated, comment)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			mutationCalls.Add(1)
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode issue patch: %v", err)
+			}
+			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodDelete:
+			mutationCalls.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	client := testWatcherClient(t, server.URL, repo)
+	change := watcher.IssueChange{
+		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: issue.Number,
+		Title: "incident", Body: body, PendingRunIDs: []int64{9000}, Archives: checkpointArchives,
+	}
+	for i := range checkpointArchives {
+		if checkpointArchives[i].Marker != change.Archives[i].Marker || checkpointArchives[i].Body != change.Archives[i].Body {
+			t.Fatalf("planned archive %d does not match checkpoint archive", i)
+		}
+	}
+	err = client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{issue})
+	if err == nil || !strings.Contains(err.Error(), "verify failure run 100 attempt 1") {
+		t.Fatalf("applyPlan() error = %v, want authentication failure for checkpoint archive", err)
+	}
+	if mutationCalls.Load() != 0 || len(comments) != 0 {
+		t.Fatalf("mutations/comments = %d/%d, want zero before archive authentication", mutationCalls.Load(), len(comments))
+	}
+}
+
 func TestReadTriggerEventRequiresCompletedAllowlistedWorkflowRun(t *testing.T) {
 	path := t.TempDir() + "/event.json"
 	for _, tc := range []struct {
