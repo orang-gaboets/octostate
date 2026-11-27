@@ -33,7 +33,8 @@ type applyReviewedRepoService struct {
 
 type applyFailureOrgService struct {
 	internalauth.MockOrganizationService
-	err error
+	failUser string
+	err      error
 }
 
 type applyCountRepoService struct {
@@ -46,8 +47,11 @@ func (s *applyCountRepoService) Create(ctx context.Context, owner string, reposi
 	return s.MockRepoService.Create(ctx, owner, repository)
 }
 
-func (s applyFailureOrgService) EditOrgMembership(context.Context, string, string, *gh.Membership) (*gh.Membership, *gh.Response, error) {
-	return nil, nil, s.err
+func (s applyFailureOrgService) EditOrgMembership(_ context.Context, user, _ string, _ *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	if user == s.failUser {
+		return nil, nil, s.err
+	}
+	return &gh.Membership{}, nil, nil
 }
 
 func (s *applyReviewedRepoService) Create(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
@@ -199,20 +203,20 @@ func TestApplyConfigCommandReportsExecutionFailure(t *testing.T) {
 			apiErr := errors.New("request failed for " + secretIdentity + " with " + secretToken + ": private response body")
 			cfg := gitopsconfig.OrganizationConfig{
 				Organization: "org-a",
-				Members:      []gitopsconfig.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+				Members: []gitopsconfig.OrganizationMemberSpec{
+					{Username: "alice", Role: "member"},
+					{Username: "bob", Role: "member"},
+				},
 			}
 			identity, err := gitopsconfig.DesiredStateIdentity(cfg)
 			if err != nil {
 				t.Fatalf("compute desired config identity: %v", err)
 			}
-			plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{{
-				ResourceType: gitopsplan.ActionResourceTypeOrganizationMember,
-				Operation:    gitopsplan.ActionOperationCreate,
-				ResourceID:   "alice",
-				Executable:   true,
-				Message:      "add alice",
-			}}}
-			orgService := applyFailureOrgService{MockOrganizationService: internalauth.MockOrganizationService{}, err: apiErr}
+			plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+				{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "alice", Executable: true, Message: "add alice"},
+				{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "bob", Executable: true, Message: "add bob"},
+			}}
+			orgService := applyFailureOrgService{MockOrganizationService: internalauth.MockOrganizationService{}, failUser: "bob", err: apiErr}
 			client := internalauth.MockClient{
 				OrganizationsService: orgService,
 				ReposService:         internalauth.MockRepoService{},
@@ -266,11 +270,14 @@ func TestApplyConfigCommandReportsExecutionFailure(t *testing.T) {
 			if data.DesiredConfigIdentity != identity || data.Organization != "org-a" {
 				t.Fatalf("failure data lost desired identity or organization: %#v", data)
 			}
-			if data.ExecutionReport.FailedActionIndex != 0 || len(data.ExecutionReport.ActionOutcomes) != 1 || data.ExecutionReport.ActionOutcomes[0].Status != gitopsapply.ActionOutcomeStatusOutcomeUnknown {
+			if data.ExecutionReport.FailedActionIndex != 1 || len(data.ExecutionReport.ActionOutcomes) != 2 || data.ExecutionReport.ActionOutcomes[0].Status != gitopsapply.ActionOutcomeStatusCompleted || data.ExecutionReport.ActionOutcomes[1].Status != gitopsapply.ActionOutcomeStatusOutcomeUnknown {
 				t.Fatalf("unexpected safe execution report: %#v", data.ExecutionReport)
 			}
+			if !reflect.DeepEqual(data.ExecutionReport.ActionOutcomes[0].ConfirmedSteps, []string{"set_membership"}) || data.ExecutionReport.ActionOutcomes[1].UncertainStep != "set_membership" {
+				t.Fatalf("CLI failure report lost confirmed or uncertain steps: %#v", data.ExecutionReport.ActionOutcomes)
+			}
 			for _, output := range []string{out.String(), errBuf.String()} {
-				if strings.Contains(output, "username:alice") || strings.Contains(output, "add alice") || strings.Contains(output, secretIdentity) || strings.Contains(output, secretToken) || strings.Contains(output, "private response body") {
+				if strings.Contains(output, "alice") || strings.Contains(output, "bob") || strings.Contains(output, secretIdentity) || strings.Contains(output, secretToken) || strings.Contains(output, "private response body") {
 					t.Fatalf("CLI output exposed sensitive apply data: %q", output)
 				}
 			}
