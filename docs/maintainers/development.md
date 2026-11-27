@@ -169,6 +169,53 @@ go test ./internal/filereplace ./internal/contributors ./pkg/gitops/config ./pkg
 
 GitHub Actions runs that check on `windows-latest`.
 
+## Optional local mutation testing
+
+Use Gremlins for a bounded local check when changing safety behavior in
+`pkg/gitops/plan`, `pkg/gitops/diff`, `pkg/gitops/apply`, or
+`internal/teamorigin`. It probes Go-level mutations in changed files; it does
+not replace semantic checks for removing a whole guard or changing a default.
+This remains an optional local workflow with no `go.mod` dependency or CI job.
+
+Install the pinned tool once. From the root of a clean disposable checkout,
+make sure the reviewed head's base ref is available and the package tests pass
+with module downloads disabled:
+
+```bash
+set -euo pipefail
+go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+base=origin/main
+env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
+  go test -count=1 ./pkg/gitops/plan ./pkg/gitops/diff ./pkg/gitops/apply ./internal/teamorigin
+
+# Keep the setting local to this disposable checkout.
+git config diff.relative true
+results="$(mktemp -d)"
+
+for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamorigin; do
+  name="${package##*/}"
+  (
+    cd "$package"
+    env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
+      gremlins unleash --dry-run --diff "$base" --workers 2 --test-cpu 1 \
+      --timeout-coefficient 30 "$PWD"
+    env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
+      gremlins unleash --diff "$base" --workers 2 --test-cpu 1 \
+      --timeout-coefficient 30 --output "$results/$name.json" "$PWD"
+  )
+done
+```
+
+The dry run lists runnable and uncovered mutations. In a full run, `KILLED`
+means the package tests failed under a mutation and `LIVED` means they passed.
+Check the command output before counting a kill: compilation, download, and
+test-harness failures are not evidence that a regression test caught a mutant.
+`NOT COVERED`, `NOT VIABLE`, `TIMED OUT`, and `SKIPPED` are separate outcomes;
+timeouts and tool errors are not kills. Stop a pilot after 15 minutes and
+record it as incomplete if it has not finished. Keep manual semantic checks for
+unknown-origin role mismatches, empty-origin normalization, and apply's
+no-write rejection.
+
 ## Optional Graphify
 
 Graphify is an optional local workflow for repo exploration, not a required
