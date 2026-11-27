@@ -1094,6 +1094,7 @@ func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []w
 			preserved[runID] = true
 		}
 		sort.Slice(runIDs, func(i, j int) bool { return runIDs[i] < runIDs[j] })
+		unavailableBodyIDs := make(map[int64]bool)
 		for _, runID := range runIDs {
 			missing, ok := unavailableByID[runID]
 			if !ok {
@@ -1103,6 +1104,32 @@ func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []w
 			current, err = c.ensureMarkedComment(ctx, current, comment.Marker, comment.Body)
 			if err != nil {
 				return fmt.Errorf("record unavailable run %d on open issue #%d: %w", runID, issueNumber, err)
+			}
+			unavailableBodyIDs[runID] = true
+		}
+		if len(unavailableBodyIDs) > 0 {
+			remaining := make([]int64, 0, len(state.PendingRunIDs))
+			for _, runID := range state.PendingRunIDs {
+				if !unavailableBodyIDs[runID] {
+					remaining = append(remaining, runID)
+				}
+			}
+			if len(remaining) != len(state.PendingRunIDs) {
+				body, archives, err := watcher.RenderCheckpointBody(current.Body, c.repo, remaining, watcherAuthoredComments(current.Comments, c.appLogin))
+				if err != nil {
+					return fmt.Errorf("clear unavailable pending runs from issue #%d: %w", issueNumber, err)
+				}
+				if err := c.verifyCheckpointArchives(ctx, nil, archives); err != nil {
+					return fmt.Errorf("verify checkpoint archives for issue #%d: %w", issueNumber, err)
+				}
+				current, err = c.ensureArchiveComments(ctx, current, archives)
+				if err != nil {
+					return fmt.Errorf("preserve checkpoint archives on issue #%d: %w", issueNumber, err)
+				}
+				current, err = c.patchIssue(ctx, current, watcher.IssueChange{Title: current.Title, Body: body})
+				if err != nil {
+					return fmt.Errorf("clear unavailable pending runs from issue #%d: %w", issueNumber, err)
+				}
 			}
 		}
 		if _, err := c.removePendingCheckpointComments(ctx, current, state.WorkflowID, preserved); err != nil {

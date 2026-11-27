@@ -673,38 +673,13 @@ func TestClosedIssuesRejectWatcherCommentAndCheckpointMutations(t *testing.T) {
 	}
 }
 
-func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) {
-	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
-	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
-	failure := testFailureAttempt(100, 100, started)
-	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
-		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
-		Failures: []watcher.RunAttempt{failure}, Latest: failure,
-	}, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	event := triggerEvent{RunID: 101, WorkflowName: "CI", IssueNumber: 7}
-	missing := unavailableRun{Event: event, StatusCode: http.StatusGone}
-	pendingMarker, err := pendingCheckpointMarker(1, []int64{event.RunID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	issue := watcher.IssueSnapshot{
-		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
-		Body: body, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel},
-		Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: pendingMarker}},
-	}
-	apiIssue := issueSnapshotJSON(issue)
-	comments := []any{map[string]any{
-		"id": 1, "body": pendingMarker, "user": map[string]any{"login": expectedAppSlug + "[bot]"},
-	}}
-	deleteAttempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func unavailableCheckpointRetryServer(t *testing.T, apiIssue map[string]any, comments *[]any, deleteAttempts, issuePatches *int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
 		switch {
 		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
-			writeJSON(w, http.StatusOK, comments)
+			writeJSON(w, http.StatusOK, *comments)
 		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
 			writeJSON(w, http.StatusOK, apiIssue)
 		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
@@ -714,23 +689,68 @@ func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) 
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Errorf("decode comment request: %v", err)
 			}
-			comments = append(comments, map[string]any{
+			created := map[string]any{
 				"id": 2, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"},
-			})
-			writeJSON(w, http.StatusCreated, comments[len(comments)-1])
+			}
+			*comments = append(*comments, created)
+			writeJSON(w, http.StatusCreated, created)
 		case r.Method == http.MethodDelete && path == "repos/orang-gaboets/octostate/issues/comments/1":
-			deleteAttempts++
-			if deleteAttempts == 1 {
+			*deleteAttempts = *deleteAttempts + 1
+			if *deleteAttempts == 1 {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "temporary deletion failure"})
 				return
 			}
-			comments = comments[1:]
+			*comments = (*comments)[1:]
 			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode issue patch: %v", err)
+			}
+			*issuePatches = *issuePatches + 1
+			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
+			writeJSON(w, http.StatusOK, apiIssue)
 		default:
 			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
 			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
 		}
 	}))
+}
+
+func TestCompleteOpenPendingRunsClearsUnavailableBodyCheckpointAndRetriesCleanup(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	failure := testFailureAttempt(100, 100, started)
+	body, _, err := watcher.RenderBody(repo, watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing,
+		Failures: []watcher.RunAttempt{failure}, Latest: failure, PendingRunIDs: []int64{101},
+	}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body += "\n\nHuman investigation notes.\n"
+	event := triggerEvent{RunID: 101, WorkflowName: "CI", IssueNumber: 7}
+	missing := unavailableRun{Event: event, StatusCode: http.StatusGone}
+	pendingMarker, err := pendingCheckpointMarker(1, []int64{event.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]", Title: "incident",
+		Body: body, Labels: []string{watcher.ManagedLabel, watcher.FailingLabel, "human-label"},
+		Comments: []watcher.CommentSnapshot{{ID: 1, AuthorLogin: expectedAppSlug + "[bot]", Body: pendingMarker}},
+	}
+	apiIssue := issueSnapshotJSON(issue)
+	comments := []any{map[string]any{
+		"id": 1, "body": pendingMarker, "user": map[string]any{"login": expectedAppSlug + "[bot]"},
+	}}
+	deleteAttempts := 0
+	issuePatches := 0
+	server := unavailableCheckpointRetryServer(t, apiIssue, &comments, &deleteAttempts, &issuePatches)
 	defer server.Close()
 	client := testWatcherClient(t, server.URL, repo)
 
@@ -738,6 +758,21 @@ func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) 
 	if err == nil || deleteAttempts != 1 || len(comments) != 2 {
 		t.Fatalf("first checkpoint cleanup error/deletes/comments = %v/%d/%d; want failure, one attempt, and both markers", err, deleteAttempts, len(comments))
 	}
+	firstBody, ok := apiIssue["body"].(string)
+	if !ok {
+		t.Fatal("issue body after checkpoint cleanup is not a string")
+	}
+	firstState, err := watcher.RenderManagedBodyState(firstBody, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(firstState.PendingRunIDs) != 0 {
+		t.Fatalf("unavailable run remains checkpointed in the body after its marker was written: %v", firstState.PendingRunIDs)
+	}
+	if !strings.Contains(firstBody, "Human investigation notes.") {
+		t.Fatal("clearing the checkpoint removed human-owned body text")
+	}
+	issue.Body = firstBody
 	issue.Comments = append(issue.Comments, watcher.CommentSnapshot{
 		ID: 2, AuthorLogin: expectedAppSlug + "[bot]", Body: unavailableRunComment(1, missing).Body,
 	})
@@ -745,8 +780,22 @@ func TestCompleteOpenPendingRunsRetriesCheckpointCleanupAfterNoop(t *testing.T) 
 	if err != nil {
 		t.Fatalf("retry checkpoint cleanup after noop plan: %v", err)
 	}
-	if deleteAttempts != 2 || len(comments) != 1 || comments[0].(map[string]any)["body"] != unavailableRunComment(1, missing).Body {
-		t.Fatalf("checkpoint comments after retry = %#v with %d deletes; want only the visible unavailable marker", comments, deleteAttempts)
+	if deleteAttempts != 2 || issuePatches != 1 || len(comments) != 1 || comments[0].(map[string]any)["body"] != unavailableRunComment(1, missing).Body {
+		t.Fatalf("checkpoint comments after retry = %#v with %d deletes and %d issue patches; want only the visible unavailable marker", comments, deleteAttempts, issuePatches)
+	}
+	updated, err := client.getIssueSnapshot(context.Background(), issue.Number)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameLabels(updated.Labels, []string{watcher.ManagedLabel, watcher.FailingLabel, "human-label"}) {
+		t.Fatalf("labels after checkpoint cleanup = %v", updated.Labels)
+	}
+	events, deferred, err := pendingRunEvents(repo, expectedAppSlug+"[bot]", []watcher.IssueSnapshot{updated})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 || len(deferred) != 0 {
+		t.Fatalf("pending events after cleanup = %#v/%#v, want none", events, deferred)
 	}
 }
 
