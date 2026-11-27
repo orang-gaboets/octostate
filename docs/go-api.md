@@ -336,6 +336,43 @@ required migration communication. This documentation work does not remove it;
 consumers needing construction errors should use `NewPAT`, as recommended by the
 `New` deprecation comment.
 
+### Automated compatibility check
+
+The advisory CI job `Go API compatibility (advisory)` runs a pinned
+[`gorelease`](https://pkg.go.dev/golang.org/x/exp/cmd/gorelease) against the
+latest stable release in the module's major line. To reproduce it locally:
+
+```bash
+gh release list --repo orang-gaboets/octostate --exclude-drafts --exclude-pre-releases \
+  --limit 1000 --json tagName --jq '.[].tagName' |
+  bash .github/scripts/select-api-baseline.sh v1
+go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261109185158-a52e3aef5920 -base=<selected tag>
+```
+
+- **Baseline:** the highest `vMAJOR.MINOR.PATCH` tag among published releases,
+  excluding drafts and prereleases, sorted semantically. The major comes from
+  the module path (`v1` today). If no release qualifies or the release list
+  cannot be read, the job fails with a distinct error instead of comparing
+  against nothing. `gorelease` downloads the baseline through the normal Go
+  module mechanism (`GOPROXY`).
+- **Coverage:** `gorelease` discovers packages itself and compares every
+  package outside an `internal` directory except `main` packages. That
+  includes non-`main` packages under `cmd/**`, so no package list is
+  maintained.
+- **Limits:** `gorelease` compares exported Go source API only. It does not
+  detect behavior, CLI, JSON, or snapshot changes. It type-checks for the
+  runner's platform, so declarations behind other build constraints are not
+  compared.
+- **Advisory:** the job uses `continue-on-error`, so a failure is visible on
+  the PR without failing the workflow. It is skipped on Release Please PRs,
+  because those change no Go API and the release auto-merge gate treats any
+  failed check as blocking. Approved incompatibilities, such as #372 above,
+  are reported until a release containing them becomes the baseline. Reviewers
+  acknowledge them in the PR; there is no allowlist or bypass. Any other
+  incompatibility needs investigation. Making the check blocking, and how it
+  treats an intentional major-version change (new module path, so a new major
+  line with no baseline yet), are separate maintainer decisions.
+
 ## Module downloads and source archives
 
 Normal Go module management may place downloaded module source, documentation,

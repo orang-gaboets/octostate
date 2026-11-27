@@ -163,6 +163,8 @@ jobs:
           bash -n .github/scripts/git-remote-auth.test.sh
           bash -n .github/scripts/live-integration.sh
           bash -n .github/scripts/live-integration.test.sh
+          bash -n .github/scripts/select-api-baseline.sh
+          bash -n .github/scripts/select-api-baseline.test.sh
           bash -n .github/scripts/verify-trusted-main.sh
           bash -n .github/scripts/verify-trusted-main.test.sh
 
@@ -178,6 +180,8 @@ jobs:
           .github/scripts/git-remote-auth.test.sh
           .github/scripts/live-integration.sh
           .github/scripts/live-integration.test.sh
+          .github/scripts/select-api-baseline.sh
+          .github/scripts/select-api-baseline.test.sh
           .github/scripts/verify-trusted-main.sh
           .github/scripts/verify-trusted-main.test.sh
 
@@ -192,6 +196,65 @@ jobs:
 
       - name: Test live integration harness
         run: bash .github/scripts/live-integration.test.sh
+
+      - name: Test API baseline selection
+        run: bash .github/scripts/select-api-baseline.test.sh
+
+  api-compatibility:
+    name: Go API compatibility (advisory)
+    runs-on: ubuntu-latest
+    # Advisory until maintainers decide on enforcement; see docs/go-api.md.
+    # Release Please PRs change no Go API, and the auto-merge gate treats any
+    # failed check as blocking, so the expected advisory result must not hold
+    # back the release that advances the baseline.
+    if: github.head_ref != 'release-please--branches--main'
+    continue-on-error: true
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Select API baseline
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          module_path=$(go list -m)
+          major=v1
+          if [[ "$module_path" =~ /(v[0-9]+)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+          fi
+          tags=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1000 --json tagName --jq '.[].tagName') || {
+            echo '::error::could not list published releases to select an API baseline'
+            exit 1
+          }
+          baseline=$(printf '%s\n' "$tags" | bash .github/scripts/select-api-baseline.sh "$major") || {
+            echo "::error::no stable ${major} release is available as an API baseline"
+            exit 1
+          }
+          echo "Comparing against ${baseline}"
+          echo "version=${baseline}" >> "$GITHUB_OUTPUT"
+
+      - name: Compare exported Go API with gorelease
+        env:
+          BASELINE: ${{ steps.baseline.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261109185158-a52e3aef5920 -base="$BASELINE"; then
+            echo "::warning::gorelease reported incompatible changes against ${BASELINE}, or could not complete. Review the output above; approved incompatibilities must be acknowledged in review (docs/go-api.md)."
+            exit 1
+          fi
 
   build:
     runs-on: ubuntu-latest
