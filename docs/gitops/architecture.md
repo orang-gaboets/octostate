@@ -117,6 +117,31 @@ Current collector concurrency limits:
   unresolved-only reports set `has_unresolved` while `has_changes` remains
   action-only
 
+### Plan/diff parity boundary
+
+When both builders have equivalent normalized desired and actual-state
+evidence, their reconciliation decisions should agree for team membership,
+organization-member roles and availability, team repository permissions, and
+invitation identity and satisfaction. The cross-package parity tests compare
+`resource_type`, `operation`, `resource_id`, and `executable` as a multiset;
+they also assert each builder's expected actions, relevant field changes, and
+unresolved membership summary independently. Action ordering and diagnostic
+messages remain package-specific.
+
+Some differences are intentional because the builders have different inputs:
+- `plan` resolves managed template dependencies from live state; offline `diff`
+  does not reproduce that dependency graph or its ordering.
+- `plan` resolves numeric invite user IDs through the live user service;
+  `diff` uses the snapshot's `resolved_invite_user_ids_by_username` mapping.
+- Repository availability comes from live collection in `plan` and snapshot
+  presence plus desired-state creatability in `diff`. Parity applies only to
+  the evidence both paths can determine, including the #217 presence and
+  creatability cases.
+
+Unexpected differences in cases with equivalent evidence should be reported
+for maintainer review rather than hidden as an intentional exception or fixed
+by changing production behavior in a parity-test change.
+
 ### `pkg/gitops/syncfromlive`
 - Builds desired-state proposals from live GitHub state
 - Powers bootstrap, adopt, and materialize flows
