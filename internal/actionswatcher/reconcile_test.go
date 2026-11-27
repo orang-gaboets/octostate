@@ -752,6 +752,43 @@ func TestRenderBodyArchivesOverflowWithoutDroppingFailureEvidence(t *testing.T) 
 	}
 }
 
+func TestRenderBodyArchiveIndexStableForTiedTimestamps(t *testing.T) {
+	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
+	for i := 1; i <= 10; i++ {
+		failure := attempt(int64(i+7), i, "CI", "push", "main", "failure", started)
+		failure.FailedJobs = []string{strings.Repeat("x", 6_000)}
+		state.Failures = append(state.Failures, failure)
+	}
+	state.Latest = state.Failures[len(state.Failures)-1]
+
+	body, archives, err := RenderBody(testRepository(), state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 3 {
+		chunkSizes := make([]int, len(archives))
+		for i, archive := range archives {
+			chunkSizes[i] = len(archive.Attempts)
+		}
+		t.Fatalf("RenderBody() returned %d archives with chunk sizes %v, want 3 for the regression fixture", len(archives), chunkSizes)
+	}
+
+	comments := make([]CommentSnapshot, 0, len(archives))
+	for i, archive := range archives {
+		comments = append(comments, CommentSnapshot{
+			ID: int64(i + 1), AuthorLogin: "actions-watcher[bot]", Body: archive.Body,
+		})
+	}
+	readback, duplicateArchives, err := RenderBody(testRepository(), state, body, comments)
+	if err != nil {
+		t.Fatalf("RenderBody() after posting generated archives: %v", err)
+	}
+	if readback != body || len(duplicateArchives) != 0 {
+		t.Fatalf("archive readback was not stable: body_same=%t duplicate_archives=%d", readback == body, len(duplicateArchives))
+	}
+}
+
 func TestRenderBodyArchiveIndexStableWhenLateFailureOverflows(t *testing.T) {
 	started := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
 	state := IncidentState{WorkflowID: 100, WorkflowName: "CI", Status: StatusFailing}
