@@ -745,12 +745,46 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_equal "write", token_step.fetch("with").fetch("permission-pull-requests")
   end
 
+  def test_build_provenance_is_attested_and_verified_before_upload
+    names = @steps.map { |step| step["name"] }
+    build = names.index("Build release artifacts")
+    attest = names.index("Attest release archive build provenance")
+    verify = names.index("Verify release archive build provenance")
+    upload = names.index("Upload and verify release artifacts")
+    refute_nil attest
+    refute_nil verify
+    assert_operator build, :<, attest
+    assert_operator attest, :<, verify
+    assert_operator verify, :<, upload
+
+    attest_step = required_step("Attest release archive build provenance")
+    assert_match(/\Aactions\/attest@[0-9a-f]{40}\z/, attest_step.fetch("uses"))
+    assert_equal "dist/octostate_*.tar.gz\ndist/octostate_*.zip\n", attest_step.fetch("with").fetch("subject-path")
+    [attest_step, required_step("Verify release archive build provenance")].each do |step|
+      assert_equal "steps.release.outputs.should_package == 'true'", step.fetch("if")
+    end
+
+    script = required_step("Verify release archive build provenance").fetch("run")
+    assert_includes script, '--signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release-please.yml"'
+    assert_includes script, '--source-digest "${SOURCE_DIGEST}"'
+    assert_includes script, "--deny-self-hosted-runners"
+
+    assert_equal(
+      {
+        "contents" => "write", "issues" => "write", "pull-requests" => "write",
+        "id-token" => "write", "attestations" => "write"
+      },
+      @workflow.fetch("jobs").fetch("release-please").fetch("permissions")
+    )
+  end
+
   def test_workflow_shell_blocks_parse_as_bash
     names = [
       "Check out the exact release tag",
       "Upload and verify release artifacts",
       "Verify Release Please Git authentication",
-      "Validate retry inputs"
+      "Validate retry inputs",
+      "Verify release archive build provenance"
     ]
     names.each do |name|
       script = required_step(name).fetch("run")

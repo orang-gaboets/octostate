@@ -58,6 +58,28 @@ $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actual -ne $expected) { throw "checksum mismatch for $archive" }
 ```
 
+Releases built after build provenance was added also carry a signed GitHub
+build attestation for each archive. With the GitHub CLI, check that an archive
+was built by Octostate's release workflow on a GitHub-hosted runner:
+
+```bash
+gh attestation verify "$archive" \
+  --repo orang-gaboets/octostate \
+  --signer-workflow orang-gaboets/octostate/.github/workflows/release-please.yml \
+  --deny-self-hosted-runners
+```
+
+This complements the checksum. The checksum shows that the archive matches the
+release's `checksums.txt`. `gh release verify v<version>` shows that the
+immutable release binds that tag to its commit and asset digests. The build
+attestation shows which workflow run built the archive. Its recorded source
+commit is the commit the release workflow ran on. For a normal release that is
+usually the release commit; for a maintainer retry it is the `main` commit that
+ran the retry, which then builds the tag after checking that the tag targets
+the expected release commit. An attestation does not prove that the build is
+reproducible or free of vulnerabilities. Earlier releases, including v1.3.0,
+have no build attestation.
+
 If you prefer to build from source, install a pinned release with Go:
 
 ```bash

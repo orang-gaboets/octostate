@@ -32,6 +32,14 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow defaults; id-token and
+    # attestations are only for the build provenance step.
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      attestations: write
     steps:
       - name: Validate retry inputs
         if: github.event_name == 'workflow_dispatch'
@@ -240,6 +248,31 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: bash .github/scripts/build-release-artifacts.sh "${RELEASE_TAG}" dist
+
+      - name: Attest release archive build provenance
+        if: steps.release.outputs.should_package == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/octostate_*.tar.gz
+            dist/octostate_*.zip
+
+      - name: Verify release archive build provenance
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_DIGEST: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(find dist -maxdepth 1 -type f \( -name 'octostate_*.tar.gz' -o -name 'octostate_*.zip' \) -print | sort)
+          [[ "${#assets[@]}" -eq 5 ]] || { echo 'expected exactly five release archives' >&2; exit 1; }
+          for asset in "${assets[@]}"; do
+            gh attestation verify "${asset}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release-please.yml" \
+              --source-digest "${SOURCE_DIGEST}" \
+              --deny-self-hosted-runners
+          done
 
       - name: Upload and verify release artifacts
         if: steps.release.outputs.should_package == 'true'
