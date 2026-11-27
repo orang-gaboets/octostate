@@ -184,7 +184,9 @@ with module downloads disabled:
 ```bash
 set -euo pipefail
 unset OCTOSTATE_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN
-go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+tool_dir="$(mktemp -d)"
+GOBIN="$tool_dir" go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+gremlins_bin="$tool_dir/gremlins"
 base=origin/main
 # For historical replays, use the reviewed change's recorded base commit.
 env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
@@ -212,9 +214,9 @@ for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamori
   name="${package##*/}"
   (
     cd "$package"
-    gremlins unleash --dry-run --diff "$base" --workers 2 \
+    "$gremlins_bin" unleash --dry-run --diff "$base" --workers 2 \
       --timeout-coefficient 30 "$PWD"
-    gremlins unleash --diff "$base" --workers 2 \
+    "$gremlins_bin" unleash --diff "$base" --workers 2 \
       --timeout-coefficient 30 --output "$results/$name.json" "$PWD"
   )
 done
@@ -223,20 +225,21 @@ done
 The loop skips packages with no diff because Gremlins v0.6.0 treats an empty
 diff as if every file changed.
 
-The dry run lists runnable and uncovered mutations. In a full run, `KILLED`
-means the test command exited with code 1 and `LIVED` means it passed. A `KILLED`
-status can also come from a compilation error, invalid flag, or test-harness
-failure: Gremlins v0.6.0 records status and location but discards the test
-output. Reproduce safety-relevant mutations in a disposable copy and run the
-owning test; mark a kill unverified until the expected assertion is observed.
-`NOT VIABLE` is a build failure, `TIMED OUT` is a timeout, `NOT COVERED` has no
-test coverage, and `SKIPPED` falls outside the selected diff. None of these
-statuses is a kill. Keep `--test-cpu` at its default: v0.6.0 passes nonzero
-values as one malformed `go test` argument. Use `GOMAXPROCS=1` to limit test
-parallelism instead. Stop a pilot after 15 minutes and record it as incomplete
-if it has not finished. Keep manual semantic checks for unknown-origin role
-mismatches, empty-origin normalization, deterministic duplicate selection,
-and apply's no-write rejection.
+The dry run lists runnable and uncovered mutations. Gremlins v0.6.0 reports
+process outcomes: exit code 1 is `KILLED`, exit code 2 is `NOT VIABLE`, a test
+timeout is `TIMED OUT`, and exit code 0, other exit codes, or failure to start
+the test command is `LIVED`. It records status and location but discards test
+output, so these statuses do not prove an expected assertion ran. For example,
+compilation or harness failures can be labeled `KILLED` when `go test` exits 1.
+Reproduce safety-relevant mutations in a disposable copy and run the owning
+test; count a regression detection only after observing the expected assertion.
+`NOT COVERED` means no tests cover the mutated location, and `SKIPPED` falls
+outside the selected diff. Neither is a kill. Keep `--test-cpu` at its default:
+v0.6.0 passes nonzero values as one malformed `go test` argument. Use
+`GOMAXPROCS=1` to limit test parallelism instead. Stop a pilot after 15 minutes
+and record it as incomplete if it has not finished. Keep manual semantic
+checks for unknown-origin role mismatches, empty-origin normalization,
+deterministic duplicate selection, and apply's no-write rejection.
 
 ## Optional Graphify
 
