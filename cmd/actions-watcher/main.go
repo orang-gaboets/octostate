@@ -105,7 +105,7 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer, now 
 		return fmt.Errorf("preserve deferred workflow run events: %w", err)
 	}
 	attemptCount := len(attempts)
-	refreshed, err := client.refreshUnavailableArchiveAttempts(ctx, plan, issues)
+	refreshed, err := client.refreshUnavailableArchiveAttempts(ctx, plan)
 	if err != nil {
 		return fmt.Errorf("refresh archived workflow attempts: %w", err)
 	}

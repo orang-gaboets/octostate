@@ -1320,6 +1320,362 @@ func TestRunRefreshesUnavailableFailureBeforeArchiving(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // The route branches cover the full partial-write retry lifecycle.
+func TestRunRetriesAfterArchiveWriteBeforeFinalBodyPatch(t *testing.T) {
+	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	oldFailures := make([]watcher.RunAttempt, 0, 70)
+	for i := range 70 {
+		failure := testFailureAttempt(int64(100+i), i+1, started.Add(time.Duration(i)*time.Minute))
+		failure.HeadSHA = strings.Repeat("o", 800)
+		oldFailures = append(oldFailures, failure)
+	}
+	cursor := testFailureAttempt(900, 900, oldFailures[len(oldFailures)-1].StartedAt.Add(time.Hour))
+	cursor.Conclusion = "success"
+	cursor.FailedJobs = nil
+	state := watcher.IncidentState{
+		WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusRecovered,
+		Failures: oldFailures, Latest: cursor, Recovery: &cursor,
+	}
+	body, oldArchives, err := watcher.RenderBody(repo, state, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(oldArchives) == 0 {
+		t.Fatal("fixture did not create a pre-existing archive index")
+	}
+	if len(body) < watcher.MaxIssueBodyBytes-4096 {
+		body += "\n" + strings.Repeat("m", watcher.MaxIssueBodyBytes-len(body)-4096-1)
+	}
+	if len(body) >= watcher.MaxIssueBodyBytes {
+		t.Fatalf("initial issue body is %d bytes, want below %d", len(body), watcher.MaxIssueBodyBytes)
+	}
+
+	newFailures := make([]watcher.RunAttempt, 0, 60)
+	newStarted := cursor.CompletedAt.Add(time.Minute)
+	for i := range 60 {
+		failure := testFailureAttempt(int64(1000+i), 1000+i, newStarted.Add(time.Duration(i)*time.Minute))
+		failure.HeadSHA = strings.Repeat("n", 800)
+		newFailures = append(newFailures, failure)
+	}
+	success := testFailureAttempt(1060, 1060, newFailures[len(newFailures)-1].CompletedAt.Add(time.Minute))
+	success.Conclusion = "success"
+	success.FailedJobs = nil
+	sourceAttempts := append(append([]watcher.RunAttempt(nil), newFailures...), success)
+
+	issue := watcher.IssueSnapshot{
+		Number: 7, State: "open", AuthorLogin: expectedAppSlug + "[bot]",
+		Title: "ci(actions): investigate CI workflow failures on main", Body: body,
+		Labels: []string{watcher.ManagedLabel, watcher.RecoveredLabel},
+	}
+	comments := make([]any, 0, len(oldArchives))
+	for i, archive := range oldArchives {
+		commentID := int64(i + 1)
+		issue.Comments = append(issue.Comments, watcher.CommentSnapshot{
+			ID: commentID, AuthorLogin: expectedAppSlug + "[bot]", Body: archive.Body,
+		})
+		comments = append(comments, map[string]any{
+			"id": commentID, "body": archive.Body,
+			"user": map[string]any{"login": expectedAppSlug + "[bot]"},
+		})
+	}
+	initialArchiveBodies := archiveCommentBodies(comments)
+	plan, err := watcher.Reconcile(repo, expectedAppSlug+"[bot]", sourceAttempts, []watcher.IssueSnapshot{issue}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Changes) != 1 || len(plan.Changes[0].Archives) == 0 {
+		t.Fatalf("fixture plan = %#v; want one update with new archives", plan.Changes)
+	}
+	change := plan.Changes[0]
+	containsNewerFailure := false
+	for _, archive := range change.Archives {
+		for _, failure := range archive.Attempts {
+			if failure.StartedAt.After(cursor.StartedAt) {
+				containsNewerFailure = true
+			}
+		}
+	}
+	if !containsNewerFailure {
+		t.Fatal("planned archives do not contain a failure newer than the persisted ordering cursor")
+	}
+	if change.FailureCount != len(oldFailures)+len(newFailures) {
+		t.Fatalf("planned failure count = %d, want %d", change.FailureCount, len(oldFailures)+len(newFailures))
+	}
+	expectedArchiveBodies := append([]string(nil), initialArchiveBodies...)
+	expectedArchiveMarkers := make(map[string]bool, len(oldArchives)+len(change.Archives))
+	for _, comment := range comments {
+		value, _ := comment.(map[string]any)
+		archive, _ := value["body"].(string)
+		expectedArchiveMarkers[strings.SplitN(archive, "\n", 2)[0]] = true
+	}
+	for _, archive := range change.Archives {
+		expectedArchiveBodies = append(expectedArchiveBodies, archive.Body)
+		expectedArchiveMarkers[archive.Marker] = true
+	}
+
+	attemptsByID := make(map[int64]watcher.RunAttempt, len(oldFailures)+len(sourceAttempts)+1)
+	attemptsByID[cursor.RunID] = cursor
+	for _, attempt := range append(append([]watcher.RunAttempt(nil), oldFailures...), sourceAttempts...) {
+		attemptsByID[attempt.RunID] = attempt
+	}
+	runJSON := func(attempt watcher.RunAttempt) map[string]any {
+		value := runAttemptFixture(repo.ID, attempt.RunID, attempt.Attempt, attempt.Conclusion)
+		value["run_number"] = attempt.RunNumber
+		value["run_started_at"] = attempt.StartedAt.Format(time.RFC3339)
+		value["updated_at"] = attempt.CompletedAt.Format(time.RFC3339)
+		value["head_sha"] = attempt.HeadSHA
+		value["html_url"] = attempt.HTMLURL
+		return value
+	}
+	runRows := make([]any, 0, len(sourceAttempts))
+	for _, attempt := range sourceAttempts {
+		runRows = append(runRows, runJSON(attempt))
+	}
+	apiIssue := issueSnapshotJSON(issue)
+	var mutationCalls atomic.Int32
+	var nextCommentID = int64(len(oldArchives) + 1)
+	failFinalBodyPatch := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
+		switch {
+		case r.Method == http.MethodGet && path == "installation/repositories":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 1, "repositories": []any{map[string]any{"id": repo.ID, "full_name": expectedRepository}}})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/actions/workflows":
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": 7, "workflows": workflowFixtures()})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/workflows/") && strings.HasSuffix(path, "/runs"):
+			if strings.Contains(path, "/workflows/1/") {
+				writeJSON(w, http.StatusOK, map[string]any{"total_count": len(runRows), "workflow_runs": runRows})
+			} else {
+				writeJSON(w, http.StatusOK, map[string]any{"total_count": 0, "workflow_runs": []any{}})
+			}
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/") && strings.HasSuffix(path, "/jobs"):
+			parts := strings.Split(path, "/")
+			runID, _ := strconv.ParseInt(parts[5], 10, 64)
+			attempt := attemptsByID[runID]
+			jobs := []any{}
+			if attempt.Conclusion == "failure" {
+				jobs = []any{map[string]any{"name": attempt.FailedJobs[0], "conclusion": "failure"}}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"total_count": len(jobs), "jobs": jobs})
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/") && strings.Contains(path, "/attempts/"):
+			parts := strings.Split(path, "/")
+			runID, _ := strconv.ParseInt(parts[5], 10, 64)
+			attempt := attemptsByID[runID]
+			if attempt.RunID == 0 {
+				t.Errorf("unexpected workflow attempt request for run %d", runID)
+				writeJSON(w, http.StatusNotFound, map[string]any{"message": "unknown attempt"})
+				return
+			}
+			writeJSON(w, http.StatusOK, runJSON(attempt))
+		case r.Method == http.MethodGet && strings.HasPrefix(path, "repos/orang-gaboets/octostate/actions/runs/"):
+			parts := strings.Split(path, "/")
+			runID, _ := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+			attempt, ok := attemptsByID[runID]
+			if !ok {
+				t.Errorf("unexpected workflow run request for run %d", runID)
+				writeJSON(w, http.StatusNotFound, map[string]any{"message": "unknown run"})
+				return
+			}
+			writeJSON(w, http.StatusOK, runJSON(attempt))
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/labels":
+			writeJSON(w, http.StatusOK, labelObjects([]string{watcher.ManagedLabel, watcher.FailingLabel, watcher.RecoveredLabel}))
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues":
+			writeJSON(w, http.StatusOK, []any{apiIssue})
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			writeJSON(w, http.StatusOK, comments)
+		case r.Method == http.MethodGet && path == "repos/orang-gaboets/octostate/issues/7":
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodPost && path == "repos/orang-gaboets/octostate/issues/7/comments":
+			mutationCalls.Add(1)
+			var request struct {
+				Body string `json:"body"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode comment creation: %v", err)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid comment"})
+				return
+			}
+			comment := map[string]any{"id": nextCommentID, "body": request.Body, "user": map[string]any{"login": expectedAppSlug + "[bot]"}}
+			nextCommentID++
+			comments = append(comments, comment)
+			writeJSON(w, http.StatusCreated, comment)
+		case r.Method == http.MethodPatch && path == "repos/orang-gaboets/octostate/issues/7":
+			mutationCalls.Add(1)
+			var request struct {
+				Title  string   `json:"title"`
+				Body   string   `json:"body"`
+				Labels []string `json:"labels"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode issue patch: %v", err)
+				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "invalid issue patch"})
+				return
+			}
+			if request.Body == change.Body && failFinalBodyPatch {
+				failFinalBodyPatch = false
+				for _, archive := range change.Archives {
+					if !expectedArchiveMarkers[archive.Marker] {
+						t.Errorf("final body PATCH attempted before archive %q was persisted", archive.Marker)
+					}
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "injected final body patch failure"})
+				return
+			}
+			apiIssue["title"], apiIssue["body"], apiIssue["labels"] = request.Title, request.Body, labelObjects(request.Labels)
+			writeJSON(w, http.StatusOK, apiIssue)
+		case r.Method == http.MethodDelete && strings.HasPrefix(path, "repos/orang-gaboets/octostate/issues/comments/"):
+			mutationCalls.Add(1)
+			id, _ := strconv.ParseInt(strings.TrimPrefix(path, "repos/orang-gaboets/octostate/issues/comments/"), 10, 64)
+			for i, raw := range comments {
+				comment, _ := raw.(map[string]any)
+				commentID, _ := strconv.ParseInt(fmt.Sprint(comment["id"]), 10, 64)
+				if commentID == id {
+					comments = append(comments[:i], comments[i+1:]...)
+					break
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected API request: %s %s", r.Method, r.URL.String())
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "unexpected route"})
+		}
+	}))
+	defer server.Close()
+
+	eventPath := t.TempDir() + "/event.json"
+	if err := os.WriteFile(eventPath, []byte(fmt.Sprintf(`{"action":"completed","workflow_run":{"id":%d,"name":"CI"}}`, success.RunID)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{
+		"GITHUB_REPOSITORY": expectedRepository, "GITHUB_REPOSITORY_ID": "99", "GITHUB_EVENT_NAME": "workflow_run",
+		"GITHUB_EVENT_PATH": eventPath, "GITHUB_REF": "refs/heads/main", "GITHUB_API_URL": server.URL,
+		"ACTIONS_WATCHER_TOKEN": "installation-token", "ACTIONS_WATCHER_APP_SLUG": expectedAppSlug,
+		"ACTIONS_WATCHER_ACTIVATED_AT": "2026-11-24T00:00:00Z",
+	}
+	var stdout bytes.Buffer
+	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return now })
+	if err == nil || !strings.Contains(err.Error(), "injected final body patch failure") {
+		t.Fatalf("first run() error = %v, want injected final body PATCH failure", err)
+	}
+	bodyAfterFirstRun := apiIssue["body"].(string)
+	commentsAfterFirstRun := append([]any(nil), comments...)
+	archivesAfterFirstRun := archiveCommentBodies(commentsAfterFirstRun)
+	if !reflect.DeepEqual(archivesAfterFirstRun, expectedArchiveBodies) {
+		t.Fatalf("archives after partial write = %d bodies, want %d in stable order", len(archivesAfterFirstRun), len(expectedArchiveBodies))
+	}
+
+	values["GITHUB_EVENT_NAME"] = "schedule"
+	stdout.Reset()
+	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return now.Add(time.Hour) })
+	if err != nil {
+		t.Fatalf("retry run() error = %v", err)
+	}
+	if bodyAfterFirstRun != body {
+		t.Fatal("first partial write changed the issue body before finalization")
+	}
+	pendingMarker, err := pendingCheckpointMarker(1, []int64{success.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundPendingMarker := false
+	for _, raw := range commentsAfterFirstRun {
+		comment, _ := raw.(map[string]any)
+		commentBody, _ := comment["body"].(string)
+		if commentBody == pendingMarker {
+			foundPendingMarker = true
+			break
+		}
+	}
+	if !foundPendingMarker {
+		t.Fatal("first partial write did not retain the pending run marker")
+	}
+	if apiIssue["body"] != change.Body {
+		t.Fatal("retry did not persist the complete planned body")
+	}
+	finalBody := apiIssue["body"].(string)
+	totalFailures := len(oldFailures) + len(newFailures)
+	for _, want := range []string{
+		fmt.Sprintf("Total distinct failed attempts: %d", totalFailures),
+		"First failure: " + oldFailures[0].StartedAt.UTC().Format(time.RFC3339),
+		"Latest failure: " + newFailures[len(newFailures)-1].StartedAt.UTC().Format(time.RFC3339),
+	} {
+		if !strings.Contains(finalBody, want) {
+			t.Errorf("final body is missing summary %q", want)
+		}
+	}
+	for _, failure := range append(append([]watcher.RunAttempt(nil), oldFailures...), newFailures...) {
+		needle := fmt.Sprintf("run ID %d, attempt %d", failure.RunID, failure.Attempt)
+		found := strings.Contains(finalBody, needle)
+		for _, archiveBody := range archiveCommentBodies(comments) {
+			found = found || strings.Contains(archiveBody, needle)
+		}
+		if !found {
+			t.Errorf("failure attempt %d/%d is missing from body and archive comments", failure.RunID, failure.Attempt)
+		}
+	}
+	if !reflect.DeepEqual(archiveCommentBodies(comments), archivesAfterFirstRun) {
+		t.Fatal("retry changed archive bodies or ordering")
+	}
+	for _, raw := range comments {
+		comment, _ := raw.(map[string]any)
+		if strings.Contains(comment["body"].(string), pendingCheckpointPrefix) {
+			t.Fatalf("successful retry retained pending marker %q", comment["body"])
+		}
+	}
+	finalState, err := watcher.RenderManagedBodyState(finalBody, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalState.Status != watcher.StatusRecovered || finalState.Latest.RunID != success.RunID || finalState.Recovery == nil || finalState.Recovery.RunID != success.RunID {
+		t.Fatalf("final recovery state = %#v, want success run %d", finalState, success.RunID)
+	}
+	archiveSnapshots := make([]watcher.CommentSnapshot, 0)
+	for _, raw := range comments {
+		comment, _ := raw.(map[string]any)
+		archiveBody, _ := comment["body"].(string)
+		if strings.Contains(archiveBody, "actions-watcher:archive:v1") {
+			archiveSnapshots = append(archiveSnapshots, watcher.CommentSnapshot{Body: archiveBody})
+		}
+	}
+	rebuiltBody, regeneratedArchives, err := watcher.RenderBodyWithArchiveHistory(repo, finalState, finalBody, archiveSnapshots, nil)
+	if err != nil || rebuiltBody != finalBody || len(regeneratedArchives) != 0 {
+		t.Fatalf("archive index did not reconstruct stable body: regenerated=%d err=%v", len(regeneratedArchives), err)
+	}
+	var result commandResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode successful retry result: %v", err)
+	}
+	if len(result.Changes) != 1 || result.Changes[0].Failures != totalFailures {
+		t.Fatalf("retry result changes = %#v, want one change with %d failures", result.Changes, totalFailures)
+	}
+	mutationsAfterRetry := mutationCalls.Load()
+	stdout.Reset()
+	err = run(context.Background(), func(key string) string { return values[key] }, &stdout, func() time.Time { return now.Add(2 * time.Hour) })
+	if err != nil {
+		t.Fatalf("replay run() error = %v", err)
+	}
+	if mutationCalls.Load() != mutationsAfterRetry || apiIssue["body"] != finalBody || !reflect.DeepEqual(archiveCommentBodies(comments), archivesAfterFirstRun) {
+		t.Fatal("idempotent replay changed issue body, archive comments, or mutation count")
+	}
+}
+
+func archiveCommentBodies(comments []any) []string {
+	var bodies []string
+	for _, raw := range comments {
+		comment, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		body, ok := comment["body"].(string)
+		if ok && strings.Contains(body, "<!-- actions-watcher:archive:v1 ") {
+			bodies = append(bodies, body)
+		}
+	}
+	return bodies
+}
+
 func TestVerifyPersistedAttemptAcceptsMatchingGitHubMetadata(t *testing.T) {
 	const repoID = 99
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1633,7 +1989,7 @@ func TestApplyPlanPersistsNewRunBeforeCheckpointArchiveWrite(t *testing.T) {
 	change := watcher.IssueChange{
 		Action: watcher.ActionUpdate, WorkflowID: 1, WorkflowName: "CI", IssueNumber: 7,
 		Title: "incident", Body: checkpointBody, CurrentStatus: watcher.StatusFailing,
-		PendingRunIDs: []int64{9000},
+		PendingRunIDs: []int64{9000}, Archives: checkpointArchives,
 	}
 	err = client.applyPlan(context.Background(), watcher.Plan{Changes: []watcher.IssueChange{change}}, []watcher.IssueSnapshot{issue})
 	if err == nil || !strings.Contains(err.Error(), "injected archive failure") {
@@ -1672,79 +2028,6 @@ func TestApplyPlanPersistsNewRunBeforeCheckpointArchiveWrite(t *testing.T) {
 		if strings.Contains(comment.Body, pendingCheckpointPrefix) {
 			t.Fatalf("successful retry left transient checkpoint comment: %q", comment.Body)
 		}
-	}
-}
-
-func TestReconcileCheckpointedChangeReplansOverlappingArchiveChunks(t *testing.T) {
-	repo := watcher.RepositoryIdentity{ID: 99, Owner: "orang-gaboets", Name: "octostate"}
-	started := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
-	state := watcher.IncidentState{WorkflowID: 1, WorkflowName: "CI", Status: watcher.StatusFailing}
-	for i := 1; i <= 30; i++ {
-		failure := testFailureAttempt(int64(i), i, started.Add(time.Duration(i)*time.Minute))
-		failure.FailedJobs = []string{fmt.Sprintf("job-%03d-%s", i, strings.Repeat("x", 500))}
-		state.Failures = append(state.Failures, failure)
-	}
-	state.Latest = state.Failures[len(state.Failures)-1]
-	currentBody, currentArchives, err := watcher.RenderBody(repo, state, "", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(currentArchives) != 0 {
-		t.Fatalf("current history unexpectedly produced %d archives", len(currentArchives))
-	}
-	lateFailure := testFailureAttempt(10000, 10000, started.Add(30*time.Second))
-	lateFailure.FailedJobs = []string{strings.Repeat("y", 500)}
-	plannedState := state
-	plannedState.Failures = append(append([]watcher.RunAttempt(nil), state.Failures...), lateFailure)
-	plannedBody, plannedArchives, err := watcher.RenderBody(repo, plannedState, currentBody, nil)
-	if err != nil {
-		t.Fatalf("RenderBody() planned update: %v", err)
-	}
-	if len(plannedArchives) == 0 {
-		t.Fatal("planned update did not archive its expanded failure history")
-	}
-	pendingRunIDs := make([]int64, 300)
-	for i := range pendingRunIDs {
-		pendingRunIDs[i] = int64(20000 + i)
-	}
-	checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(currentBody, repo, pendingRunIDs, nil)
-	if err != nil {
-		t.Fatalf("RenderCheckpointBody(): %v", err)
-	}
-	if len(checkpointArchives) == 0 {
-		t.Fatal("checkpoint did not archive the current failure history")
-	}
-	comments := make([]watcher.CommentSnapshot, 0, len(checkpointArchives))
-	for i, archive := range checkpointArchives {
-		comments = append(comments, watcher.CommentSnapshot{
-			ID: int64(i + 1), AuthorLogin: expectedAppSlug + "[bot]", Body: archive.Body,
-		})
-	}
-	client := &watcherClient{repo: repo, appLogin: expectedAppSlug + "[bot]"}
-	current := watcher.IssueSnapshot{Number: 7, State: "open", Body: checkpointBody, Comments: comments}
-	change := watcher.IssueChange{Body: plannedBody, Archives: plannedArchives}
-	change, err = client.reconcileCheckpointedChange(current, change)
-	if err != nil {
-		t.Fatalf("reconcileCheckpointedChange(): %v", err)
-	}
-	for i, archive := range change.Archives {
-		comments = append(comments, watcher.CommentSnapshot{
-			ID: int64(len(comments) + i + 1), AuthorLogin: expectedAppSlug + "[bot]", Body: archive.Body,
-		})
-	}
-	stateAfterWrite, err := watcher.RenderManagedBodyState(change.Body, repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	readback, newArchives, err := watcher.RenderBodyWithArchiveHistory(repo, stateAfterWrite, change.Body, comments, nil)
-	if err != nil {
-		t.Fatalf("read back final archive set: %v", err)
-	}
-	if readback != change.Body || len(newArchives) != 0 {
-		t.Fatalf("final archive set is not stable: body_same=%t new_archives=%d", readback == change.Body, len(newArchives))
-	}
-	if got := managedSummaryLine(change.Body, "- Total distinct failed attempts:"); got != "- Total distinct failed attempts: 31" {
-		t.Fatalf("final summary = %q, want all 31 failures", got)
 	}
 }
 

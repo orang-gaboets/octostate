@@ -964,12 +964,6 @@ func (c *watcherClient) applyUpdateChange(ctx context.Context, change watcher.Is
 			return watcher.IssueSnapshot{}, err
 		}
 	}
-	if checkpointed {
-		change, err = c.reconcileCheckpointedChange(current, change)
-		if err != nil {
-			return watcher.IssueSnapshot{}, fmt.Errorf("reconcile checkpoint archives for issue #%d: %w", current.Number, err)
-		}
-	}
 	current, err = c.ensureArchiveComments(ctx, current, change.Archives)
 	if err != nil {
 		return watcher.IssueSnapshot{}, fmt.Errorf("issue #%d: %w", change.IssueNumber, err)
@@ -991,69 +985,35 @@ func (c *watcherClient) applyUpdateChange(ctx context.Context, change watcher.Is
 	return updated, nil
 }
 
-func (c *watcherClient) reconcileCheckpointedChange(current watcher.IssueSnapshot, change watcher.IssueChange) (watcher.IssueChange, error) {
-	state, err := watcher.RenderManagedBodyState(change.Body, c.repo)
-	if err != nil {
-		return watcher.IssueChange{}, fmt.Errorf("read planned incident body: %w", err)
-	}
-	body, archives, err := watcher.RenderBodyWithArchiveHistory(
-		c.repo,
-		state,
-		current.Body,
-		watcherAuthoredComments(current.Comments, c.appLogin),
-		change.Archives,
-	)
-	if err != nil {
-		return watcher.IssueChange{}, fmt.Errorf("render final incident body: %w", err)
-	}
-	change.Body = body
-	change.Archives = archives
-	return change, nil
-}
-
 func (c *watcherClient) checkpointPendingRuns(ctx context.Context, current watcher.IssueSnapshot, state watcher.IncidentState, change watcher.IssueChange) (watcher.IssueSnapshot, error) {
-	bodyPendingRunIDs, overflowPendingRunIDs := splitPendingRunIDs(state.PendingRunIDs, change.PendingRunIDs)
-	checkpointBody, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, bodyPendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
+	// Persist run IDs outside the managed body so a failed final body PATCH can
+	// be retried against the last complete incident state and its archive history.
+	knownPendingRunIDs, err := pendingRunIDs(c.appLogin, pendingIssueState{issue: current, state: state})
 	if err != nil {
-		return watcher.IssueSnapshot{}, fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
+		return watcher.IssueSnapshot{}, fmt.Errorf("read existing pending runs from issue #%d: %w", current.Number, err)
 	}
-	pendingInBody := make(map[int64]bool, len(state.PendingRunIDs))
-	for _, runID := range state.PendingRunIDs {
-		pendingInBody[runID] = true
+	known := make(map[int64]bool, len(knownPendingRunIDs))
+	for _, runID := range knownPendingRunIDs {
+		known[runID] = true
 	}
 	newPendingRunIDs := make([]int64, 0, len(change.PendingRunIDs))
 	for _, runID := range change.PendingRunIDs {
-		if !pendingInBody[runID] {
+		if !known[runID] {
 			newPendingRunIDs = append(newPendingRunIDs, runID)
 		}
 	}
-	markerRunIDs := overflowPendingRunIDs
-	if len(checkpointArchives) > 0 {
-		markerRunIDs = newPendingRunIDs
+	if len(newPendingRunIDs) == 0 {
+		return current, nil
 	}
-	if len(markerRunIDs) > 0 {
-		markers, err := pendingCheckpointMarkers(state.WorkflowID, markerRunIDs)
+	markers, err := pendingCheckpointMarkers(state.WorkflowID, newPendingRunIDs)
+	if err != nil {
+		return watcher.IssueSnapshot{}, fmt.Errorf("mark pending runs for issue #%d: %w", current.Number, err)
+	}
+	for _, marker := range markers {
+		current, err = c.ensureMarkedComment(ctx, current, marker, marker)
 		if err != nil {
-			return watcher.IssueSnapshot{}, fmt.Errorf("mark pending runs for issue #%d: %w", current.Number, err)
+			return watcher.IssueSnapshot{}, fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
 		}
-		for _, marker := range markers {
-			current, err = c.ensureMarkedComment(ctx, current, marker, marker)
-			if err != nil {
-				return watcher.IssueSnapshot{}, fmt.Errorf("checkpoint pending runs for issue #%d: %w", current.Number, err)
-			}
-		}
-	}
-	if err := c.verifyCheckpointArchives(ctx, change.Archives, checkpointArchives); err != nil {
-		return watcher.IssueSnapshot{}, fmt.Errorf("verify checkpoint archives for issue #%d: %w", current.Number, err)
-	}
-	current, err = c.ensureArchiveComments(ctx, current, checkpointArchives)
-	if err != nil {
-		return watcher.IssueSnapshot{}, fmt.Errorf("preserve checkpoint history for issue #%d: %w", current.Number, err)
-	}
-	checkpoint := watcher.IssueChange{Title: current.Title, Body: checkpointBody}
-	current, err = c.patchIssue(ctx, current, checkpoint)
-	if err != nil {
-		return watcher.IssueSnapshot{}, fmt.Errorf("checkpoint issue #%d: %w", change.IssueNumber, err)
 	}
 	return current, nil
 }
@@ -1152,7 +1112,7 @@ func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []w
 	return nil
 }
 
-func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, plan watcher.Plan, initial []watcher.IssueSnapshot) ([]watcher.RunAttempt, error) {
+func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, plan watcher.Plan) ([]watcher.RunAttempt, error) {
 	byKey := make(map[string]watcher.RunAttempt)
 	keys := make([]string, 0)
 	addArchives := func(archives []watcher.ArchiveComment) {
@@ -1174,28 +1134,6 @@ func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, p
 			continue
 		}
 		addArchives(change.Archives)
-		current, ok := findIssue(initial, change.IssueNumber)
-		if !ok {
-			return nil, fmt.Errorf("planned issue #%d was absent from the authoritative snapshot", change.IssueNumber)
-		}
-		state, err := watcher.RenderManagedBodyState(current.Body, c.repo)
-		if err != nil {
-			return nil, fmt.Errorf("read pending run state from issue #%d: %w", current.Number, err)
-		}
-		pendingRunIDs, _ := splitPendingRunIDs(state.PendingRunIDs, change.PendingRunIDs)
-		_, checkpointArchives, err := watcher.RenderCheckpointBody(current.Body, c.repo, pendingRunIDs, watcherAuthoredComments(current.Comments, c.appLogin))
-		if err != nil {
-			return nil, fmt.Errorf("plan checkpoint archives for issue #%d: %w", current.Number, err)
-		}
-		plannedMarkers := make(map[string]bool, len(change.Archives))
-		for _, archive := range change.Archives {
-			plannedMarkers[archive.Marker] = true
-		}
-		for _, archive := range checkpointArchives {
-			if !plannedMarkers[archive.Marker] {
-				addArchives([]watcher.ArchiveComment{archive})
-			}
-		}
 	}
 
 	refreshed := make([]watcher.RunAttempt, 0)
