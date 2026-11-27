@@ -114,12 +114,16 @@ next hourly reconciliation recovers any missed event that remains within the
 API lookback.
 
 Before applying a change associated with a delivered run, the watcher records
-that run ID in the open incident's managed state. If a comment or issue update
-then fails partway through, the next reconciliation fetches the pending run
-IDs directly from GitHub, including runs older than the lookback. A successful
-update clears those IDs from an open incident. If a maintainer closes an issue
-while it still has pending IDs, the watcher leaves that closed issue untouched
-and continues retrying its checkpoint read-only. An unavailable run (HTTP 404
+that run ID on the open incident. Existing incidents store new checkpoints in
+App-authored comments; a newly created incident can store them in its initial
+managed body. If the same ID is also checkpointed on a closed incident, the
+open incident owns fetching and cleanup while the closed issue remains
+untouched. If a comment or issue update then fails partway through, the next
+reconciliation fetches the pending run IDs directly from GitHub, including runs
+older than the lookback. A successful update clears those IDs from an open
+incident. If a maintainer closes an issue while it still has pending IDs, the
+watcher leaves that closed issue untouched and continues retrying its checkpoint
+read-only. An unavailable run (HTTP 404
 or 410) is reported in the watcher run's JSON output and does not stop other
 workflows; because the closed issue cannot store a result or clear the ID, the
 same unavailable run may be reported again on later sweeps.
