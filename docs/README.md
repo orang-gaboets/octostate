@@ -43,6 +43,9 @@ documentation.
   `config/organization.yaml` contract.
 - [GitOps architecture](gitops/architecture.md) — package ownership and
   command data flow.
+- [Design decisions](design-decisions.md) - why the engine is declarative,
+  deterministic, plan-first, and conservative about destructive drift, and the
+  tradeoffs of each choice.
 
 ## Building control-repository automation
 
