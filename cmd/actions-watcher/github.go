@@ -1107,36 +1107,46 @@ func (c *watcherClient) completeOpenPendingRuns(ctx context.Context, initial []w
 			}
 			unavailableBodyIDs[runID] = true
 		}
-		if len(unavailableBodyIDs) > 0 {
-			remaining := make([]int64, 0, len(state.PendingRunIDs))
-			for _, runID := range state.PendingRunIDs {
-				if !unavailableBodyIDs[runID] {
-					remaining = append(remaining, runID)
-				}
-			}
-			if len(remaining) != len(state.PendingRunIDs) {
-				body, archives, err := watcher.RenderCheckpointBody(current.Body, c.repo, remaining, watcherAuthoredComments(current.Comments, c.appLogin))
-				if err != nil {
-					return fmt.Errorf("clear unavailable pending runs from issue #%d: %w", issueNumber, err)
-				}
-				if err := c.verifyCheckpointArchives(ctx, nil, archives); err != nil {
-					return fmt.Errorf("verify checkpoint archives for issue #%d: %w", issueNumber, err)
-				}
-				current, err = c.ensureArchiveComments(ctx, current, archives)
-				if err != nil {
-					return fmt.Errorf("preserve checkpoint archives on issue #%d: %w", issueNumber, err)
-				}
-				current, err = c.patchIssue(ctx, current, watcher.IssueChange{Title: current.Title, Body: body})
-				if err != nil {
-					return fmt.Errorf("clear unavailable pending runs from issue #%d: %w", issueNumber, err)
-				}
-			}
+		current, err = c.clearUnavailableBodyPendingRuns(ctx, current, state, unavailableBodyIDs)
+		if err != nil {
+			return fmt.Errorf("clear unavailable pending runs from issue #%d: %w", issueNumber, err)
 		}
 		if _, err := c.removePendingCheckpointComments(ctx, current, state.WorkflowID, preserved); err != nil {
 			return fmt.Errorf("clear pending-run checkpoint from open issue #%d: %w", issueNumber, err)
 		}
 	}
 	return nil
+}
+
+func (c *watcherClient) clearUnavailableBodyPendingRuns(ctx context.Context, current watcher.IssueSnapshot, state watcher.IncidentState, unavailableRunIDs map[int64]bool) (watcher.IssueSnapshot, error) {
+	if len(unavailableRunIDs) == 0 {
+		return current, nil
+	}
+	remaining := make([]int64, 0, len(state.PendingRunIDs))
+	for _, runID := range state.PendingRunIDs {
+		if !unavailableRunIDs[runID] {
+			remaining = append(remaining, runID)
+		}
+	}
+	if len(remaining) == len(state.PendingRunIDs) {
+		return current, nil
+	}
+	body, archives, err := watcher.RenderCheckpointBody(current.Body, c.repo, remaining, watcherAuthoredComments(current.Comments, c.appLogin))
+	if err != nil {
+		return watcher.IssueSnapshot{}, err
+	}
+	if err := c.verifyCheckpointArchives(ctx, nil, archives); err != nil {
+		return watcher.IssueSnapshot{}, fmt.Errorf("verify checkpoint archives: %w", err)
+	}
+	current, err = c.ensureArchiveComments(ctx, current, archives)
+	if err != nil {
+		return watcher.IssueSnapshot{}, fmt.Errorf("preserve checkpoint archives: %w", err)
+	}
+	updated, err := c.patchIssue(ctx, current, watcher.IssueChange{Title: current.Title, Body: body})
+	if err != nil {
+		return watcher.IssueSnapshot{}, err
+	}
+	return updated, nil
 }
 
 func (c *watcherClient) refreshUnavailableArchiveAttempts(ctx context.Context, plan watcher.Plan) ([]watcher.RunAttempt, error) {
