@@ -225,8 +225,8 @@ func TestPlanAndDiffParityForTeamRepositoryPermissionAvailability(t *testing.T) 
 		wantOperation      plan.ActionOperation
 		wantExecutable     bool
 	}{
-		{name: "present repository create", snapshotRepository: true, desiredRepository: true, wantOperation: plan.ActionOperationCreate, wantExecutable: true},
-		{name: "present repository update", snapshotRepository: true, desiredRepository: true, actualPermission: true, wantOperation: plan.ActionOperationUpdate, wantExecutable: true},
+		{name: "present repository create", snapshotRepository: true, wantOperation: plan.ActionOperationCreate, wantExecutable: true},
+		{name: "present repository update", snapshotRepository: true, actualPermission: true, wantOperation: plan.ActionOperationUpdate, wantExecutable: true},
 		{name: "desired-creatable repository create", desiredRepository: true, wantOperation: plan.ActionOperationCreate, wantExecutable: true},
 		{name: "desired-creatable repository update", desiredRepository: true, actualPermission: true, wantOperation: plan.ActionOperationUpdate, wantExecutable: true},
 		{name: "absent repository create is blocked", wantOperation: plan.ActionOperationCreate, wantExecutable: false},
@@ -274,7 +274,14 @@ func TestPlanAndDiffParityForTeamRepositoryPermissionAvailability(t *testing.T) 
 				resourceID:   "platform/acme/repo",
 				executable:   tt.wantExecutable,
 			}}
-			if tt.desiredRepository && !tt.snapshotRepository {
+			if tt.snapshotRepository && !tt.desiredRepository {
+				want = append(want, expectedAction{
+					resourceType: plan.ActionResourceTypeRepository,
+					operation:    plan.ActionOperationDelete,
+					resourceID:   "acme/repo",
+					executable:   false,
+				})
+			} else if tt.desiredRepository && !tt.snapshotRepository {
 				want = append(want, expectedAction{
 					resourceType: plan.ActionResourceTypeRepository,
 					operation:    plan.ActionOperationCreate,
