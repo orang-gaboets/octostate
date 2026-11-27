@@ -9,26 +9,38 @@ import (
 	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 )
 
-func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, result *Result) error {
-	pending := append([]gitopsplan.Action(nil), actions...)
+type indexedTeamCreateAction struct {
+	index  int
+	action gitopsplan.Action
+}
+
+func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, planStartIndex int, result *Result) error {
+	pending := make([]indexedTeamCreateAction, len(actions))
+	for index, action := range actions {
+		pending[index] = indexedTeamCreateAction{index: planStartIndex + index, action: action}
+	}
 	for len(pending) > 0 {
 		progress := false
-		nextPending := make([]gitopsplan.Action, 0, len(pending))
-		for _, action := range pending {
+		nextPending := make([]indexedTeamCreateAction, 0, len(pending))
+		for _, indexedAction := range pending {
+			action := indexedAction.action
 			team, ok := e.desiredTeams[action.ResourceID]
 			if !ok {
+				e.tracker.beginAction(indexedAction.index)
 				return fmt.Errorf("desired team %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
 			}
 			if team.ParentSlug != "" {
 				if _, ok := e.teamIDs[teamSlugKey(team.ParentSlug)]; !ok {
-					nextPending = append(nextPending, action)
+					nextPending = append(nextPending, indexedAction)
 					continue
 				}
 			}
+			e.tracker.beginAction(indexedAction.index)
 			if err := e.createTeam(action); err != nil {
 				return err
 			}
 			result.Executed = append(result.Executed, action)
+			e.tracker.completeAction(indexedAction.index)
 			progress = true
 		}
 		if progress {
@@ -37,8 +49,11 @@ func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, result *R
 		}
 
 		unresolved := make([]string, 0, len(nextPending))
-		for _, action := range nextPending {
-			unresolved = append(unresolved, action.ResourceID)
+		for _, indexedAction := range nextPending {
+			unresolved = append(unresolved, indexedAction.action.ResourceID)
+		}
+		if len(nextPending) > 0 {
+			e.tracker.beginAction(nextPending[0].index)
 		}
 		return fmt.Errorf("unable to resolve team create dependencies for %s: %w", strings.Join(unresolved, ", "), githubpkg.ErrInvalidFieldValue)
 	}

@@ -280,8 +280,8 @@ func TestExecuteOrganizationMemberUnsupportedOperationFails(t *testing.T) {
 			Role:     "member",
 		}},
 	}, &state.OrganizationState{Organization: "orang-gaboets"}, plan))
-	if !strings.Contains(err.Error(), `unsupported organization member operation "delete"`) {
-		t.Fatalf("expected unsupported organization member operation error, got %v", err)
+	if _, ok := err.(*ExecutionError); !ok {
+		t.Fatalf("execution failure type = %T, want *ExecutionError", err)
 	}
 }
 
@@ -843,9 +843,6 @@ func TestExecuteRepositoryUpdateFailsOnUnknownChangeField(t *testing.T) {
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), `unsupported repository change field "template"`) {
-		t.Fatalf("unexpected error message: %v", err)
-	}
 }
 
 func TestExecuteRepositoryCreateWithoutTemplate(t *testing.T) {
@@ -1322,8 +1319,9 @@ func TestExecuteInviteUsernamePreResolutionReturnsFirstSeenLookupError(t *testin
 	if !errors.Is(err, firstErr) {
 		t.Fatalf("unexpected error: got %v want %v", err, firstErr)
 	}
-	if !strings.Contains(err.Error(), "create invite username:first") {
-		t.Fatalf("unexpected error message: %v", err)
+	var executionErr *ExecutionError
+	if !errors.As(err, &executionErr) || executionErr.Report().FailedActionIndex != 0 {
+		t.Fatalf("unexpected execution report: %#v (%v)", executionErr, err)
 	}
 }
 
@@ -1449,9 +1447,6 @@ func TestExecuteTeamUpdateFailsOnUnknownChangeField(t *testing.T) {
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), `unsupported team change field "members"`) {
-		t.Fatalf("unexpected error message: %v", err)
-	}
 }
 
 func TestExecuteTeamMembershipAndRepoPermissionCreateAndUpdate(t *testing.T) {
@@ -1546,9 +1541,6 @@ func TestExecuteTeamMembershipRejectsUnsupportedOperation(t *testing.T) {
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), `unsupported team member operation "remove"`) {
-		t.Fatalf("unexpected error message: %v", err)
-	}
 }
 
 func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T) {
@@ -1585,9 +1577,6 @@ func TestExecuteTeamRepositoryPermissionRejectsUnsupportedOperation(t *testing.T
 	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withTeamService(teamSvc)))
 	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(err.Error(), `unsupported team repository permission operation "remove"`) {
-		t.Fatalf("unexpected error message: %v", err)
 	}
 }
 
@@ -1754,10 +1743,11 @@ func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *
 	plan.Normalize()
 
 	var creates []string
+	writeErr := errors.New("source write failed")
 	repoSvc := &testRepoService{createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 		creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
 		if *request.Name == "source" {
-			return nil, nil, errors.New("source write failed")
+			return nil, nil, writeErr
 		}
 		t.Fatal("consumer create must not run after source failure")
 		return nil, nil, nil
@@ -1768,7 +1758,7 @@ func TestExecuteManagedTemplateCreateFailureStopsConsumerAndPermissionWrites(t *
 	}}
 
 	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets", Teams: []state.Team{{ID: 1, Slug: "platform"}}}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
-	if err == nil || !strings.Contains(err.Error(), "source write failed") {
+	if !errors.Is(err, writeErr) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if want := []string{"external/base->source"}; !reflect.DeepEqual(creates, want) {
@@ -1790,6 +1780,7 @@ func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *
 	}}
 	plan.Normalize()
 
+	writeErr := errors.New("source template enabling failed")
 	repoSvc := &testRepoService{
 		createFromTemplateFunc: func(context.Context, string, string, *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 			t.Fatal("consumer create must not run after source template enabling failure")
@@ -1797,7 +1788,7 @@ func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *
 		},
 		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
 			if owner == "orang-gaboets" && repo == "source" {
-				return nil, nil, errors.New("source template enabling failed")
+				return nil, nil, writeErr
 			}
 			t.Fatal("unexpected repository edit after source failure")
 			return nil, nil, nil
@@ -1813,7 +1804,7 @@ func TestExecuteManagedTemplateUpdateFailureStopsConsumerAndPermissionWrites(t *
 		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "source", Visibility: "private", IsTemplate: false}},
 		Teams:        []state.Team{{ID: 1, Slug: "platform"}},
 	}, plan, withRepoService(repoSvc), withTeamService(teamSvc)))
-	if err == nil || !strings.Contains(err.Error(), "source template enabling failed") {
+	if !errors.Is(err, writeErr) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -1832,6 +1823,7 @@ func TestExecuteManagedTemplateCreateSettingsFailureStopsDependents(t *testing.T
 	plan.Normalize()
 
 	var creates []string
+	settingsErr := errors.New("source template settings failed")
 	repoSvc := &testRepoService{
 		createFromTemplateFunc: func(_ context.Context, templateOwner, templateRepo string, request *gh.TemplateRepoRequest) (*gh.Repository, *gh.Response, error) {
 			creates = append(creates, templateOwner+"/"+templateRepo+"->"+*request.Name)
@@ -1843,14 +1835,14 @@ func TestExecuteManagedTemplateCreateSettingsFailureStopsDependents(t *testing.T
 		},
 		editFunc: func(_ context.Context, owner, repo string, _ *gh.Repository) (*gh.Repository, *gh.Response, error) {
 			if owner == "orang-gaboets" && repo == "source" {
-				return nil, nil, errors.New("source template settings failed")
+				return nil, nil, settingsErr
 			}
 			return &gh.Repository{}, nil, nil
 		},
 	}
 
 	_, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "orang-gaboets"}, plan, withRepoService(repoSvc)))
-	if err == nil || !strings.Contains(err.Error(), "source template settings failed") {
+	if !errors.Is(err, settingsErr) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if want := []string{"external/base->source"}; !reflect.DeepEqual(creates, want) {

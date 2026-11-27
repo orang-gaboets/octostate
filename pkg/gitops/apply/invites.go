@@ -19,7 +19,16 @@ type inviteUsernameTarget struct {
 	key        string
 	username   string
 	resourceID string
+	planIndex  int
 }
+
+type indexedActionError struct {
+	index int
+	cause error
+}
+
+func (e *indexedActionError) Error() string { return e.cause.Error() }
+func (e *indexedActionError) Unwrap() error { return e.cause }
 
 func (e *executor) executeInviteAction(action gitopsplan.Action) error {
 	if action.Operation != gitopsplan.ActionOperationCreate {
@@ -75,13 +84,13 @@ func (e *executor) createInvitationOptions(invite config.InviteSpec) (organizati
 
 // Invite username pre-resolution uses concurrent read-only user lookups; the
 // surrounding apply loop still performs GitHub write operations sequentially.
-func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action) error {
+func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action, planStartIndex int) error {
 	if e.inviteUsersResolved {
 		return nil
 	}
 	e.inviteUsersResolved = true
 
-	targets := e.collectInviteUsernameTargets(actions)
+	targets := e.collectInviteUsernameTargets(actions, planStartIndex)
 	if len(targets) == 0 {
 		return nil
 	}
@@ -94,7 +103,10 @@ func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action) error 
 		tasks = append(tasks, func(ctx context.Context) error {
 			userID, err := e.lookupInviteUserID(ctx, inviteTarget.username)
 			if err != nil {
-				return fmt.Errorf("create invite %s: %w", inviteTarget.resourceID, err)
+				return &indexedActionError{
+					index: inviteTarget.planIndex,
+					cause: fmt.Errorf("create invite %s: %w", inviteTarget.resourceID, err),
+				}
 			}
 			resolvedUserIDs[index] = userID
 			return nil
@@ -111,11 +123,11 @@ func (e *executor) preResolveInviteUsernames(actions []gitopsplan.Action) error 
 	return nil
 }
 
-func (e *executor) collectInviteUsernameTargets(actions []gitopsplan.Action) []inviteUsernameTarget {
+func (e *executor) collectInviteUsernameTargets(actions []gitopsplan.Action, planStartIndex int) []inviteUsernameTarget {
 	seen := make(map[string]struct{}, len(actions))
 	targets := make([]inviteUsernameTarget, 0, len(actions))
 
-	for _, action := range actions {
+	for offset, action := range actions {
 		if !action.Executable ||
 			action.ResourceType != gitopsplan.ActionResourceTypeInvite ||
 			action.Operation != gitopsplan.ActionOperationCreate {
@@ -140,6 +152,7 @@ func (e *executor) collectInviteUsernameTargets(actions []gitopsplan.Action) []i
 			key:        key,
 			username:   username,
 			resourceID: action.ResourceID,
+			planIndex:  planStartIndex + offset,
 		})
 	}
 
