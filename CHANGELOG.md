@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The release process is managed by `release-please`, which updates this changelog
 when release pull requests are created and merged.
 
+## [1.3.1](https://github.com/orang-gaboets/octostate/compare/v1.3.0...v1.3.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **ci:** resolve draft releases by numeric ID ([#368](https://github.com/orang-gaboets/octostate/issues/368)) ([9af3187](https://github.com/orang-gaboets/octostate/commit/9af318772a85f223070644b8e1dc503ecd44010d))
+* **gitops:** preserve unknown team membership origin ([#373](https://github.com/orang-gaboets/octostate/issues/373)) ([cce3fe6](https://github.com/orang-gaboets/octostate/commit/cce3fe691f279c822835af61928b6b63c631b654))
+
 ## [1.3.0](https://github.com/orang-gaboets/octostate/compare/v1.2.0...v1.3.0) (2026-11-21)
 
 
