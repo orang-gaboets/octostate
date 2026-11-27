@@ -43,7 +43,7 @@ func TestApplyPlanSummaryCountsActionsWithoutNormalizingPlan(t *testing.T) {
 }
 
 func TestApplyPlanSummaryDoesNotReportEmptyUnresolvedMemberships(t *testing.T) {
-	got := applyPlanSummary(&gitopsplan.Report{}, nil)
+	got := applyPlanSummary(&gitopsplan.Report{}, []state.TeamMember{})
 	if got.HasUnresolved || got.UnresolvedMemberships != 0 {
 		t.Fatalf("applyPlanSummary() = %#v, want no unresolved memberships", got)
 	}
