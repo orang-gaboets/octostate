@@ -41,3 +41,10 @@ func TestApplyPlanSummaryCountsActionsWithoutNormalizingPlan(t *testing.T) {
 		t.Fatalf("applyPlanSummary() reordered caller-owned field changes: got %#v, want %#v", changes, beforeChanges)
 	}
 }
+
+func TestApplyPlanSummaryDoesNotReportEmptyUnresolvedMemberships(t *testing.T) {
+	got := applyPlanSummary(&gitopsplan.Report{}, nil)
+	if got.HasUnresolved || got.UnresolvedMemberships != 0 {
+		t.Fatalf("applyPlanSummary() = %#v, want no unresolved memberships", got)
+	}
+}

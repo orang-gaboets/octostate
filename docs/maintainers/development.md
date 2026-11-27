@@ -183,38 +183,60 @@ with module downloads disabled:
 
 ```bash
 set -euo pipefail
+unset OCTOSTATE_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN
 go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
 base=origin/main
+# For historical replays, use the reviewed change's recorded base commit.
 env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
   go test -count=1 ./pkg/gitops/plan ./pkg/gitops/diff ./pkg/gitops/apply ./internal/teamorigin
 
-# Keep the setting local to this disposable checkout.
-git config diff.relative true
 results="$(mktemp -d)"
+export GOPROXY=off GOMAXPROCS=1
+
+# v0.6.0 needs Git paths relative to the scanned package. Pass the setting
+# through the environment instead of writing shared Git configuration.
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=diff.relative
+export GIT_CONFIG_VALUE_0=true
 
 for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamorigin; do
+  if git diff --quiet --merge-base "$base" -- "$package"; then
+    printf 'Skipping %s: no changes against %s\n' "$package" "$base"
+    continue
+  else
+    diff_status=$?
+    if [ "$diff_status" -ne 1 ]; then
+      exit "$diff_status"
+    fi
+  fi
   name="${package##*/}"
   (
     cd "$package"
-    env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
-      gremlins unleash --dry-run --diff "$base" --workers 2 --test-cpu 1 \
+    gremlins unleash --dry-run --diff "$base" --workers 2 \
       --timeout-coefficient 30 "$PWD"
-    env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
-      gremlins unleash --diff "$base" --workers 2 --test-cpu 1 \
+    gremlins unleash --diff "$base" --workers 2 \
       --timeout-coefficient 30 --output "$results/$name.json" "$PWD"
   )
 done
 ```
 
+The loop skips packages with no diff because Gremlins v0.6.0 treats an empty
+diff as if every file changed.
+
 The dry run lists runnable and uncovered mutations. In a full run, `KILLED`
-means the package tests failed under a mutation and `LIVED` means they passed.
-Check the command output before counting a kill: compilation, download, and
-test-harness failures are not evidence that a regression test caught a mutant.
-`NOT COVERED`, `NOT VIABLE`, `TIMED OUT`, and `SKIPPED` are separate outcomes;
-timeouts and tool errors are not kills. Stop a pilot after 15 minutes and
-record it as incomplete if it has not finished. Keep manual semantic checks for
-unknown-origin role mismatches, empty-origin normalization, and apply's
-no-write rejection.
+means the test command exited with code 1 and `LIVED` means it passed. A `KILLED`
+status can also come from a compilation error, invalid flag, or test-harness
+failure: Gremlins v0.6.0 records status and location but discards the test
+output. Reproduce safety-relevant mutations in a disposable copy and run the
+owning test; mark a kill unverified until the expected assertion is observed.
+`NOT VIABLE` is a build failure, `TIMED OUT` is a timeout, `NOT COVERED` has no
+test coverage, and `SKIPPED` falls outside the selected diff. None of these
+statuses is a kill. Keep `--test-cpu` at its default: v0.6.0 passes nonzero
+values as one malformed `go test` argument. Use `GOMAXPROCS=1` to limit test
+parallelism instead. Stop a pilot after 15 minutes and record it as incomplete
+if it has not finished. Keep manual semantic checks for unknown-origin role
+mismatches, empty-origin normalization, deterministic duplicate selection,
+and apply's no-write rejection.
 
 ## Optional Graphify
 

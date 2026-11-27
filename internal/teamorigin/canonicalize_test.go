@@ -117,6 +117,25 @@ func TestCanonicalizeMembershipsTrimsRecognizedRoleBeforeConflictValidation(t *t
 	}
 }
 
+func TestCanonicalizeMembershipsChoosesSpellingIndependentOfInputOrder(t *testing.T) {
+	rows := []Membership{
+		{TeamSlug: "platform", Username: "Alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
+		{TeamSlug: "platform", Username: "alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
+	}
+	want := []Membership{{
+		TeamSlug: "platform", Username: "Alice", Role: "member", Origin: github.TeamMembershipOriginDirect,
+	}}
+	for _, permutation := range [][]Membership{rows, {rows[1], rows[0]}} {
+		got, err := Canonicalize(permutation)
+		if err != nil {
+			t.Fatalf("Canonicalize returned error: %v", err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Canonicalize = %#v, want %#v", got, want)
+		}
+	}
+}
+
 func TestCanonicalizeMembershipsReturnsSortedCaseInsensitiveKeys(t *testing.T) {
 	got, err := Canonicalize([]Membership{
 		{TeamSlug: "Zeta", Username: "bob", Role: "member", Origin: github.TeamMembershipOriginUnknown},
