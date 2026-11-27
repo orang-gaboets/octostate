@@ -36,7 +36,7 @@ func CreateInvitation(ctx context.Context, option CreateInvitationOptions) error
 		return err
 	}
 
-	logIdentity := option.Email
+	logIdentity := "email:<redacted>"
 	if option.UserID != nil {
 		logIdentity = strconv.FormatInt(*option.UserID, 10)
 	}
