@@ -424,6 +424,35 @@ Live apply output fields:
 - `data.skipped_actions`
 - `data.unresolved_team_memberships`
 
+When live execution stops after the apply result has been initialized, the
+command writes a `status: "failure"` JSON envelope to stdout and exits with
+code `1`. Its data contains only `desired_config_identity`, `organization`,
+`plan_summary`, and `execution_report`; it omits action resource IDs, messages,
+field values, unresolved member identities, and raw GitHub error details. The
+stderr diagnostic uses a generic execution error message.
+
+`execution_report.failed_action_index` and each action's `plan_index` are
+zero-based indexes into the original plan. Each action outcome contains its
+resource type, operation, status, confirmed step labels, and an optional
+uncertain step label. Statuses are:
+
+- `completed`: all writes for the action returned successfully
+- `failed_before_write`: the action failed before a mutation call began
+- `outcome_unknown`: the first mutation call returned an error, so GitHub's
+  result is unknown
+- `partially_completed`: at least one write returned successfully before the
+  action failed; `uncertain_step` is present when a later write returned an
+  error
+- `skipped`: the action was non-executable
+- `not_attempted`: execution stopped before the action was reached
+
+The failure envelope is emitted only for execution errors after the executor
+starts. Configuration, identity, organization, planning, and safety-guard
+failures keep their existing behavior. Successful apply output is unchanged.
+After a failure, collect fresh live state and build a new reconciliation plan;
+do not replay the old plan because a failed write may have reached GitHub even
+when its response was lost.
+
 ### Unfulfillable desired actions versus unsupported drift
 
 An action can be non-executable for two different reasons, and automation needs

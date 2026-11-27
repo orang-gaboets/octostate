@@ -202,6 +202,55 @@ collect `Actual` again for the execution call.
 The existing `apply.Check` and `apply.Execute` APIs retain their previous
 unbound behavior and signatures.
 
+## Recover from a partial apply
+
+`apply.Execute` and `apply.ExecuteReviewed` keep their existing signatures and
+the exported `apply.Result` shape. When execution fails after the result has
+been initialized, they return the redacted partial result together with an
+`*apply.ExecutionError`. Validation, identity, preflight, and other failures
+before execution starts keep their existing behavior and return no partial
+result.
+
+Use `errors.As` to read the safe report while preserving the original failure
+for `errors.Is` and `errors.As` checks:
+
+```go
+import (
+	"errors"
+
+	"github.com/orang-gaboets/octostate/pkg/gitops/apply"
+)
+
+result, err := apply.Execute(ctx, options)
+if err != nil {
+	var executionErr *apply.ExecutionError
+	if errors.As(err, &executionErr) {
+		report := executionErr.Report()
+		// Inspect report and the redacted partial result before recovery.
+		_ = result
+		_ = report
+	}
+	return err
+}
+```
+
+`ExecutionError.Error()` is generic and does not include raw API response text.
+`ExecutionError.Report()` returns a copy of an `ExecutionReport` with a
+zero-based failed action index and one `ActionOutcome` for each action in the
+original plan. An outcome identifies its resource type and operation, then
+reports one of these statuses: `completed`, `failed_before_write`,
+`outcome_unknown`, `partially_completed`, `skipped`, or `not_attempted`.
+`ConfirmedSteps` lists mutation calls that returned successfully;
+`UncertainStep` identifies a mutation call that returned an error. The report
+omits resource IDs, action messages, field values, and error text. The partial
+`Result` also clears resource IDs, messages, changes, and unresolved member
+identities from its action data. Successful results and their JSON remain
+unchanged.
+
+After an execution error, collect fresh live state and build a new plan before
+reconciling again. Do not replay the old plan: an entered mutation call that
+returns an error has an unknown remote outcome.
+
 ## Compatibility policy for the `v1` module
 
 Octostate uses one Go module and one release version stream for both its CLI and
