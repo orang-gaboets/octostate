@@ -2,6 +2,7 @@ package apply
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -172,12 +173,17 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 			!executor.inviteUsersResolved {
 			if err := executor.preResolveInviteUsernames(opt.Plan.Actions[index:], index); err != nil {
 				failedIndex := index
-				if indexed, ok := err.(*indexedActionError); ok {
+				var failurePhase ExecutionFailurePhase
+				var indexed *indexedActionError
+				if errors.As(err, &indexed) {
 					failedIndex = indexed.index
 					err = indexed.cause
 					executor.tracker.beginAction(failedIndex)
+				} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					failedIndex = -1
+					failurePhase = ExecutionFailurePhaseInviteUsernameResolution
 				}
-				return failedExecution(result, executor.tracker, failedIndex, err)
+				return failedExecutionWithPhase(result, executor.tracker, failedIndex, failurePhase, err)
 			}
 		}
 

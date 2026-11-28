@@ -35,7 +35,18 @@ const (
 	ActionOutcomeStatusNotAttempted ActionOutcomeStatus = "not_attempted"
 )
 
-// ActionOutcome reports a safe summary of one action in the original plan.
+// ExecutionFailurePhase identifies a batch-level failure that is not
+// attributable to one planned action.
+type ExecutionFailurePhase string
+
+const (
+	// ExecutionFailurePhaseInviteUsernameResolution indicates that invitation
+	// username lookups were interrupted before invitation writes began.
+	ExecutionFailurePhaseInviteUsernameResolution ExecutionFailurePhase = "invite_username_resolution"
+)
+
+// ActionOutcome reports a safe summary of one action in the current execution
+// plan.
 // It deliberately excludes resource identifiers, messages, and field values.
 type ActionOutcome struct {
 	PlanIndex      int                           `json:"plan_index"`
@@ -46,12 +57,14 @@ type ActionOutcome struct {
 	UncertainStep  string                        `json:"uncertain_step,omitempty"`
 }
 
-// ExecutionReport gives callers safe recovery information after an action
+// ExecutionReport gives callers safe recovery information after execution
 // fails. FailedActionIndex and ActionOutcome.PlanIndex are zero-based indexes
-// into the original plan.
+// into the current execution plan. FailedActionIndex is -1 when a failure is
+// not attributable to one action; FailurePhase identifies that batch phase.
 type ExecutionReport struct {
-	FailedActionIndex int             `json:"failed_action_index"`
-	ActionOutcomes    []ActionOutcome `json:"action_outcomes"`
+	FailedActionIndex int                   `json:"failed_action_index"`
+	FailurePhase      ExecutionFailurePhase `json:"failure_phase,omitempty"`
+	ActionOutcomes    []ActionOutcome       `json:"action_outcomes"`
 }
 
 // ExecutionError wraps the original action failure while exposing a
@@ -165,6 +178,7 @@ func (t *executionTracker) report(failedIndex int) ExecutionReport {
 func cloneExecutionReport(report ExecutionReport) ExecutionReport {
 	cloned := ExecutionReport{
 		FailedActionIndex: report.FailedActionIndex,
+		FailurePhase:      report.FailurePhase,
 		ActionOutcomes:    make([]ActionOutcome, len(report.ActionOutcomes)),
 	}
 	for index, outcome := range report.ActionOutcomes {
@@ -238,10 +252,15 @@ func skippedActions(actions []gitopsplan.Action) []gitopsplan.Action {
 }
 
 func failedExecution(result *Result, tracker *executionTracker, failedIndex int, cause error) (*Result, error) {
+	return failedExecutionWithPhase(result, tracker, failedIndex, "", cause)
+}
+
+func failedExecutionWithPhase(result *Result, tracker *executionTracker, failedIndex int, phase ExecutionFailurePhase, cause error) (*Result, error) {
 	if tracker != nil && failedIndex >= 0 {
 		tracker.beginAction(failedIndex)
 	}
 	report := tracker.report(failedIndex)
+	report.FailurePhase = phase
 	return redactFailureResult(result), &ExecutionError{cause: cause, report: report}
 }
 

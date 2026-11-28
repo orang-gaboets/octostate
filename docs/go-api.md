@@ -251,6 +251,10 @@ alone. Do not use the report as a replay or resume cursor. An outcome identifies
 its resource type and operation, then reports one of these statuses:
 `completed`, `failed_before_write`,
 `outcome_unknown`, `partially_completed`, `skipped`, or `not_attempted`.
+When a failure is not attributable to one action, `FailedActionIndex` is `-1`
+and `FailurePhase` identifies the batch phase. For example,
+`invite_username_resolution` means cancellation interrupted username lookups
+before invitation writes began.
 `ConfirmedSteps` lists mutation calls that returned successfully;
 `UncertainStep` identifies a mutation call that returned an error. The report
 omits resource IDs, action messages, field values, and error text. The partial

@@ -436,6 +436,10 @@ zero-based indexes into the plan built for that invocation. CLI apply builds a
 fresh plan from current live state, so indexes can shift after state changes;
 they are not stable resource identifiers and cannot reliably correlate with a
 previous check or reviewed plan. Do not use them as a replay or resume cursor.
+When a batch failure cannot be assigned to one action, `failed_action_index`
+is `-1` and `failure_phase` identifies the affected phase; for example,
+`invite_username_resolution` means parent cancellation interrupted username
+lookups before invitation writes began.
 Each action outcome contains its resource type, operation, status, confirmed
 step labels, and an optional uncertain step label. Statuses are:
 

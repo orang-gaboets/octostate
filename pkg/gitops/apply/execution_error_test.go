@@ -443,6 +443,62 @@ func TestExecuteInvitePreResolutionFailureIsIndexedAndBeforeWrite(t *testing.T) 
 	}
 }
 
+func TestExecuteInvitePreResolutionParentCancellationHasNoActionIndex(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	lookupCalls := 0
+	writes := 0
+	userService := &testUserService{getFunc: func(context.Context, string) (*gh.User, *gh.Response, error) {
+		lookupCalls++
+		cancel()
+		return nil, nil, context.Canceled
+	}}
+	orgService := &testOrganizationService{createOrgInvitationFunc: func(context.Context, string, *gh.CreateOrgInvitationOptions) (*gh.Invitation, *gh.Response, error) {
+		writes++
+		return &gh.Invitation{}, nil, nil
+	}}
+	desired := config.OrganizationConfig{
+		Organization: "org-a",
+		Invites: []config.InviteSpec{
+			inviteByEmail("first@example.com", "direct_member"),
+			inviteByUsername("second", "direct_member"),
+		},
+	}
+	plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "email:first@example.com", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeInvite, Operation: gitopsplan.ActionOperationCreate, ResourceID: "username:second", Executable: true},
+	}}
+
+	result, err := Execute(ctx, testApplyOptions(desired, &state.OrganizationState{Organization: "org-a"}, plan, withOrganizationService(orgService), withUserService(userService)))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Execute error = %v, want parent context cancellation", err)
+	}
+	if result == nil || len(result.Executed) != 0 || lookupCalls != 1 || writes != 0 {
+		t.Fatalf("partial result = %#v, lookup calls = %d, invitation writes = %d; want no completed action or writes", result, lookupCalls, writes)
+	}
+
+	report := executionReportFromError(t, err)
+	if report.FailedActionIndex != -1 {
+		t.Errorf("failed action index = %d, want -1 for batch cancellation", report.FailedActionIndex)
+	}
+	if report.FailurePhase != ExecutionFailurePhaseInviteUsernameResolution {
+		t.Errorf("failure phase = %q, want %q", report.FailurePhase, ExecutionFailurePhaseInviteUsernameResolution)
+	}
+	encoded, marshalErr := json.Marshal(report)
+	if marshalErr != nil {
+		t.Fatalf("marshal execution report: %v", marshalErr)
+	}
+	if !strings.Contains(string(encoded), `"failure_phase":"invite_username_resolution"`) {
+		t.Errorf("serialized report missing failure phase: %s", encoded)
+	}
+	for index, outcome := range report.ActionOutcomes {
+		if outcome.Status != ActionOutcomeStatusNotAttempted {
+			t.Errorf("action %d status = %q, want not_attempted", index, outcome.Status)
+		}
+	}
+}
+
 func TestExecuteCancellationBeforeAndDuringMutationHaveDifferentStatuses(t *testing.T) {
 	t.Run("before mutation call", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
