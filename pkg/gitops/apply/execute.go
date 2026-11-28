@@ -2,6 +2,7 @@ package apply
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -134,11 +135,16 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	executor.tracker = newExecutionTracker(opt.Plan.Actions)
+	executor.organizationService = &trackedOrganizationService{Service: executor.organizationService, tracker: executor.tracker}
+	executor.repositoryService = &trackedRepositoryService{Service: executor.repositoryService, tracker: executor.tracker}
+	executor.teamService = &trackedTeamService{Service: executor.teamService, tracker: executor.tracker}
 
 	result := &Result{
 		Organization:              strings.TrimSpace(opt.Desired.Organization),
 		PlanSummary:               applyPlanSummary(opt.Plan, unresolvedTeamMemberships),
 		UnresolvedTeamMemberships: unresolvedTeamMemberships,
+		SkippedDrift:              skippedActions(opt.Plan.Actions),
 	}
 
 	for index := 0; index < len(opt.Plan.Actions); {
@@ -148,31 +154,48 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 			for next < len(opt.Plan.Actions) && isTeamCreateAction(opt.Plan.Actions[next]) {
 				next++
 			}
-			if err := executor.executeTeamCreateGroup(opt.Plan.Actions[index:next], result); err != nil {
-				return nil, err
+			failurePhase, err := executor.executeTeamCreateGroup(opt.Plan.Actions[index:next], index, result)
+			if err != nil {
+				failedIndex := executor.tracker.current
+				if failurePhase != "" {
+					failedIndex = -1
+				}
+				return failedExecutionWithPhase(result, executor.tracker, failedIndex, failurePhase, err)
 			}
 			index = next
 			continue
 		}
 
 		if !action.Executable {
-			result.SkippedDrift = append(result.SkippedDrift, action)
 			index++
 			continue
 		}
+		executor.tracker.beginAction(index)
 
 		if action.ResourceType == gitopsplan.ActionResourceTypeInvite &&
 			action.Operation == gitopsplan.ActionOperationCreate &&
 			!executor.inviteUsersResolved {
-			if err := executor.preResolveInviteUsernames(opt.Plan.Actions[index:]); err != nil {
-				return nil, err
+			if err := executor.preResolveInviteUsernames(opt.Plan.Actions[index:], index); err != nil {
+				failedIndex := index
+				var failurePhase ExecutionFailurePhase
+				var indexed *indexedActionError
+				if errors.As(err, &indexed) {
+					failedIndex = indexed.index
+					err = indexed.cause
+					executor.tracker.beginAction(failedIndex)
+				} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					failedIndex = -1
+					failurePhase = ExecutionFailurePhaseInviteUsernameResolution
+				}
+				return failedExecutionWithPhase(result, executor.tracker, failedIndex, failurePhase, err)
 			}
 		}
 
 		if err := executor.executeAction(action); err != nil {
-			return nil, err
+			return failedExecution(result, executor.tracker, index, err)
 		}
 		result.Executed = append(result.Executed, action)
+		executor.tracker.completeAction(index)
 		index++
 	}
 
@@ -201,6 +224,7 @@ type executor struct {
 	preflightCreatedRepos    map[string]struct{}
 	preflightVerifiedTeams   map[string]struct{}
 	preflightLiveRepos       map[string]*githubpkg.Repository
+	tracker                  *executionTracker
 	resolvedInviteUserIDs    map[string]int64
 	inviteUsersResolved      bool
 	desiredRepositories      map[string]config.RepositorySpec

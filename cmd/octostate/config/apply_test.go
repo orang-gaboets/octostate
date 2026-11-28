@@ -31,6 +31,43 @@ type applyReviewedRepoService struct {
 	deletedRepositories []string
 }
 
+type applyFailureOrgService struct {
+	internalauth.MockOrganizationService
+	failUser string
+	err      error
+	writes   *int
+}
+
+type failingApplyWriter struct {
+	err    error
+	writes int
+}
+
+func (w *failingApplyWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, w.err
+}
+
+type applyCountRepoService struct {
+	internalauth.MockRepoService
+	createCalls int
+}
+
+func (s *applyCountRepoService) Create(ctx context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+	s.createCalls++
+	return s.MockRepoService.Create(ctx, owner, repository)
+}
+
+func (s applyFailureOrgService) EditOrgMembership(_ context.Context, user, _ string, _ *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	if s.writes != nil {
+		(*s.writes)++
+	}
+	if user == s.failUser {
+		return nil, nil, s.err
+	}
+	return &gh.Membership{}, nil, nil
+}
+
 func (s *applyReviewedRepoService) Create(_ context.Context, owner string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
 	s.createdRepositories = append(s.createdRepositories, owner+"/"+repository.GetName())
 	return repository, nil, nil
@@ -165,6 +202,182 @@ func TestApplyConfigCmdSuccess(t *testing.T) {
 	}
 }
 
+func TestApplyConfigCommandReportsExecutionFailure(t *testing.T) {
+	for _, reviewed := range []bool{false, true} {
+		name := "ordinary"
+		if reviewed {
+			name = "reviewed"
+		}
+		t.Run(name, func(t *testing.T) {
+			restoreApplyHooks(t)
+			const (
+				secretIdentity = "private@example.com"
+				secretToken    = "ghp_sensitive"
+			)
+			apiErr := errors.New("request failed for " + secretIdentity + " with " + secretToken + ": private response body")
+			cfg := gitopsconfig.OrganizationConfig{
+				Organization: "org-a",
+				Members: []gitopsconfig.OrganizationMemberSpec{
+					{Username: "alice", Role: "member"},
+					{Username: "bob", Role: "member"},
+				},
+			}
+			identity, err := gitopsconfig.DesiredStateIdentity(cfg)
+			if err != nil {
+				t.Fatalf("compute desired config identity: %v", err)
+			}
+			plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+				{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "alice", Executable: true, Message: "add alice"},
+				{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "bob", Executable: true, Message: "add bob"},
+			}}
+			orgService := applyFailureOrgService{MockOrganizationService: internalauth.MockOrganizationService{}, failUser: "bob", err: apiErr}
+			client := internalauth.MockClient{
+				OrganizationsService: orgService,
+				ReposService:         internalauth.MockRepoService{},
+				TeamsService:         internalauth.MockTeamsService{},
+				UsersService:         internalauth.MockUserService{},
+			}
+			loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+			validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+				return gitopsconfig.ValidationReport{Valid: true}
+			}
+			newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) { return client, nil }
+			collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+				return &state.OrganizationState{Organization: "org-a"}, nil
+			}
+			buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return plan, nil }
+			executeApply = gitopsapply.Execute
+
+			cmd := ApplyConfigCmd()
+			var out bytes.Buffer
+			var errBuf bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&errBuf)
+			args := []string{"--config-dir", "./config", "--token", "secret-token"}
+			if reviewed {
+				args = append(args, "--expected-config-identity", identity)
+			}
+			cmd.SetArgs(args)
+
+			err = cmd.Execute()
+			if !errors.Is(err, apiErr) {
+				t.Fatalf("command error = %v, want wrapped API error", err)
+			}
+			if strings.Contains(err.Error(), secretIdentity) || strings.Contains(err.Error(), secretToken) || strings.Contains(err.Error(), "private response body") {
+				t.Fatalf("command error exposed sensitive data: %q", err.Error())
+			}
+			if errBuf.Len() != 0 {
+				t.Fatalf("command wrote unexpected stderr: %q", errBuf.String())
+			}
+			envelope := decodeApplyEnvelope(t, out.Bytes())
+			if envelope.Status != string(cmdoutput.OperationResultStatusFailure) {
+				t.Fatalf("failure status = %q, want %q", envelope.Status, cmdoutput.OperationResultStatusFailure)
+			}
+			var data struct {
+				DesiredConfigIdentity string                      `json:"desired_config_identity"`
+				Organization          string                      `json:"organization"`
+				PlanSummary           gitopsplan.Summary          `json:"plan_summary"`
+				ExecutionReport       gitopsapply.ExecutionReport `json:"execution_report"`
+			}
+			decodeApplyData(t, envelope.Data, &data)
+			if data.DesiredConfigIdentity != identity || data.Organization != "org-a" {
+				t.Fatalf("failure data lost desired identity or organization: %#v", data)
+			}
+			if data.ExecutionReport.FailedActionIndex != 1 || len(data.ExecutionReport.ActionOutcomes) != 2 || data.ExecutionReport.ActionOutcomes[0].Status != gitopsapply.ActionOutcomeStatusCompleted || data.ExecutionReport.ActionOutcomes[1].Status != gitopsapply.ActionOutcomeStatusOutcomeUnknown {
+				t.Fatalf("unexpected safe execution report: %#v", data.ExecutionReport)
+			}
+			if !reflect.DeepEqual(data.ExecutionReport.ActionOutcomes[0].ConfirmedSteps, []string{"set_membership"}) || data.ExecutionReport.ActionOutcomes[1].UncertainStep != "set_membership" {
+				t.Fatalf("CLI failure report lost confirmed or uncertain steps: %#v", data.ExecutionReport.ActionOutcomes)
+			}
+			for _, output := range []string{out.String(), errBuf.String()} {
+				if strings.Contains(output, "alice") || strings.Contains(output, "bob") || strings.Contains(output, secretIdentity) || strings.Contains(output, secretToken) || strings.Contains(output, "private response body") {
+					t.Fatalf("CLI output exposed sensitive apply data: %q", output)
+				}
+			}
+		})
+	}
+}
+
+func TestApplyConfigCommandJoinsFailureOutputWriterError(t *testing.T) {
+	restoreApplyHooks(t)
+	const (
+		secretIdentity = "private@example.com"
+		secretToken    = "ghp_sensitive"
+	)
+	apiErr := errors.New("request failed for " + secretIdentity + " with " + secretToken + ": private response body")
+	outputErr := errors.New("stdout unavailable")
+	cfg := gitopsconfig.OrganizationConfig{
+		Organization: "org-a",
+		Members: []gitopsconfig.OrganizationMemberSpec{
+			{Username: "alice", Role: "member"},
+			{Username: "bob", Role: "member"},
+			{Username: "carol", Role: "member"},
+		},
+	}
+	plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "alice", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "bob", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "carol", Executable: true},
+	}}
+	writes := 0
+	orgService := applyFailureOrgService{
+		MockOrganizationService: internalauth.MockOrganizationService{},
+		failUser:                "bob",
+		err:                     apiErr,
+		writes:                  &writes,
+	}
+	client := internalauth.MockClient{
+		OrganizationsService: orgService,
+		ReposService:         internalauth.MockRepoService{},
+		TeamsService:         internalauth.MockTeamsService{},
+		UsersService:         internalauth.MockUserService{},
+	}
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) { return client, nil }
+	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "org-a"}, nil
+	}
+	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return plan, nil }
+	executeApply = gitopsapply.Execute
+
+	cmd := ApplyConfigCmd()
+	outputWriter := &failingApplyWriter{err: outputErr}
+	var errBuf bytes.Buffer
+	cmd.SetOut(outputWriter)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("command returned no error for failed mutation and failure-result output")
+	}
+	if !errors.Is(err, apiErr) {
+		t.Errorf("command error = %v, want original mutation error", err)
+	}
+	if !errors.Is(err, outputErr) {
+		t.Errorf("command error = %v, want output writer error", err)
+	}
+	var executionErr *gitopsapply.ExecutionError
+	if !errors.As(err, &executionErr) {
+		t.Errorf("command error type %T does not expose *ExecutionError", err)
+	}
+	if strings.Contains(err.Error(), secretIdentity) || strings.Contains(err.Error(), secretToken) || strings.Contains(err.Error(), "private response body") {
+		t.Errorf("command error exposed raw mutation failure: %q", err.Error())
+	}
+	if writes != 2 {
+		t.Errorf("mutation calls = %d, want stop at failed second action", writes)
+	}
+	if outputWriter.writes != 1 {
+		t.Errorf("failure-result writer calls = %d, want one", outputWriter.writes)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("command wrote unexpected stderr: %q", errBuf.String())
+	}
+}
+
 func TestApplyConfigCmdExpectedIdentityMismatchStopsBeforeAuthAndCollection(t *testing.T) {
 	restoreApplyHooks(t)
 
@@ -208,6 +421,85 @@ func TestApplyConfigCmdExpectedIdentityMismatchStopsBeforeAuthAndCollection(t *t
 	if errBuf.Len() == 0 {
 		t.Fatal("expected mismatch diagnostic on stderr")
 	}
+}
+
+func TestApplyConfigSafetyGuardsRemainPreWrite(t *testing.T) {
+	t.Run("expected organization mismatch", func(t *testing.T) {
+		restoreApplyHooks(t)
+		cfg := gitopsconfig.OrganizationConfig{Organization: "org-a"}
+		loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+		validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+			return gitopsconfig.ValidationReport{Valid: true}
+		}
+		newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) {
+			t.Fatal("authentication must not run after expected organization mismatch")
+			return nil, nil
+		}
+		collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			t.Fatal("live collection must not run after expected organization mismatch")
+			return nil, nil
+		}
+
+		cmd := ApplyConfigCmd()
+		var out bytes.Buffer
+		var errBuf bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&errBuf)
+		cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--expected-org", "org-b"})
+		err := cmd.Execute()
+		if err == nil {
+			t.Fatal("expected organization mismatch error")
+		}
+		if out.Len() != 0 || !strings.Contains(errBuf.String(), "expected organization") {
+			t.Fatalf("expected existing stderr guard behavior, got stdout=%q stderr=%q", out.String(), errBuf.String())
+		}
+	})
+
+	t.Run("require executable desired actions", func(t *testing.T) {
+		restoreApplyHooks(t)
+		cfg := gitopsconfig.OrganizationConfig{Organization: "org-a", Repositories: []gitopsconfig.RepositorySpec{{Owner: "org-a", Name: "app", Visibility: "private"}}}
+		plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{{
+			ResourceType: gitopsplan.ActionResourceTypeRepository,
+			Operation:    gitopsplan.ActionOperationCreate,
+			ResourceID:   "org-a/app",
+			Executable:   false,
+			Message:      "repository creation is blocked",
+		}}}
+		repoService := &applyCountRepoService{}
+		client := internalauth.MockClient{
+			OrganizationsService: internalauth.MockOrganizationService{},
+			ReposService:         repoService,
+			TeamsService:         internalauth.MockTeamsService{},
+			UsersService:         internalauth.MockUserService{},
+		}
+		loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+		validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+			return gitopsconfig.ValidationReport{Valid: true}
+		}
+		newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) { return client, nil }
+		collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+			return &state.OrganizationState{Organization: "org-a"}, nil
+		}
+		buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return plan, nil }
+		executeApply = gitopsapply.Execute
+
+		cmd := ApplyConfigCmd()
+		var out bytes.Buffer
+		var errBuf bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&errBuf)
+		cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token", "--require-executable"})
+		err := cmd.Execute()
+		if !errors.Is(err, gitopsapply.ErrUnfulfilledDesiredAction) {
+			t.Fatalf("command error = %v, want ErrUnfulfilledDesiredAction", err)
+		}
+		if repoService.createCalls != 0 {
+			t.Fatalf("repository writes = %d, want 0", repoService.createCalls)
+		}
+		if out.Len() != 0 || errBuf.Len() != 0 {
+			t.Fatalf("pre-execution guard wrote output: stdout=%q stderr=%q", out.String(), errBuf.String())
+		}
+	})
 }
 
 func TestApplyConfigCmdReviewedCheckReturnsDesiredIdentity(t *testing.T) {

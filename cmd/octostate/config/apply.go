@@ -107,6 +107,20 @@ func ApplyConfigCmd() *cobra.Command {
 				expectedIdentity,
 			)
 			if err != nil {
+				var executionErr *gitopsapply.ExecutionError
+				if result != nil && errors.As(err, &executionErr) {
+					report := executionErr.Report()
+					failureResult := identifiedApplyFailure{
+						DesiredConfigIdentity: desiredConfigIdentity,
+						Organization:          result.Organization,
+						PlanSummary:           result.PlanSummary,
+						ExecutionReport:       report,
+					}
+					if outputErr := cmdoutput.PrintFailure(cmd, "apply execution failed", failureResult); outputErr != nil {
+						return errors.Join(err, fmt.Errorf("write apply failure result: %w", outputErr))
+					}
+					return err
+				}
 				printInvalidConfigError(cmd, err)
 				return err
 			}
@@ -227,7 +241,7 @@ func applyConfig(
 
 		result, err := gitopsapply.ExecuteReviewed(ctx, reviewedOptions)
 		if err != nil {
-			return nil, nil, nil, "", runtimePhaseError("execute reviewed apply", err)
+			return result, nil, nil, desiredConfigIdentity, runtimePhaseError("execute reviewed apply", err)
 		}
 		result.Normalize()
 		return result, nil, nil, desiredConfigIdentity, nil
@@ -287,7 +301,7 @@ func applyConfig(
 		result, err = executeApply(ctx, applyOptions)
 	}
 	if err != nil {
-		return nil, nil, nil, "", runtimePhaseError("execute apply plan", err)
+		return result, nil, nil, desiredConfigIdentity, runtimePhaseError("execute apply plan", err)
 	}
 	result.Normalize()
 	return result, nil, nil, desiredConfigIdentity, nil
@@ -296,6 +310,13 @@ func applyConfig(
 type identifiedApplyResult struct {
 	DesiredConfigIdentity string `json:"desired_config_identity"`
 	*gitopsapply.Result
+}
+
+type identifiedApplyFailure struct {
+	DesiredConfigIdentity string                      `json:"desired_config_identity"`
+	Organization          string                      `json:"organization"`
+	PlanSummary           gitopsplan.Summary          `json:"plan_summary"`
+	ExecutionReport       gitopsapply.ExecutionReport `json:"execution_report"`
 }
 
 type identifiedCheckResult struct {
