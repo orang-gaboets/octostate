@@ -195,13 +195,16 @@ env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
 results="$(mktemp -d)"
 export GOPROXY=off GOMAXPROCS=1
 
-# v0.6.0 needs package-relative paths and zero-context hunks to scan every
-# changed line. Keep both settings in the environment, not shared Git config.
-export GIT_CONFIG_COUNT=2
+# v0.6.0 needs package-relative paths and separate zero-context hunks to scan
+# every changed line. Keep these Git settings in the environment rather than
+# shared Git config.
+export GIT_CONFIG_COUNT=3
 export GIT_CONFIG_KEY_0=diff.relative
 export GIT_CONFIG_VALUE_0=true
 export GIT_CONFIG_KEY_1=diff.context
 export GIT_CONFIG_VALUE_1=0
+export GIT_CONFIG_KEY_2=diff.interHunkContext
+export GIT_CONFIG_VALUE_2=0
 
 for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamorigin; do
   if git diff --quiet --merge-base "$base" -- "$package"; then
