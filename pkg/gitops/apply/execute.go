@@ -154,9 +154,13 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 			for next < len(opt.Plan.Actions) && isTeamCreateAction(opt.Plan.Actions[next]) {
 				next++
 			}
-			if err := executor.executeTeamCreateGroup(opt.Plan.Actions[index:next], index, result); err != nil {
+			failurePhase, err := executor.executeTeamCreateGroup(opt.Plan.Actions[index:next], index, result)
+			if err != nil {
 				failedIndex := executor.tracker.current
-				return failedExecution(result, executor.tracker, failedIndex, err)
+				if failurePhase != "" {
+					failedIndex = -1
+				}
+				return failedExecutionWithPhase(result, executor.tracker, failedIndex, failurePhase, err)
 			}
 			index = next
 			continue

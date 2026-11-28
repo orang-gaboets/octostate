@@ -254,7 +254,8 @@ its resource type and operation, then reports one of these statuses:
 When a failure is not attributable to one action, `FailedActionIndex` is `-1`
 and `FailurePhase` identifies the batch phase. For example,
 `invite_username_resolution` means cancellation interrupted username lookups
-before invitation writes began.
+before invitation writes began; `team_create_dependency_resolution` means a
+group of team creates is blocked by unresolved parent dependencies.
 `ConfirmedSteps` lists mutation calls that returned successfully;
 `UncertainStep` identifies a mutation call that returned an error. The report
 omits resource IDs, action messages, field values, and error text. The partial

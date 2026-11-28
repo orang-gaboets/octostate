@@ -434,6 +434,47 @@ func TestExecuteGroupedTeamCreationPreservesPlanIndexesWhenReordered(t *testing.
 	}
 }
 
+func TestExecuteGroupedTeamDependencyFailureUsesBatchAttribution(t *testing.T) {
+	var created []string
+	teamService := &testTeamService{createTeamFunc: func(_ context.Context, _ string, team gh.NewTeam) (*gh.Team, *gh.Response, error) {
+		created = append(created, team.Name)
+		return &gh.Team{ID: githubpkg.Ptr(int64(42)), Slug: githubpkg.Ptr(strings.ToLower(team.Name)), Name: githubpkg.Ptr(team.Name)}, nil, nil
+	}}
+	desired := config.OrganizationConfig{Organization: "org-a", Teams: []config.TeamSpec{
+		{Slug: "independent", Name: "Independent", Privacy: "closed"},
+		{Slug: "missing-parent", Name: "Missing Parent", Privacy: "closed"},
+		{Slug: "child-a", Name: "Child A", Privacy: "closed", ParentSlug: "missing-parent"},
+		{Slug: "child-b", Name: "Child B", Privacy: "closed", ParentSlug: "missing-parent"},
+	}}
+	plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: "independent", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: "child-a", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeTeam, Operation: gitopsplan.ActionOperationCreate, ResourceID: "child-b", Executable: true},
+	}}
+
+	result, err := Execute(context.Background(), testApplyOptions(desired, &state.OrganizationState{Organization: "org-a"}, plan, withTeamService(teamService)))
+	if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+		t.Fatalf("Execute error = %v, want unresolved team dependency error", err)
+	}
+	if result == nil || len(result.Executed) != 1 || !reflect.DeepEqual(created, []string{"Independent"}) {
+		t.Fatalf("partial result = %#v, created teams = %#v; want only independent team created", result, created)
+	}
+
+	report := executionReportFromError(t, err)
+	if report.FailedActionIndex != -1 {
+		t.Errorf("failed action index = %d, want -1 for multiple blocked creates", report.FailedActionIndex)
+	}
+	if report.FailurePhase != ExecutionFailurePhaseTeamCreateDependencyResolution {
+		t.Errorf("failure phase = %q, want %q", report.FailurePhase, ExecutionFailurePhaseTeamCreateDependencyResolution)
+	}
+	wantStatuses := []ActionOutcomeStatus{ActionOutcomeStatusCompleted, ActionOutcomeStatusNotAttempted, ActionOutcomeStatusNotAttempted}
+	for index, want := range wantStatuses {
+		if got := report.ActionOutcomes[index].Status; got != want {
+			t.Errorf("action %d status = %q, want %q", index, got, want)
+		}
+	}
+}
+
 func TestExecuteTeamCreationWithoutReturnedIDIsPartiallyCompleted(t *testing.T) {
 	teamService := &testTeamService{createTeamFunc: func(context.Context, string, gh.NewTeam) (*gh.Team, *gh.Response, error) {
 		return &gh.Team{}, nil, nil

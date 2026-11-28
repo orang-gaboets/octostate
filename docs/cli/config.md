@@ -441,7 +441,9 @@ previous check or reviewed plan. Do not use them as a replay or resume cursor.
 When a batch failure cannot be assigned to one action, `failed_action_index`
 is `-1` and `failure_phase` identifies the affected phase; for example,
 `invite_username_resolution` means parent cancellation interrupted username
-lookups before invitation writes began.
+lookups before invitation writes began, and
+`team_create_dependency_resolution` means grouped team creates are blocked by
+unresolved parent dependencies.
 Each action outcome contains its resource type, operation, status, confirmed
 step labels, and an optional uncertain step label. Statuses are:
 

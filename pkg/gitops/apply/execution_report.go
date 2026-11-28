@@ -43,6 +43,9 @@ const (
 	// ExecutionFailurePhaseInviteUsernameResolution indicates that invitation
 	// username lookups were interrupted before invitation writes began.
 	ExecutionFailurePhaseInviteUsernameResolution ExecutionFailurePhase = "invite_username_resolution"
+	// ExecutionFailurePhaseTeamCreateDependencyResolution indicates that one or
+	// more grouped team creates are blocked by unresolved parent dependencies.
+	ExecutionFailurePhaseTeamCreateDependencyResolution ExecutionFailurePhase = "team_create_dependency_resolution"
 )
 
 // ActionOutcome reports a safe summary of one action in the current execution

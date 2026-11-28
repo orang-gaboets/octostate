@@ -14,7 +14,7 @@ type indexedTeamCreateAction struct {
 	action gitopsplan.Action
 }
 
-func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, planStartIndex int, result *Result) error {
+func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, planStartIndex int, result *Result) (ExecutionFailurePhase, error) {
 	pending := make([]indexedTeamCreateAction, len(actions))
 	for index, action := range actions {
 		pending[index] = indexedTeamCreateAction{index: planStartIndex + index, action: action}
@@ -27,7 +27,7 @@ func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, planStart
 			team, ok := e.desiredTeams[action.ResourceID]
 			if !ok {
 				e.tracker.beginAction(indexedAction.index)
-				return fmt.Errorf("desired team %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
+				return "", fmt.Errorf("desired team %s not found: %w", action.ResourceID, githubpkg.ErrNotFound)
 			}
 			if team.ParentSlug != "" {
 				if _, ok := e.teamIDs[teamSlugKey(team.ParentSlug)]; !ok {
@@ -37,7 +37,7 @@ func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, planStart
 			}
 			e.tracker.beginAction(indexedAction.index)
 			if err := e.createTeam(action); err != nil {
-				return err
+				return "", err
 			}
 			result.Executed = append(result.Executed, action)
 			e.tracker.completeAction(indexedAction.index)
@@ -52,12 +52,9 @@ func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, planStart
 		for _, indexedAction := range nextPending {
 			unresolved = append(unresolved, indexedAction.action.ResourceID)
 		}
-		if len(nextPending) > 0 {
-			e.tracker.beginAction(nextPending[0].index)
-		}
-		return fmt.Errorf("unable to resolve team create dependencies for %s: %w", strings.Join(unresolved, ", "), githubpkg.ErrInvalidFieldValue)
+		return ExecutionFailurePhaseTeamCreateDependencyResolution, fmt.Errorf("unable to resolve team create dependencies for %s: %w", strings.Join(unresolved, ", "), githubpkg.ErrInvalidFieldValue)
 	}
-	return nil
+	return "", nil
 }
 
 func (e *executor) executeTeamAction(action gitopsplan.Action) error {
