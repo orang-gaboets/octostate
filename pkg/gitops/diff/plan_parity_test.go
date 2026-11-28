@@ -158,6 +158,58 @@ func TestPlanAndDiffParityForTeamMembershipDecisions(t *testing.T) {
 	}
 }
 
+func TestPlanAndDiffParityWithActionableAndUnresolvedMemberships(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "acme",
+		Members: []config.OrganizationMemberSpec{
+			{Username: "alice", Role: "member"},
+			{Username: "bob", Role: "member"},
+			{Username: "charlie", Role: "member"},
+		},
+		Teams: []config.TeamSpec{{
+			Slug: "platform", Name: "Platform", Privacy: "closed",
+			Members: []config.TeamMemberSpec{
+				{Username: "alice", Role: "maintainer"},
+				{Username: "bob", Role: "maintainer"},
+				{Username: "charlie", Role: "member"},
+			},
+		}},
+	}
+	actual := state.OrganizationState{
+		Organization: "acme",
+		Members: []state.OrganizationMember{
+			{Username: "alice", Role: "member"},
+			{Username: "bob", Role: "member"},
+			{Username: "charlie", Role: "member"},
+		},
+		Teams: []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+		TeamMembers: []state.TeamMember{
+			{TeamSlug: "platform", Username: "alice", Role: "member", Origin: gitopsgithub.TeamMembershipOriginUnknown},
+			{TeamSlug: "platform", Username: "bob", Role: "member", Origin: gitopsgithub.TeamMembershipOriginDirect},
+		},
+	}
+	want := []expectedAction{
+		{
+			resourceType: plan.ActionResourceTypeTeamMember,
+			operation:    plan.ActionOperationUpdate,
+			resourceID:   "platform/bob",
+			executable:   true,
+			changes:      []plan.FieldChange{{Field: "role", From: "member", To: "maintainer"}},
+		},
+		{
+			resourceType: plan.ActionResourceTypeTeamMember,
+			operation:    plan.ActionOperationCreate,
+			resourceID:   "platform/charlie",
+			executable:   true,
+		},
+	}
+	wantUnresolved := []state.TeamMember{{
+		TeamSlug: "platform", Username: "alice", Role: "member", Origin: gitopsgithub.TeamMembershipOriginUnknown,
+	}}
+
+	assertPlanDiffParity(t, desired, actual, nil, nil, want, wantUnresolved)
+}
+
 func TestPlanAndDiffParityForOrganizationMemberDecisions(t *testing.T) {
 	tests := []struct {
 		name           string
