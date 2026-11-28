@@ -256,6 +256,9 @@ and `FailurePhase` identifies the batch phase. For example,
 `invite_username_resolution` means cancellation interrupted username lookups
 before invitation writes began; `team_create_dependency_resolution` means a
 group of team creates is blocked by unresolved parent dependencies.
+Unsupported caller-supplied resource types and operations appear as `unknown`
+in redacted failure reports and partial results; this is a reporting
+placeholder, not a supported planner action category.
 `ConfirmedSteps` lists mutation calls that returned successfully;
 `UncertainStep` identifies a mutation call that returned an error. The report
 omits resource IDs, action messages, field values, and error text. The partial
