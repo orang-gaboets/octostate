@@ -87,7 +87,7 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 	report.Actions = append(report.Actions, actions...)
 	report.Normalize()
 	ghlogging.Debugf(ctx, "plan built for %s: actions=%d executable=%d unresolved_memberships=%d",
-		report.Organization, report.Summary.Actions, report.Summary.ExecutableActions, report.Summary.UnresolvedMemberships)
+		ghlogging.SafeField(report.Organization), report.Summary.Actions, report.Summary.ExecutableActions, report.Summary.UnresolvedMemberships)
 	return report, nil
 }
 

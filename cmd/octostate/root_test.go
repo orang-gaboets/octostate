@@ -16,7 +16,8 @@ func TestRootVerboseWritesLogsToStderrAndKeepsJSONOnStdout(t *testing.T) {
 	var errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	cmd.SetArgs([]string{"--verbose", "organization", "get-by-name", "--token", "t", "--org", "o"})
+	const token = "synthetic-token-sentinel"
+	cmd.SetArgs([]string{"--verbose", "organization", "get-by-name", "--token", token, "--org", "o"})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -24,6 +25,9 @@ func TestRootVerboseWritesLogsToStderrAndKeepsJSONOnStdout(t *testing.T) {
 
 	stdout := strings.TrimSpace(out.String())
 	stderr := strings.TrimSpace(errBuf.String())
+	if strings.Contains(stdout+stderr, token) {
+		t.Fatalf("output exposes the authentication token")
+	}
 
 	if stdout == "" || !strings.HasPrefix(stdout, "{") {
 		t.Fatalf("expected JSON object on stdout, got %q", stdout)

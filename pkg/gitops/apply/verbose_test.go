@@ -70,14 +70,20 @@ func TestExecuteVerboseLogsEachActionWithoutEmail(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := logs.String()
+	last := -1
 	for _, want := range []string{
 		"apply: create team " + teamResourceID("platform"),
 		"apply: create invite email:<redacted>",
 		"apply completed for orang-gaboets: executed=2 skipped=1",
 	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("verbose output missing %q:\n%s", want, got)
+		if count := strings.Count(got, want); count != 1 {
+			t.Errorf("expected %q exactly once, got %d:\n%s", want, count, got)
 		}
+		index := strings.Index(got, want)
+		if index <= last {
+			t.Errorf("unexpected diagnostic order for %q:\n%s", want, got)
+		}
+		last = index
 	}
 	if strings.Contains(got, "apply: delete repository") {
 		t.Errorf("non-executable action logged as executing:\n%s", got)
@@ -86,7 +92,8 @@ func TestExecuteVerboseLogsEachActionWithoutEmail(t *testing.T) {
 }
 
 func TestExecuteVerboseLogsFailedActionWithoutEmail(t *testing.T) {
-	desired, plan, teamSvc, orgSvc := verboseInviteFixture(t, errors.New("invite failed for alice@example.com"))
+	const sentinel = "synthetic-sensitive-value"
+	desired, plan, teamSvc, orgSvc := verboseInviteFixture(t, errors.New("invite failed for alice@example.com: "+sentinel))
 	var logs bytes.Buffer
 	ctx := ghlogging.WithVerbose(context.Background(), true, &logs)
 
@@ -99,6 +106,9 @@ func TestExecuteVerboseLogsFailedActionWithoutEmail(t *testing.T) {
 	}
 	if strings.Contains(got, "apply completed") {
 		t.Errorf("failed apply logged as completed:\n%s", got)
+	}
+	if strings.Contains(got, sentinel) {
+		t.Fatal("verbose output exposes sensitive error payload")
 	}
 	assertNoEmail(t, got)
 }
@@ -155,5 +165,28 @@ func TestExecuteWithoutVerboseWritesNoDiagnostics(t *testing.T) {
 	}
 	if logs.Len() != 0 {
 		t.Fatalf("diagnostics written without verbose:\n%s", logs.String())
+	}
+}
+
+func TestVerboseDiagnosticsEscapeControlCharacters(t *testing.T) {
+	const injected = "x\rverbose: apply completed for evil\n\x1b[2K"
+	action := gitopsplan.Action{ResourceType: gitopsplan.ActionResourceTypeRepository, Operation: gitopsplan.ActionOperationUpdate, ResourceID: "repository:o/" + injected}
+	var logs bytes.Buffer
+	ctx := ghlogging.WithVerbose(context.Background(), true, &logs)
+
+	e := &executor{ctx: ctx}
+	_ = e.runLogged(action, func(gitopsplan.Action) error { return errors.New("boom") })
+	failures := &preflightFailures{ctx: ctx}
+	failures.add(action, errors.New("boom"))
+
+	got := logs.String()
+	lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+	if len(lines) != 3 || strings.ContainsAny(got, "\r\x1b") {
+		t.Fatalf("diagnostics not confined to 3 escaped lines:\n%q", got)
+	}
+	for _, line := range lines {
+		if !strings.Contains(line, `x\rverbose: apply completed for evil\n\x1b[2K`) {
+			t.Errorf("line missing escaped resource ID: %q", line)
+		}
 	}
 }

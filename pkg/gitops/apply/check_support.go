@@ -22,7 +22,7 @@ func (f *preflightFailures) add(action gitopsplan.Action, err error) {
 	if err == nil {
 		return
 	}
-	ghlogging.Debugf(f.ctx, "preflight failed: %s %s %s", action.Operation, action.ResourceType, logResourceID(action.ResourceID))
+	ghlogging.Debugf(f.ctx, "preflight failed: %s", logAction(action))
 	f.errs = append(f.errs, fmt.Errorf("%s %s %s: %w", action.Operation, action.ResourceType, action.ResourceID, err))
 }
 

@@ -134,7 +134,7 @@ func collectOrganizationWithLimits(
 		return nil, err
 	}
 	started := time.Now()
-	ghlogging.Debugf(ctx, "collect %s: started", opt.OrgName)
+	ghlogging.Debugf(ctx, "collect %s: started", ghlogging.SafeField(opt.OrgName))
 
 	actual := &state.OrganizationState{Organization: opt.OrgName}
 	var (
@@ -199,7 +199,7 @@ func collectOrganizationWithLimits(
 	}
 
 	if err := orderedtasks.Run(ctx, limits.topLevel, tasks); err != nil {
-		ghlogging.Debugf(ctx, "collect %s: failed after %s", opt.OrgName, time.Since(started).Round(time.Millisecond))
+		ghlogging.Debugf(ctx, "collect %s: failed after %s", ghlogging.SafeField(opt.OrgName), time.Since(started).Round(time.Millisecond))
 		return nil, err
 	}
 
@@ -211,7 +211,7 @@ func collectOrganizationWithLimits(
 	actual.TeamRepositoryPermissions = teamRepoPerms
 	actual.Normalize()
 	ghlogging.Debugf(ctx, "collect %s: completed in %s: members=%d pending_invitations=%d repositories=%d teams=%d team_members=%d team_repository_permissions=%d",
-		opt.OrgName, time.Since(started).Round(time.Millisecond), len(actual.Members), len(actual.PendingInvitations),
+		ghlogging.SafeField(opt.OrgName), time.Since(started).Round(time.Millisecond), len(actual.Members), len(actual.PendingInvitations),
 		len(actual.Repositories), len(actual.Teams), len(actual.TeamMembers), len(actual.TeamRepositoryPermissions))
 	return actual, nil
 }

@@ -115,10 +115,10 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	}
 
 	if err := failures.err(); err != nil {
-		ghlogging.Debugf(ctx, "preflight failed for %s: failed=%d", result.Organization, len(failures.errs))
+		ghlogging.Debugf(ctx, "preflight failed for %s: failed=%d", ghlogging.SafeField(result.Organization), len(failures.errs))
 		return nil, err
 	}
-	ghlogging.Debugf(ctx, "preflight passed for %s: checked=%d skipped=%d", result.Organization, len(result.CheckedActions), len(result.SkippedActions))
+	ghlogging.Debugf(ctx, "preflight passed for %s: checked=%d skipped=%d", ghlogging.SafeField(result.Organization), len(result.CheckedActions), len(result.SkippedActions))
 	result.Normalize()
 	return result, nil
 }

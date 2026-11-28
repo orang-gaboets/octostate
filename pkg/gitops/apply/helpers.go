@@ -103,20 +103,23 @@ func teamPrivacyPointer(privacy string) (*githubpkg.TeamPrivacy, error) {
 	return &value, nil
 }
 
-// logResourceID returns a resource ID that is safe for verbose diagnostics.
-// Email-based invite IDs are redacted.
-func logResourceID(resourceID string) string {
+// logAction describes a plan action for verbose diagnostics: email-based
+// invite IDs are redacted and every field is escaped onto one line.
+func logAction(action gitopsplan.Action) string {
+	resourceID := action.ResourceID
 	if strings.HasPrefix(resourceID, "email:") {
-		return "email:<redacted>"
+		resourceID = "email:<redacted>"
 	}
-	return resourceID
+	return ghlogging.SafeField(string(action.Operation)) + " " +
+		ghlogging.SafeField(string(action.ResourceType)) + " " +
+		ghlogging.SafeField(resourceID)
 }
 
 // runLogged executes one plan action with verbose progress and failure lines.
 func (e *executor) runLogged(action gitopsplan.Action, run func(gitopsplan.Action) error) error {
-	ghlogging.Debugf(e.ctx, "apply: %s %s %s", action.Operation, action.ResourceType, logResourceID(action.ResourceID))
+	ghlogging.Debugf(e.ctx, "apply: %s", logAction(action))
 	if err := run(action); err != nil {
-		ghlogging.Debugf(e.ctx, "apply failed: %s %s %s", action.Operation, action.ResourceType, logResourceID(action.ResourceID))
+		ghlogging.Debugf(e.ctx, "apply failed: %s", logAction(action))
 		return err
 	}
 	return nil

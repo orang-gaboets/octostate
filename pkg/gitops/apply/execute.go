@@ -166,6 +166,7 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 			action.Operation == gitopsplan.ActionOperationCreate &&
 			!executor.inviteUsersResolved {
 			if err := executor.preResolveInviteUsernames(opt.Plan.Actions[index:]); err != nil {
+				ghlogging.Debugf(ctx, "apply: invite username resolution failed")
 				return nil, err
 			}
 		}
@@ -177,7 +178,7 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 		index++
 	}
 
-	ghlogging.Debugf(ctx, "apply completed for %s: executed=%d skipped=%d", result.Organization, len(result.Executed), len(result.SkippedDrift))
+	ghlogging.Debugf(ctx, "apply completed for %s: executed=%d skipped=%d", ghlogging.SafeField(result.Organization), len(result.Executed), len(result.SkippedDrift))
 	result.Normalize()
 	return result, nil
 }
