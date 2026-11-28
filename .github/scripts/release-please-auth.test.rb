@@ -745,12 +745,55 @@ class ReleasePleaseAuthTest < Minitest::Test
     assert_equal "write", token_step.fetch("with").fetch("permission-pull-requests")
   end
 
+  def test_build_provenance_is_attested_and_verified_before_upload
+    names = @steps.map { |step| step["name"] }
+    build = names.index("Build release artifacts")
+    attest = names.index("Attest release archive build provenance")
+    verify = names.index("Verify release archive build provenance")
+    upload = names.index("Upload and verify release artifacts")
+    refute_nil attest
+    refute_nil verify
+    assert_operator build, :<, attest
+    assert_operator attest, :<, verify
+    assert_operator verify, :<, upload
+
+    attest_step = required_step("Attest release archive build provenance")
+    assert_match(/\Aactions\/attest@[0-9a-f]{40}\z/, attest_step.fetch("uses"))
+    assert_equal "dist/octostate_*.tar.gz\ndist/octostate_*.zip\n", attest_step.fetch("with").fetch("subject-path")
+    [attest_step, required_step("Verify release archive build provenance")].each do |step|
+      assert_equal "steps.release.outputs.should_package == 'true'", step.fetch("if")
+    end
+
+    verify_step = required_step("Verify release archive build provenance")
+    assert_equal 'bash .github/scripts/verify-release-provenance.sh dist "${GITHUB_REPOSITORY}" "${SOURCE_DIGEST}"', verify_step.fetch("run")
+    assert_equal "${{ steps.release.outputs.commit }}", verify_step.fetch("env").fetch("SOURCE_DIGEST")
+
+    guard = names.index("Require the release commit to be the workflow commit")
+    refute_nil guard
+    assert_operator names.index("Resolve release to package"), :<, guard
+    assert_operator guard, :<, names.index("Check out the exact release tag")
+    guard_step = required_step("Require the release commit to be the workflow commit")
+    assert_equal "steps.release.outputs.should_package == 'true'", guard_step.fetch("if")
+    assert_equal "${{ github.sha }}", guard_step.fetch("env").fetch("WORKFLOW_COMMIT")
+    assert_equal "${{ steps.release.outputs.commit }}", guard_step.fetch("env").fetch("RELEASE_COMMIT")
+    assert_includes guard_step.fetch("run"), '[[ "${RELEASE_COMMIT}" == "${WORKFLOW_COMMIT}" ]]'
+
+    assert_equal(
+      {
+        "contents" => "write", "issues" => "write", "pull-requests" => "write",
+        "id-token" => "write", "attestations" => "write"
+      },
+      @workflow.fetch("jobs").fetch("release-please").fetch("permissions")
+    )
+  end
+
   def test_workflow_shell_blocks_parse_as_bash
     names = [
       "Check out the exact release tag",
       "Upload and verify release artifacts",
       "Verify Release Please Git authentication",
-      "Validate retry inputs"
+      "Validate retry inputs",
+      "Require the release commit to be the workflow commit"
     ]
     names.each do |name|
       script = required_step(name).fetch("run")

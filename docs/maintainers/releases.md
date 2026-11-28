@@ -39,6 +39,25 @@ supported CLI targets, uploads the archives and `checksums.txt` to that draft,
 verifies the final assets and SHA-256 entries, and only then publishes the
 Release.
 
+Before uploading, the workflow also generates and verifies build provenance:
+
+- **Source binding:** after resolving the release, the job fails unless the
+  release commit equals the workflow commit (`github.sha`). Provenance records
+  the workflow commit as its source, so this keeps the attested source digest
+  equal to the compiled commit.
+- **Attestation:** `actions/attest` signs SLSA build provenance for the five
+  archives. This needs `id-token: write` and `attestations: write`. GitHub
+  grants these to the whole `release-please` job, not just that step.
+- **Verification:** `.github/scripts/verify-release-provenance.sh` requires
+  GitHub CLI v2.102.0 or later and exactly five archives. Each archive must
+  verify against the signer identity
+  `.github/workflows/release-please.yml@refs/heads/main`, source ref
+  `refs/heads/main`, the release commit as source digest, and a GitHub-hosted
+  runner.
+- **Failure behavior:** any failure stops the job before upload and
+  publication, and the draft Release stays unpublished. Workflow dispatch is
+  accepted only from `main`.
+
 The custom archives are named:
 
 ```text
@@ -58,7 +77,11 @@ If a run fails after the draft Release exists, retry it from **Actions** using
 the `Release Please` workflow's `release_tag` and `release_commit` inputs. Set
 `release_tag` to the draft tag and `release_commit` to the commit that tag
 resolves to; both values are required so the workflow cannot package another
-commit. For example:
+commit. The retry runs on the current `main` commit, and the source-binding
+check above requires that commit to be the release commit. A retry therefore
+works only while `main` has not advanced past the release commit. Once it has,
+the retry fails before building, and recovering that release needs a
+maintainer decision. For example:
 
 ```bash
 gh workflow run release-please.yml \

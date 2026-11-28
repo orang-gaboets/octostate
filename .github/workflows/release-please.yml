@@ -32,6 +32,15 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow defaults. id-token and
+    # attestations are needed only for build provenance, but GitHub grants
+    # them to the whole job.
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      attestations: write
     steps:
       - name: Validate retry inputs
         if: github.event_name == 'workflow_dispatch'
@@ -113,6 +122,21 @@ jobs:
           else
             printf 'should_package=false\n' >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Require the release commit to be the workflow commit
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Build provenance records the workflow commit as its source. Refuse
+          # to package any other commit, so the attested source digest is
+          # always the commit that was compiled.
+          [[ "${RELEASE_COMMIT}" == "${WORKFLOW_COMMIT}" ]] || {
+            echo "release commit ${RELEASE_COMMIT} is not the workflow commit ${WORKFLOW_COMMIT}; see docs/maintainers/releases.md" >&2
+            exit 1
+          }
 
       - name: Verify Release Please Git authentication
         if: github.event_name == 'workflow_dispatch' && inputs.verify_git_auth == true
@@ -240,6 +264,21 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: bash .github/scripts/build-release-artifacts.sh "${RELEASE_TAG}" dist
+
+      - name: Attest release archive build provenance
+        if: steps.release.outputs.should_package == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/octostate_*.tar.gz
+            dist/octostate_*.zip
+
+      - name: Verify release archive build provenance
+        if: steps.release.outputs.should_package == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_DIGEST: ${{ steps.release.outputs.commit }}
+        run: bash .github/scripts/verify-release-provenance.sh dist "${GITHUB_REPOSITORY}" "${SOURCE_DIGEST}"
 
       - name: Upload and verify release artifacts
         if: steps.release.outputs.should_package == 'true'
