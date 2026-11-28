@@ -233,7 +233,6 @@ func TestApplyConfigCommandReportsExecutionFailure(t *testing.T) {
 			}
 			buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return plan, nil }
 			executeApply = gitopsapply.Execute
-			executeReviewedApply = gitopsapply.ExecuteReviewed
 
 			cmd := ApplyConfigCmd()
 			var out bytes.Buffer
@@ -1182,7 +1181,6 @@ func restoreApplyHooks(t *testing.T) {
 	oldBuild := buildApplyPlan
 	oldCheck := checkApply
 	oldExecute := executeApply
-	oldExecuteReviewed := executeReviewedApply
 
 	t.Cleanup(func() {
 		loadApplyConfig = oldLoad
@@ -1192,7 +1190,6 @@ func restoreApplyHooks(t *testing.T) {
 		buildApplyPlan = oldBuild
 		checkApply = oldCheck
 		executeApply = oldExecute
-		executeReviewedApply = oldExecuteReviewed
 	})
 }
 

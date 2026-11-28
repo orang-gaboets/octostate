@@ -20,14 +20,13 @@ import (
 )
 
 var (
-	loadApplyConfig      = gitopsconfig.LoadDir
-	validateApplyConfig  = gitopsconfig.Validate
-	newApplyClient       = auth.NewClient
-	collectApplyState    = collector.CollectOrganization
-	buildApplyPlan       = gitopsplan.Build
-	checkApply           = gitopsapply.Check
-	executeApply         = gitopsapply.Execute
-	executeReviewedApply = gitopsapply.ExecuteReviewed
+	loadApplyConfig     = gitopsconfig.LoadDir
+	validateApplyConfig = gitopsconfig.Validate
+	newApplyClient      = auth.NewClient
+	collectApplyState   = collector.CollectOrganization
+	buildApplyPlan      = gitopsplan.Build
+	checkApply          = gitopsapply.Check
+	executeApply        = gitopsapply.Execute
 )
 
 type applyRunMode int
@@ -240,7 +239,7 @@ func applyConfig(
 			return nil, nil, checkResult, desiredConfigIdentity, nil
 		}
 
-		result, err := executeReviewedApply(ctx, reviewedOptions)
+		result, err := gitopsapply.ExecuteReviewed(ctx, reviewedOptions)
 		if err != nil {
 			return result, nil, nil, desiredConfigIdentity, runtimePhaseError("execute reviewed apply", err)
 		}
