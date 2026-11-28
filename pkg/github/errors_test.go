@@ -60,22 +60,52 @@ func TestWrapError(t *testing.T) {
 	}
 }
 
-func TestAPIErrorStringOmitsResponseBody(t *testing.T) {
-	const secret = "SYNTHETIC_SENSITIVE_VALUE"
+func TestAPIErrorStringShowsOnlyReviewedDetails(t *testing.T) {
+	const marker = "SYNTHETIC_SENSITIVE_VALUE"
 	tests := []struct {
 		name string
 		body string
-		want []string
+		want string
 	}{
 		{
-			name: "json_validation_errors",
-			body: `{"message":"Validation Failed","errors":[{"resource":"Team","field":"name","code":"custom","message":"` + secret + `"}],"documentation_url":"https://docs.github.com/rest","status":"422"}`,
-			want: []string{"status 422: Validation Failed", "(docs: https://docs.github.com/rest)", "Team.name: custom"},
+			name: "message_marker",
+			body: `{"message":"` + marker + `","documentation_url":"https://docs.github.com/rest"}`,
+			want: "status 422 Unprocessable Entity",
+		},
+		{
+			name: "docs_url_marker",
+			body: `{"message":"Validation Failed","documentation_url":"https://example.test/` + marker + `"}`,
+			want: "status 422 Unprocessable Entity",
+		},
+		{
+			name: "field_message_marker",
+			body: `{"message":"Validation Failed","errors":[{"resource":"Team","field":"name","code":"custom","message":"` + marker + `"}]}`,
+			want: "status 422 Unprocessable Entity; Team.name: custom",
+		},
+		{
+			name: "resource_marker",
+			body: `{"message":"Validation Failed","errors":[{"resource":"` + marker + `","field":"name","code":"invalid"}]}`,
+			want: "status 422 Unprocessable Entity; 1 unreviewed validation detail omitted",
+		},
+		{
+			name: "field_marker",
+			body: `{"message":"Validation Failed","errors":[{"resource":"Team","field":"` + marker + `","code":"invalid"}]}`,
+			want: "status 422 Unprocessable Entity; 1 unreviewed validation detail omitted",
+		},
+		{
+			name: "code_marker",
+			body: `{"message":"Validation Failed","errors":[{"resource":"Team","field":"name","code":"` + marker + `"}]}`,
+			want: "status 422 Unprocessable Entity; 1 unreviewed validation detail omitted",
+		},
+		{
+			name: "mixed_safe_and_unsafe",
+			body: `{"message":"Validation Failed","errors":[{"resource":"Team","field":"name","code":"already_exists"},{"resource":"` + marker + `","field":"name","code":"invalid"},{"resource":"Repository","field":"topics","code":"invalid"},{"resource":"Team","field":"name","code":"already_exists"},{"resource":"Team","field":"x","code":"` + marker + `"}]}`,
+			want: "status 422 Unprocessable Entity; Team.name: already_exists; Repository.topics: invalid; 2 unreviewed validation details omitted",
 		},
 		{
 			name: "non_json_body",
-			body: "<html>" + secret + "</html>",
-			want: []string{"status 422"},
+			body: "<html>" + marker + "</html>",
+			want: "status 422 Unprocessable Entity",
 		},
 	}
 
@@ -90,22 +120,32 @@ func TestAPIErrorStringOmitsResponseBody(t *testing.T) {
 			if !errors.Is(err, ErrValidationFailed) {
 				t.Fatalf("expected ErrValidationFailed, got %v", err)
 			}
-			got := err.Error()
-			if strings.Contains(got, secret) {
-				t.Fatalf("error text exposes response body: %q", got)
-			}
-			if strings.Contains(got, "(docs: )") {
-				t.Fatalf("error text has an empty docs URL: %q", got)
-			}
-			for _, want := range tt.want {
-				if !strings.Contains(got, want) {
-					t.Errorf("error text %q missing %q", got, want)
-				}
+			if got, want := err.Error(), "create team: validation failed\n"+tt.want; got != want {
+				t.Fatalf("error text:\n got %q\nwant %q", got, want)
 			}
 			var apiErr *APIError
-			if !errors.As(err, &apiErr) || !strings.Contains(string(apiErr.Body), secret) {
+			if !errors.As(err, &apiErr) || !strings.Contains(string(apiErr.Body), marker) {
 				t.Fatalf("APIError.Body must still carry the raw body for explicit inspection")
 			}
+			var ghErr *gh.ErrorResponse
+			if !errors.As(err, &ghErr) {
+				t.Fatalf("the go-github ErrorResponse must stay reachable through Unwrap")
+			}
 		})
+	}
+}
+
+func TestAPIErrorStringIsLinearInValidationErrors(t *testing.T) {
+	errs := make([]gh.Error, 10000)
+	for i := range errs {
+		errs[i] = gh.Error{Resource: "Team", Field: "name", Code: "invalid"}
+	}
+	e := &APIError{StatusCode: http.StatusUnprocessableEntity, err: &gh.ErrorResponse{Errors: errs}}
+	allocs := testing.AllocsPerRun(5, func() { _ = e.Error() })
+	if allocs > 50 {
+		t.Fatalf("Error() made %.0f allocations for 10,000 validation errors", allocs)
+	}
+	if got, want := e.Error(), "status 422 Unprocessable Entity; Team.name: invalid"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

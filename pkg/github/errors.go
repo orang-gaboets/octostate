@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	gh "github.com/google/go-github/v88/github"
 )
@@ -18,24 +20,70 @@ type APIError struct {
 	err              error
 }
 
-// Error implements the error interface. It reports the status, GitHub's
-// message, the documentation URL, and field-level validation codes. The raw
-// response body is deliberately omitted; callers can still inspect Body.
+// Error implements the error interface. GitHub-supplied text is untrusted,
+// so the string contains only the status code, its local status text, and
+// validation details whose resource, field, and code are all on the reviewed
+// lists below. Message, DocumentationURL, Body, and free-text validation
+// messages are left out; callers can still inspect those fields explicitly.
 func (e *APIError) Error() string {
-	msg := fmt.Sprintf("status %d", e.StatusCode)
-	if e.Message != "" {
-		msg += ": " + e.Message
-	}
-	if e.DocumentationURL != "" {
-		msg += " (docs: " + e.DocumentationURL + ")"
+	var b strings.Builder
+	b.WriteString("status ")
+	b.WriteString(strconv.Itoa(e.StatusCode))
+	if text := http.StatusText(e.StatusCode); text != "" {
+		b.WriteString(" ")
+		b.WriteString(text)
 	}
 	var resp *gh.ErrorResponse
-	if errors.As(e.err, &resp) {
-		for _, fieldErr := range resp.Errors {
-			msg += fmt.Sprintf("; %s.%s: %s", fieldErr.Resource, fieldErr.Field, fieldErr.Code)
-		}
+	if !errors.As(e.err, &resp) {
+		return b.String()
 	}
-	return msg
+	seen := make(map[gh.Error]bool)
+	omitted := 0
+	for _, fieldErr := range resp.Errors {
+		if !reviewedResources[fieldErr.Resource] || !reviewedFields[fieldErr.Field] || !reviewedCodes[fieldErr.Code] {
+			omitted++
+			continue
+		}
+		key := gh.Error{Resource: fieldErr.Resource, Field: fieldErr.Field, Code: fieldErr.Code}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		b.WriteString("; ")
+		b.WriteString(key.Resource)
+		b.WriteString(".")
+		b.WriteString(key.Field)
+		b.WriteString(": ")
+		b.WriteString(key.Code)
+	}
+	switch omitted {
+	case 0:
+	case 1:
+		b.WriteString("; 1 unreviewed validation detail omitted")
+	default:
+		fmt.Fprintf(&b, "; %d unreviewed validation details omitted", omitted)
+	}
+	return b.String()
+}
+
+// Reviewed validation detail values. Codes are GitHub's documented
+// validation codes; resources and fields are the ones Octostate writes.
+var (
+	reviewedCodes     = setOf("missing", "missing_field", "invalid", "already_exists", "unprocessable", "custom")
+	reviewedResources = setOf("Team", "Repository", "Membership", "OrganizationInvitation", "Invitation")
+	reviewedFields    = setOf(
+		"name", "description", "privacy", "parent_team_id", "permission", "role",
+		"visibility", "homepage", "topics", "allow_forking", "archived", "is_template",
+		"email", "invitee_id", "team_ids",
+	)
+)
+
+func setOf(values ...string) map[string]bool {
+	set := make(map[string]bool, len(values))
+	for _, value := range values {
+		set[value] = true
+	}
+	return set
 }
 
 // Unwrap returns the underlying error.
