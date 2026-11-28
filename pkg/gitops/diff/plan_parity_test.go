@@ -641,6 +641,8 @@ func assertPlanDiffParity(
 	normalizedActual := normalizeParityActual(actual)
 	desiredForPlan := config.NormalizeDesiredState(desired)
 	desiredForDiff := config.NormalizeDesiredState(desired)
+	actualSnapshot := snapshot.NewActualSnapshot(time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC), &normalizedActual)
+	actualSnapshot.ResolvedInviteUserIDsByUsername = cloneResolvedIDs(resolvedIDsByUsername)
 
 	var userService ghusers.Service
 	if userLoginsByID != nil {
@@ -655,8 +657,6 @@ func assertPlanDiffParity(
 		t.Fatalf("plan.Build returned error: %v", err)
 	}
 
-	actualSnapshot := snapshot.NewActualSnapshot(time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC), &normalizedActual)
-	actualSnapshot.ResolvedInviteUserIDsByUsername = cloneResolvedIDs(resolvedIDsByUsername)
 	diffReport, err := gitopsdiff.Build(gitopsdiff.Options{
 		Desired:  desiredForDiff,
 		Snapshot: &actualSnapshot,
