@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"strconv"
 )
 
 type contextKey struct{}
@@ -31,4 +32,11 @@ func Debugf(ctx context.Context, format string, args ...any) {
 		return
 	}
 	logger.Printf(format, args...)
+}
+
+// SafeField escapes control characters so a user-derived value stays on one
+// diagnostic line and cannot forge additional records.
+func SafeField(value string) string {
+	quoted := strconv.QuoteToGraphic(value)
+	return quoted[1 : len(quoted)-1]
 }

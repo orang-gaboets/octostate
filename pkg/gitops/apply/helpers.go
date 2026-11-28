@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/internal/resourceid"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 )
 
 func repositoryResourceID(owner, name string) string {
@@ -99,4 +101,26 @@ func teamPrivacyPointer(privacy string) (*githubpkg.TeamPrivacy, error) {
 		return nil, fmt.Errorf("team privacy %q is invalid: %w", privacy, githubpkg.ErrInvalidFieldValue)
 	}
 	return &value, nil
+}
+
+// logAction describes a plan action for verbose diagnostics: email-based
+// invite IDs are redacted and every field is escaped onto one line.
+func logAction(action gitopsplan.Action) string {
+	resourceID := action.ResourceID
+	if strings.HasPrefix(resourceID, "email:") {
+		resourceID = "email:<redacted>"
+	}
+	return ghlogging.SafeField(string(action.Operation)) + " " +
+		ghlogging.SafeField(string(action.ResourceType)) + " " +
+		ghlogging.SafeField(resourceID)
+}
+
+// runLogged executes one plan action with verbose progress and failure lines.
+func (e *executor) runLogged(action gitopsplan.Action, run func(gitopsplan.Action) error) error {
+	ghlogging.Debugf(e.ctx, "apply: %s", logAction(action))
+	if err := run(action); err != nil {
+		ghlogging.Debugf(e.ctx, "apply failed: %s", logAction(action))
+		return err
+	}
+	return nil
 }

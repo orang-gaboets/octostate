@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
 	"github.com/orang-gaboets/octostate/pkg/github/repos"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
@@ -84,7 +85,7 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 		PlanSummary:               applyPlanSummary(opt.Plan, unresolvedTeamMemberships),
 		UnresolvedTeamMemberships: unresolvedTeamMemberships,
 	}
-	failures := &preflightFailures{}
+	failures := &preflightFailures{ctx: ctx}
 
 	for index := 0; index < len(opt.Plan.Actions); {
 		action := opt.Plan.Actions[index]
@@ -114,8 +115,10 @@ func Check(ctx context.Context, opt Options) (*CheckResult, error) {
 	}
 
 	if err := failures.err(); err != nil {
+		ghlogging.Debugf(ctx, "preflight failed for %s: failed=%d", ghlogging.SafeField(result.Organization), len(failures.errs))
 		return nil, err
 	}
+	ghlogging.Debugf(ctx, "preflight passed for %s: checked=%d skipped=%d", ghlogging.SafeField(result.Organization), len(result.CheckedActions), len(result.SkippedActions))
 	result.Normalize()
 	return result, nil
 }

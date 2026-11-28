@@ -25,7 +25,7 @@ func (e *executor) executeTeamCreateGroup(actions []gitopsplan.Action, result *R
 					continue
 				}
 			}
-			if err := e.createTeam(action); err != nil {
+			if err := e.runLogged(action, e.createTeam); err != nil {
 				return err
 			}
 			result.Executed = append(result.Executed, action)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 	"github.com/orang-gaboets/octostate/pkg/github/organizations"
 	"github.com/orang-gaboets/octostate/pkg/github/repos"
 	"github.com/orang-gaboets/octostate/pkg/github/teams"
@@ -165,17 +166,19 @@ func Execute(ctx context.Context, opt Options) (*Result, error) {
 			action.Operation == gitopsplan.ActionOperationCreate &&
 			!executor.inviteUsersResolved {
 			if err := executor.preResolveInviteUsernames(opt.Plan.Actions[index:]); err != nil {
+				ghlogging.Debugf(ctx, "apply: invite username resolution failed")
 				return nil, err
 			}
 		}
 
-		if err := executor.executeAction(action); err != nil {
+		if err := executor.runLogged(action, executor.executeAction); err != nil {
 			return nil, err
 		}
 		result.Executed = append(result.Executed, action)
 		index++
 	}
 
+	ghlogging.Debugf(ctx, "apply completed for %s: executed=%d skipped=%d", ghlogging.SafeField(result.Organization), len(result.Executed), len(result.SkippedDrift))
 	result.Normalize()
 	return result, nil
 }

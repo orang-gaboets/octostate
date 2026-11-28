@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	githubpkg "github.com/orang-gaboets/octostate/pkg/github"
+	ghlogging "github.com/orang-gaboets/octostate/pkg/github/logging"
 	ghusers "github.com/orang-gaboets/octostate/pkg/github/users"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
@@ -85,6 +86,8 @@ func Build(ctx context.Context, opt Options) (*Report, error) {
 	}
 	report.Actions = append(report.Actions, actions...)
 	report.Normalize()
+	ghlogging.Debugf(ctx, "plan built for %s: actions=%d executable=%d unresolved_memberships=%d",
+		ghlogging.SafeField(report.Organization), report.Summary.Actions, report.Summary.ExecutableActions, report.Summary.UnresolvedMemberships)
 	return report, nil
 }
 
