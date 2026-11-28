@@ -354,6 +354,56 @@ func TestPlanAndDiffParityForTeamRepositoryPermissionAvailability(t *testing.T) 
 	}
 }
 
+func TestPlanAndDiffParityForTeamRepositoryPermissionNoOpAndRemoval(t *testing.T) {
+	tests := []struct {
+		name    string
+		desired config.OrganizationConfig
+		actual  state.OrganizationState
+		want    []expectedAction
+	}{
+		{
+			name: "matching permission is a no-op",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Repositories: []config.RepositorySpec{{Owner: "acme", Name: "repo", Visibility: "private"}},
+				Teams: []config.TeamSpec{{
+					Slug: "platform", Name: "Platform", Privacy: "closed",
+					Repositories: []config.TeamRepositorySpec{{Owner: "acme", Name: "repo", Permission: "pull"}},
+				}},
+			},
+			actual: state.OrganizationState{
+				Organization:              "acme",
+				Repositories:              []state.Repository{{Owner: "acme", Name: "repo", Visibility: "private"}},
+				Teams:                     []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+				TeamRepositoryPermissions: []state.TeamRepositoryPermission{{TeamSlug: "platform", Owner: "acme", Name: "repo", Permission: "pull"}},
+			},
+		},
+		{
+			name: "undeclared permission remains a non-executable removal",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Teams:        []config.TeamSpec{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+			},
+			actual: state.OrganizationState{
+				Organization:              "acme",
+				Repositories:              []state.Repository{{Owner: "acme", Name: "repo", Visibility: "private"}},
+				Teams:                     []state.Team{{Slug: "platform", Name: "Platform", Privacy: "closed"}},
+				TeamRepositoryPermissions: []state.TeamRepositoryPermission{{TeamSlug: "platform", Owner: "acme", Name: "repo", Permission: "pull"}},
+			},
+			want: []expectedAction{
+				{resourceType: plan.ActionResourceTypeRepository, operation: plan.ActionOperationDelete, resourceID: "acme/repo", executable: false},
+				{resourceType: plan.ActionResourceTypeTeamRepositoryPermission, operation: plan.ActionOperationRemove, resourceID: "platform/acme/repo", executable: false},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertPlanDiffParity(t, tt.desired, tt.actual, nil, nil, tt.want, nil)
+		})
+	}
+}
+
 func TestPlanAndDiffParityForInvitationIdentity(t *testing.T) {
 	tests := []struct {
 		name                  string
