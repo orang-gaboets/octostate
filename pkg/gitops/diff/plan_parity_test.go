@@ -333,6 +333,57 @@ func TestPlanAndDiffParityForInvitationIdentity(t *testing.T) {
 			},
 		},
 		{
+			name: "username invite satisfied by existing member",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Invites:      []config.InviteSpec{{Username: config.OptionalString{Present: true, Value: "OCTOCAT"}, Role: "direct_member"}},
+			},
+			actual: state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{ID: 42, Username: "octocat", Role: "member"}},
+			},
+			want: []expectedAction{{
+				resourceType: plan.ActionResourceTypeOrganizationMember,
+				operation:    plan.ActionOperationDelete,
+				resourceID:   "octocat",
+				executable:   false,
+			}},
+		},
+		{
+			name: "email invite satisfied by existing member",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Invites:      []config.InviteSpec{{Email: config.OptionalString{Present: true, Value: "INVITE@example.com"}, Role: "direct_member"}},
+			},
+			actual: state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{ID: 42, Username: "octocat", Email: "invite@EXAMPLE.com", Role: "member"}},
+			},
+			want: []expectedAction{{
+				resourceType: plan.ActionResourceTypeOrganizationMember,
+				operation:    plan.ActionOperationDelete,
+				resourceID:   "octocat",
+				executable:   false,
+			}},
+		},
+		{
+			name: "user ID invite satisfied by existing member",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Invites:      []config.InviteSpec{{UserID: config.OptionalInt64{Present: true, Value: 42}, Role: "direct_member"}},
+			},
+			actual: state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{ID: 42, Username: "octocat", Role: "member"}},
+			},
+			want: []expectedAction{{
+				resourceType: plan.ActionResourceTypeOrganizationMember,
+				operation:    plan.ActionOperationDelete,
+				resourceID:   "octocat",
+				executable:   false,
+			}},
+		},
+		{
 			name: "unsatisfied username invite is created",
 			desired: config.OrganizationConfig{
 				Organization: "acme",
@@ -345,6 +396,35 @@ func TestPlanAndDiffParityForInvitationIdentity(t *testing.T) {
 				resourceID:   "username:octocat",
 				executable:   true,
 			}},
+		},
+		{
+			name: "unsatisfied email invite is created",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Invites:      []config.InviteSpec{{Email: config.OptionalString{Present: true, Value: "invite@example.com"}, Role: "direct_member"}},
+			},
+			actual: state.OrganizationState{Organization: "acme"},
+			want: []expectedAction{{
+				resourceType: plan.ActionResourceTypeInvite,
+				operation:    plan.ActionOperationCreate,
+				resourceID:   "email:invite@example.com",
+				executable:   true,
+			}},
+		},
+		{
+			name: "user ID invite is not satisfied by a different existing member",
+			desired: config.OrganizationConfig{
+				Organization: "acme",
+				Invites:      []config.InviteSpec{{UserID: config.OptionalInt64{Present: true, Value: 42}, Role: "direct_member"}},
+			},
+			actual: state.OrganizationState{
+				Organization: "acme",
+				Members:      []state.OrganizationMember{{ID: 43, Username: "octocat", Role: "member"}},
+			},
+			want: []expectedAction{
+				{resourceType: plan.ActionResourceTypeOrganizationMember, operation: plan.ActionOperationDelete, resourceID: "octocat", executable: false},
+				{resourceType: plan.ActionResourceTypeInvite, operation: plan.ActionOperationCreate, resourceID: "user_id:42", executable: true},
+			},
 		},
 		{
 			name: "user ID invite uses equivalent lookup evidence",
