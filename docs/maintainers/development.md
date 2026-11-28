@@ -169,6 +169,114 @@ go test ./internal/filereplace ./internal/contributors ./pkg/gitops/config ./pkg
 
 GitHub Actions runs that check on `windows-latest`.
 
+## Optional local mutation testing
+
+Use Gremlins for a bounded local check when changing safety behavior in
+`pkg/gitops/plan`, `pkg/gitops/diff`, `pkg/gitops/apply`, or
+`internal/teamorigin`. It probes Go-level mutations in changed files; it does
+not replace semantic checks for removing a whole guard or changing a default.
+This remains an optional local workflow with no `go.mod` dependency or CI job.
+
+Use this workflow only against trusted revisions and for cached-dependency unit
+test runs. Gremlins and package tests execute Go code. Removing the usual token
+environment variables only removes Octostate's normal environment-based token
+source; it does not remove credentials stored on disk. Disabling module
+downloads also does not sandbox the code or block its network access. A
+disposable checkout isolates source changes only. Use an OS-level sandbox with
+outbound network access blocked when actual network isolation is required.
+
+Cache the required Go toolchain and module dependencies before the offline test
+phase. The command below installs Gremlins into a temporary directory for this
+run and may download the tool and its dependencies. The baseline and mutation
+phase set `GOPROXY=off GONOPROXY=none` so missing modules fail instead of being
+downloaded. From the root of a clean disposable checkout, make sure the
+reviewed head's base ref is available and the package tests pass with module
+downloads disabled:
+
+For an exact replay of PR #373, create a detached worktree at its reviewed head
+and use its recorded base commit:
+
+```bash
+git worktree add --detach /tmp/octostate-pr373 \
+  4f3c27acedbe951a0f8a600650a5406181bc3e20
+cd /tmp/octostate-pr373
+```
+
+After the replay, return to the original checkout and remove the worktree with
+`git worktree remove /tmp/octostate-pr373`.
+
+```bash
+(
+  set -euo pipefail
+  unset OCTOSTATE_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN
+  tool_dir="$(mktemp -d)"
+  trap 'rm -rf "$tool_dir"' EXIT
+  GOBIN="$tool_dir" go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+  gremlins_bin="$tool_dir/gremlins"
+  base=origin/main
+  # For the PR #373 replay above, use its recorded base commit instead:
+  # base=7c84699e7f4194195f4cc6ad898c105e22542abb
+  env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
+    GONOPROXY=none go test -count=1 ./pkg/gitops/plan ./pkg/gitops/diff ./pkg/gitops/apply ./internal/teamorigin
+
+  results="$(mktemp -d)"
+  export GOPROXY=off GONOPROXY=none GOMAXPROCS=1
+
+  # v0.6.0 needs package-relative paths and separate zero-context hunks to scan
+  # every changed line. Keep these Git settings in the environment rather than
+  # shared Git config.
+  export GIT_CONFIG_COUNT=3
+  export GIT_CONFIG_KEY_0=diff.relative
+  export GIT_CONFIG_VALUE_0=true
+  export GIT_CONFIG_KEY_1=diff.context
+  export GIT_CONFIG_VALUE_1=0
+  export GIT_CONFIG_KEY_2=diff.interHunkContext
+  export GIT_CONFIG_VALUE_2=0
+
+  for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamorigin; do
+    if git diff --quiet --merge-base "$base" -- "$package"; then
+      printf 'Skipping %s: no changes against %s\n' "$package" "$base"
+      continue
+    else
+      diff_status=$?
+      if [ "$diff_status" -ne 1 ]; then
+        exit "$diff_status"
+      fi
+    fi
+    name="${package##*/}"
+    (
+      cd "$package"
+      "$gremlins_bin" unleash --dry-run --diff "$base" --workers 2 \
+        --timeout-coefficient 30 "$PWD"
+      "$gremlins_bin" unleash --diff "$base" --workers 2 \
+        --timeout-coefficient 30 --output "$results/$name.json" "$PWD"
+    )
+  done
+  printf 'Gremlins results: %s\n' "$results"
+)
+```
+
+The loop skips packages with no diff because Gremlins v0.6.0 treats an empty
+diff as if every file changed.
+
+The dry run lists runnable and uncovered mutations. Gremlins v0.6.0 reports
+process outcomes: exit code 1 is `KILLED`, exit code 2 is `NOT VIABLE`, a test
+timeout is `TIMED OUT`, and exit code 0, other exit codes, or failure to start
+the test command is `LIVED`. It records status and location but discards test
+output, so these statuses do not prove an expected assertion ran. For example,
+compilation or harness failures can be labeled `KILLED` when `go test` exits 1.
+Reproduce safety-relevant mutations in a disposable copy and run the owning
+test; count a regression detection only after observing the expected assertion.
+`NOT COVERED` means no tests cover the mutated location, and `SKIPPED` falls
+outside the selected diff. Neither is a kill. Keep `--test-cpu` at its default:
+v0.6.0 passes nonzero values as one malformed `go test` argument. Use
+`GOMAXPROCS=1` to limit test parallelism instead. Stop a pilot after 15 minutes
+and record it as incomplete if it has not finished; this is a manually enforced
+wall-clock budget, while Gremlins' timeout applies to each mutation execution.
+Keep manual semantic checks for unknown-origin role mismatches, empty-origin
+normalization, deterministic duplicate selection, and apply's no-write
+rejection.
+
 ## Optional Graphify
 
 Graphify is an optional local workflow for repo exploration, not a required
