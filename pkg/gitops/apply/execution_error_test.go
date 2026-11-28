@@ -98,6 +98,29 @@ func TestExecuteFailureReturnsPartialResultAndActionReport(t *testing.T) {
 	assertInitialFailureReport(t, executionErr.Report(), secret.Error())
 }
 
+func TestExecutionErrorReportReturnsDeepCopy(t *testing.T) {
+	executionErr := &ExecutionError{report: ExecutionReport{
+		FailedActionIndex: 0,
+		ActionOutcomes: []ActionOutcome{{
+			PlanIndex:      0,
+			Status:         ActionOutcomeStatusCompleted,
+			ConfirmedSteps: []string{"create_team"},
+		}},
+	}}
+
+	first := executionErr.Report()
+	first.ActionOutcomes[0].Status = ActionOutcomeStatusNotAttempted
+	first.ActionOutcomes[0].ConfirmedSteps[0] = "modified"
+
+	second := executionErr.Report()
+	if got := second.ActionOutcomes[0].Status; got != ActionOutcomeStatusCompleted {
+		t.Errorf("subsequent report status = %q, want completed", got)
+	}
+	if got := second.ActionOutcomes[0].ConfirmedSteps; !reflect.DeepEqual(got, []string{"create_team"}) {
+		t.Errorf("subsequent report confirmed steps = %#v, want [create_team]", got)
+	}
+}
+
 func TestTrackedServicesRecordEveryCurrentMutationMethod(t *testing.T) {
 	tracker := newExecutionTracker([]gitopsplan.Action{{Executable: true}})
 	tracker.beginAction(0)
