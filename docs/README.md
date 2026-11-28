@@ -44,8 +44,8 @@ documentation.
 - [GitOps architecture](gitops/architecture.md) — package ownership and
   command data flow.
 - [Design decisions](design-decisions.md) - why the engine is declarative,
-  deterministic, plan-first, and conservative about destructive drift, and the
-  tradeoffs of each choice.
+  scoped to one organization, incrementally adoptable, deterministic,
+  plan-first, and conservative, and the tradeoffs of each choice.
 
 ## Building control-repository automation
 
