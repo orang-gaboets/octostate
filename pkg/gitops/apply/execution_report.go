@@ -242,7 +242,7 @@ func safeActionOperation(operation gitopsplan.ActionOperation) gitopsplan.Action
 }
 
 func skippedActions(actions []gitopsplan.Action) []gitopsplan.Action {
-	skipped := make([]gitopsplan.Action, 0, len(actions))
+	var skipped []gitopsplan.Action
 	for _, action := range actions {
 		if !action.Executable {
 			skipped = append(skipped, action)
