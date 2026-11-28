@@ -764,10 +764,19 @@ class ReleasePleaseAuthTest < Minitest::Test
       assert_equal "steps.release.outputs.should_package == 'true'", step.fetch("if")
     end
 
-    script = required_step("Verify release archive build provenance").fetch("run")
-    assert_includes script, '--signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release-please.yml"'
-    assert_includes script, '--source-digest "${SOURCE_DIGEST}"'
-    assert_includes script, "--deny-self-hosted-runners"
+    verify_step = required_step("Verify release archive build provenance")
+    assert_equal 'bash .github/scripts/verify-release-provenance.sh dist "${GITHUB_REPOSITORY}" "${SOURCE_DIGEST}"', verify_step.fetch("run")
+    assert_equal "${{ steps.release.outputs.commit }}", verify_step.fetch("env").fetch("SOURCE_DIGEST")
+
+    guard = names.index("Require the release commit to be the workflow commit")
+    refute_nil guard
+    assert_operator names.index("Resolve release to package"), :<, guard
+    assert_operator guard, :<, names.index("Check out the exact release tag")
+    guard_step = required_step("Require the release commit to be the workflow commit")
+    assert_equal "steps.release.outputs.should_package == 'true'", guard_step.fetch("if")
+    assert_equal "${{ github.sha }}", guard_step.fetch("env").fetch("WORKFLOW_COMMIT")
+    assert_equal "${{ steps.release.outputs.commit }}", guard_step.fetch("env").fetch("RELEASE_COMMIT")
+    assert_includes guard_step.fetch("run"), '[[ "${RELEASE_COMMIT}" == "${WORKFLOW_COMMIT}" ]]'
 
     assert_equal(
       {
@@ -784,7 +793,7 @@ class ReleasePleaseAuthTest < Minitest::Test
       "Upload and verify release artifacts",
       "Verify Release Please Git authentication",
       "Validate retry inputs",
-      "Verify release archive build provenance"
+      "Require the release commit to be the workflow commit"
     ]
     names.each do |name|
       script = required_step(name).fetch("run")

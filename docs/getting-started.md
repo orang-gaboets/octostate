@@ -59,26 +59,37 @@ if ($actual -ne $expected) { throw "checksum mismatch for $archive" }
 ```
 
 Releases built after build provenance was added also carry a signed GitHub
-build attestation for each archive. With the GitHub CLI, check that an archive
-was built by Octostate's release workflow on a GitHub-hosted runner:
+build attestation for each archive. These checks need GitHub CLI v2.102.0 or
+later, which fixes known weaknesses in attestation identity matching. Replace
+the placeholders:
 
 ```bash
+tag='v<version>'
+archive='octostate_<version>_<platform-archive>'
+# Release identity: the immutable release binds the tag to its commit and assets.
+gh release verify "$tag" --repo orang-gaboets/octostate
+# Downloaded asset integrity against that immutable release.
+gh release verify-asset "$tag" "$archive" --repo orang-gaboets/octostate
+# Build provenance: built by the release workflow on main, from the tag's commit.
+commit=$(gh api "repos/orang-gaboets/octostate/commits/$tag" --jq .sha)
 gh attestation verify "$archive" \
   --repo orang-gaboets/octostate \
-  --signer-workflow orang-gaboets/octostate/.github/workflows/release-please.yml \
+  --cert-identity https://github.com/orang-gaboets/octostate/.github/workflows/release-please.yml@refs/heads/main \
+  --source-ref refs/heads/main \
+  --source-digest "$commit" \
   --deny-self-hosted-runners
 ```
 
-This complements the checksum. The checksum shows that the archive matches the
-release's `checksums.txt`. `gh release verify v<version>` shows that the
-immutable release binds that tag to its commit and asset digests. The build
-attestation shows which workflow run built the archive. Its recorded source
-commit is the commit the release workflow ran on. For a normal release that is
-usually the release commit; for a maintainer retry it is the `main` commit that
-ran the retry, which then builds the tag after checking that the tag targets
-the expected release commit. An attestation does not prove that the build is
-reproducible or free of vulnerabilities. Earlier releases, including v1.3.0,
-have no build attestation.
+Each check answers a different question. The checksum shows the archive
+matches `checksums.txt`. `gh release verify` and `gh release verify-asset` show
+that the immutable release binds the tag to its commit and that the downloaded
+archive is one of its assets. The build attestation shows that Octostate's
+release workflow, running from `main` on a GitHub-hosted runner, built the
+archive. The release workflow refuses to package any commit other than the
+one it runs on, so the attested source digest is the release tag's commit. An
+attestation does not prove that the build is reproducible or free of
+vulnerabilities. Earlier releases, including v1.3.0, have no build
+attestation.
 
 If you prefer to build from source, install a pinned release with Go:
 
