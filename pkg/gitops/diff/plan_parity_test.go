@@ -1,12 +1,13 @@
 package diff_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -43,8 +44,8 @@ type expectedAction struct {
 }
 
 type semanticAction struct {
-	resourceType string
-	operation    string
+	resourceType plan.ActionResourceType
+	operation    plan.ActionOperation
 	resourceID   string
 	executable   bool
 }
@@ -213,11 +214,10 @@ func TestPlanAndDiffParityWithActionableAndUnresolvedMemberships(t *testing.T) {
 
 func TestPlanAndDiffParityForOrganizationMemberDecisions(t *testing.T) {
 	tests := []struct {
-		name           string
-		desired        config.OrganizationConfig
-		actual         state.OrganizationState
-		want           []expectedAction
-		wantUnresolved []state.TeamMember
+		name    string
+		desired config.OrganizationConfig
+		actual  state.OrganizationState
+		want    []expectedAction
 	}{
 		{
 			name:    "same-plan member create enables team membership",
@@ -264,7 +264,7 @@ func TestPlanAndDiffParityForOrganizationMemberDecisions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assertPlanDiffParity(t, tt.desired, tt.actual, nil, nil, tt.want, tt.wantUnresolved)
+			assertPlanDiffParity(t, tt.desired, tt.actual, nil, nil, tt.want, nil)
 		})
 	}
 }
@@ -590,7 +590,7 @@ func TestPlanAndDiffRejectInviteThatDuplicatesDesiredMemberByUserID(t *testing.T
 	actualSnapshot := snapshot.NewActualSnapshot(time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC), &actual)
 	actualSnapshot.ResolvedInviteUserIDsByUsername = map[string]int64{"alice": 42}
 
-	_, planErr := plan.Build(context.Background(), plan.Options{
+	_, planErr := plan.Build(t.Context(), plan.Options{
 		Desired:     config.NormalizeDesiredState(desired),
 		Actual:      &actual,
 		UserService: userService,
@@ -642,13 +642,13 @@ func assertPlanDiffParity(
 	desiredForPlan := config.NormalizeDesiredState(desired)
 	desiredForDiff := config.NormalizeDesiredState(desired)
 	actualSnapshot := snapshot.NewActualSnapshot(time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC), &normalizedActual)
-	actualSnapshot.ResolvedInviteUserIDsByUsername = cloneResolvedIDs(resolvedIDsByUsername)
+	actualSnapshot.ResolvedInviteUserIDsByUsername = maps.Clone(resolvedIDsByUsername)
 
 	var userService ghusers.Service
 	if userLoginsByID != nil {
 		userService = parityUserService(userLoginsByID)
 	}
-	planReport, err := plan.Build(context.Background(), plan.Options{
+	planReport, err := plan.Build(t.Context(), plan.Options{
 		Desired:     desiredForPlan,
 		Actual:      &normalizedActual,
 		UserService: userService,
@@ -668,13 +668,13 @@ func assertPlanDiffParity(
 	wantActions := expectedSemanticActions(want)
 	planActions := semanticActions(planReport.Actions)
 	diffActions := semanticActions(diffReport.Actions)
-	if !reflect.DeepEqual(planActions, wantActions) {
+	if !slices.Equal(planActions, wantActions) {
 		t.Errorf("plan semantic actions = %#v, want %#v", planActions, wantActions)
 	}
-	if !reflect.DeepEqual(diffActions, wantActions) {
+	if !slices.Equal(diffActions, wantActions) {
 		t.Errorf("diff semantic actions = %#v, want %#v", diffActions, wantActions)
 	}
-	if !reflect.DeepEqual(planActions, diffActions) {
+	if !slices.Equal(planActions, diffActions) {
 		t.Errorf("plan/diff semantic action multisets differ:\nplan: %#v\ndiff: %#v", planActions, diffActions)
 	}
 
@@ -704,23 +704,12 @@ func normalizeParityActual(actual state.OrganizationState) state.OrganizationSta
 	return actual
 }
 
-func cloneResolvedIDs(values map[string]int64) map[string]int64 {
-	if values == nil {
-		return nil
-	}
-	cloned := make(map[string]int64, len(values))
-	for username, id := range values {
-		cloned[username] = id
-	}
-	return cloned
-}
-
 func expectedSemanticActions(actions []expectedAction) []semanticAction {
 	result := make([]semanticAction, 0, len(actions))
 	for _, action := range actions {
 		result = append(result, semanticAction{
-			resourceType: string(action.resourceType),
-			operation:    string(action.operation),
+			resourceType: action.resourceType,
+			operation:    action.operation,
 			resourceID:   action.resourceID,
 			executable:   action.executable,
 		})
@@ -733,8 +722,8 @@ func semanticActions(actions []plan.Action) []semanticAction {
 	result := make([]semanticAction, 0, len(actions))
 	for _, action := range actions {
 		result = append(result, semanticAction{
-			resourceType: string(action.ResourceType),
-			operation:    string(action.Operation),
+			resourceType: action.ResourceType,
+			operation:    action.Operation,
 			resourceID:   action.ResourceID,
 			executable:   action.Executable,
 		})
@@ -746,13 +735,13 @@ func semanticActions(actions []plan.Action) []semanticAction {
 // Sorting a slice rather than reducing to a set preserves action multiplicity.
 func sortSemanticActions(actions []semanticAction) {
 	slices.SortFunc(actions, func(a, b semanticAction) int {
-		if c := strings.Compare(a.resourceType, b.resourceType); c != 0 {
+		if c := cmp.Compare(a.resourceType, b.resourceType); c != 0 {
 			return c
 		}
-		if c := strings.Compare(a.operation, b.operation); c != 0 {
+		if c := cmp.Compare(a.operation, b.operation); c != 0 {
 			return c
 		}
-		if c := strings.Compare(a.resourceID, b.resourceID); c != 0 {
+		if c := cmp.Compare(a.resourceID, b.resourceID); c != 0 {
 			return c
 		}
 		if a.executable == b.executable {
