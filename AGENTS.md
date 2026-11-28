@@ -27,6 +27,12 @@ orchestration around the engine.
   explicitly uses another stdout format.
 - Output should stay deterministic: normalize, sort, and stabilize results
   before printing or writing snapshots.
+- Errors, diagnostics, and logs (including verbose mode and structured
+  failure output) must not expose credentials, authorization headers, raw API
+  response bodies, or unreviewed sensitive values. Treat GitHub-supplied text
+  as untrusted: print reviewed fields through existing safe formatting such as
+  `APIError.Error()`, and add a targeted synthetic non-disclosure test when a
+  change touches these paths.
 - Keep changes within the engine scope here; control-repo policy belongs in the
   control repository and the docs linked above.
 
