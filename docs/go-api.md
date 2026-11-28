@@ -234,11 +234,22 @@ if err != nil {
 }
 ```
 
+Always check `err` before treating `result` as successful. An execution failure
+can return a non-nil partial result, but it is still a failure. The original
+cause remains available through `Unwrap` for `errors.Is` and `errors.As`; it may
+contain sensitive API details, so do not log it without redaction.
+
 `ExecutionError.Error()` is generic and does not include raw API response text.
 `ExecutionError.Report()` returns a copy of an `ExecutionReport` with a
 zero-based failed action index and one `ActionOutcome` for each action in the
-original plan. An outcome identifies its resource type and operation, then
-reports one of these statuses: `completed`, `failed_before_write`,
+plan used for the current execution. `ExecuteReviewed` builds that plan from
+the supplied current `Actual` state, so an intervening live-state change can
+shift its indexes even when the desired-state identity is unchanged. Indexes
+are not stable resource identifiers: a prior check, reviewed plan, or later
+reconciliation plan cannot reliably correlate an outcome to an action by index
+alone. Do not use the report as a replay or resume cursor. An outcome identifies
+its resource type and operation, then reports one of these statuses:
+`completed`, `failed_before_write`,
 `outcome_unknown`, `partially_completed`, `skipped`, or `not_attempted`.
 `ConfirmedSteps` lists mutation calls that returned successfully;
 `UncertainStep` identifies a mutation call that returned an error. The report

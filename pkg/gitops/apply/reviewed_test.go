@@ -5,11 +5,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	gh "github.com/google/go-github/v88/github"
 	"github.com/orang-gaboets/octostate/pkg/gitops/config"
+	gitopsplan "github.com/orang-gaboets/octostate/pkg/gitops/plan"
 	"github.com/orang-gaboets/octostate/pkg/gitops/state"
 )
 
@@ -197,6 +199,82 @@ func TestExecuteReviewedBuildsFreshPlanAndExecutesIt(t *testing.T) {
 	}
 	if creates != 1 || len(result.Executed) != 1 {
 		t.Fatalf("expected the freshly planned repository create, creates=%d result=%#v", creates, result)
+	}
+}
+
+func TestExecuteReviewedFailureIndexesReferToFreshPlan(t *testing.T) {
+	t.Parallel()
+
+	desired := config.OrganizationConfig{
+		Organization: "orang-gaboets",
+		Repositories: []config.RepositorySpec{
+			{Name: "repo-a", Visibility: "private"},
+			{Name: "repo-b", Visibility: "private"},
+			{Name: "repo-c", Visibility: "private"},
+		},
+	}
+	identity, err := config.DesiredStateIdentity(desired)
+	if err != nil {
+		t.Fatalf("compute desired identity: %v", err)
+	}
+
+	previousPlan, err := gitopsplan.Build(context.Background(), gitopsplan.Options{
+		Desired: desired,
+		Actual:  &state.OrganizationState{Organization: "orang-gaboets"},
+	})
+	if err != nil {
+		t.Fatalf("build previously reviewed plan: %v", err)
+	}
+	if len(previousPlan.Actions) != 3 || previousPlan.Actions[1].ResourceID != repositoryResourceID("orang-gaboets", "repo-b") {
+		t.Fatalf("previous plan index 1 = %#v, want repo-b", previousPlan.Actions)
+	}
+
+	mutationErr := errors.New("repository create failed")
+	var created []string
+	options := reviewedTestOptions(desired, &state.OrganizationState{
+		Organization: "orang-gaboets",
+		Repositories: []state.Repository{{Owner: "orang-gaboets", Name: "repo-a", Visibility: "private"}},
+	}, identity)
+	options.RepositoryService = &testRepoService{
+		createFunc: func(_ context.Context, _ string, repository *gh.Repository) (*gh.Repository, *gh.Response, error) {
+			name := repository.GetName()
+			created = append(created, name)
+			if name == "repo-c" {
+				return nil, nil, mutationErr
+			}
+			return repository, nil, nil
+		},
+	}
+
+	result, err := ExecuteReviewed(context.Background(), options)
+	if !errors.Is(err, mutationErr) {
+		t.Fatalf("ExecuteReviewed error = %v, want mutation error", err)
+	}
+	if !reflect.DeepEqual(created, []string{"repo-b", "repo-c"}) {
+		t.Fatalf("created repositories = %#v, want [repo-b repo-c]", created)
+	}
+	if result == nil || len(result.Executed) != 1 {
+		t.Fatalf("partial result = %#v, want one completed action", result)
+	}
+
+	report := executionReportFromError(t, err)
+	if report.FailedActionIndex != 1 {
+		t.Fatalf("failed action index = %d, want fresh-plan index 1", report.FailedActionIndex)
+	}
+	if len(report.ActionOutcomes) != 2 {
+		t.Fatalf("action outcome count = %d, want 2", len(report.ActionOutcomes))
+	}
+	if got := report.ActionOutcomes[1].PlanIndex; got != 1 {
+		t.Fatalf("failed action plan index = %d, want 1", got)
+	}
+	if got := report.ActionOutcomes[0].Status; got != ActionOutcomeStatusCompleted {
+		t.Errorf("repo-b status = %q, want completed", got)
+	}
+	if got := report.ActionOutcomes[1].Status; got != ActionOutcomeStatusOutcomeUnknown {
+		t.Errorf("repo-c status = %q, want outcome_unknown", got)
+	}
+	if created[1] != "repo-c" || previousPlan.Actions[1].ResourceID != repositoryResourceID("orang-gaboets", "repo-b") {
+		t.Fatalf("index 1 did not shift from prior plan repo-b to current failure repo-c")
 	}
 }
 

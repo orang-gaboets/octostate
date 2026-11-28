@@ -432,9 +432,12 @@ field values, unresolved member identities, and raw GitHub error details. The
 stderr diagnostic uses a generic execution error message.
 
 `execution_report.failed_action_index` and each action's `plan_index` are
-zero-based indexes into the original plan. Each action outcome contains its
-resource type, operation, status, confirmed step labels, and an optional
-uncertain step label. Statuses are:
+zero-based indexes into the plan built for that invocation. CLI apply builds a
+fresh plan from current live state, so indexes can shift after state changes;
+they are not stable resource identifiers and cannot reliably correlate with a
+previous check or reviewed plan. Do not use them as a replay or resume cursor.
+Each action outcome contains its resource type, operation, status, confirmed
+step labels, and an optional uncertain step label. Statuses are:
 
 - `completed`: all writes for the action returned successfully
 - `failed_before_write`: the action failed before a mutation call began
@@ -449,6 +452,9 @@ uncertain step label. Statuses are:
 The failure envelope is emitted only for execution errors after the executor
 starts. Configuration, identity, organization, planning, and safety-guard
 failures keep their existing behavior. Successful apply output is unchanged.
+Automation should use the process exit code to determine success, not the
+presence of a JSON result. The Go API may also return a non-nil partial result
+alongside an error; callers must check the error before treating it as success.
 After a failure, collect fresh live state and build a new reconciliation plan;
 do not replay the old plan because a failed write may have reached GitHub even
 when its response was lost.
