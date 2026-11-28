@@ -35,6 +35,17 @@ type applyFailureOrgService struct {
 	internalauth.MockOrganizationService
 	failUser string
 	err      error
+	writes   *int
+}
+
+type failingApplyWriter struct {
+	err    error
+	writes int
+}
+
+func (w *failingApplyWriter) Write([]byte) (int, error) {
+	w.writes++
+	return 0, w.err
 }
 
 type applyCountRepoService struct {
@@ -48,6 +59,9 @@ func (s *applyCountRepoService) Create(ctx context.Context, owner string, reposi
 }
 
 func (s applyFailureOrgService) EditOrgMembership(_ context.Context, user, _ string, _ *gh.Membership) (*gh.Membership, *gh.Response, error) {
+	if s.writes != nil {
+		(*s.writes)++
+	}
 	if user == s.failUser {
 		return nil, nil, s.err
 	}
@@ -281,6 +295,86 @@ func TestApplyConfigCommandReportsExecutionFailure(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApplyConfigCommandJoinsFailureOutputWriterError(t *testing.T) {
+	restoreApplyHooks(t)
+	const (
+		secretIdentity = "private@example.com"
+		secretToken    = "ghp_sensitive"
+	)
+	apiErr := errors.New("request failed for " + secretIdentity + " with " + secretToken + ": private response body")
+	outputErr := errors.New("stdout unavailable")
+	cfg := gitopsconfig.OrganizationConfig{
+		Organization: "org-a",
+		Members: []gitopsconfig.OrganizationMemberSpec{
+			{Username: "alice", Role: "member"},
+			{Username: "bob", Role: "member"},
+			{Username: "carol", Role: "member"},
+		},
+	}
+	plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "alice", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "bob", Executable: true},
+		{ResourceType: gitopsplan.ActionResourceTypeOrganizationMember, Operation: gitopsplan.ActionOperationCreate, ResourceID: "carol", Executable: true},
+	}}
+	writes := 0
+	orgService := applyFailureOrgService{
+		MockOrganizationService: internalauth.MockOrganizationService{},
+		failUser:                "bob",
+		err:                     apiErr,
+		writes:                  &writes,
+	}
+	client := internalauth.MockClient{
+		OrganizationsService: orgService,
+		ReposService:         internalauth.MockRepoService{},
+		TeamsService:         internalauth.MockTeamsService{},
+		UsersService:         internalauth.MockUserService{},
+	}
+	loadApplyConfig = func(string) (gitopsconfig.OrganizationConfig, error) { return cfg, nil }
+	validateApplyConfig = func(gitopsconfig.OrganizationConfig) gitopsconfig.ValidationReport {
+		return gitopsconfig.ValidationReport{Valid: true}
+	}
+	newApplyClient = func(context.Context, string, int64, int64, string) (internalauth.Client, error) { return client, nil }
+	collectApplyState = func(context.Context, collector.CollectOrganizationOptions) (*state.OrganizationState, error) {
+		return &state.OrganizationState{Organization: "org-a"}, nil
+	}
+	buildApplyPlan = func(context.Context, gitopsplan.Options) (*gitopsplan.Report, error) { return plan, nil }
+	executeApply = gitopsapply.Execute
+
+	cmd := ApplyConfigCmd()
+	outputWriter := &failingApplyWriter{err: outputErr}
+	var errBuf bytes.Buffer
+	cmd.SetOut(outputWriter)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"--config-dir", "./config", "--token", "secret-token"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("command returned no error for failed mutation and failure-result output")
+	}
+	if !errors.Is(err, apiErr) {
+		t.Errorf("command error = %v, want original mutation error", err)
+	}
+	if !errors.Is(err, outputErr) {
+		t.Errorf("command error = %v, want output writer error", err)
+	}
+	var executionErr *gitopsapply.ExecutionError
+	if !errors.As(err, &executionErr) {
+		t.Errorf("command error type %T does not expose *ExecutionError", err)
+	}
+	if strings.Contains(err.Error(), secretIdentity) || strings.Contains(err.Error(), secretToken) || strings.Contains(err.Error(), "private response body") {
+		t.Errorf("command error exposed raw mutation failure: %q", err.Error())
+	}
+	if writes != 2 {
+		t.Errorf("mutation calls = %d, want stop at failed second action", writes)
+	}
+	if outputWriter.writes != 1 {
+		t.Errorf("failure-result writer calls = %d, want one", outputWriter.writes)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("command wrote unexpected stderr: %q", errBuf.String())
 	}
 }
 
