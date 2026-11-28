@@ -429,7 +429,9 @@ command writes a `status: "failure"` JSON envelope to stdout and exits with
 code `1`. Its data contains only `desired_config_identity`, `organization`,
 `plan_summary`, and `execution_report`; it omits action resource IDs, messages,
 field values, unresolved member identities, and raw GitHub error details. The
-stderr diagnostic uses a generic execution error message.
+stderr diagnostic uses a generic execution error message. This redaction
+applies to the failure envelope and its generic diagnostic; separate `--verbose`
+GitHub logs are not covered by this guarantee.
 
 `execution_report.failed_action_index` and each action's `plan_index` are
 zero-based indexes into the plan built for that invocation. CLI apply builds a
