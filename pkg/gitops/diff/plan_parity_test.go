@@ -2,6 +2,7 @@ package diff_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -525,6 +526,35 @@ func TestPlanAndDiffParityForInvitationIdentity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assertPlanDiffParity(t, tt.desired, tt.actual, tt.userLoginsByID, tt.resolvedIDsByUsername, tt.want, nil)
 		})
+	}
+}
+
+func TestPlanAndDiffRejectInviteThatDuplicatesDesiredMemberByUserID(t *testing.T) {
+	desired := config.OrganizationConfig{
+		Organization: "acme",
+		Members:      []config.OrganizationMemberSpec{{Username: "alice", Role: "member"}},
+		Invites:      []config.InviteSpec{{UserID: config.OptionalInt64{Present: true, Value: 42}, Role: "direct_member"}},
+	}
+	actual := normalizeParityActual(state.OrganizationState{Organization: "acme"})
+	userService := parityUserService{42: "alice"}
+	actualSnapshot := snapshot.NewActualSnapshot(time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC), &actual)
+	actualSnapshot.ResolvedInviteUserIDsByUsername = map[string]int64{"alice": 42}
+
+	_, planErr := plan.Build(context.Background(), plan.Options{
+		Desired:     config.NormalizeDesiredState(desired),
+		Actual:      &actual,
+		UserService: userService,
+	})
+	_, diffErr := gitopsdiff.Build(gitopsdiff.Options{
+		Desired:  config.NormalizeDesiredState(desired),
+		Snapshot: &actualSnapshot,
+	})
+
+	if !errors.Is(planErr, gitopsgithub.ErrInvalidFieldValue) {
+		t.Errorf("plan.Build error = %v, want ErrInvalidFieldValue", planErr)
+	}
+	if !errors.Is(diffErr, gitopsgithub.ErrInvalidFieldValue) {
+		t.Errorf("diff.Build error = %v, want ErrInvalidFieldValue", diffErr)
 	}
 }
 
