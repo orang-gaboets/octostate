@@ -98,6 +98,64 @@ func TestExecuteFailureReturnsPartialResultAndActionReport(t *testing.T) {
 	assertInitialFailureReport(t, executionErr.Report(), secret.Error())
 }
 
+func TestTrackedServicesRecordEveryCurrentMutationMethod(t *testing.T) {
+	tracker := newExecutionTracker([]gitopsplan.Action{{Executable: true}})
+	tracker.beginAction(0)
+	ctx := context.Background()
+
+	repositoryService := &trackedRepositoryService{Service: &testRepoService{}, tracker: tracker}
+	if _, _, err := repositoryService.CreateFromTemplate(ctx, "template-owner", "template", &gh.TemplateRepoRequest{}); err != nil {
+		t.Fatalf("CreateFromTemplate: %v", err)
+	}
+	if _, _, err := repositoryService.Create(ctx, "org-a", &gh.Repository{}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, _, err := repositoryService.Edit(ctx, "org-a", "repo", &gh.Repository{}); err != nil {
+		t.Fatalf("Edit: %v", err)
+	}
+	if _, _, err := repositoryService.ReplaceAllTopics(ctx, "org-a", "repo", []string{"gitops"}); err != nil {
+		t.Fatalf("ReplaceAllTopics: %v", err)
+	}
+
+	organizationService := &trackedOrganizationService{Service: &testOrganizationService{}, tracker: tracker}
+	if _, _, err := organizationService.CreateOrgInvitation(ctx, "org-a", &gh.CreateOrgInvitationOptions{}); err != nil {
+		t.Fatalf("CreateOrgInvitation: %v", err)
+	}
+	if _, _, err := organizationService.EditOrgMembership(ctx, "octocat", "org-a", &gh.Membership{}); err != nil {
+		t.Fatalf("EditOrgMembership: %v", err)
+	}
+
+	teamService := &trackedTeamService{Service: &testTeamService{}, tracker: tracker}
+	if _, _, err := teamService.CreateTeam(ctx, "org-a", gh.NewTeam{}); err != nil {
+		t.Fatalf("CreateTeam: %v", err)
+	}
+	if _, _, err := teamService.EditTeamBySlug(ctx, "org-a", "platform", gh.NewTeam{}, false); err != nil {
+		t.Fatalf("EditTeamBySlug: %v", err)
+	}
+	if _, _, err := teamService.AddTeamMembershipBySlug(ctx, "org-a", "platform", "octocat", &gh.TeamAddTeamMembershipOptions{}); err != nil {
+		t.Fatalf("AddTeamMembershipBySlug: %v", err)
+	}
+	if _, err := teamService.AddTeamRepoBySlug(ctx, "org-a", "platform", "org-a", "repo", &gh.TeamAddTeamRepoOptions{}); err != nil {
+		t.Fatalf("AddTeamRepoBySlug: %v", err)
+	}
+
+	want := []string{
+		"create_repository",
+		"create_repository",
+		"apply_repository_settings",
+		"replace_repository_topics",
+		"create_invitation",
+		"set_membership",
+		"create_team",
+		"update_team",
+		"add_team_member",
+		"grant_team_repository_permission",
+	}
+	if got := tracker.outcomes[0].ConfirmedSteps; !reflect.DeepEqual(got, want) {
+		t.Fatalf("confirmed mutation steps = %#v, want %#v", got, want)
+	}
+}
+
 func assertRedactedFailureResult(t *testing.T, result *Result) {
 	t.Helper()
 	if result == nil {

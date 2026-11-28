@@ -264,6 +264,9 @@ func failedExecutionWithPhase(result *Result, tracker *executionTracker, failedI
 	return redactFailureResult(result), &ExecutionError{cause: cause, report: report}
 }
 
+// These wrappers embed full service interfaces. Every mutating method used by
+// apply must be explicitly overridden here because promoted methods bypass
+// execution tracking.
 type trackedRepositoryService struct {
 	repos.Service
 	tracker *executionTracker
