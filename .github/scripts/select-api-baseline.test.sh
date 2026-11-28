@@ -30,5 +30,20 @@ expect_baseline "input order ignored" v1 $'v1.3.0\nv1.1.0\nv1.2.0' v1.3.0
 expect_failure "no releases" v1 ''
 expect_failure "only prereleases" v1 $'v1.0.0-rc.1\n'
 expect_failure "only other major" v1 $'v2.0.0\n'
+expect_baseline "leading zeros rejected" v1 $'v1.3.0\nv1.09.0\nv1.4.01\n' v1.3.0
+expect_failure "only noncanonical" v1 $'v1.03.0\n'
+
+if printf 'v1.3.0\n' | bash "$select_baseline" v01 >/dev/null 2>&1; then
+  fail "noncanonical major accepted"
+fi
+
+# A failing pipeline stage must fail selection, not yield partial output.
+stub_dir=$(mktemp -d)
+trap 'rm -rf "$stub_dir"' EXIT
+printf '#!/usr/bin/env bash\necho v1.0.0\nexit 3\n' >"$stub_dir/sort"
+chmod +x "$stub_dir/sort"
+if printf 'v1.3.0\n' | PATH="$stub_dir:$PATH" bash "$select_baseline" v1 >/dev/null 2>&1; then
+  fail "sort failure was masked"
+fi
 
 echo "select-api-baseline tests passed"

@@ -343,32 +343,54 @@ The advisory CI job `Go API compatibility (advisory)` runs a pinned
 latest stable release in the module's major line. To reproduce it locally:
 
 ```bash
-gh release list --repo orang-gaboets/octostate --exclude-drafts --exclude-pre-releases \
-  --limit 1000 --json tagName --jq '.[].tagName' |
-  bash .github/scripts/select-api-baseline.sh v1
-go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261109185158-a52e3aef5920 -base=<selected tag>
+(
+  set -euo pipefail
+  module_path=$(go list -m)
+  major=v1
+  if [[ "$module_path" =~ /(v[0-9]+)$ ]]; then
+    major="${BASH_REMATCH[1]}"
+  fi
+  baseline=$(
+    gh release list --repo orang-gaboets/octostate --exclude-drafts --exclude-pre-releases \
+      --limit 1000 --json tagName --jq '.[].tagName' |
+      bash .github/scripts/select-api-baseline.sh "$major"
+  )
+  go run golang.org/x/exp/cmd/gorelease@v0.0.0-20261109185158-a52e3aef5920 -base="$baseline"
+)
 ```
 
-- **Baseline:** the highest `vMAJOR.MINOR.PATCH` tag among published releases,
-  excluding drafts and prereleases, sorted semantically. The major comes from
+- **Baseline:** the highest canonical `vMAJOR.MINOR.PATCH` tag (no leading
+  zeros) among published releases, excluding drafts and prereleases, sorted
+  semantically. The major comes from
   the module path (`v1` today). If no release qualifies or the release list
   cannot be read, the job fails with a distinct error instead of comparing
   against nothing. `gorelease` downloads the baseline through the normal Go
   module mechanism (`GOPROXY`).
-- **Coverage:** `gorelease` discovers packages itself and compares every
-  package outside an `internal` directory except `main` packages. That
-  includes non-`main` packages under `cmd/**`, so no package list is
-  maintained.
-- **Limits:** `gorelease` compares exported Go source API only. It does not
-  detect behavior, CLI, JSON, or snapshot changes. It type-checks for the
-  runner's platform, so declarations behind other build constraints are not
-  compared.
+- **Coverage:** `gorelease` automatically discovers packages in both module
+  versions, pruning dot- and underscore-prefixed directories and `testdata`.
+  It reports removed discovered non-internal packages, and compares matched
+  non-internal packages when neither is named `main`. This includes ordinary
+  library packages under `cmd/**`; no package list is maintained. A library
+  becoming `main` at the same path can escape API comparison, while removing
+  a discovered executable package can produce a package-removal diagnostic.
+- **Limits:** The underlying `apidiff` analyzer approximates source API
+  compatibility and cannot detect every source-breaking change. It does not
+  check behavior, CLI, JSON, or snapshot compatibility. Type-checking uses
+  the runner's platform and build constraints, so other declarations may
+  not be compared. The public API policy still applies to undetected changes.
+  `gorelease` also reports module metadata, dependency, package-loading,
+  and release-version diagnostics. Newer module-visible same-major versions,
+  including prereleases or tags for unpublished draft releases, can affect
+  version suggestions even when the selected baseline and APIs are compatible.
+  An advisory failure does not necessarily indicate an API incompatibility.
 - **Advisory:** the job uses `continue-on-error`, so a failure is visible on
-  the PR without failing the workflow. It is skipped on Release Please PRs,
-  because those change no Go API and the release auto-merge gate treats any
-  failed check as blocking. Approved incompatibilities, such as #372 above,
-  are reported until a release containing them becomes the baseline. Reviewers
-  acknowledge them in the PR; there is no allowlist or bypass. Any other
+  the PR without failing the workflow. It also runs on Release Please PRs.
+  The release auto-merge gate excludes only this exact CI job
+  (`.github/scripts/release-relevant-checks.sh`); every other failed,
+  cancelled or pending check still blocks, and the job alone does not satisfy
+  the gate's required-CI presence check. Approved incompatibilities, such as
+  #372 above, are reported until a release containing them becomes the
+  baseline. Reviewers acknowledge them in the PR; there is no allowlist or bypass. Any other
   incompatibility needs investigation. Making the check blocking, and how it
   treats an intentional major-version change (new module path, so a new major
   line with no baseline yet), are separate maintainer decisions.
