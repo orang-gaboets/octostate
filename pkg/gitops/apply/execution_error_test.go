@@ -198,6 +198,74 @@ func TestExecuteFailureBeforeWriteReportsSkippedAndNotAttempted(t *testing.T) {
 	}
 }
 
+func TestExecuteFailureRedactsUnsupportedActionCategories(t *testing.T) {
+	tests := []struct {
+		name       string
+		resourceID string
+		resource   gitopsplan.ActionResourceType
+		operation  gitopsplan.ActionOperation
+		wantType   gitopsplan.ActionResourceType
+		wantOp     gitopsplan.ActionOperation
+	}{
+		{
+			name:       "resource type",
+			resourceID: "email:private@example.com",
+			resource:   gitopsplan.ActionResourceType("private@example.com"),
+			operation:  gitopsplan.ActionOperationCreate,
+			wantType:   "unknown",
+			wantOp:     gitopsplan.ActionOperationCreate,
+		},
+		{
+			name:       "operation",
+			resourceID: "ghp_sensitive",
+			resource:   gitopsplan.ActionResourceTypeOrganizationMember,
+			operation:  gitopsplan.ActionOperation("ghp_sensitive"),
+			wantType:   gitopsplan.ActionResourceTypeOrganizationMember,
+			wantOp:     "unknown",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := &gitopsplan.Report{Organization: "org-a", Actions: []gitopsplan.Action{
+				{ResourceType: test.resource, Operation: test.operation, ResourceID: test.resourceID, Executable: false},
+				{ResourceType: test.resource, Operation: test.operation, ResourceID: test.resourceID, Executable: true},
+			}}
+			result, err := Execute(context.Background(), testApplyOptions(
+				config.OrganizationConfig{Organization: "org-a"},
+				&state.OrganizationState{Organization: "org-a"},
+				plan,
+			))
+			if !errors.Is(err, githubpkg.ErrInvalidFieldValue) {
+				t.Fatalf("Execute error = %v, want ErrInvalidFieldValue", err)
+			}
+			if result == nil || len(result.SkippedDrift) != 1 {
+				t.Fatalf("partial result = %#v, want one skipped action", result)
+			}
+			if got := result.SkippedDrift[0]; got.ResourceType != test.wantType || got.Operation != test.wantOp {
+				t.Fatalf("redacted skipped action categories = %q/%q, want %q/%q", got.ResourceType, got.Operation, test.wantType, test.wantOp)
+			}
+
+			report := executionReportFromError(t, err)
+			for index, outcome := range report.ActionOutcomes {
+				if outcome.ResourceType != test.wantType || outcome.Operation != test.wantOp {
+					t.Errorf("action %d categories = %q/%q, want %q/%q", index, outcome.ResourceType, outcome.Operation, test.wantType, test.wantOp)
+				}
+			}
+			resultJSON, marshalErr := json.Marshal(result)
+			if marshalErr != nil {
+				t.Fatalf("marshal partial result: %v", marshalErr)
+			}
+			reportJSON, marshalErr := json.Marshal(report)
+			if marshalErr != nil {
+				t.Fatalf("marshal execution report: %v", marshalErr)
+			}
+			assertSafeText(t, string(resultJSON), "private@example.com", "ghp_sensitive")
+			assertSafeText(t, string(reportJSON), "private@example.com", "ghp_sensitive")
+		})
+	}
+}
+
 func TestExecuteRepositoryUpdateReportsConfirmedAndUncertainSteps(t *testing.T) {
 	writeErr := errors.New("topic update response included private payload")
 	desiredRepo := config.RepositorySpec{Owner: "org-a", Name: "repo-a", Visibility: "private", Description: "new description", Topics: []string{"gitops"}}

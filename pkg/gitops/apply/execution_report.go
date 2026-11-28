@@ -99,8 +99,8 @@ func newExecutionTracker(actions []gitopsplan.Action) *executionTracker {
 		}
 		tracker.outcomes[index] = ActionOutcome{
 			PlanIndex:      index,
-			ResourceType:   action.ResourceType,
-			Operation:      action.Operation,
+			ResourceType:   safeResourceType(action.ResourceType),
+			Operation:      safeActionOperation(action.Operation),
 			Status:         status,
 			ConfirmedSteps: []string{},
 		}
@@ -190,8 +190,8 @@ func redactActions(actions []gitopsplan.Action) []gitopsplan.Action {
 	redacted := make([]gitopsplan.Action, len(actions))
 	for index, action := range actions {
 		redacted[index] = gitopsplan.Action{
-			ResourceType: action.ResourceType,
-			Operation:    action.Operation,
+			ResourceType: safeResourceType(action.ResourceType),
+			Operation:    safeActionOperation(action.Operation),
 			Executable:   action.Executable,
 			Message:      "",
 			ResourceID:   "",
@@ -199,6 +199,32 @@ func redactActions(actions []gitopsplan.Action) []gitopsplan.Action {
 		}
 	}
 	return redacted
+}
+
+func safeResourceType(resourceType gitopsplan.ActionResourceType) gitopsplan.ActionResourceType {
+	switch resourceType {
+	case gitopsplan.ActionResourceTypeRepository,
+		gitopsplan.ActionResourceTypeTeam,
+		gitopsplan.ActionResourceTypeOrganizationMember,
+		gitopsplan.ActionResourceTypeInvite,
+		gitopsplan.ActionResourceTypeTeamMember,
+		gitopsplan.ActionResourceTypeTeamRepositoryPermission:
+		return resourceType
+	default:
+		return "unknown"
+	}
+}
+
+func safeActionOperation(operation gitopsplan.ActionOperation) gitopsplan.ActionOperation {
+	switch operation {
+	case gitopsplan.ActionOperationCreate,
+		gitopsplan.ActionOperationUpdate,
+		gitopsplan.ActionOperationDelete,
+		gitopsplan.ActionOperationRemove:
+		return operation
+	default:
+		return "unknown"
+	}
 }
 
 func skippedActions(actions []gitopsplan.Action) []gitopsplan.Action {
