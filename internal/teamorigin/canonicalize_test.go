@@ -141,6 +141,30 @@ func TestCanonicalizeMembershipsChoosesSpellingIndependentOfInputOrder(t *testin
 	}
 }
 
+func TestCanonicalizeMembershipsChoosesTeamSpellingIndependentOfInputOrder(t *testing.T) {
+	rows := []Membership{
+		{TeamSlug: "platform", Username: "alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
+		{TeamSlug: "PLATFORM", Username: "alice", Role: "member", Origin: github.TeamMembershipOriginDirect},
+	}
+	var first []Membership
+	for index, permutation := range [][]Membership{rows, {rows[1], rows[0]}} {
+		got, err := Canonicalize(permutation)
+		if err != nil {
+			t.Fatalf("Canonicalize returned error: %v", err)
+		}
+		if len(got) != 1 || (got[0] != rows[0] && got[0] != rows[1]) {
+			t.Fatalf("Canonicalize = %#v, want one of the duplicate rows", got)
+		}
+		if index == 0 {
+			first = got
+			continue
+		}
+		if !reflect.DeepEqual(got, first) {
+			t.Fatalf("Canonicalize depends on input order: forward=%#v reverse=%#v", first, got)
+		}
+	}
+}
+
 func TestCanonicalizeMembershipsReturnsSortedCaseInsensitiveKeys(t *testing.T) {
 	got, err := Canonicalize([]Membership{
 		{TeamSlug: "Zeta", Username: "bob", Role: "member", Origin: github.TeamMembershipOriginUnknown},
