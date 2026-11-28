@@ -182,49 +182,52 @@ make sure the reviewed head's base ref is available and the package tests pass
 with module downloads disabled:
 
 ```bash
-set -euo pipefail
-unset OCTOSTATE_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN
-tool_dir="$(mktemp -d)"
-GOBIN="$tool_dir" go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
-gremlins_bin="$tool_dir/gremlins"
-base=origin/main
-# For historical replays, use the reviewed change's recorded base commit.
-env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
-  go test -count=1 ./pkg/gitops/plan ./pkg/gitops/diff ./pkg/gitops/apply ./internal/teamorigin
+(
+  set -euo pipefail
+  unset OCTOSTATE_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN
+  tool_dir="$(mktemp -d)"
+  GOBIN="$tool_dir" go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+  gremlins_bin="$tool_dir/gremlins"
+  base=origin/main
+  # For historical replays, use the reviewed change's recorded base commit.
+  env -u OCTOSTATE_GITHUB_TOKEN -u GH_TOKEN -u GITHUB_TOKEN GOPROXY=off \
+    go test -count=1 ./pkg/gitops/plan ./pkg/gitops/diff ./pkg/gitops/apply ./internal/teamorigin
 
-results="$(mktemp -d)"
-export GOPROXY=off GOMAXPROCS=1
+  results="$(mktemp -d)"
+  export GOPROXY=off GOMAXPROCS=1
 
-# v0.6.0 needs package-relative paths and separate zero-context hunks to scan
-# every changed line. Keep these Git settings in the environment rather than
-# shared Git config.
-export GIT_CONFIG_COUNT=3
-export GIT_CONFIG_KEY_0=diff.relative
-export GIT_CONFIG_VALUE_0=true
-export GIT_CONFIG_KEY_1=diff.context
-export GIT_CONFIG_VALUE_1=0
-export GIT_CONFIG_KEY_2=diff.interHunkContext
-export GIT_CONFIG_VALUE_2=0
+  # v0.6.0 needs package-relative paths and separate zero-context hunks to scan
+  # every changed line. Keep these Git settings in the environment rather than
+  # shared Git config.
+  export GIT_CONFIG_COUNT=3
+  export GIT_CONFIG_KEY_0=diff.relative
+  export GIT_CONFIG_VALUE_0=true
+  export GIT_CONFIG_KEY_1=diff.context
+  export GIT_CONFIG_VALUE_1=0
+  export GIT_CONFIG_KEY_2=diff.interHunkContext
+  export GIT_CONFIG_VALUE_2=0
 
-for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamorigin; do
-  if git diff --quiet --merge-base "$base" -- "$package"; then
-    printf 'Skipping %s: no changes against %s\n' "$package" "$base"
-    continue
-  else
-    diff_status=$?
-    if [ "$diff_status" -ne 1 ]; then
-      exit "$diff_status"
+  for package in pkg/gitops/plan pkg/gitops/diff pkg/gitops/apply internal/teamorigin; do
+    if git diff --quiet --merge-base "$base" -- "$package"; then
+      printf 'Skipping %s: no changes against %s\n' "$package" "$base"
+      continue
+    else
+      diff_status=$?
+      if [ "$diff_status" -ne 1 ]; then
+        exit "$diff_status"
+      fi
     fi
-  fi
-  name="${package##*/}"
-  (
-    cd "$package"
-    "$gremlins_bin" unleash --dry-run --diff "$base" --workers 2 \
-      --timeout-coefficient 30 "$PWD"
-    "$gremlins_bin" unleash --diff "$base" --workers 2 \
-      --timeout-coefficient 30 --output "$results/$name.json" "$PWD"
-  )
-done
+    name="${package##*/}"
+    (
+      cd "$package"
+      "$gremlins_bin" unleash --dry-run --diff "$base" --workers 2 \
+        --timeout-coefficient 30 "$PWD"
+      "$gremlins_bin" unleash --diff "$base" --workers 2 \
+        --timeout-coefficient 30 --output "$results/$name.json" "$PWD"
+    )
+  done
+  printf 'Gremlins results: %s\n' "$results"
+)
 ```
 
 The loop skips packages with no diff because Gremlins v0.6.0 treats an empty
